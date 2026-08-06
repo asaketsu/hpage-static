@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-Q-K-V投影共享</title>
+
+<meta property="og:title" content="本地模型部署-Q-K-V投影共享" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="transformer-qkv">Transformer 注意力机制中的 Q/K/V 投影共享技术</h1>
+<blockquote>
+<p>探索笔记 | 2026-07-31 | 来源: Sebastian Raschka GQA/MLA Architecture Gallery + arXiv:2503.09579<br />
+搜索降级路径: Tavily 432 → TinyFish Search (✅) → curl 直取博客站</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>Q/K/V 投影共享是 Transformer 注意力机制中降低推理成本的核心架构优化方向。标准多头注意力（MHA）为每个注意力头分配独立的 Q/K/V 投影矩阵，导致 KV cache 随序列长度线性膨胀。通过让多个 Query 头共享同一组 Key/Value 投影（MQA → GQA），可将 KV cache 和内存带宽需求压缩数倍，代价是少量建模质量损失。2023 年的 GQA 论文（Llama 2/3 采用）已成为业界事实标准，2024 年的 MLA（DeepSeek-V2）进一步通过低秩压缩将效率推向新极限。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1-mha-mqa-gqa-mla">1. 技术演进谱系：MHA → MQA → GQA → MLA</h3>
+<ul>
+<li><strong>MHA（Multi-Head Attention）</strong>：标准注意力，每个 Query 头有独立的 K/V 投影。建模质量最优但 KV cache 成本最高。代表：初代 Transformer、BERT、GPT-3。</li>
+<li><strong>MQA（Multi-Query Attention，2022）</strong>：所有 Query 头共享<strong>单一</strong> K/V 投影组。KV cache 最省，但质量损失较明显。代表：PaLM、Falcon。</li>
+<li><strong>GQA（Grouped-Query Attention，2023）</strong>：折中方案——将 Query 头分成若干组，组内共享 K/V 投影。组数 = 1 时退化为 MQA，组数 = Query 头数时退化为 MHA。代表：Llama 3（8 个 KV 组）、Qwen3、Gemma 3、Mistral Small 3.1。</li>
+<li><strong>MLA（Multi-Head Latent Attention，2024）</strong>：DeepSeek-V2 提出，通过低秩投影将 K/V 压缩到低维隐空间再还原，在同等 KV 效率下建模质量优于 GQA，但实现复杂度更高。代表：DeepSeek-V2/V3、MiniMax。</li>
+</ul>
+<h3 id="2-gqa-2026">2. GQA 为何成为 2026 年仍主流的选择</h3>
+<p>Sebastian Raschka 指出，即使 MLA 等更先进方案出现，GQA 依然被大量新模型采用（MiniMax M2.5、Nanbeige 4.1、Sarvam 30B），原因是：<br />
+- <strong>实现简单</strong>：不需要 MLA 的低秩压缩/还原逻辑，代码改动小<br />
+- <strong>训练友好</strong>：超参数调优需求少（只需选择 KV 组数）<br />
+- <strong>KV cache 收益随上下文长度增长放大</strong>：上下文越长，节省的内存越显著<br />
+- <strong>质量退化可控</strong>：选择合理的 KV 组数，质量损失可忽略</p>
+<h3 id="3-gqa-arxiv250309579">3. 长上下文场景的 GQA 配置优化（arXiv:2503.09579）</h3>
+<p>该论文揭示：当前主流 GQA 配置（如 Llama-3）在长上下文场景下<strong>高度次优</strong>。两个核心创新：<br />
+- <strong>解耦 head size 与 hidden size</strong>：当前架构将 head size 绑定到 hidden size，导致 attention FLOPs 无法独立优化。解耦后可更灵活分配算力。<br />
+- <strong>联合优化模型规模与 GQA 配置</strong>：长上下文场景应<strong>减少注意力头数量 + 扩大模型规模</strong>。</p>
+<p>结果：相比 Llama-3 的 GQA 配置，内存和 FLOPs 可同时降低 <strong>50% 以上</strong>，且模型能力无退化。</p>
+<h3 id="4">4. 共享程度的工程权衡</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>MHA</th>
+<th>GQA（折中）</th>
+<th>MQA（极限共享）</th>
+<th>MLA（压缩）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV cache</td>
+<td>最大</td>
+<td>中等</td>
+<td>最小</td>
+<td>最小（压缩）</td>
+</tr>
+<tr>
+<td>建模质量</td>
+<td>最优</td>
+<td>接近 MHA</td>
+<td>有损</td>
+<td>接近 MHA</td>
+</tr>
+<tr>
+<td>实现复杂度</td>
+<td>简单</td>
+<td>简单</td>
+<td>简单</td>
+<td>复杂</td>
+</tr>
+<tr>
+<td>训练稳定性</td>
+<td>好</td>
+<td>好</td>
+<td>好</td>
+<td>需调优</td>
+</tr>
+<tr>
+<td>代表模型</td>
+<td>BERT/GPT-3</td>
+<td>Llama 3</td>
+<td>PaLM</td>
+<td>DeepSeek-V3</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">对工作的价值</h2>
+<ul>
+<li><strong>本地 LLM 部署（Jetson Orin Nano）</strong>：GQA 模型（Llama 3 8B、Qwen3 4B）的 KV cache 比同等规模 MHA 模型小 3-4 倍，意味着同样显存下可支持更长的上下文窗口，直接利好边缘部署场景。</li>
+<li><strong>推理框架选型</strong>：llama.cpp / vLLM / TensorRT-LLM 均原生支持 GQA，无需额外适配。MQA/GQA 在这些框架中通过 <code>num_key_value_heads</code> 参数配置。</li>
+<li><strong>长上下文优化启示</strong>：arXiv:2503.09579 的发现（减少 head + 扩大模型规模）为边缘设备长上下文优化提供了新思路——不是简单减少 KV cache，而是重新分配算力。</li>
+<li><strong>MLA 是下一个迁移方向</strong>：DeepSeek-V3 开源后，社区已有 TransMLA 等方案将 MLA 移植到 Llama/Qwen 架构。若需要极致的 KV cache 效率，MLA 是值得关注的路线。</li>
+</ul>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li><strong>当前部署优先 GQA 模型</strong>：Llama 3 8B、Qwen3 4B 已在 Jetson 上验证，KV cache 效率足够。</li>
+<li><strong>监控 MLA 移植进展</strong>：关注 TransMLA 项目（将 MLA 移植到主流架构），成熟后可在同等显存下获得更好的长上下文能力。</li>
+<li><strong>长上下文场景应用 arXiv:2503.09579 思路</strong>：若需要 32K+ 上下文，参考该论文的配置优化方法（减少 head + 扩大 FFN），而非简单堆叠 KV cache 压缩。</li>
+</ol>
+<h2 id="_5">参考资料</h2>
+<ul>
+<li>GQA 原论文: Ainslie et al. (2023), "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints" — arXiv:2305.13245</li>
+<li>Cost-Optimal GQA: arXiv:2503.09579 (2025)</li>
+<li>Sebastian Raschka, LLM Architecture Gallery — GQA/MLA 章节: https://sebastianraschka.com/llm-architecture-gallery/gqa/</li>
+<li>MLA 介绍: machinelearningmastery.com / planetbanatt.net/articles/mla.html</li>
+</ul>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li>Q/K/V 投影共享 MQA-GQA-MLA 演进（~/explore）— 本文的深度展开版，含 Cost-Optimal GQA 最新研究</li>
+<li>MLA 多头潜注意力 KV 缓存压缩（uclaw/notes）— DeepSeek MLA 的工业实现解析</li>
+<li>DeepSeek MLA 深度分析（~/explore）— MLA 本地部署实践</li>
+<li>PyTorch 深度学习基石框架（uclaw/notes）— Attention 机制的实现底座</li>
+</ul>
+</body>
+</html>

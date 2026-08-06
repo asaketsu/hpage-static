@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TileFuse-AMD-NPU量化推理核库</title>
+
+<meta property="og:title" content="TileFuse-AMD-NPU量化推理核库" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="tilefuse-amd-npu-llm">TileFuse: AMD NPU 上融合混合精度量化 LLM 推理核库</h1>
+<blockquote>
+<p><strong>来源</strong>: <a href="https://arxiv.org/abs/2606.11357">arXiv:2606.11357</a> | <a href="https://github.com/glassescrab/mlir-aie/tree/feature/update-mix-mm-int4-verification">GitHub</a></p>
+<p><strong>作者</strong>: Wesley Pang, Gregory Hyegang Jun, Feiyang Liu, Deming Chen (UIUC)</p>
+<p><strong>日期</strong>: 2026-06-09 (v1), 2026-07-01 (v2) | <strong>领域</strong>: cs.DC, cs.AI, cs.AR, cs.PF</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心问题与研究动机</h2>
+<h3 id="npu">边缘 NPU 的困境</h3>
+<p>当前客户级 SoC 普遍集成 NPU（Apple Core ML、Qualcomm QNN、Intel OpenVINO 等），但这些 NPU 软件栈多为<strong>闭源专有</strong>，仅提供高层部署接口，缺乏底层编程控制。更关键的是，广泛使用的开源量化格式（如 <strong>AWQ 的 W4A16</strong>）无法直接映射到 NPU 上——它们只能支持受限的子集（per-tensor、per-channel、对称量化），而现代边缘 LLM 普遍使用<strong>非对称 per-group</strong> 量化。</p>
+<p>这意味着用户被迫<strong>适应模型去适配 NPU</strong>，而非让 NPU 直接运行已有的预量化模型。</p>
+<h3 id="amd-xdna2">AMD XDNA2 的独特优势</h3>
+<p>AMD XDNA2 NPU（集成于 Ryzen AI 7 350 Krackan Point 和 Ryzen AI 9 HX 370 Strix Point）提供了独特的可重构空间架构 + 开源近金属软件栈 <strong>MLIR-AIE (IRON)</strong>，允许开发者自定义微内核和显式数据流。这使其成为研究 NPU 量化 LLM 推理的绝佳平台。</p>
+<hr />
+<h2 id="_2">二、方法论</h2>
+<h3 id="21">2.1 整体设计</h3>
+<p>TileFuse 是一个端到端的近金属实现，包含三个核心组件：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>目标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>权重预分块 (Weight Pre-tiling)</td>
+<td>将量化元数据与权重打包，重组布局以支持大矩阵</td>
+</tr>
+<tr>
+<td>混合精度微内核 (Mixed-precision Microkernels)</td>
+<td>融合解压、反量化和 GEMM/GEMV 计算</td>
+</tr>
+<tr>
+<td>GEMV 数据流协同设计</td>
+<td>利用完整的 4×8 AIE 阵列加速 token 生成</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 四个设计挑战</h3>
+<ol>
+<li><strong>高效即时反量化</strong>：反量化后需复用权重 tile，而非每次重新计算。TileFuse 使用计算核本地内存存储反量化后的 BF16 权重。</li>
+<li><strong>有限流下的元数据传输</strong>：XDNA2 流接口有限，无法同时传输权重、激活和元数据三个独立流。</li>
+<li><strong>大 MLP 层支持</strong>：LLM MLP 层维度常达 32K，但 DMA 步长寄存器有限，超过 8K 需拆分调用。</li>
+<li><strong>GEMV 硬件利用率低</strong>：token 生成阶段的 GEMV 操作基线只使用一行计算核。</li>
+</ol>
+<h3 id="23">2.3 核心技术</h3>
+<p><strong>权重预分块与元数据打包</strong>：<br />
+- W4A16 格式：权重 tile 按 INT4 连续存储，后跟 BF16 缩放因子和 INT8 零点（per-group 128）。<br />
+- 128×64 权重 tile 需 64 个缩放因子 + 64 个零点（复制以对齐 128 字节 DMA 要求）。<br />
+- 额外元数据仅占 1.5% 内存。</p>
+<p><strong>交错列主预分块</strong>：<br />
+- 默认行主布局中，AIE 列 j 处理的 tile 分布在列 j, j+8, j+16...，造成大内存步长。<br />
+- 交错列主布局将同一 AIE 列的 tile 连续存放，消除大步长访问，支持 K、N 维度高达 32K。</p>
+<p><strong>混合精度微内核</strong>：<br />
+- W4A16：解压 packed INT4（每字节两个 4-bit 值）→ 展宽为 INT8 → 反量化为 BF16 → 存入本地缓冲区 → GEMM/GEMV。<br />
+- 复用策略：每个权重块只反量化一次，存储在本地缓冲区，多次复用。<br />
+- W8A16：INT8 直接转 BF16 × 缩放因子（对称量化，无零点）。</p>
+<p><strong>GEMV 微内核优化</strong>：<br />
+- 基线每次加载 16×8 权重块，仅处理 16 个输出元素。<br />
+- TileFuse 加载 64×8 权重块（8 个 8×8 子块），复用 1×8 激活片段，每迭代累积 64 个输出元素。</p>
+<p><strong>GEMV 数据流重设计</strong>：<br />
+- 基线：shim 核直接流式传输权重到一行计算核（仅用 8/32 核）。<br />
+- TileFuse：shim 核将 4 个权重 tile 打包到 memory 核 → memory 核分发到 4 行计算核（全 32 核利用）。</p>
+<p><strong>近金属 XDNA2 可重构性利用</strong>：<br />
+- 计算核级：自定义混合精度微内核替换 BF16 GEMM/GEMV 数据路径。<br />
+- 内存/DMA 级：离线预分块匹配 AIE 阵列访问模式。<br />
+- 阵列级：通过 memory 核配置 GEMV 权重分发路径。<br />
+- 限制：核分发和 AIE 配置有运行时开销（毫秒级），适合大 GEMM 但对小 GEMV 不利。</p>
+<h3 id="24-llm">2.4 端到端 LLM 部署</h3>
+<ul>
+<li>自定义 C++ 框架 + Python 绑定，加载 Hugging Face safetensors 权重。</li>
+<li><strong>混合 NPU+iGPU 架构</strong>：线性层（注意力投影、MLP 投影）→ NPU；FlashAttention-2、softmax、归一化等 → iGPU。</li>
+<li>按算子级别选择设备（非并行执行），以隔离 NPU 增益。</li>
+<li>利用 AMD Ryzen 统一内存，跨 CPU/iGPU/NPU 无一致性开销。</li>
+</ul>
+<hr />
+<h2 id="_3">三、关键实验结果与数据</h2>
+<h3 id="31">3.1 核级别性能</h3>
+<p><strong>平台</strong>：Ryzen AI 7 350 (Krackan Point, 8-CU iGPU) + Ryzen AI 9 HX 370 (Strix Point, 16-CU iGPU)。两者 XDNA2 NPU 架构相同。</p>
+<p><strong>GEMM 性能</strong>：<br />
+- Krackan Point 峰值 12 TOPS，Strix Point 峰值 9 TOPS（差异归因于硅片质量/热设计/内存行为，非架构差异）。<br />
+- iGPU：8-CU Krackan Point ~5 TOPS，16-CU Strix Point ~7 TOPS。<br />
+- CPU 仅约 200 GOPS。<br />
+- NPU 在形状变化时表现平滑（无锯齿状吞吐量波动），归功于自定义权重布局。</p>
+<p><strong>GEMV 性能</strong>（1×4096×14336）：<br />
+- Krackan Point NPU：W4A16 = 206 GOPS, W8A16 = 104 GOPS。<br />
+- Strix Point NPU：W4A16 = 181 GOPS, W8A16 = 97 GOPS。<br />
+- CPU 在 GEMV 上表现更强（接近 DRAM 带宽极限），因为 NPU 为计算优化而非内存带宽优化。</p>
+<h3 id="32-llm">3.2 端到端 LLM 性能</h3>
+<p><strong>预填充（Prefill）延迟 — Ryzen AI 7 350（W4A16，Llama3-8B）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>Prompt</th>
+<th>GPU (ms)</th>
+<th>NPU (ms)</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>256</td>
+<td>869.7</td>
+<td>650.8</td>
+<td>1.34x</td>
+</tr>
+<tr>
+<td>512</td>
+<td>1801.0</td>
+<td>1101.5</td>
+<td>1.64x</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>3700.7</td>
+<td>2048.5</td>
+<td>1.81x</td>
+</tr>
+<tr>
+<td>2048</td>
+<td>8246.9</td>
+<td>4129.9</td>
+<td>2.00x</td>
+</tr>
+<tr>
+<td>4096</td>
+<td>18141.9</td>
+<td>9209.2</td>
+<td>1.97x</td>
+</tr>
+<tr>
+<td>8192</td>
+<td>44707.0</td>
+<td>23506.2</td>
+<td>1.90x</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>W4A16 在中等和长 prompt 上 NPU 显著优于 iGPU，短 prompt 因 NPU 固定开销（核分发 + 布重构）反而较慢。</li>
+<li>随着 prompt 增长，固定开销被均摊，NPU 优势逐渐显现。</li>
+</ul>
+<p><strong>Ryzen AI 9 HX 370（W4A16，Llama3-8B）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>Prompt</th>
+<th>GPU (ms)</th>
+<th>NPU (ms)</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>256</td>
+<td>569.3</td>
+<td>722.2</td>
+<td>0.79x</td>
+</tr>
+<tr>
+<td>512</td>
+<td>1116.6</td>
+<td>1210.1</td>
+<td>0.92x</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>2240.7</td>
+<td>2219.4</td>
+<td>1.01x</td>
+</tr>
+<tr>
+<td>2048</td>
+<td>4858.9</td>
+<td>4194.9</td>
+<td>1.16x</td>
+</tr>
+<tr>
+<td>4096</td>
+<td>10380.7</td>
+<td>8700.4</td>
+<td>1.19x</td>
+</tr>
+<tr>
+<td>8192</td>
+<td>24544.4</td>
+<td>20043.8</td>
+<td>1.22x</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>HX 370 的更强 iGPU（16-CU）抵消了 NPU 增益，预填充延迟两平台相近。</li>
+</ul>
+<p><strong>Token 生成吞吐（tok/s，W4A16）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>AI 7 350 GPU</th>
+<th>AI 7 350 NPU</th>
+<th>AI 9 HX 370 GPU</th>
+<th>AI 9 HX 370 NPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gemma-2B</td>
+<td>31.44</td>
+<td>28.91</td>
+<td>12.64</td>
+<td>14.03</td>
+</tr>
+<tr>
+<td>Qwen2.5-3B</td>
+<td>19.22</td>
+<td>15.05</td>
+<td>38.31</td>
+<td>34.84</td>
+</tr>
+<tr>
+<td>Llama3-8B</td>
+<td>7.73</td>
+<td>7.42</td>
+<td>15.73</td>
+<td>15.05</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>NPU 在 token 生成上略慢于 iGPU，因为 GEMV 操作在几百微秒级，但 NPU 驱动和配置开销在毫秒级。</li>
+</ul>
+<p><strong>能量效率（Llama3-8B，4096-token prompt）</strong>：<br />
+- AI 7 350：NPU 385.98 J vs GPU 1091.81 J → <strong>节能 64.6%</strong>。<br />
+- AI 9 HX 370：NPU 322.89 J vs GPU 684.59 J → <strong>节能 52.8%</strong>。</p>
+<h3 id="33-npu">3.3 与其他 NPU 工作对比</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>前作</th>
+<th>速度 (tok/s)</th>
+<th>TileFuse</th>
+<th>速度 (tok/s)</th>
+<th>加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Llama-3-8B</td>
+<td>FastFlowLM</td>
+<td>345.9</td>
+<td>501.9</td>
+<td>1.45x</td>
+<td></td>
+</tr>
+<tr>
+<td>Qwen2.5-3B</td>
+<td>Scaling NPU</td>
+<td>550.0</td>
+<td>890.4</td>
+<td>1.61x</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="34">3.4 消融研究</h3>
+<ul>
+<li><strong>仅预分块</strong>：GEMM 提升约 50%，支持输出维度超过 8K（基线仅支持 8K）。</li>
+<li><strong>混合精度微内核</strong>：在预分块基础上再提升约 50%，大尺寸最高 121.6%。</li>
+<li><strong>GEMV 微内核+数据流优化</strong>：基线+混合精度提升 20%-40%，加上微内核和数据流优化后最高 <strong>281%</strong>。</li>
+</ul>
+<hr />
+<h2 id="_4">四、创新点分析</h2>
+<h3 id="41">4.1 核心创新</h3>
+<ol>
+<li>
+<p><strong>直接支持 AWQ-style 量化格式</strong>：不要求模型适配 NPU 的专有量化方案，而是让 NPU 直接运行已有预量化模型。这与 ScalingLLM（Qualcomm 专用块量化）形成本质区别。</p>
+</li>
+<li>
+<p><strong>融合核设计（Fused Kernel）</strong>：解压→反量化→矩阵计算三步合一，避免 BF16 中间量的全局内存往返。复用本地内存存储反量化结果，避免重复计算。</p>
+</li>
+<li>
+<p><strong>交错列主预分块（Interleaved Pre-tiling）</strong>：创新性地将同一 AIE 列的权重 tile 连续存放，消除 DMA 大步长，支持 32K 维度。这是解决大 MLP 层的关键。</p>
+</li>
+<li>
+<p><strong>GEMV 全阵列数据流</strong>：通过 memory 核作为中间分发层，将 GEMV 从单行计算扩展到全 4×8 阵列，是 NPU 空间架构的独特利用方式。</p>
+</li>
+<li>
+<p><strong>混合 NPU+iGPU 架构</strong>：认识到 NPU 优势（大 GEMM）和劣势（小 GEMV 延迟敏感），将线性层交给 NPU，其余交给 iGPU。利用 AMD 统一内存特性实现低开销协同。</p>
+</li>
+</ol>
+<h3 id="42">4.2 方法论贡献</h3>
+<p>TileFuse 展示了如何系统性地利用 NPU 的可重构性（计算核级、内存/DMA 级、阵列级），同时诚实地量化了其局限性（配置开销对小算子不利）。消融研究清晰地分离了各优化组件的贡献。</p>
+<hr />
+<h2 id="_5">五、局限性与未来方向</h2>
+<h3 id="51">5.1 论文指出的局限</h3>
+<ol>
+<li><strong>Token 生成瓶颈</strong>：NPU 配置开销（毫秒级）远大于 GEMV 操作时间（微秒级），导致 token 生成 NPU 略慢于 iGPU。</li>
+<li><strong>模型维度不匹配</strong>：Qwen2.5-3B 的 MLP 隐藏维度不是最小 tile-size 的倍数，padding 导致过度计算。</li>
+<li><strong>当前非并行执行</strong>：NPU 和 iGPU 按依赖顺序串行执行，未实现真正的并发。</li>
+<li><strong>平台差异未完全解释</strong>：Krackan Point NPU 性能高于 Strix Point，但公开规格无法完全解释，可能涉及有效流带宽、热设计、运行时调度等。</li>
+</ol>
+<h3 id="52">5.2 潜在改进方向</h3>
+<ol>
+<li><strong>真正的 NPU+iGPU 并行执行</strong>：预填充 NPU + Token 生成 iGPU 的混合策略能结合两者优势。</li>
+<li><strong>动态 tile-size 适配</strong>：自动适应不同模型的 MLP 维度。</li>
+<li><strong>其他 NPU 架构移植</strong>：预分块思想（离线重组 AWQ 权重匹配硬件消费模式）可移植到其他 GPU/NPU。</li>
+<li><strong>W4A8 / W4KV4 等更低精度格式</strong>：支持更激进的量化方案。</li>
+</ol>
+<hr />
+<h2 id="hermes-agent-jetson-orin">六、借鉴点评估（关联 Hermes Agent / Jetson Orin / 量化交易）</h2>
+<h3 id="p0">P0 — 可直接移植</h3>
+<p><strong>1. 权重预分块思想 → Jetson TensorRT 优化</strong></p>
+<ul>
+<li><strong>原理</strong>：离线重组权重布局以匹配硬件消费模式，消除运行时分块开销。</li>
+<li><strong>关联</strong>：Jetson Orin TensorRT 部署量化模型时，也可预计算最优权重分块和元数据打包。</li>
+<li><strong>工作量</strong>：中等（需要研究 TensorRT plugin 接口）。</li>
+<li><strong>优先级</strong>：P0 — 直接提升已有量化部署效率。</li>
+</ul>
+<p><strong>2. 融合核设计思路 → TensorRT 自定义层</strong></p>
+<ul>
+<li><strong>原理</strong>：解压→反量化→矩阵计算融合，减少内存往返。</li>
+<li><strong>关联</strong>：TensorRT 支持 custom plugin，可类似地实现 W4A16/W8A16 融合内核。</li>
+<li><strong>工作量</strong>：较大（需要 CUDA kernel 编程）。</li>
+<li><strong>优先级</strong>：P0 — 核心效率提升路径。</li>
+</ul>
+<h3 id="p1">P1 — 需工程改造</h3>
+<p><strong>3. 混合 NPU+iGPU 架构 → Jetson NPU+GPU 混合调度</strong></p>
+<ul>
+<li><strong>原理</strong>：NPU 处理大 GEMM，GPU 处理延迟敏感操作。</li>
+<li><strong>关联</strong>：Jetson Orin 同样有 NPU + GPU + 统一内存，可直接借鉴该调度策略。</li>
+<li><strong>关键障碍</strong>：Jetson NPU 软件栈（NVLM/TensorRT-LLM）的 API 限制。</li>
+<li><strong>优先级</strong>：P1 — 与 Jetson 平台深度集成相关。</li>
+</ul>
+<p><strong>4. 交错列主布局思想 → 通用权重重排</strong></p>
+<ul>
+<li><strong>原理</strong>：将逻辑上分散但物理上连续的访问模式提前整理好。</li>
+<li><strong>关联</strong>：可用于任何需要大矩阵内存访问的深度学习推理场景。</li>
+<li><strong>优先级</strong>：P1 — 通用优化技术，可泛化。</li>
+</ul>
+<h3 id="p2">P2 — 长期参考价值</h3>
+<p><strong>5. GEMV 全阵列数据流设计 → Jetson NPU 并行优化</strong></p>
+<ul>
+<li><strong>原理</strong>：利用 memory 核分发权重到全部计算核。</li>
+<li><strong>关联</strong>：Jetson NPU 有类似的 DMMA 阵列，可参考此数据流设计。</li>
+<li><strong>优先级</strong>：P2 — 需要深入研究 Jetson NPU 架构。</li>
+</ul>
+<p><strong>6. 可重构性带来的利弊权衡 → 通用边缘推理设计原则</strong></p>
+<ul>
+<li><strong>原理</strong>：可重构硬件提供灵活性，但配置开销需被大算子均摊。</li>
+<li><strong>关联</strong>：对任何可编程边缘 AI 芯片（RISC-V NPU、FPGA 等）的部署策略有参考意义。</li>
+<li><strong>优先级</strong>：P2 — 设计哲学层面。</li>
+</ul>
+<h3 id="_6">❌ 暂不适用</h3>
+<p><strong>7. 量化交易场景</strong></p>
+<ul>
+<li>TileFuse 的核心是矩阵计算优化，与量化交易的 Alpha 研究、回测框架无直接关联。量化交易中虽有大量矩阵运算（如 PCA、协方差矩阵计算），但规模远小于 LLM 推理，现有 numpy/TensorFlow 优化已足够。</li>
+</ul>
+<hr />
+<h2 id="_7">七、关联论文</h2>
+<ul>
+<li><strong>Kara (2607.01237)</strong>：KV Cache 滑动窗口压缩，与 TileFuse 互补 — TileFuse 降低权重内存需求，Kara 降低 KV Cache 内存需求。</li>
+<li><strong>ScalingLLM (Hao et al.)</strong>：Qualcomm NPU 上的硬件感知块量化，TileFuse 的直接对比对象。TileFuse 优势在于直接支持 AWQ 而非平台专用量化。</li>
+<li><strong>FastFlowLM</strong>：AMD Ryzen AI 上的 LLM 部署框架，TileFuse 提供了其底层内核细节和开源实现。</li>
+<li><strong>MaxEVA</strong>：AIE 上的矩阵乘法优化，展示了 AIE 架构的性能潜力，TileFuse 在此基础上增加了量化格式支持。</li>
+<li><strong>QServe / MARLIN / PowerInfer</strong>：GPU 侧的量化推理优化，TileFuse 将类似思想移植到 NPU。</li>
+<li><strong>ReasoningEffort (2607.02436)</strong>：推理投入而非工具访问提升 agent 代码生成可靠性 — 互补方向，TileFuse 关注"如何高效推理"，ReasoningEffort 关注"需要多少推理投入"。</li>
+</ul>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara 滑动窗口KV Cache压缩</a> — 推理型LLM长CoT缓存压缩</li>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KV Cache量化三大突破</a> — TurboQuant/RotorQuant向量量化</li>
+<li><a href="./2026-07-07-TileFuse-AMD-NPU量化推理核库.md">TileFuse AMD NPU量化推理核库</a> — 本文：AMD NPU融合混合精度核</li>
+</ul>
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KV Cache 量化压缩三突破</a> — TurboQuant/RotorQuant</li>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara 滑动窗口 KV Cache 压缩</a> — 高效推理服务</li>
+<li><a href="../2026-07-08-LLM推理优化2026突破-SMoE端侧部署-SpecSA稀疏推测解码.md">LLM 推理优化 2026 全景</a> — SMoE/SpecSA 端侧部署</li>
+</ul>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KV Cache 量化压缩 TurboQuant/RotorQuant</a> — 量化算法上游</li>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara KV Cache 压缩</a> — 缓存压缩方案</li>
+<li><a href="../2026-07-08-ESP-VISION-乐鑫边缘AI视觉低代码框架分析.md">ESP-VISION 边缘 AI 视觉框架</a> — 边缘端 AI 部署交叉</li>
+</ul>
+<h2 id="_11">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KV Cache 量化压缩 2026 三大新突破</a> — KV Cache 量化全景</li>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara：滑动窗口 KV Cache 压缩</a> — 滑窗压缩方法</li>
+<li><a href="./2026-07-08-SPORK自推测分叉.md">SPORK 自推测分叉</a> — Agent 推理加速</li>
+<li><a href="./2026-07-08-LLM推理优化2026突破-SMoE端侧部署-SpecSA稀疏推测解码.md">LLM推理优化2026突破-SMoE端侧部署</a> — 端侧部署</li>
+</ul>
+</body>
+</html>

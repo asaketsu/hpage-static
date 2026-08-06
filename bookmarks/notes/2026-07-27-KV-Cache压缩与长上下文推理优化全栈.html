@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KV-Cache压缩与长上下文推理优化全栈</title>
+
+<meta property="og:title" content="KV-Cache压缩与长上下文推理优化全栈" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="kv-cache">KV Cache 压缩与长上下文推理 — 从系统优化到架构重构的完整图景</h1>
+<blockquote>
+<p><strong>出处</strong>: ACL 2026 Survey (jjiantong/Awesome-KV-Cache-Optimization) / ChunkKV (arXiv 2502.00299, NeurIPS 2025) / RocketKV (arXiv 2502.14051) / Spheron Context Engineering Guide 2026 / Sebastian Raschka LLM Architecture Analysis (2026-05) / DeepSeek V4<br />
+<strong>日期</strong>: 2026-07-27<br />
+<strong>标签</strong>: #KV-Cache #长上下文 #推理优化 #Context-Engineering #ChunkKV #RocketKV #DeepSeek-V4 #Prefix-Caching</p>
+</blockquote>
+<hr />
+<h2 id="agent-compute-bound-context-bound">一、核心问题：Agent 不是 compute-bound，是 context-bound</h2>
+<p>Production Agent 的推理成本结构完全不同于 chatbot：</p>
+<table>
+<thead>
+<tr>
+<th>工作负载</th>
+<th>典型输入 token</th>
+<th>典型输出 token</th>
+<th>输入:输出比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Chatbot</td>
+<td>500</td>
+<td>300</td>
+<td>1.7:1</td>
+</tr>
+<tr>
+<td>RAG pipeline</td>
+<td>8,000</td>
+<td>400</td>
+<td>20:1</td>
+</tr>
+<tr>
+<td>ReAct Agent（早期）</td>
+<td>20,000</td>
+<td>200</td>
+<td>100:1</td>
+</tr>
+<tr>
+<td>ReAct Agent（后期）</td>
+<td>80,000</td>
+<td>300</td>
+<td><strong>267:1</strong></td>
+</tr>
+<tr>
+<td>Code review Agent</td>
+<td>120,000</td>
+<td>1,000</td>
+<td>120:1</td>
+</tr>
+</tbody>
+</table>
+<p>一个 10 步工具调用的 ReAct Agent，总输出约 500 token，但消耗 <strong>80 万输入 token</strong>——每轮都携带完整 system prompt、tool schemas 和对话历史。</p>
+<p>在 100:1 以上的比率下，<strong>prefill 计算占 GPU 时间的 85-95%</strong>。生成步骤不是瓶颈，上下文处理才是。</p>
+<hr />
+<h2 id="kv-cache_1">二、系统级优化：KV Cache 命中率是第一成本杠杆</h2>
+<h3 id="21-kv-cache-hit-rate">2.1 KV Cache Hit Rate 经济学</h3>
+<p>当推理服务器处理输入 token 时，为每个 token 在每层 transformer 计算 key-value attention 张量并存储到 KV cache。如果后续请求共享相同前缀，服务器可复用这些张量。</p>
+<p><strong>命中率的数学</strong>：<code>cost_saving = hit_rate × prefill_fraction × total_gpu_time</code></p>
+<table>
+<thead>
+<tr>
+<th>KV 命中率</th>
+<th>有效 prefill token</th>
+<th>TTFT</th>
+<th>相对成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0%（无缓存）</td>
+<td>80,000</td>
+<td>~8s</td>
+<td>基线</td>
+</tr>
+<tr>
+<td>50%</td>
+<td>40,000</td>
+<td>~4s</td>
+<td>~50%</td>
+</tr>
+<tr>
+<td>90%</td>
+<td>8,000</td>
+<td>~800ms</td>
+<td>~10%</td>
+</tr>
+<tr>
+<td>95%</td>
+<td>4,000</td>
+<td>~400ms</td>
+<td>~5%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>0% → 90% 的差距不是边际优化，是 $20,000/月 vs $2,000/月 GPU 账单的差距。</strong></p>
+<h3 id="22-prefix-caching">2.2 Prefix Caching 两巨头</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>SGLang RadixAttention</th>
+<th>vLLM APC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>默认开启</td>
+<td>是</td>
+<td>V1 / v0.18.0+</td>
+</tr>
+<tr>
+<td>粒度</td>
+<td>Token 级（radix tree）</td>
+<td>Block 级（16 token/block）</td>
+</tr>
+<tr>
+<td>多轮处理</td>
+<td>强（按对话分支累积状态）</td>
+<td>良好</td>
+</tr>
+<tr>
+<td>监控指标</td>
+<td><code>sglang_cache_hit_rate</code></td>
+<td><code>num_prefix_cache_hit_tokens</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 最大化命中率的操作铁律</h3>
+<ol>
+<li><strong>System prompt 逐字符固定</strong>——一个空白字符差异使整个缓存前缀失效</li>
+<li><strong>Tool 定义顺序固定</strong>——<code>[search, write, read]</code> 和 <code>[read, search, write]</code> 导致 cache miss</li>
+<li><strong>对话历史作为稳定前缀</strong>——不重新生成或总结早期轮次</li>
+<li><strong>检索文档位置固定</strong>——不同轮次间交错不同位置会碎片化前缀树</li>
+</ol>
+<p><strong>60%+ 前缀重叠的工作负载可稳定达到 75-95% 命中率。</strong></p>
+<h3 id="24-vram-32k-1m">2.4 VRAM 数学：从 32K 到 1M 上下文</h3>
+<p>KV cache VRAM 与上下文长度线性增长。Llama 3.1 70B（80 层，8 GQA heads，128 head_dim）：</p>
+<p><code>kv_bytes = 2 × layers × kv_heads × head_dim × context_len × bytes_per_element</code></p>
+<table>
+<thead>
+<tr>
+<th>上下文</th>
+<th>BF16 KV/用户</th>
+<th>FP8 KV/用户</th>
+<th>推荐 GPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>32K</td>
+<td>~10.7 GB</td>
+<td>~5.4 GB</td>
+<td>H100 80GB</td>
+</tr>
+<tr>
+<td>128K</td>
+<td>~42.9 GB</td>
+<td>~21.5 GB</td>
+<td>H200 141GB</td>
+</tr>
+<tr>
+<td>512K</td>
+<td>~171 GB</td>
+<td>~85.5 GB</td>
+<td>2× B200 192GB</td>
+</tr>
+<tr>
+<td>1M</td>
+<td>~343 GB</td>
+<td>~172 GB</td>
+<td>NVMe offload 或 sequence parallelism</td>
+</tr>
+</tbody>
+</table>
+<p><strong>FP8 KV 量化是 512K 以下最有效的单一杠杆</strong>——减半 KV 内存，质量影响极小。</p>
+<h3 id="25-nvme-kv">2.5 NVMe KV 卸载</h3>
+<p>当 GPU HBM 满时，将冷 KV block 分层到 NVMe：<br />
+- LMCache 为 vLLM 添加 NVMe 持久化<br />
+- 冷 KV 从 NVMe 读取约 7 GB/s<br />
+- H100 上重算 128K 前缀约需 11 秒——NVMe 读取仍然更快</p>
+<h3 id="26">2.6 消除上下文浪费</h3>
+<p>平均 production Agent 上下文携带 <strong>40-70% 死重</strong>：<br />
+- 从未调用的工具 schema<br />
+- 与当前任务无关的历史轮次<br />
+- 检索相似度高但实际相关性低的 chunk</p>
+<p><strong>30% 输入 token 减少 ≈ 30% 成本和 TTFT 降低，无需改模型。</strong></p>
+<hr />
+<h2 id="chunkkv-rocketkv">三、算法级压缩：ChunkKV 与 RocketKV</h2>
+<h3 id="31-acl-2026">3.1 ACL 2026 综述分类体系</h3>
+<p>jjiantong/Awesome-KV-Cache-Optimization（ACL 2026 接收）建立了系统化的 KV Cache 优化分类：</p>
+<table>
+<thead>
+<tr>
+<th>大类</th>
+<th>子类</th>
+<th>代表方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>结构—表示与保留</strong></td>
+<td>KV Cache 压缩（KVCC）</td>
+<td>量化、低秩近似、结构压缩、编解码压缩</td>
+</tr>
+<tr>
+<td></td>
+<td>KV Cache 保留管理（KVRM）</td>
+<td>分配、复用、驱逐</td>
+</tr>
+<tr>
+<td><strong>空间—KV 编排</strong></td>
+<td>内存层级编排（MHO）</td>
+<td>SmartSSD KV offload</td>
+</tr>
+<tr>
+<td></td>
+<td>计算设备编排（CDO）</td>
+<td>PD 分离（Mooncake）</td>
+</tr>
+<tr>
+<td><strong>时间—执行与调度</strong></td>
+<td>KV 中心调度</td>
+<td>KV-centric scheduling</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-chunkkvarxiv-250200299-neurips-2025">3.2 ChunkKV（arXiv 2502.00299, NeurIPS 2025）⭐ 语义保留压缩</h3>
+<p><strong>核心创新</strong>：将压缩单元从单个 token 提升到<strong>语义 chunk</strong>——保留完整语言结构和上下文完整性。</p>
+<p><strong>为什么 token 级压缩不够</strong>：现有方法逐 token 评估重要性，忽略了 token 间的语义关系，导致上下文碎片化和性能退化。</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>精度提升（vs SOTA）</td>
+<td>最高 +8.7%</td>
+</tr>
+<tr>
+<td>吞吐量提升</td>
+<td>+26.5%（层间索引复用）</td>
+</tr>
+<tr>
+<td>测试基准</td>
+<td>LongBench, Needle-In-A-HayStack, GSM8K, JailbreakV</td>
+</tr>
+</tbody>
+</table>
+<p><strong>层间索引复用</strong>：利用 ChunkKV 中保留索引的更高跨层相似性，减少计算开销。</p>
+<h3 id="33-rocketkvarxiv-250214051">3.3 RocketKV（arXiv 2502.14051）⭐ 两阶段无训练压缩</h3>
+<p><strong>两阶段策略</strong>：<br />
+1. <strong>粗粒度永久驱逐</strong>：对输入序列 token 进行永久性 KV cache 驱逐<br />
+2. <strong>细粒度稀疏注意力</strong>：利用 head 和 sequence 维度降低来近似 attention score 的混合稀疏 top-k 注意力</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>压缩比</td>
+<td>最高 <strong>400×</strong></td>
+</tr>
+<tr>
+<td>端到端加速</td>
+<td>最高 <strong>3.7×</strong></td>
+</tr>
+<tr>
+<td>Decode 峰值内存降低</td>
+<td>最高 <strong>32.6%</strong>（A100）</td>
+</tr>
+<tr>
+<td>精度损失</td>
+<td><strong>可忽略</strong>（多长上下文任务）</td>
+</tr>
+</tbody>
+</table>
+<p>多轮场景变体持续优于其他方法，精度接近 oracle top-k attention。</p>
+<hr />
+<h2 id="2026-kv">四、架构级重构：2026 最新模型如何内建 KV 优化</h2>
+<h3 id="41-gemma-4-kv">4.1 Gemma 4：跨层 KV 共享</h3>
+<p>Gemma 4 E2B/E4B 采用<strong>跨层注意力（Cross-Layer Attention）</strong>——后续层重用早期层的 KV 张量而非每层独立计算。</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>总层数</th>
+<th>自算 KV 层</th>
+<th>共享 KV 层</th>
+<th>节省</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E2B</td>
+<td>35</td>
+<td>15</td>
+<td>20</td>
+<td>~50% KV cache，128K 上下文省 2.7GB</td>
+</tr>
+<tr>
+<td>E4B</td>
+<td>42</td>
+<td>24</td>
+<td>18</td>
+<td>~50% KV cache，128K 上下文省 6GB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>规则</strong>：sliding-window 层共享前一个 sliding-window 层的 KV；full-attention 层共享前一个 full-attention 层的 KV。每层仍计算自己的 query projection。</p>
+<h3 id="42-deepseek-v4mhc-csahca">4.2 DeepSeek V4：mHC + CSA/HCA ⭐ 旗舰级创新</h3>
+<p>DeepSeek V4-Pro 是 2026 年最大发布，两大架构创新：</p>
+<h4 id="mhcmanifold-constrained-hyper-connections">mHC（Manifold-Constrained Hyper-Connections）</h4>
+<p>将 transformer block 内的单残差流替换为<strong>多个并行残差流 + 学习映射</strong>：</p>
+<ul>
+<li>基于原始 Hyper-Connections（Zhu et al., 2024），但添加双随机矩阵约束</li>
+<li>残差映射投影到非负、行列和为 1 的流形上（doubly stochastic）</li>
+<li>使残差混合行为更像「信息的稳定重分配」</li>
+<li>DeepSeek V4 用 n=4 残差流，额外训练时间开销仅 6.7%</li>
+<li>指标达基线性能仅需约一半训练 token</li>
+</ul>
+<h4 id="csahca">CSA/HCA 压缩注意力</h4>
+<p>不同于 DeepSeek V2/V3 的 MLA（压缩 per-token KV 表示），CSA/HCA <strong>沿序列维度压缩</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>机制</th>
+<th>压缩率</th>
+<th>注意力方式</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CSA</strong>（Compressed Sparse Attention）</td>
+<td>温和（m=4）</td>
+<td>DSA 式稀疏 top-k 选择</td>
+<td>保留更多细节，稀疏选择</td>
+</tr>
+<tr>
+<td><strong>HCA</strong>（Heavily Compressed Attention）</td>
+<td>激进（m'=128）</td>
+<td>对重压缩条目密集注意力</td>
+<td>条目少得多，可负担密集注意力</td>
+</tr>
+</tbody>
+</table>
+<p>两者互补，DeepSeek V4 <strong>交替使用 CSA 和 HCA 层</strong>，都保留 128-token 局部滑动窗口分支用于近期未压缩 token。</p>
+<p><strong>质量-成本权衡</strong>：CSA/HCA 在序列条目数上做文章（而非 per-token 表示），以部分 token 级信息换取极低的长上下文成本。</p>
+<h3 id="43">4.3 其他值得关注的架构</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>技术</th>
+<th>亮点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Laguna XS.2</strong></td>
+<td>逐层注意力预算</td>
+<td>不同层分配不同注意力计算预算</td>
+</tr>
+<tr>
+<td><strong>ZAYA1-8B</strong></td>
+<td>压缩卷积注意力</td>
+<td>在 FFN 和注意力中同时节省计算</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="vs-api">五、自托管 vs API 的经济学</h2>
+<table>
+<thead>
+<tr>
+<th>月请求量</th>
+<th>GPT-4o 成本（100K 输入/请求）</th>
+<th>H200 自托管（$4.84/hr, 50% 利用）</th>
+<th>更优选择</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1,000</td>
+<td>$250 | $3,484</td>
+<td>API</td>
+<td></td>
+</tr>
+<tr>
+<td>5,000</td>
+<td>$1,250 | $3,484</td>
+<td>API</td>
+<td></td>
+</tr>
+<tr>
+<td>20,000</td>
+<td>$5,000 | $3,484</td>
+<td><strong>自托管</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>100,000</td>
+<td>$25,000 | $3,484</td>
+<td><strong>自托管</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p><strong>交叉点约 14,000 请求/月</strong>（100K token/请求，50% GPU 利用率）。更高利用率下交叉点更低。</p>
+<hr />
+<h2 id="_1">六、实践启发与行动清单</h2>
+<h3 id="61-hermes-agent-jetson">6.1 对 Hermes Agent / Jetson 本地推理的启发</h3>
+<table>
+<thead>
+<tr>
+<th>启发</th>
+<th>具体应用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Context Engineering &gt; Prompt Engineering</strong></td>
+<td>Hermes Agent 每轮携带完整 system prompt + AGENTS.md + skills 列表，输入:输出比远超 100:1，context 层优化收益最大</td>
+</tr>
+<tr>
+<td><strong>Prefix Caching 可直接应用</strong></td>
+<td>如果未来自托管模型（Jetson/服务器），固定 system prompt 和 tool schema 顺序即可大幅降低 prefill 成本</td>
+</tr>
+<tr>
+<td><strong>ChunkKV 语义压缩思路</strong></td>
+<td>对 Agent 历史轮次的压缩不应逐 token，应按语义 chunk（一次工具调用的完整上下文为一个 chunk）</td>
+</tr>
+<tr>
+<td><strong>FP8 KV 量化适用 Jetson</strong></td>
+<td>Jetson Orin 的 TensorRT 支持 FP8，对长上下文本地推理是关键优化</td>
+</tr>
+<tr>
+<td><strong>DeepSeek V4 CSA/HCA 趋势</strong></td>
+<td>未来开源模型可能内建序列维度压缩，无需外部 KV cache 压缩库</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62">6.2 快速诊断清单</h3>
+<ol>
+<li><strong>测量 Agent 的输入:输出 token 比</strong>——如果超过 10:1，context engineering 影响大于模型优化</li>
+<li><strong>启用 prefix caching</strong>——vLLM <code>--enable-prefix-caching</code>，SGLang 默认开启</li>
+<li><strong>审计 system prompt 一致性</strong>——任何空白差异使缓存失效</li>
+<li><strong>计算目标上下文窗口的 VRAM 需求</strong>——<code>2 × layers × kv_heads × head_dim × context_len × bytes</code></li>
+<li><strong>对 &gt;128K 上下文配置 NVMe KV 卸载</strong>——LMCache + vLLM</li>
+<li><strong>设置 KV 命中率监控</strong>——目标 70%+（缓存预热后）</li>
+</ol>
+<hr />
+<h2 id="_2">七、技术成熟度总结</h2>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>成熟度</th>
+<th>部署难度</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prefix Caching（SGLang/vLLM）</td>
+<td>生产就绪</td>
+<td>低（一行参数）</td>
+<td>所有 Agent 工作负载</td>
+</tr>
+<tr>
+<td>FP8 KV 量化</td>
+<td>生产就绪</td>
+<td>低</td>
+<td>H100/H200，128K-512K</td>
+</tr>
+<tr>
+<td>NVMe KV Offload（LMCache）</td>
+<td>早期生产</td>
+<td>中</td>
+<td>&gt;128K 上下文</td>
+</tr>
+<tr>
+<td>ChunkKV 语义压缩</td>
+<td>研究到早期</td>
+<td>中（需集成）</td>
+<td>长上下文精度敏感任务</td>
+</tr>
+<tr>
+<td>RocketKV 两阶段压缩</td>
+<td>研究</td>
+<td>高</td>
+<td>极端压缩比需求</td>
+</tr>
+<tr>
+<td>Gemma 4 跨层 KV 共享</td>
+<td>模型内建</td>
+<td>N/A（选模型）</td>
+<td>边缘/端侧</td>
+</tr>
+<tr>
+<td>DeepSeek V4 CSA/HCA</td>
+<td>模型内建</td>
+<td>N/A（选模型）</td>
+<td>超长上下文旗舰级</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<blockquote>
+<p><strong>来源</strong>：<br />
+- ACL 2026 Survey: jjiantong/Awesome-KV-Cache-Optimization (https://github.com/jjiantong/Awesome-KV-Cache-Optimization)<br />
+- ChunkKV: arXiv 2502.00299 (NeurIPS 2025)<br />
+- RocketKV: arXiv 2502.14051<br />
+- Spheron Context Engineering Guide: https://www.spheron.network/blog/context-engineering-production-ai-agents-kv-cache-long-context/<br />
+- Sebastian Raschka LLM Architecture Analysis: https://magazine.sebastianraschka.com/p/recent-developments-in-llm-architectures (2026-05-16)<br />
+- mHC: arXiv 2512.24880 / Hyper-connections: arXiv 2409.19606</p>
+</blockquote>
+<h2 id="_3">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-28-推理时计算扩展-从Best-of-N到Compute-Optimal自适应分配.md">推理时计算扩展 Best-of-N 到 Compute-Optimal</a> — 推理扩展与 KV 压缩的 tension</li>
+<li><a href="./2026-07-24-Bonsai-1bit-Ternary极限量化-27B模型塞进手机.md">Bonsai 1bit 极限量化 27B 模型塞进手机</a> — 量化压缩另一路径</li>
+<li><a href="./2026-07-24-HuggingFace-Trending全景-2026年7月AI模型生态.md">HuggingFace Trending 全景 2026年7月</a> — 量化推理生态趋势</li>
+<li><a href="./2026-07-22-DeepSeek-MLA多头潜注意力KV缓存压缩深度解析.md">DeepSeek MLA 多头潜注意力 KV 缓存压缩</a> — KV 压缩架构创新</li>
+</ul>
+</body>
+</html>

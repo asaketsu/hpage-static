@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bonsai-1bit-Ternary极限量化-27B模型塞进手机</title>
+
+<meta property="og:title" content="Bonsai-1bit-Ternary极限量化-27B模型塞进手机" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="bonsai-27b-39-gb">Bonsai 极限量化：把 27B 推理模型塞进 3.9 GB</h1>
+<blockquote>
+<p>Prism ML 发布的 Bonsai 量化家族，将 Qwen3.6-27B 压缩到 <strong>1.125 bit/权重</strong>（3.9 GB），在 Apple M5 Pro 笔记本上跑出 44 tok/s，保留 FP16 智能的 89.5%。iPhone 17 Pro Max 上也能跑。</p>
+</blockquote>
+<p>📅 2026-07-24 | 🔖 量化, LLM, 边缘部署, llama.cpp, 1-bit, ternary</p>
+<hr />
+<h2 id="_1">核心发现</h2>
+<h3 id="1">1. 极限压缩的两个操作点</h3>
+<table>
+<thead>
+<tr>
+<th>变体</th>
+<th>真实 bit/权重</th>
+<th>部署体积</th>
+<th>vs FP16 智能保留</th>
+<th>定位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>1-bit Bonsai</strong></td>
+<td>1.125</td>
+<td>3.9 GB</td>
+<td>89.5% (76.11/85.07)</td>
+<td>手机级，最小占用</td>
+</tr>
+<tr>
+<td><strong>Ternary Bonsai</strong></td>
+<td>1.71</td>
+<td>7.2 GB</td>
+<td>94.6% (80.49/85.07)</td>
+<td>质量优先，标准笔记本</td>
+</tr>
+<tr>
+<td>Qwen3.6-27B Q4_K_XL</td>
+<td>5.2</td>
+<td>17.6 GB</td>
+<td>99.9%</td>
+<td>常规 4-bit 基线</td>
+</tr>
+<tr>
+<td>Qwen3.6-27B IQ2_XXS</td>
+<td>2.8</td>
+<td>9.4 GB</td>
+<td>85.5%</td>
+<td>常规 2-bit（崩溃）</td>
+</tr>
+<tr>
+<td>Qwen3.6-27B FP16</td>
+<td>16.0</td>
+<td>54 GB</td>
+<td>100%</td>
+<td>全精度基线</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察：</strong> 常规量化在 sub-4-bit 区间会选择性崩溃——IQ2_XXS 的 AIME26 从 93 跌到 57.5，LiveCodeBench 从 87 跌到 56。而 Bonsai 在这些需要持续推理链的任务上几乎无损。</p>
+<h3 id="2">2. 量化编码方案</h3>
+<p><strong>Q1_0_g128（1-bit）：</strong><br />
+- 每个权重仅一个符号位：<code>0 → -scale</code>，<code>1 → +scale</code><br />
+- 每 128 个权重共享一个 FP16 scale factor<br />
+- 有效 1.125 bit/权重（1 sign bit + 16-bit scale 分摊到 128 个权重）</p>
+<p><strong>Q2_0_g128（Ternary）：</strong><br />
+- 权重取值 <code>{−1, 0, +1}</code>，三进制编码<br />
+- 三进制携带 log₂3 ≈ 1.585 bit 信息<br />
+- 有效 1.71 bit/权重<br />
+- 额外的零状态提供更强表达能力，恢复更多全精度行为</p>
+<p><strong>端到端覆盖：</strong> embeddings、attention 投影、MLP 投影、LM head 全部低比特化，没有高精度逃逸通道。</p>
+<h3 id="3">3. 关键工程加速</h3>
+<p><strong>DSpark 推测解码：</strong><br />
+- 六层 block-parallel drafter transformer<br />
+- 从目标模型 5 个均匀间隔层抽取 hidden states 作为条件<br />
+- CUDA 路径无损加速 <strong>1.37x</strong>（H100: 104.8 → 143.8 tok/s）<br />
+- 验证保证目标分布精确不变，drafter 精度只影响速度不影响输出质量</p>
+<p><strong>混合注意力架构（Qwen3.6-27B 固有）：</strong><br />
+- ~75% 线性注意力 + ~25% 全注意力<br />
+- 64 层中仅 16 层增长 full-attention KV cache<br />
+- 262K 上下文全量 KV cache 仅 ~4.3 GB<br />
+- 配合 4-bit KV 量化，262K 上下文峰值 ~9.4 GB</p>
+<h3 id="4">4. 跨平台吞吐实测</h3>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>体积</th>
+<th>TG128 (tok/s)</th>
+<th>PP512 (tok/s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Apple M5 Max (Metal)</td>
+<td>3.9 GB</td>
+<td>66.4</td>
+<td>874</td>
+</tr>
+<tr>
+<td>Apple M5 Pro (Metal)</td>
+<td>3.9 GB</td>
+<td>44.2</td>
+<td>421</td>
+</tr>
+<tr>
+<td>Apple M4 Pro (Metal)</td>
+<td>3.9 GB</td>
+<td>26.0</td>
+<td>133</td>
+</tr>
+<tr>
+<td>单卡 H100 (CUDA)</td>
+<td>3.9 GB</td>
+<td>104.8</td>
+<td>2755</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>解码能耗 M5 Pro: <strong>0.275 mWh/token</strong>（含 DSpark drafter）</li>
+<li>比 GPU 数据中心（0.63-1.32 mWh/token）低一个数量级</li>
+<li>iPhone 17 Pro Max via MLX Swift: ~11 tok/s</li>
+</ul>
+<h3 id="5-thinking">5. 能力分布（Thinking 模式）</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>FP16</th>
+<th>1-bit</th>
+<th>Ternary</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数学 (GSM8K, MATH-500, AIME)</td>
+<td>95.33</td>
+<td>91.66</td>
+<td>93.40</td>
+</tr>
+<tr>
+<td>编码 (HumanEval+, MBPP+, LiveCodeBench)</td>
+<td>88.74</td>
+<td>81.88</td>
+<td>85.96</td>
+</tr>
+<tr>
+<td>知识推理 (MMLU-Redux, MuSR)</td>
+<td>83.15</td>
+<td>73.39</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Agentic/工具调用 (BFCL v3, τ²-Bench)</td>
+<td>80.00</td>
+<td>66.03</td>
+<td>74.01</td>
+</tr>
+<tr>
+<td>视觉 (MMMU-Pro, OCR Bench)</td>
+<td>72.61</td>
+<td>59.57</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>推理骨干完好：</strong> 数学在 1-bit 下仍达 91.66（距全精度 4 分以内），这是常规 sub-4-bit 最先丢失的能力。</p>
+<hr />
+<h2 id="_2">技术价值评估</h2>
+<h3 id="_3">🟢 对我们的直接价值</h3>
+<ol>
+<li><strong>Jetson 边缘部署路径：</strong> 当前 Jetson Orin Nano（8GB 统一内存）完全可以跑 Ternary Bonsai（7.2 GB 含 KV cache 峰值约 8-9 GB，紧凑配置可行），将 27B 级推理能力带到边缘设备</li>
+<li><strong>量化范式革命：</strong> 传统 GGUF Q4_K 系列是"标注欺骗"——名为 4-bit 实际 5.2 bit。Bonsai 的真实 1.125 bit 是从训练阶段就对齐二值化的范式转变</li>
+<li><strong>推测解码模板：</strong> DSpark drafter 架构可作为我们边缘推理加速的参考模式</li>
+</ol>
+<h3 id="_4">🔴 局限性</h3>
+<ul>
+<li><strong>知识/视觉退化明显：</strong> MMLU 从 93 跌到 83，MMMU-Pro 从 80 跌到 60，不适合纯知识检索或多模态任务</li>
+<li><strong>依赖 Qwen3.6 混合注意力：</strong> 极致压缩效果部分来自 75% 线性注意力的 KV cache 天然小，换到标准 Transformer 架构效果会打折</li>
+<li><strong>自定义 kernel：</strong> 需要 Prism ML 的 llama.cpp fork，不是标准 llama.cpp 即插即用</li>
+</ul>
+<hr />
+<h2 id="_5">实操指南</h2>
+<pre><code class="language-bash"># 克隆 Prism ML 的 llama.cpp fork（含 Q1_0_g128 hybrid-attention kernel）
+git clone https://github.com/PrismML-Eng/llama.cpp
+cd llama.cpp
+
+# CUDA 构建
+cmake -B build -DGGML_CUDA=ON &amp;&amp; cmake --build build -j
+
+# 下载 1-bit 权重
+hf download prism-ml/Bonsai-27B-gguf Bonsai-27B-Q1_0.gguf --local-dir .
+
+# 推理
+./build/bin/llama-cli \
+    -m Bonsai-27B-Q1_0.gguf \
+    -p &quot;Explain quantum computing in simple terms.&quot; \
+    -n 256 \
+    --temp 0.7 --top-p 0.95 --top-k 20 \
+    -ngl 99
+</code></pre>
+<p>推荐生成参数：Temperature 0.7 / Top-p 0.95 / Top-k 20</p>
+<hr />
+<h2 id="_6">来源</h2>
+<ul>
+<li>🤗 <a href="https://huggingface.co/prism-ml/Bonsai-27B-gguf">prism-ml/Bonsai-27B-gguf</a> (615 likes, 1.9M downloads)</li>
+<li>🤗 <a href="https://huggingface.co/prism-ml/Ternary-Bonsai-27B-gguf">prism-ml/Ternary-Bonsai-27B-gguf</a> (977 likes, 576K downloads)</li>
+<li>📄 <a href="https://github.com/PrismML-Eng/Bonsai-demo/blob/main/bonsai-27b-whitepaper.pdf">Whitepaper (PDF)</a></li>
+<li>🔧 <a href="https://github.com/PrismML-Eng/llama.cpp">llama.cpp fork</a> (CUDA + Metal kernel)</li>
+<li>🔧 <a href="https://github.com/PrismML-Eng/mlx">MLX fork</a> (Apple Silicon)</li>
+</ul>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-24-HuggingFace-Trending全景-2026年7月AI模型生态.md">HuggingFace Trending 全景 2026年7月</a> — 极限量化革命趋势来源</li>
+<li><a href="./2026-07-27-KV-Cache压缩与长上下文推理优化全栈.md">KV-Cache 压缩与长上下文推理优化全栈</a> — 推理优化另一路径</li>
+<li><a href="./2026-07-19-嵌入式AI-TinyML现状-从MCU感知到端侧小语言模型.md">嵌入式 AI TinyML 现状</a> — 边缘部署量化实践</li>
+<li><a href="./2026-07-23-边缘AI推理优化-TinyML到TinyLM的2026现状.md">边缘 AI 推理优化 TinyML 到 TinyLM</a> — 端侧量化演进</li>
+</ul>
+</body>
+</html>

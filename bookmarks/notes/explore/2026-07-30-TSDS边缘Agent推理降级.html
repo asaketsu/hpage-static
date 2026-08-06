@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSDS边缘Agent推理降级</title>
+
+<meta property="og:title" content="TSDS边缘Agent推理降级" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="think-short-defer-smart-llm-agent">Think Short, Defer Smart：边缘 LLM Agent 的校准推理与不确定性感知降级</h1>
+<blockquote>
+<p><strong>arXiv</strong>: 2607.26865 | <strong>发表</strong>: 2026-07-29 | <strong>领域</strong>: stat.ML, cs.AI, cs.IT, cs.LG<br />
+<strong>作者</strong>: Amirmohammad Farzaneh, Osvaldo Simeone (Northeastern University London, INSI)<br />
+<strong>精读日期</strong>: 2026-07-30 | <strong>选文策略</strong>: B（arXiv API 结构化查询）| <strong>兴趣评分</strong>: 18/19</p>
+</blockquote>
+<hr />
+<h2 id="1">1. 核心问题与研究动机</h2>
+<p>边缘部署的 ReAct Agent 面临三重约束困境：</p>
+<ul>
+<li><strong>推理浪费</strong>：思考链（thought trace）往往在动作决策早已收敛后仍持续生成大量冗余 token，消耗边缘设备的算力和能耗</li>
+<li><strong>过度自信悖论</strong>：更长的推理不仅浪费算力，反而让模型对错误动作产生更强的过度自信，抑制了向云端降级的信号——推理越多，越不敢求助</li>
+<li><strong>安全可靠性</strong>：边缘模型能力有限，关键步骤需降级到云端大模型，但云端调用有延迟和带宽成本，不能频繁触发</li>
+</ul>
+<p><strong>核心洞察</strong>：思考截断（Thought Calibration）和云端降级（Cloud Deferral）不是竞争关系，而是协同关系。截断推理后，模型的不确定性信号反而更准确，使得降级决策更加精准。</p>
+<hr />
+<h2 id="2-tsds">2. 方法论：TSDS 框架</h2>
+<p>TSDS（Think Short, Defer Smart）由三个核心组件构成：</p>
+<h3 id="21-convergence-probe">2.1 收敛探针（Convergence Probe）— 思考截断</h3>
+<ul>
+<li>在边缘模型第 ℓ 层的隐藏状态上训练一个轻量级探针 φ_θ，将隐藏状态映射为标量收敛分数 C_{t,i}</li>
+<li>探针在离线轨迹上训练：对每个推理位置 i，检查截断后提取的动作是否与完整推理的动作一致（标签 y = 1 表示"从位置 i 开始所有后续截断动作都一致"）</li>
+<li>运行时：当 C_{t,i} ≥ λ_L 时停止推理，注入 <code>&lt;/think&gt;</code> token 提取动作</li>
+<li><strong>探针架构对比</strong>（Table 1, GSM8K 消融）：EMA（指数移动平均）探针 AUROC 0.815 远超 Linear(0.637)、MLP(0.673)、Attention(0.733)，最佳层为 layer 5</li>
+</ul>
+<h3 id="22-ppl-based-deferral">2.2 不确定性感知降级（PPL-based Deferral）</h3>
+<ul>
+<li>动作提取后计算边缘模型对该动作的困惑度（Perplexity）作为不确定性分数 U_t</li>
+<li>若 U_t &gt; λ_D，将完整历史 H_t 传输给云端模型 π_cloud 生成替代动作</li>
+<li>执行动作 A_t = A_edge（若 U_t ≤ λ_D）或 A_cloud（若 U_t &gt; λ_D）</li>
+</ul>
+<h3 id="23-multi-objective-ltt">2.3 多目标校准（Multi-Objective LTT）</h3>
+<ul>
+<li><strong>优化目标</strong>：最小化思考成本 C_L(λ_L)，约束：奖励 R(λ) ≥ R^min 且云端调用率 C_D(λ) ≤ C_D^max</li>
+<li><strong>Learn-Then-Test (LTT)</strong>：在候选网格 Λ = {(λ_L^(i), λ_D^(j))} 上搜索，通过单侧二项检验 p 值 + Bonferroni 校正（δ=0.10）返回满足双重约束的超参数对</li>
+<li><strong>理论保证</strong>（Proposition 1）：P[R(λ̂) ≥ R^min 且 C_D(λ̂) ≤ C_D^max] ≥ 1-δ，有限样本保证</li>
+</ul>
+<h3 id="24-algorithm-1">2.4 运行时算法（Algorithm 1）</h3>
+<p>每一步 t 的执行流程：<br />
+1. 边缘模型逐 token 生成推理<br />
+2. 每个位置检查探针分数：φ_θ(h_{t,i}) ≥ λ_L → 停止推理<br />
+3. 注入 <code>&lt;/think&gt;</code>，提取动作 A_edge 和困惑度 U_t<br />
+4. U_t ≤ λ_D → 接受边缘动作；否则降级到云端<br />
+5. 执行动作，获取观测，更新历史</p>
+<hr />
+<h2 id="3">3. 关键实验结果</h2>
+<p>实验设置：边缘模型 DeepSeek-R1-Distill-Qwen-7B，四个基准测试（GSM8K / HotpotQA / MBPP / 家庭机器人），50 次独立校准-测试划分。</p>
+<h3 id="gsm8k">GSM8K（单步算术推理）</h3>
+<ul>
+<li>TSDS：奖励 0.890，降级率 0.255，思考 token 18</li>
+<li>E-ReAct（基线）：奖励 0.852，降级率 0.000，思考 token 173</li>
+<li>ReDAct-CD（仅降级）：奖励 0.864，降级率 0.082，思考 token 173</li>
+<li><strong>思考成本降低 89.6%</strong>（173→18 tokens），同时奖励提升 4.5%</li>
+</ul>
+<h3 id="mbpp">MBPP（代码生成，单步）</h3>
+<ul>
+<li>TSDS：奖励 0.714，降级率 0.346，思考 token 422</li>
+<li>E-ReAct：奖励 0.719，降级率 0.000，思考 token 1183</li>
+<li>ReDAct-CD：奖励 0.779，降级率 0.786，思考 token 1206</li>
+<li><strong>思考成本降低 64.3%</strong>（1183→422 tokens），降级率仅为 ReDAct-CD 的 44%</li>
+</ul>
+<h3 id="hotpotqat_max7">HotpotQA（多步问答，T_max=7）</h3>
+<ul>
+<li>TSDS 在所有 λ_L 值上奖励均匀超过 E-ReAct</li>
+<li>ReDAct-CD 仅边际改善——<strong>过度自信效应的实验证据</strong>：完整推理让边缘模型对错误答案过度自信，PPL 信号被抑制，导致降级不足</li>
+<li>关键发现：截断推理保留了最真实的不确定性信号</li>
+</ul>
+<h3 id="t_max6">家庭机器人规划（多步，T_max=6）</h3>
+<ul>
+<li>四室环境（卧室/厨房/浴室/客厅），任务族：fetch/place/clean/heat</li>
+<li>TSDS 思考成本比 ReDAct-CD 和 E-ReAct 低 64%</li>
+<li><strong>ReDAct-CD 奖励低于 TSDS</strong>——多步规划中过度自信效应最强，完整推理严重抑制降级信号</li>
+</ul>
+<h3 id="_1">总体效率</h3>
+<p>跨 HotpotQA、MBPP、家庭机器人三个基准，TSDS 相比仅降级基线降低思考算力 <strong>43%-73%</strong>。</p>
+<hr />
+<h2 id="4">4. 创新点分析</h2>
+<ol>
+<li><strong>首次揭示"思考截断与降级协同"现象</strong>：已有工作要么只做思考截断（Wu et al. 2025），要么只做降级（ReDAct）。本文发现截断是降级的前提条件——完整推理产生的过度自信会腐蚀降级信号</li>
+<li><strong>端到端联合校准</strong>：不是分别调 λ_L 和 λ_D，而是通过多目标 LTT 在轨迹级别联合校准，同时保证奖励下限和云端预算</li>
+<li><strong>有限样本统计保证</strong>：Proposition 1 提供理论保证，不是经验性调参</li>
+<li><strong>轻量探针设计</strong>：EMA 探针仅需 layer 5 的隐藏状态，计算开销极低，适合边缘部署</li>
+</ol>
+<hr />
+<h2 id="5">5. 局限性与未来方向</h2>
+<p><strong>局限性</strong>：<br />
+- 仅测试了 DeepSeek-R1-Distill 系列模型，泛化到其他推理模型（如 o1 类）未验证<br />
+- 探针需要离线轨迹数据训练，存在迁移成本<br />
+- 困惑度作为唯一不确定性度量，可能不够鲁棒<br />
+- 家庭机器人为文本模拟环境，非真实物理场景<br />
+- 单步任务（GSM8K/MBPP）中截断几乎足够，降级的必要性在多步场景才显著</p>
+<p><strong>论文提出的未来方向</strong>：<br />
+- 更丰富的不确定性信号（如语义熵 semantic entropy）<br />
+- 多层级 Agent 级联 + 多约束 LTT 校准<br />
+- 无显式 <code>&lt;/think&gt;</code> 分隔符的模型的思考收敛推断</p>
+<hr />
+<h2 id="6-hermes-agent-jetson-orin">6. 借鉴点（关联 Hermes Agent / Jetson Orin / 量化交易）</h2>
+<h3 id="p0-hermes-gateway">P0 — 边缘-云端降级架构（Hermes Gateway 直接借鉴）</h3>
+<p>TSDS 的 Edge→Cloud 降级机制与 Hermes Gateway 的模型路由高度同构。当前 Hermes 已有模型切换（model-switch skill），但缺乏<strong>不确定性驱动的自动降级</strong>：</p>
+<ul>
+<li>当前问题：Jetson Orin Nano 上运行本地 Ollama 模型（7B），能力有限；遇到复杂推理直接失败或产生低质量输出</li>
+<li>TSDS 方案：每个工具调用后计算 PPL 作为不确定性指标，超过阈值自动降级到云端 GLM-5.2/Claude</li>
+<li><strong>可落地实现</strong>：在 Hermes Gateway 中间件层加入 PPL 计算器 + 阈值比较器，触发时自动 route 到 fallback provider</li>
+<li>工作量：中等（需要 Ollama 输出 logits → PPL，Gateway 加 route 逻辑）</li>
+</ul>
+<h3 id="p1-jetson">P1 — 推理收敛探针（Jetson 本地模型优化）</h3>
+<ul>
+<li>DeepSeek-R1-Distill-Qwen-7B 在 Jetson Orin 上运行时，thought trace 经常过长（500+ tokens）</li>
+<li>可训练 EMA 探针在 layer 5 检测收敛，提前注入 <code>&lt;/think&gt;</code> 截断</li>
+<li>预计可减少 50-70% 推理 token，显著降低延迟和功耗</li>
+<li><strong>关键约束</strong>：探针训练数据需从本地模型的离线轨迹收集，每类任务（代码/问答/规划）需独立训练</li>
+</ul>
+<h3 id="p1-agent">P1 — 过度自信检测（量化交易 Agent）</h3>
+<ul>
+<li>量化交易中，Agent 可能对错误信号过度自信（如趋势误判后持续加仓）</li>
+<li>可借鉴 TSDS 的洞察：完整长推理 → 过度自信 → 不触发风控降级</li>
+<li><strong>方案</strong>：交易决策后计算 logit 不确定性，高不确定性自动降级到人工审核或更大模型复核</li>
+</ul>
+<h3 id="p2-cron-job">P2 — 多目标校准框架（Cron Job 资源管理）</h3>
+<ul>
+<li>LTT 多目标校准思想可用于 Hermes cron job 的资源约束优化</li>
+<li>目标：最小化总 token 消耗，约束：任务成功率 ≥ 阈值，云端 API 调用 ≤ 预算</li>
+<li>实现复杂度较高，建议作为长期优化方向</li>
+</ul>
+<h3 id="p3-ppl">P3 — 语义熵替代 PPL（理论改进）</h3>
+<ul>
+<li>论文提到未来用语义熵替代困惑度，更鲁棒的不确定性度量</li>
+<li>Hermes 可探索基于输出多样性的不确定性估计（多次采样 → 输出分歧度）</li>
+</ul>
+<hr />
+<h2 id="7">7. 内容整理</h2>
+<p><strong>一句话总结</strong>：论文提出 TSDS 框架，将边缘 Agent 的思考截断与云端降级联合校准，发现截断推理能保留更真实的不确定性信号，使降级更精准，实现 43-73% 推理算力节省。</p>
+<p><strong>核心逻辑链</strong>：<br />
+- 边缘 Agent 推理过长 → 模型对动作过度自信 → PPL 信号被抑制 → 降级不触发 → 错误动作通过<br />
+- TSDS 解法：探针提前截断推理 → 保留真实 PPL → 精准触发降级 → 联合校准保证双约束</p>
+<p><strong>关键技术点速查</strong>：<br />
+- 收敛探针：EMA 探针 @ layer 5，AUROC 0.815，远超 Linear/MLP/Attention<br />
+- 降级触发：PPL &gt; λ_D → 传输完整历史到云端模型<br />
+- 校准方法：多目标 LTT，Bonferroni 校正 δ=0.10，有限样本保证<br />
+- 协同效应：截断是降级的前提，非竞争关系</p>
+<h2 id="8">8. 查询拓展</h2>
+<p><strong>值得深入追踪的问题</strong>：<br />
+- 无显式 <code>&lt;/think&gt;</code> 分隔符的模型如何推断思考收敛？直接从隐藏状态轨迹检测<br />
+- 语义熵（semantic entropy）替代 PPL 能否缩小与 oracle 降级的差距？<br />
+- 多层级 Agent 级联（不止 Edge→Cloud 两级）如何设计多约束 LTT？<br />
+- 探针迁移性：GSM8K 训练的探针能否直接用于 HotpotQA？跨任务泛化如何？<br />
+- 多步任务中过度自信效应的量化建模——能否推导出"思考长度 vs 置信度偏移"的理论关系？</p>
+<p><strong>可延伸的实验方向</strong>：<br />
+- 在真实物理机器人（非文本模拟）上验证 TSDS<br />
+- 将 TSDS 应用于非 ReAct 框架（如 Reflexion、Plan-and-Solve）<br />
+- 探针轻量化：能否用 KV Cache 中已有的注意力权重替代独立探针？</p>
+<h2 id="9">9. 归纳总结</h2>
+<p><strong>论文价值定位</strong>：TSDS 是首个将思考截断与不确定性降级统一为协同框架的工作，其核心贡献不在于单个组件（探针/降级均有前序工作），而在于揭示了<strong>过度自信悖论</strong>——这个反直觉发现具有重要的工程指导意义。</p>
+<p><strong>对 Hermes Agent 生态的启示</strong>：<br />
+1. <strong>Gateway 路由优化</strong>：当前模型切换是用户手动或规则触发，TSDS 提供了基于不确定性的自动化路径<br />
+2. <strong>Jetson 边缘部署</strong>：7B 模型的推理 token 可削减 50-70%，直接影响实时性和功耗<br />
+3. <strong>过度自信检测</strong>：长推理不等于好推理——这与 Hermes "context engineering" 理念一致，过多的上下文可能降低决策质量</p>
+<p><strong>整体评价</strong>：方法扎实（有限样本理论保证）、实验充分（四基准 × 五基线 × 50 次划分）、洞察深刻（过度自信悖论）。局限性在于仅验证 DeepSeek-R1-Distill 系列，且 PPL 作为唯一不确定性度量的鲁棒性存疑。推荐指数：★★★★☆（4/5）</p>
+<h2 id="10">10. 关联论文</h2>
+<ul>
+<li><strong>ReAct</strong> (Yao et al., 2023) — Agent 推理-行动交替范式，TSDS 的基础框架</li>
+<li><strong>Thought Calibration</strong> (Wu et al., 2025) — 单轮思考截断探针，TSDS 的核心组件来源</li>
+<li><strong>ReDAct</strong> (Piatrashyn et al., 2026) — PPL 引导的 Agent 降级，但阈值启发式设定</li>
+<li><strong>Learn-Then-Test</strong> (Angelopoulos et al., 2021) — 有限样本风险控制框架，TSDS 的校准理论基础</li>
+<li><strong>FrugalGPT</strong> (Chen et al., 2023) — 模型级联成本优化，单轮场景的前序工作</li>
+<li><strong>SayCan</strong> (Ahn et al., 2022) / <strong>ALFWorld</strong> (Shridhar et al., 2021) — 家庭机器人实验环境来源</li>
+<li><strong>MemDecay</strong> (2607.10582) — 同为边缘 Agent 资源优化，区域感知 KV Cache 驱逐，可与 TSDS 的思考截断叠加</li>
+<li><strong>LongStraw</strong> (2607.14952) — 长上下文 GRPO 时间换空间，与 TSDS 的"思考预算管理"理念互补</li>
+</ul>
+<h2 id="_2">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-29-Agent蒸馏与长程规划2026-MAD-OPD与Physics-of-Planning.md">Agent蒸馏与长程规划2026</a> — Agent蒸馏与规划压缩，推理降级的上游技术</li>
+<li><a href="../../../../../explore/2026-07-30-agent-orchestration-2026-harness-control-plane-multi-agent-trap.md">Agent Orchestration Harness陷阱</a> — 多Agent编排控制面，TSDS降级决策的编排语境</li>
+<li><a href="./2026-07-29-本地模型部署-消费级GPU推理.md">本地模型部署-消费级GPU推理</a> — 边缘部署硬件约束，TSDS的现实动机</li>
+</ul>
+</body>
+</html>

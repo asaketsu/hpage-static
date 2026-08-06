@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理引擎对比-SGLang-vs-vLLM</title>
+
+<meta property="og:title" content="LLM推理引擎对比-SGLang-vs-vLLM" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-sglang-vs-vllm">LLM 推理引擎双雄：SGLang vs vLLM 深度对比</h1>
+<blockquote>
+<p><strong>类型</strong>: 原创技术对比分析<br />
+<strong>日期</strong>: 2026-07-31<br />
+<strong>标签</strong>: <code>LLM</code> <code>推理引擎</code> <code>SGLang</code> <code>vLLM</code> <code>RadixAttention</code> <code>PagedAttention</code> <code>部署</code> <code>基础设施</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p>SGLang 和 vLLM 是 2025-2026 年 LLM 推理领域最主流的两个开源引擎，<strong>底层技术正在趋同</strong>（PagedAttention、连续批处理、推测解码都已互相借鉴），但<strong>设计哲学和差异化优势不同</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>SGLang</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>起源</strong></td>
+<td>LMSYS (UC Berkeley 系)</td>
+<td>UC Berkeley Sky Computing Lab</td>
+</tr>
+<tr>
+<td><strong>核心创新</strong></td>
+<td><strong>RadixAttention</strong>（基数树前缀缓存）</td>
+<td><strong>PagedAttention</strong>（虚拟内存式 KV 管理）</td>
+</tr>
+<tr>
+<td><strong>差异化</strong></td>
+<td>结构化生成 + RL 训练后端 + 大规模 EP</td>
+<td>广泛模型支持 + 易用性 + 社区生态</td>
+</tr>
+<tr>
+<td><strong>哲学</strong></td>
+<td>"为复杂推理工作流极致优化"</td>
+<td>"Easy, fast, and cheap for everyone"</td>
+</tr>
+<tr>
+<td><strong>2026 规模</strong></td>
+<td>40 万+ GPU 全球部署</td>
+<td>2000+ 贡献者，最活跃开源 AI 项目之一</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>一句话选型</strong>：通用服务/快速上手/广泛模型兼容 → <strong>vLLM</strong>；Agent 多轮推理/结构化输出/RL 训练/大规模 MoE → <strong>SGLang</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="_2">一、技术架构对比</h2>
+<h3 id="11">1.1 核心创新点</h3>
+<h4 id="vllm-pagedattention2023">vLLM: PagedAttention（2023）</h4>
+<p>灵感来自操作系统的<strong>虚拟内存分页机制</strong>：</p>
+<pre><code>传统 KV Cache 问题:
+┌────────────────────────────────┐
+│ 请求A KV: [██████████░░░░░░░░] │ ← 预留连续空间，存在碎片
+│ 请求B KV: [██████░░░░░░░░░░░░] │ ← 无法共享前缀
+│ 请求C KV: [████████████░░░░░░] │ ← 内存浪费严重
+└────────────────────────────────┘
+
+PagedAttention:
+┌────────────────────────────────┐
+│ KV Cache 被分成固定大小的 Block │
+│                                │
+│ Block Table (类似页表):         │
+│  请求A → [Block0][Block1][Block3]│
+│  请求B → [Block0][Block2]       │ ← 共享 Block0（相同前缀）
+│  请求C → [Block0][Block1][Block4]│ ← 共享 Block0+Block1
+│                                │
+│ 物理 Block 池:                  │
+│  [B0][B1][B2][B3][B4][B5]...   │ ← 按需分配，零碎片
+└────────────────────────────────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>灵感</strong></td>
+<td>OS 虚拟内存 + 页表</td>
+</tr>
+<tr>
+<td><strong>机制</strong></td>
+<td>KV Cache 分成固定大小 Block，通过 Block Table 映射</td>
+</tr>
+<tr>
+<td><strong>优势</strong></td>
+<td>消除内存碎片；支持前缀共享（Copy-on-Write）；显存利用率接近 100%</td>
+</tr>
+<tr>
+<td><strong>论文</strong></td>
+<td>Kwon et al., SOSP 2023</td>
+</tr>
+</tbody>
+</table>
+<h4 id="sglang-radixattention2024">SGLang: RadixAttention（2024）</h4>
+<p>灵感来自<strong>基数树（Radix Tree）</strong>数据结构，自动缓存和复用前缀：</p>
+<pre><code>RadixAttention 前缀树缓存:
+
+         [System Prompt]              ← 多个请求共享的 system prompt
+              │
+         ┌────┴────┐
+         │         │
+    [few-shot   [User Query
+     examples]   context]
+         │         │
+     ┌───┴───┐     │
+     │       │   [Response A]  ← 生成结果也被缓存
+  [Task1] [Task2]
+     │       │
+  [Resp1] [Resp2]
+
+新请求到达时:
+1. 在 Radix Tree 中查找最长公共前缀
+2. 命中 → 直接复用缓存的 KV (O(1))
+3. 未命中 → 计算新 KV 并插入树中
+4. 自动 LRU 淘汰
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>灵感</strong></td>
+<td>基数树 (Radix Tree)</td>
+</tr>
+<tr>
+<td><strong>机制</strong></td>
+<td>前缀 KV Cache 以 Radix Tree 组织，自动复用</td>
+</tr>
+<tr>
+<td><strong>优势</strong></td>
+<td>Agent 多轮对话、few-shot、结构化生成的重复前缀自动复用；可达 <strong>3-5x 加速</strong></td>
+</tr>
+<tr>
+<td><strong>与 vLLM 的关系</strong></td>
+<td>vLLM 后来也实现了 Automatic Prefix Caching (APC)，但 SGLang 的 RadixAttention 更深度集成</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12">1.2 核心创新对比</h3>
+<table>
+<thead>
+<tr>
+<th>创新点</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV Cache 管理</td>
+<td><strong>PagedAttention</strong>（分页管理）</td>
+<td><strong>RadixAttention</strong>（基数树+分页）</td>
+</tr>
+<tr>
+<td>前缀缓存</td>
+<td>Automatic Prefix Caching (APC)</td>
+<td>RadixAttention 原生集成</td>
+</tr>
+<tr>
+<td>结构化输出</td>
+<td>xgrammar / guidance</td>
+<td><strong>压缩有限状态机</strong>（Compressed FSM），3x JSON 解码</td>
+</tr>
+<tr>
+<td>批处理</td>
+<td>Continuous Batching</td>
+<td>Continuous Batching + <strong>零开销 CPU 调度器</strong></td>
+</tr>
+<tr>
+<td>推测解码</td>
+<td>n-gram / EAGLE / DFlash</td>
+<td>DFlash + <strong>Spec V2</strong>（下一代推测解码）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">二、功能特性全景对比</h2>
+<h3 id="21">2.1 推理优化技术</h3>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>连续批处理 (Continuous Batching)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>分块预填充 (Chunked Prefill)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>前缀缓存 (Prefix Caching)</td>
+<td>✅ APC</td>
+<td>✅ RadixAttention</td>
+</tr>
+<tr>
+<td>分页注意力 (PagedAttention)</td>
+<td>✅ 原创</td>
+<td>✅ 采用</td>
+</tr>
+<tr>
+<td>CUDA Graphs</td>
+<td>✅ Piecewise + Full</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>推测解码 (Speculative Decoding)</td>
+<td>✅ n-gram/EAGLE/DFlash</td>
+<td>✅ <strong>DFlash + Spec V2</strong></td>
+</tr>
+<tr>
+<td>Prefill-Decode 分离</td>
+<td>✅</td>
+<td>✅ PD Disaggregation</td>
+</tr>
+<tr>
+<td>torch.compile</td>
+<td>✅ 自动内核生成</td>
+<td>✅ 1.5x 加速</td>
+</tr>
+<tr>
+<td>零开销调度器</td>
+<td>—</td>
+<td>✅ <strong>零开销 CPU 调度器</strong></td>
+</tr>
+<tr>
+<td>缓存感知负载均衡</td>
+<td>—</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 量化支持</h3>
+<table>
+<thead>
+<tr>
+<th>量化方案</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP8</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>FP4 (MXFP4/NVFP4)</td>
+<td>✅</td>
+<td>✅ FP4</td>
+</tr>
+<tr>
+<td>INT8</td>
+<td>✅</td>
+<td>✅ INT4/INT8</td>
+</tr>
+<tr>
+<td>GPTQ</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AWQ</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>GGUF</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Compressed-tensors</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 分布式并行</h3>
+<table>
+<thead>
+<tr>
+<th>并行策略</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>张量并行 (TP)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>流水线并行 (PP)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>数据并行 (DP)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>专家并行 (EP)</td>
+<td>✅</td>
+<td>✅ <strong>大规模 EP（96×H100 验证）</strong></td>
+</tr>
+<tr>
+<td>上下文并行 (CP)</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Prefill-Decode 分离</td>
+<td>✅</td>
+<td>✅ <strong>PD 分离 + 大规模 EP（GB200 验证）</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="24">2.4 模型支持</h3>
+<table>
+<thead>
+<tr>
+<th>模型类型</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Decoder-only LLM (Llama/Qwen/Gemma)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>MoE (Mixtral/DeepSeek-V3/Qwen-MoE)</td>
+<td>✅</td>
+<td>✅ <strong>DeepSeek 专属优化</strong></td>
+</tr>
+<tr>
+<td>SSM/Mamba</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>多模态 (LLaVA/Qwen-VL/Pixtral)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Embedding 模型</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Reward 模型</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>扩散模型</td>
+<td>—</td>
+<td>✅ <strong>SGLang Diffusion（视频/图像）</strong></td>
+</tr>
+<tr>
+<td>总架构数</td>
+<td><strong>200+</strong></td>
+<td>广泛（兼容大部分 HF 模型）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="25-api">2.5 API 兼容性</h3>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenAI Compatible</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Anthropic Messages API</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>gRPC</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>工具调用 (Tool Calling)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>推理解析器 (Reasoning Parser)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>结构化输出</td>
+<td>✅ xgrammar/guidance</td>
+<td>✅ <strong>压缩 FSM</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">三、差异化优势深度分析</h2>
+<h3 id="31-sglang">3.1 SGLang 的独家优势</h3>
+<h4 id="1-radixattention-agent">① RadixAttention → Agent/多轮推理场景</h4>
+<pre><code>场景: Agent 多轮对话（共享大量重复上下文）
+
+Turn 1: [System][Tools][History] → &quot;帮我查天气&quot;
+Turn 2: [System][Tools][History][Turn1] → &quot;帮我订机票&quot;
+Turn 3: [System][Tools][History][Turn1][Turn2] → &quot;提醒我...&quot;
+
+RadixAttention:
+  Turn 1: 全部计算 → 缓存到 Radix Tree
+  Turn 2: [System][Tools][History] 全部命中缓存 → 只算 [Turn1][新输入]
+  Turn 3: 前缀全部命中 → 只算 [Turn2][新输入]
+
+vLLM APC:
+  类似机制，但 SGLang 的集成更深度、命中率更高
+</code></pre>
+<blockquote>
+<p><strong>关键数据</strong>：SGLang 官方报告 RadixAttention 在 few-shot/Agent 场景可达 <strong>3-5x 加速</strong>。</p>
+</blockquote>
+<h4 id="2">② 结构化生成（压缩有限状态机）</h4>
+<pre><code>场景: 强制 LLM 输出合法 JSON
+
+传统方法: 逐 token 生成 → 检查是否符合 JSON Schema → 不符合则重试
+SGLang:  压缩有限状态机 → 在解码时直接屏蔽非法 token
+
+效果: JSON 解码速度提升 3x（论文报告）
+</code></pre>
+<h4 id="3-rl-post-training">③ RL &amp; Post-Training 骨干</h4>
+<p>SGLang 被以下主流 RL 框架采用为推理后端：</p>
+<table>
+<thead>
+<tr>
+<th>RL 框架</th>
+<th>团队</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>verl</strong></td>
+<td>字节火山引擎</td>
+</tr>
+<tr>
+<td><strong>AReaL</strong></td>
+<td>蚂蚁/inclusionAI</td>
+</tr>
+<tr>
+<td><strong>Miles</strong></td>
+<td>RadixArk</td>
+</tr>
+<tr>
+<td><strong>slime</strong></td>
+<td>清华 THUDM</td>
+</tr>
+<tr>
+<td><strong>Tunix</strong></td>
+<td>Google</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>SGLang 在 RL 场景的优势：Rollout 高吞吐 + 参数更新快速切换 + 多 LoRA 批处理。</p>
+</blockquote>
+<h4 id="4-moe">④ 大规模 MoE 部署</h4>
+<pre><code>DeepSeek-V3/R1 部署（SGLang 强项）:
+- 96×H100 大规模专家并行: 3.8x Prefill, 4.8x Decode
+- GB200 NVL72: 2.7x 解码吞吐
+- GB300 NVL72: 25x 推理性能
+- Day-0 支持 DeepSeek 全系列
+</code></pre>
+<h3 id="32-vllm">3.2 vLLM 的独家优势</h3>
+<h4 id="1">① 最广泛的模型兼容性</h4>
+<blockquote>
+<p>200+ 模型架构支持，几乎覆盖所有 Hugging Face 模型。新模型发布通常 vLLM 最先支持。</p>
+</blockquote>
+<h4 id="2_1">② 最低上手门槛</h4>
+<pre><code class="language-bash"># vLLM: 一行启动
+vllm serve Qwen/Qwen3-4B-Instruct
+
+# 自动处理一切：模型加载、批处理、API 服务
+</code></pre>
+<h4 id="3">③ 最活跃的社区</h4>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>贡献者</td>
+<td><strong>2000+</strong></td>
+</tr>
+<tr>
+<td>来源机构</td>
+<td>数十个学术机构 + 200+ 公司</td>
+</tr>
+<tr>
+<td>维护</td>
+<td>社区驱动</td>
+</tr>
+<tr>
+<td>文档</td>
+<td>docs.vllm.ai 完整</td>
+</tr>
+</tbody>
+</table>
+<h4 id="4">④ 多样化量化方案</h4>
+<p>vLLM 支持的量化方案最多（GGUF、compressed-tensors、ModelOpt、TorchAO 等），对消费级硬件更友好。</p>
+<h4 id="5-anthropic-messages-api">⑤ Anthropic Messages API</h4>
+<p>vLLM 除了 OpenAI 兼容 API，还支持 Anthropic Messages API 和 gRPC，客户端兼容面更广。</p>
+<hr />
+<h2 id="2026">四、性能对比（2026 年公开数据）</h2>
+<h3 id="41-sglang">4.1 SGLang 自报性能</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RadixAttention（few-shot/Agent）</td>
+<td><strong>3-5x</strong> 加速</td>
+</tr>
+<tr>
+<td>压缩 FSM（JSON 结构化输出）</td>
+<td><strong>3x</strong> JSON 解码加速</td>
+</tr>
+<tr>
+<td>DeepSeek MLA 优化</td>
+<td><strong>7x</strong></td>
+</tr>
+<tr>
+<td>GB300 NVL72</td>
+<td><strong>25x</strong> 推理性能</td>
+</tr>
+<tr>
+<td>GB200 大规模 EP</td>
+<td>3.8x Prefill / 4.8x Decode</td>
+</tr>
+<tr>
+<td>Llama3 服务（v0.2 vs TensorRT-LLM/vLLM）</td>
+<td>最优</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42">4.2 横向对比趋势</h3>
+<blockquote>
+<p>⚠️ 基准测试结果因模型、硬件、配置而异，以下为公开趋势而非绝对结论。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>通常更优</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent/多轮对话</td>
+<td><strong>SGLang</strong></td>
+<td>RadixAttention 前缀复用</td>
+</tr>
+<tr>
+<td>结构化 JSON 输出</td>
+<td><strong>SGLang</strong></td>
+<td>压缩 FSM</td>
+</tr>
+<tr>
+<td>RL 训练 Rollout</td>
+<td><strong>SGLang</strong></td>
+<td>专为 RL 优化</td>
+</tr>
+<tr>
+<td>DeepSeek MoE</td>
+<td><strong>SGLang</strong></td>
+<td>Day-0 专属优化</td>
+</tr>
+<tr>
+<td>新模型快速部署</td>
+<td><strong>vLLM</strong></td>
+<td>模型支持最广</td>
+</tr>
+<tr>
+<td>消费级 GPU</td>
+<td><strong>vLLM</strong></td>
+<td>量化方案最多</td>
+</tr>
+<tr>
+<td>社区/文档</td>
+<td><strong>vLLM</strong></td>
+<td>2000+ 贡献者</td>
+</tr>
+<tr>
+<td>生产稳定性</td>
+<td><strong>两者</strong></td>
+<td>均大规模验证</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">五、硬件支持对比</h2>
+<table>
+<thead>
+<tr>
+<th>硬件</th>
+<th>vLLM</th>
+<th>SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NVIDIA GPU (H100/A100/5090)</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>NVIDIA GB200/GB300</td>
+<td>✅</td>
+<td>✅ <strong>深度优化</strong></td>
+</tr>
+<tr>
+<td>AMD GPU (MI300/MI355)</td>
+<td>✅</td>
+<td>✅ <strong>AMD 深度合作</strong></td>
+</tr>
+<tr>
+<td>Intel GPU</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Intel Xeon CPU</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>x86/ARM/PowerPC CPU</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Google TPU</td>
+<td>✅ 插件</td>
+<td>✅ <strong>SGLang-Jax 原生</strong></td>
+</tr>
+<tr>
+<td>华为 Ascend NPU</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Intel Gaudi</td>
+<td>✅ 插件</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Apple Silicon</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">六、生产环境采用情况</h2>
+<h3 id="61-sglang">6.1 SGLang 采用方</h3>
+<blockquote>
+<p>SGLang 每天生成数万亿 token，部署在 40 万+ GPU 上。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>采用方</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>xAI</strong></td>
+<td>Grok 推理后端</td>
+</tr>
+<tr>
+<td><strong>AMD</strong></td>
+<td>深度合作，MI300X 优化</td>
+</tr>
+<tr>
+<td><strong>NVIDIA</strong></td>
+<td>GB200/GB300 优化</td>
+</tr>
+<tr>
+<td><strong>Cursor</strong></td>
+<td>代码助手推理</td>
+</tr>
+<tr>
+<td><strong>LinkedIn</strong></td>
+<td>推理基础设施</td>
+</tr>
+<tr>
+<td>Oracle Cloud / Google Cloud / AWS / Azure</td>
+<td>云服务</td>
+</tr>
+<tr>
+<td>MIT / UCLA / UW / Stanford / UC Berkeley / 清华</td>
+<td>学术</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-vllm">6.2 vLLM 采用方</h3>
+<blockquote>
+<p>vLLM 由 2000+ 贡献者维护，来源涵盖数十个学术机构和 200+ 公司，是使用最广泛的 LLM 推理引擎。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>采用方</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UC Berkeley Sky Computing Lab</td>
+<td>起源</td>
+</tr>
+<tr>
+<td>大量云服务商</td>
+<td>推理服务后端</td>
+</tr>
+<tr>
+<td>Anyscale / Nebius / Baseten</td>
+<td>托管推理</td>
+</tr>
+<tr>
+<td>学术机构</td>
+<td>研究推理</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">七、选型决策矩阵</h2>
+<h3 id="71">7.1 按场景选型</h3>
+<table>
+<thead>
+<tr>
+<th>你的场景</th>
+<th>推荐</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agent 多轮推理</strong></td>
+<td><strong>SGLang</strong></td>
+<td>RadixAttention 前缀复用</td>
+</tr>
+<tr>
+<td><strong>强制 JSON/结构化输出</strong></td>
+<td><strong>SGLang</strong></td>
+<td>压缩 FSM</td>
+</tr>
+<tr>
+<td><strong>RL 训练 Rollout</strong></td>
+<td><strong>SGLang</strong></td>
+<td>verl/AReaL 等 RL 框架原生支持</td>
+</tr>
+<tr>
+<td><strong>DeepSeek MoE 大规模部署</strong></td>
+<td><strong>SGLang</strong></td>
+<td>Day-0 专属优化</td>
+</tr>
+<tr>
+<td><strong>TPU 推理</strong></td>
+<td><strong>SGLang</strong></td>
+<td>SGLang-Jax 原生 TPU</td>
+</tr>
+<tr>
+<td><strong>视频/图像扩散</strong></td>
+<td><strong>SGLang</strong></td>
+<td>SGLang Diffusion</td>
+</tr>
+<tr>
+<td><strong>快速上手/通用服务</strong></td>
+<td><strong>vLLM</strong></td>
+<td>一行启动，最易用</td>
+</tr>
+<tr>
+<td><strong>新模型 Day-0 部署</strong></td>
+<td><strong>vLLM</strong></td>
+<td>200+ 架构，最快支持</td>
+</tr>
+<tr>
+<td><strong>消费级 GPU（量化）</strong></td>
+<td><strong>vLLM</strong></td>
+<td>GGUF 等多量化方案</td>
+</tr>
+<tr>
+<td><strong>Apple Silicon</strong></td>
+<td><strong>vLLM</strong></td>
+<td>支持</td>
+</tr>
+<tr>
+<td><strong>广泛社区/文档需求</strong></td>
+<td><strong>vLLM</strong></td>
+<td>2000+ 贡献者</td>
+</tr>
+</tbody>
+</table>
+<h3 id="72">7.2 决策树</h3>
+<pre><code>你的首要需求是什么?
+│
+├── 复杂推理工作流（Agent/多轮/结构化输出/RL）
+│   └── → SGLang ✅
+│
+├── DeepSeek MoE 大规模生产部署
+│   └── → SGLang ✅ (GB200/GB300 深度优化)
+│
+├── TPU 原生推理
+│   └── → SGLang ✅ (SGLang-Jax)
+│
+├── 快速上手 + 通用模型服务
+│   └── → vLLM ✅ (一行启动)
+│
+├── 冷门模型/新模型快速部署
+│   └── → vLLM ✅ (200+ 架构)
+│
+├── 消费级 GPU + 多种量化
+│   └── → vLLM ✅ (GGUF/GPTQ/AWQ/...)
+│
+└── 不确定
+    └── → vLLM ✅ (默认安全选择, 社区最大)
+</code></pre>
+<hr />
+<h2 id="_8">八、快速启动对比</h2>
+<h3 id="81-vllm">8.1 vLLM</h3>
+<pre><code class="language-bash"># 安装
+uv pip install vllm
+
+# 启动服务（一行命令）
+vllm serve Qwen/Qwen3-4B-Instruct --port 8000
+
+# 或 Python API
+from vllm import LLM
+llm = LLM(model=&quot;Qwen/Qwen3-4B-Instruct&quot;)
+output = llm.generate([&quot;Hello, what is LLM inference?&quot;])
+</code></pre>
+<h3 id="82-sglang">8.2 SGLang</h3>
+<pre><code class="language-bash"># 安装
+pip install sglang[all]
+
+# 启动服务
+python -m sglang.launch_server \
+    --model-path Qwen/Qwen3-4B-Instruct \
+    --port 30000
+
+# 或使用 SGLang 前端编程（结构化生成）
+import sglang as sgl
+
+@sgl.function
+def multi_step_qa(s, question):
+    s += &quot;Please reason step by step.&quot;
+    s += sgl.gen(&quot;reasoning&quot;, max_tokens=256)
+    s += &quot;Based on the above, the answer is:&quot;
+    s += sgl.gen(&quot;answer&quot;, max_tokens=64)
+
+# 结构化输出
+@sgl.function
+def json_output(s):
+    s += 'Return a JSON with &quot;name&quot; and &quot;age&quot;.'
+    s += sgl.gen(&quot;json&quot;, regex=r'\{&quot;name&quot;: &quot;[^&quot;]+&quot;, &quot;age&quot;: \d+\}')
+</code></pre>
+<hr />
+<h2 id="_9">九、技术演进趋势</h2>
+<h3 id="91">9.1 功能趋同</h3>
+<p>两个项目在核心技术上越来越相似：</p>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>谁先有</th>
+<th>现状</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PagedAttention</td>
+<td>vLLM 原创</td>
+<td>两者都有</td>
+</tr>
+<tr>
+<td>RadixAttention/前缀缓存</td>
+<td>SGLang 原创</td>
+<td>两者都有</td>
+</tr>
+<tr>
+<td>连续批处理</td>
+<td>几乎同时</td>
+<td>两者都有</td>
+</tr>
+<tr>
+<td>推测解码 (EAGLE/DFlash)</td>
+<td>几乎同时</td>
+<td>两者都有</td>
+</tr>
+<tr>
+<td>Prefill-Decode 分离</td>
+<td>SGLang 先大规模</td>
+<td>两者都有</td>
+</tr>
+<tr>
+<td>Chunked Prefill</td>
+<td>vLLM 先</td>
+<td>两者都有</td>
+</tr>
+</tbody>
+</table>
+<h3 id="92">9.2 差异化方向</h3>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>SGLang</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>深度</strong></td>
+<td>推理工作流深度优化（结构化生成/RL/Agent）</td>
+<td>模型兼容广度（200+ 架构）</td>
+</tr>
+<tr>
+<td><strong>硬件</strong></td>
+<td>GB200/GB300 + TPU 深度合作</td>
+<td>多硬件插件（Gaudi/Spyre/MetaX 等）</td>
+</tr>
+<tr>
+<td><strong>新模型</strong></td>
+<td>DeepSeek/Nemotron Day-0 专属优化</td>
+<td>新架构最快通用支持</td>
+</tr>
+<tr>
+<td><strong>新范式</strong></td>
+<td>SGLang Diffusion（视频/图像）</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="93-2026">9.3 2026 年新进展</h3>
+<table>
+<thead>
+<tr>
+<th>SGLang</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DFlash + Spec V2</strong>（下一代推测解码）</td>
+<td>DFlash 推测解码</td>
+</tr>
+<tr>
+<td>GB300 NVL72: 25x 推理性能</td>
+<td>—</td>
+</tr>
+<tr>
+<td>SGLang Diffusion（视频/图像）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>SGLang-Jax（TPU 原生）</td>
+<td>TPU 插件</td>
+</tr>
+<tr>
+<td>DeepSeek-V4 Day-0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Nemotron 3 Ultra/Super Day-0</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="hermes">十、与 Hermes / 用户项目的关联</h2>
+<table>
+<thead>
+<tr>
+<th>关联场景</th>
+<th>推荐引擎</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Hermes Gateway</strong>（多 Agent 多轮对话）</td>
+<td><strong>SGLang</strong></td>
+<td>RadixAttention 天然适配多轮前缀复用</td>
+</tr>
+<tr>
+<td><strong>DeepSeek/GLM 本地推理</strong></td>
+<td><strong>SGLang</strong></td>
+<td>Day-0 优化 + MoE 大规模 EP</td>
+</tr>
+<tr>
+<td><strong>结构化输出（JSON Schema）</strong></td>
+<td><strong>SGLang</strong></td>
+<td>压缩 FSM</td>
+</tr>
+<tr>
+<td><strong>快速测试新模型</strong></td>
+<td><strong>vLLM</strong></td>
+<td>200+ 架构，一行启动</td>
+</tr>
+<tr>
+<td><strong>Jetson 边缘推理</strong></td>
+<td><strong>vLLM</strong></td>
+<td>量化方案多（GGUF），CPU 支持</td>
+</tr>
+<tr>
+<td><strong>HF Speech-to-Speech 集成</strong></td>
+<td><strong>vLLM</strong>（S2S 文档推荐）</td>
+<td>S2S README 中 vLLM 为推荐本地服务器</td>
+</tr>
+<tr>
+<td><strong>RL 训练</strong></td>
+<td><strong>SGLang</strong></td>
+<td>verl/slime 等 RL 框架原生后端</td>
+</tr>
+</tbody>
+</table>
+<h3 id="hermes_1">Hermes 本地部署优化建议</h3>
+<pre><code>当前: Hermes → zai gateway → GLM-5.2 API
+                           → sensenova API
+                           → lo API
+
+优化后: Hermes → 本地 SGLang/vLLM → GLM/Qwen/DeepSeek 本地模型
+                                      ↓
+                                 混合策略:
+                                 ├── 对话 (Agent多轮) → SGLang (RadixAttention)
+                                 ├── 工具调用 (结构化) → SGLang (压缩FSM)
+                                 └── 新模型测试 → vLLM (快速启动)
+</code></pre>
+<hr />
+<h2 id="_10">十一、关键术语速查</h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>PagedAttention</strong></td>
+<td>vLLM 核心创新，OS 式虚拟内存分页管理 KV Cache</td>
+</tr>
+<tr>
+<td><strong>RadixAttention</strong></td>
+<td>SGLang 核心创新，基数树自动缓存复用前缀 KV</td>
+</tr>
+<tr>
+<td><strong>Continuous Batching</strong></td>
+<td>连续批处理，新请求动态加入正在处理的批次</td>
+</tr>
+<tr>
+<td><strong>Chunked Prefill</strong></td>
+<td>分块预填充，将长 prompt 的 prefill 分块与 decode 交错</td>
+</tr>
+<tr>
+<td><strong>Prefix Caching</strong></td>
+<td>前缀缓存，复用相同前缀的 KV Cache</td>
+</tr>
+<tr>
+<td><strong>Speculative Decoding</strong></td>
+<td>推测解码，用小模型预测 + 大模型验证</td>
+</tr>
+<tr>
+<td><strong>PD Disaggregation</strong></td>
+<td>Prefill 和 Decode 分离到不同 GPU 节点</td>
+</tr>
+<tr>
+<td><strong>Expert Parallelism (EP)</strong></td>
+<td>专家并行，MoE 模型的专家分布到不同 GPU</td>
+</tr>
+<tr>
+<td><strong>Compressed FSM</strong></td>
+<td>压缩有限状态机，SGLang 结构化输出加速技术</td>
+</tr>
+<tr>
+<td><strong>EAGLE / DFlash</strong></td>
+<td>推测解码的 draft model 方案</td>
+</tr>
+<tr>
+<td><strong>MLA</strong></td>
+<td>Multi-head Latent Attention，DeepSeek 的注意力机制</td>
+</tr>
+<tr>
+<td><strong>CUDA Graphs</strong></td>
+<td>CUDA 图，减少 CPU-GPU 通信开销</td>
+</tr>
+<tr>
+<td><strong>APC</strong></td>
+<td>Automatic Prefix Caching，vLLM 的前缀缓存实现</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_11">相关笔记</h2>
+<ul>
+<li><a href="explore/2026-07-28-LLM推理优化2026-三路线交叉综合-增量蒸馏.md">LLM 推理优化 2026 三路线交叉综合</a> — 推测解码/量化/连续批处理三路线全景，与本文引擎选型互补</li>
+<li><a href="explore/2026-06-23-vLLM-Semantic-Router-Fusion-混合模型路由与推测解码.md">vLLM Semantic Router Fusion 混合模型路由与推测解码</a> — vLLM Fusion 模块深度拆解，本文 PagedAttention 的工程延伸</li>
+<li><a href="explore/2026-07-14-本地模型部署-vLLMV1-APC.md">本地模型部署 vLLM V1 APC</a> — vLLM V1 前缀缓存实战，本文 APC 概念的部署验证</li>
+<li><a href="explore/2026-06-22-本地模型部署-vLLM-V1_APC.md">本地模型部署 vLLM V1 APC (早期版)</a> — APC 机制演进追踪</li>
+</ul>
+</body>
+</html>

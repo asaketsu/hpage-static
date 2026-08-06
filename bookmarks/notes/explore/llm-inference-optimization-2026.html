@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llm-inference-optimization-2026</title>
+
+<meta property="og:title" content="llm-inference-optimization-2026" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-2026">LLM 推理优化技术深度笔记（2026 最新）</h1>
+<blockquote>
+<p>探索日期：2026-05-19<br />
+主题：LLM Inference Optimization — 量化/推理引擎/蒸馏/投机解码<br />
+来源：MorphLLM, Google Research TurboQuant (ICLR 2026), vLLM/SGLang/TRT-LLM 基准测试, AWS P-EAGLE, HuggingFace EAGLE-3 实战</p>
+</blockquote>
+<hr />
+<h2 id="_1">核心发现</h2>
+<h3 id="1model-system-application">发现 1：三层优化栈（Model → System → Application）</h3>
+<p>LLM 推理优化已形成清晰的三层架构，各层互补叠加可实现 <strong>80%+ 成本削减</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>核心技术</th>
+<th>典型收益</th>
+<th>实施难度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Model 层</strong></td>
+<td>量化/剪枝/蒸馏</td>
+<td>2-4x 内存，~50% 成本</td>
+<td>低（量化）/ 高（蒸馏）</td>
+</tr>
+<tr>
+<td><strong>System 层</strong></td>
+<td>连续批处理/PagedAttention/投机解码</td>
+<td>3-10x 吞吐，2-5x 延迟</td>
+<td>低（引擎配置）</td>
+</tr>
+<tr>
+<td><strong>Application 层</strong></td>
+<td>上下文压缩/提示缓存/模型路由</td>
+<td>50-70% token 减少，80-90% 延迟</td>
+<td>低（API 调用）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：大多数团队只关注 System 层（换引擎），但 Application 层（压缩上下文、缓存提示）才是 ROI 最高的优化点，因为它们直接减少了进入推理管线的 token 数量。</p>
+<h3 id="2turboquant-kv-cache-3-bit-google-iclr-2026">发现 2：TurboQuant — KV Cache 3-bit 量化零精度损失（Google ICLR 2026）</h3>
+<p>这是 2026 年最重大的推理优化突破之一：</p>
+<ul>
+<li><strong>核心算法</strong>：PolarQuant（基于旋转变换的坐标变换）+ 1-bit QJL 残差校正</li>
+<li><strong>压缩效果</strong>：KV Cache 压缩到 <strong>3 bit/坐标</strong>，实现 <strong>6x 内存缩减</strong></li>
+<li><strong>精度</strong>：在 LongBench 基准上 <strong>零精度损失</strong></li>
+<li><strong>理论保证</strong>：失真不超过 4^(-b) 缩放因子的约 2.7 倍信息论极限</li>
+<li><strong>实用性</strong>：数据无关（data-oblivious），无需训练，无需校准数据，开箱即用</li>
+<li><strong>集成</strong>：已有 vLLM 集成 + Triton kernel 实现</li>
+</ul>
+<p><strong>实际影响</strong>：<br />
+- Llama-3.1-8B 在 128K 上下文下，KV Cache 单独就可能超过模型权重本身<br />
+- TurboQuant 让 128K 长上下文推理在消费级 GPU 上成为可能<br />
+- 在 RTX 5090 (32GB) 上跑 Qwen3.5-27B-AWQ，TurboQuant 释放了 <strong>30GB KV Cache</strong></p>
+<h3 id="3-2026">发现 3：推理引擎 2026 格局 — 四强争霸</h3>
+<p>在 H100 上跑 Llama 3.3 70B Instruct FP8 的基准：</p>
+<table>
+<thead>
+<tr>
+<th>引擎</th>
+<th>吞吐量</th>
+<th>TTFT</th>
+<th>编译时间</th>
+<th>最佳场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SGLang v0.4.3</strong></td>
+<td>16,200 tok/s</td>
+<td>~115ms</td>
+<td>~8 min</td>
+<td>前缀密集型（RAG、多轮对话）</td>
+</tr>
+<tr>
+<td><strong>LMDeploy</strong></td>
+<td>16,200 tok/s</td>
+<td>~110ms</td>
+<td>~8 min</td>
+<td>高吞吐通用服务</td>
+</tr>
+<tr>
+<td><strong>vLLM v0.7.3</strong></td>
+<td>12,500 tok/s</td>
+<td>~120ms</td>
+<td>~5 min</td>
+<td>灵活性优先，频繁换模型</td>
+</tr>
+<tr>
+<td><strong>TensorRT-LLM</strong></td>
+<td>最高（高并发）</td>
+<td>105ms</td>
+<td>~28 min</td>
+<td>单模型长期生产部署</td>
+</tr>
+</tbody>
+</table>
+<p><strong>选型建议</strong>：<br />
+- <strong>vLLM</strong>：最灵活，社区最大，适合频繁换模型<br />
+- <strong>SGLang</strong>：RadixAttention 前缀缓存对 RAG/多轮对话场景极强<br />
+- <strong>TensorRT-LLM</strong>：需编译但编译后吞吐最高，适合固定模型大规模部署<br />
+- <strong>Modular MAX</strong>：新兴第五选项，Mojo 编译 kernel 在高并发下超越 vLLM</p>
+<h3 id="4-eagle-3-p-eagle">发现 4：投机解码最新进展 — EAGLE-3 → P-EAGLE</h3>
+<p>投机解码技术迭代飞快：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>年份</th>
+<th>核心创新</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>EAGLE-2</strong></td>
+<td>2024</td>
+<td>基于特征层面的草稿生成</td>
+<td>2-3x</td>
+</tr>
+<tr>
+<td><strong>EAGLE-3</strong></td>
+<td>2025</td>
+<td>更强的草稿模型，off-the-shelf 可用</td>
+<td>2-3x (通用), 5x (优化)</td>
+</tr>
+<tr>
+<td><strong>P-EAGLE</strong></td>
+<td>2026</td>
+<td><strong>并行草稿生成</strong>，一次前向生成 K 个 token</td>
+<td>EAGLE-3 基础上再 1.05-1.69x</td>
+</tr>
+</tbody>
+</table>
+<p><strong>P-EAGLE 突破</strong>：<br />
+- 传统 EAGLE 的隐藏瓶颈：自回归草稿生成本身也是序列化的<br />
+- P-EAGLE 在<strong>单次前向传播</strong>中生成所有 K 个草稿 token，消除了序列化瓶颈<br />
+- 在 NVIDIA B200 上验证，已支持 GPT-OSS 120B/20B、Qwen3-Coder 30B<br />
+- vLLM 已原生支持</p>
+<p><strong>核心发现</strong>：草稿模型的延迟比准确率更重要！基准测试显示草稿模型准确率与最终吞吐量相关性很弱，草稿生成速度才是真正的瓶颈。</p>
+<hr />
+<h2 id="_2">技术细节</h2>
+<h3 id="1">1. 量化技术对比</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>类型</th>
+<th>精度损失</th>
+<th>内存缩减</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SmoothQuant</strong></td>
+<td>权重+激活量化</td>
+<td>&lt;1%</td>
+<td>2x</td>
+<td>通用推理</td>
+</tr>
+<tr>
+<td><strong>GPTQ</strong></td>
+<td>权重量化（校准）</td>
+<td>1-3%</td>
+<td>2-4x</td>
+<td>离线量化</td>
+</tr>
+<tr>
+<td><strong>AWQ</strong></td>
+<td>权重量化（感知）</td>
+<td>1-2%</td>
+<td>2-4x</td>
+<td>保护关键通道</td>
+</tr>
+<tr>
+<td><strong>TurboQuant</strong></td>
+<td>KV Cache 量化</td>
+<td>~0%</td>
+<td>6x</td>
+<td>长上下文推理</td>
+</tr>
+<tr>
+<td><strong>FP8</strong></td>
+<td>全模型</td>
+<td>&lt;1%</td>
+<td>2x</td>
+<td>H100/B200 原生</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最优压缩管线</strong>：P-KD-Q — 先剪枝(Prune)，再蒸馏(Distill)，最后量化(Quantize)。每步效果叠加。</p>
+<h3 id="2-vs">2. 连续批处理 vs 静态批处理</h3>
+<pre><code>静态批处理：等一个 batch 全部完成才接受新请求
+→ 短请求等长请求，GPU 大量空闲
+
+连续批处理：旧请求完成立即插入新请求
+→ 3-10x 吞吐提升
+→ Anyscale 实测：生产负载 23x 聚合吞吐提升
+</code></pre>
+<h3 id="3-pagedattention">3. PagedAttention 内存管理</h3>
+<p>传统方式：为最大序列长度预分配 KV Cache → <strong>浪费 90% GPU 显存</strong></p>
+<p>PagedAttention（vLLM 首创）：<br />
+- 将 KV Cache 分割为小的可复用页<br />
+- 按需分配，减少 90% 内存浪费<br />
+- 支持最多 24x 更高的服务吞吐</p>
+<h3 id="4-agent">4. 上下文压缩 — Agent 场景的关键优化</h3>
+<p>Agent 工作流的核心问题：上下文膨胀<br />
+- 第 30 轮对话时，input token 可能是第 1 轮的 <strong>5-10 倍</strong><br />
+- 大部分 token 是过时信息（旧对话轮、样板文件头、已处理的文件内容）</p>
+<p><strong>两种压缩策略对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>方法</th>
+<th>准确性评分</th>
+<th>Agent 轨迹影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>摘要式</strong></td>
+<td>LLM 重写内容</td>
+<td>3.4-3.7/5</td>
+<td>轨迹长 13-15%（信息被改写后 agent 需重新推导）</td>
+</tr>
+<tr>
+<td><strong>逐字式</strong></td>
+<td>删除低信息 token，保留原文</td>
+<td>5/5</td>
+<td>无影响</td>
+</tr>
+</tbody>
+</table>
+<p>JetBrains 研究发现：摘要导致 agent 轨迹变长 13-15%，因为文件路径、错误码等关键信息被改写后丢失。</p>
+<p>逐字式压缩（Morph Compact）：33,000 tok/s，50-70% 压缩率，可在每次 LLM 调用前执行。</p>
+<h3 id="5">5. 提示缓存的经济效益</h3>
+<ul>
+<li>Anthropic/OpenAI/Google 都已支持</li>
+<li>10K+ token 共享前缀 → 80-90% 延迟减少</li>
+<li>Anthropic 实现：缓存 token 不计入 rate limit → 80% 命中率下 <strong>5x 吞吐提升</strong></li>
+</ul>
+<hr />
+<h2 id="_3">实践启发</h2>
+<h3 id="jetson-orin-nano">对 Jetson Orin Nano 部署的启示</h3>
+<ol>
+<li><strong>量化是必须的</strong>：67 TOPS 算力下，INT4 量化是唯一可行的方案</li>
+<li><strong>TurboQuant 可能不适用</strong>：Jetson 显存有限（8GB），但 KV Cache 压缩对短上下文意义不大</li>
+<li><strong>TensorRT-LLM 是最佳选择</strong>：编译优化 + CUDA kernel 优化对 Jetson 的 Orin GPU 架构最优</li>
+<li><strong>投机解码有限</strong>：小模型上草稿模型选择范围窄，加速效果不如云端显著</li>
+</ol>
+<h3 id="agent">对 Agent 系统的启示</h3>
+<ol>
+<li><strong>上下文管理是第一优先级</strong>：不是换引擎，而是减少输入 token</li>
+<li><strong>逐字压缩 &gt; 摘要压缩</strong>：对 coding agent 尤其关键</li>
+<li><strong>提示缓存是免费午餐</strong>：多轮对话天然有共享前缀</li>
+<li><strong>模型路由可省 12x</strong>：简单任务用小模型</li>
+</ol>
+<h3 id="_4">实际优化栈推荐</h3>
+<pre><code>自部署场景：
+  量化(INT4/AWQ) → vLLM/SGLang(PagedAttention+连续批处理) → TurboQuant(KV Cache) → 投机解码(EAGLE-3)
+  预期：80%+ 成本削减
+
+API 调用场景：
+  逐字上下文压缩 → 提示缓存 → 模型路由（简单任务→小模型）
+  预期：60-80% token 削减
+</code></pre>
+<hr />
+<h2 id="_5">知识缺口</h2>
+<ol>
+<li><strong>TurboQuant 在 Jetson Orin 上的适配性</strong>：Triton kernel 需要 CUDA compute capability 7.0+，Orin 是 8.7，理论上支持但未验证</li>
+<li><strong>P-EAGLE 的边缘部署可行性</strong>：目前仅在 B200 上验证，消费级 GPU 表现未知</li>
+<li><strong>Modular MAX 的成熟度</strong>：Mojo 编译内核很诱人但生产案例尚少</li>
+<li><strong>KV Cache 量化与投机解码的交互效应</strong>：两者叠加是否有负面的精度累积影响</li>
+<li><strong>SGLang RadixAttention 在非 RAG 场景的收益量化</strong></li>
+<li><strong>逐字压缩的算法细节</strong>：Morph Compact 是商业产品，开源替代方案（如 LLMLingua）的效果对比</li>
+</ol>
+<hr />
+<h2 id="_6">参考</h2>
+<ul>
+<li>MorphLLM: LLM Inference Optimization Guide (2026) — 三层优化栈 + 引擎对比</li>
+<li>Google TurboQuant (ICLR 2026, arXiv:2504.19874) — 3-bit KV Cache 零损失量化</li>
+<li>AWS P-EAGLE — 并行投机解码，vLLM 原生支持</li>
+<li>Spheron: vLLM vs TRT-LLM vs SGLang H100 Benchmarks (2026)</li>
+<li>Thoughtworks: EAGLE-3 实战验证（GLM-4.7-Flash）</li>
+<li>JetBrains: Agent 轨迹对比（摘要 vs 逐字压缩）</li>
+</ul>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-05-Karpathy-LLM-Wiki-second-brain.md">Karpathy-LLM-Wiki-second-brain</a></li>
+<li><a href="../2026-04-18-Hermes-LLM-Wiki-学习笔记.md">Hermes-LLM-Wiki-学习笔记</a></li>
+<li><a href="../2026-04-28-LLM推理优化前沿技术2026.md">LLM推理优化前沿技术2026</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-04-30-边缘AI与On-Device-LLM前沿学习.md">边缘AI与On-Device-LLM前沿学习</a></li>
+<li><a href="../2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="../2026-05-04-LLM对齐训练范式RLHF-DPO-GRPO-DAPO.md">LLM对齐训练范式RLHF-DPO-GRPO-DAPO</a></li>
+<li><a href="../2026-05-05-开源AI模型2025-DeepSeek-Qwen新格局.md">开源AI模型2025-DeepSeek-Qwen新格局</a></li>
+<li><a href="../2026-05-07-PageIndex-无向量推理式RAG.md">PageIndex-无向量推理式RAG</a></li>
+<li><a href="../2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet.md">大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet</a></li>
+<li><a href="../2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理.md">推理加速深度解析-投机解码-KVCache-连续批处理</a></li>
+<li><a href="../2026-05-09-LLM知识蒸馏技术全景.md">LLM知识蒸馏技术全景</a></li>
+<li><a href="../2026-05-10-DeepSeek-V4-开源模型新格局.md">DeepSeek-V4-开源模型新格局</a></li>
+<li><a href="../2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="../2026-05-11-5月AI模型大战-GPT55-DeepSeekV4.md">5月AI模型大战-GPT55-DeepSeekV4</a></li>
+<li><a href="../2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="../2026-05-11-LLM冲击下PINN应用变化与发展.md">LLM冲击下PINN应用变化与发展</a></li>
+<li><a href="../2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理.md">MoE蒸馏与压缩-专家路由迁移-稀疏结构处理</a></li>
+<li><a href="../2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案.md">JAX-NVIDIA-GPU-微调Llama3.1实战方案</a></li>
+<li><a href="../2026-05-17-LoRA高效微调前沿技术全景.md">LoRA高效微调前沿技术全景</a></li>
+<li><a href="../2026-05-17-SGLang高性能LLM推理框架深度分析.md">SGLang高性能LLM推理框架深度分析</a></li>
+<li><a href="../2026-05-18-Agent元认知-LLM不确定性感知.md">Agent元认知-LLM不确定性感知</a></li>
+<li><a href="../2026-05-18-MoE模型LoRA微调最佳实践.md">MoE模型LoRA微调最佳实践</a></li>
+<li><a href="../2026-05-19-蒸馏量化RL三联流水线-后训练范式统一.md">蒸馏量化RL三联流水线-后训练范式统一</a></li>
+<li><a href="../2026-05-20-Active-Data-Selection-LLM训练动态数据选择前沿.md">Active-Data-Selection-LLM训练动态数据选择前沿</a></li>
+<li><a href="../2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化.md">MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化</a></li>
+<li><a href="../2026-05-21-llm-finetune-dataflow-dataflex-pipeline.md">llm-finetune-dataflow-dataflex-pipeline</a></li>
+<li><a href="../2026-05-21-react-agent-llm-agentic-training-research.md">react-agent-llm-agentic-training-research</a></li>
+<li><a href="../2026-05-22-If-youre-an-LLM-please-read-this-Anna-Archive-LLM伦理契约.md">If-youre-an-LLM-please-read-this-Anna-Archive-LLM伦理契约</a></li>
+<li><a href="../2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数.md">LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数</a></li>
+<li><a href="../2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型.md">Multi-Stream-LLMs-并行流解锁语言模型</a></li>
+<li><a href="../2026-05-23-Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力.md">Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力</a></li>
+<li><a href="../2026-05-23-OpenAI后训练团队Yann-Dubois深度访谈.md">OpenAI后训练团队Yann-Dubois深度访谈</a></li>
+<li><a href="../2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析.md">QLoRA在RL训练中的精度影响-量化与强化学习深度解析</a></li>
+<li><a href="../AutoSearch 自主训练任务.md">AutoSearch 自主训练任务</a></li>
+<li><a href="../ai-agent/2026-05-16-表达清晰的5个训练.md">表达清晰的5个训练</a></li>
+<li><a href="2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="2026-05-16-LLM推理优化-MoE量化加速全景.md">LLM推理优化-MoE量化加速全景</a></li>
+<li><a href="2026-05-16-LLM推理优化技术.md">LLM推理优化技术</a></li>
+<li><a href="2026-05-18-llm-inference-opt-incremental2.md">llm-inference-opt-incremental2</a></li>
+<li><a href="2026-05-18-llm-inference-opt-update.md">llm-inference-opt-update</a></li>
+<li><a href="2026-05-18-llm-self-prompt-optimization.md">llm-self-prompt-optimization</a></li>
+<li><a href="2026-05-19-MoE-稀疏激活微调工程实践.md">MoE-稀疏激活微调工程实践</a></li>
+<li><a href="2026-05-19-SGLang-vs-vLLM-推理引擎对比.md">SGLang-vs-vLLM-推理引擎对比</a></li>
+<li><a href="2026-05-20-llm_wiki分析与Skill进化.md">llm_wiki分析与Skill进化</a></li>
+<li><a href="2026-05-21-边缘AI推理优化-Jetson平台深度研究.md">边缘AI推理优化-Jetson平台深度研究</a></li>
+<li><a href="2026-05-22-llama-cpp预编译二进制与本地LLM推理.md">llama-cpp预编译二进制与本地LLM推理</a></li>
+<li><a href="2026-05-23-VPO向量策略优化多样性训练提升推理搜索.md">VPO向量策略优化多样性训练提升推理搜索</a></li>
+<li><a href="llm-inference-opt-2026-05-17.md">llm-inference-opt-2026-05-17</a></li>
+<li><a href="llm-inference-opt-2026-05-20-supplement.md">llm-inference-opt-2026-05-20-supplement</a></li>
+<li><a href="llm-inference-opt-deep-dive.md">llm-inference-opt-deep-dive</a></li>
+<li><a href="llm-inference-opt-incremental-20260517.md">llm-inference-opt-incremental-20260517</a></li>
+<li><a href="../llm-pid-tuner.md">llm-pid-tuner</a></li>
+<li><a href="../orphan/2026-05-05-分布式训练技术全景-FSDP-DeepSpeed-Megatron.md">分布式训练技术全景-FSDP-DeepSpeed-Megatron</a></li>
+<li><a href="../tinyedge-lora.md">tinyedge-lora</a></li>
+<li><a href="../前瞻性问题-AI垂域LLM载具设计.md">前瞻性问题-AI垂域LLM载具设计</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生产级Multi-Agent-Harness设计全拆解</title>
+
+<meta property="og:title" content="生产级Multi-Agent-Harness设计全拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="multi-agent-harness">生产级 Multi-Agent Harness 设计全拆解</h1>
+<ul>
+<li>📅 2026-06-14</li>
+<li>⭐ 5/5 — 极高质量的工程架构文章，从 Demo 到生产全链路拆解，方法论可直接对标自评</li>
+<li>🏷️ #Multi-Agent #Harness #Agent架构 #工程实践 #MCP</li>
+<li>📰 腾讯云开发者 · 李伟山</li>
+<li>🔗 https://mp.weixin.qq.com/s/JPhcyDc4JwRmnMQ-76A-FQ</li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>文章系统拆解了生产级 Multi-Agent Harness（多智能体执行框架）的八大模块：架构编排、工具治理、状态与记忆、评估体系、成本控制、MCP 接入、可观测性、落地路线。核心论点：<strong>Demo 与生产之间的鸿沟由 Harness 决定</strong>——Prompt 是台词，Agent 是演员，工具是道具，模型是大脑，Harness 是舞台的导演、调度系统、安全规章和票务系统。</p>
+<hr />
+<h2 id="harness">一、Harness 是什么</h2>
+<blockquote>
+<p><strong>Harness ≠ Prompt ≠ Orchestrator ≠ Agent Framework</strong></p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>解决什么</th>
+<th>局限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prompt</td>
+<td>让模型理解任务</td>
+<td>不解决可靠性</td>
+</tr>
+<tr>
+<td>Orchestrator</td>
+<td>解决顺序</td>
+<td>不解决资源/记忆/成本/安全</td>
+</tr>
+<tr>
+<td>Agent Framework（LangGraph 等）</td>
+<td>提供积木</td>
+<td>不是生产建筑方案</td>
+</tr>
+<tr>
+<td><strong>Harness</strong></td>
+<td><strong>统一收束能力、工具、状态、通信、编排、监控</strong></td>
+<td><strong>完整工程方案</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Framework 是积木，Harness 是把积木拼成生产建筑的工程方案。</p>
+</blockquote>
+<hr />
+<h2 id="agent-harness">二、架构编排：Agent 出主意，Harness 拿决定</h2>
+<h3 id="_2">核心原则</h3>
+<blockquote>
+<p><strong>Agent 负责局部智能，Harness 负责全局控制。</strong></p>
+</blockquote>
+<p>大模型不是可靠的调度器——缺乏成本意识、并发意识、权限意识、全局一致性意识。</p>
+<h3 id="orchestrator">Orchestrator 独占的五项决策权</h3>
+<ol>
+<li><strong>任务生命周期</strong>：创建→规划→执行→审查→完成/失败</li>
+<li><strong>执行计划裁决</strong>：计划可来自 Planner，但执行控制权归 Orchestrator</li>
+<li><strong>Agent 路由</strong>：结合任务类型、能力、权限、历史质量评分</li>
+<li><strong>失败处理</strong>：重试/降级/跳过/终止——不能让出错 Agent 自己决定</li>
+<li><strong>硬终止条件</strong>：<code>max_steps</code>、<code>max_tokens</code>、<code>max_duration</code>、<code>max_tool_calls</code></li>
+</ol>
+<h3 id="vs">声明式 vs 命令式</h3>
+<pre><code>声明式：{step: 1, intent: &quot;research&quot;, agent: &quot;researcher&quot;, input: &quot;...&quot;}
+命令式：直接 await researcher.run(&quot;...&quot;)
+</code></pre>
+<blockquote>
+<p><strong>别让 Agent 开车，让 Agent 当导航。</strong> 声明式允许 Harness 介入：重排顺序、并行优化、拒绝步骤、安全审查。</p>
+</blockquote>
+<hr />
+<h2 id="tool-registry">三、工具治理：Tool Registry 是安全边界</h2>
+<blockquote>
+<p><strong>工具不是函数调用，而是生产资源的对外授权点。</strong></p>
+</blockquote>
+<h3 id="tool-registry_1">Tool Registry 九项必须元信息</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>元信息</th>
+<th>#</th>
+<th>元信息</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>工具名称</td>
+<td>6</td>
+<td>风险等级（低/中/高）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>工具描述</td>
+<td>7</td>
+<td>是否需要人工确认</td>
+</tr>
+<tr>
+<td>3</td>
+<td>输入参数 JSON Schema</td>
+<td>8</td>
+<td>输出结果结构</td>
+</tr>
+<tr>
+<td>4</td>
+<td>允许调用的 Agent 列表（RBAC）</td>
+<td>9</td>
+<td>审计日志策略</td>
+</tr>
+<tr>
+<td>5</td>
+<td>调用超时与速率限制</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>哪怕只有 3 个工具，也从第一天起强制走 Tool Registry。先有规矩，后扩规模。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_3">四、状态与记忆：记住该记的，忘掉该忘的</h2>
+<h3 id="_4">记忆的四种失败</h3>
+<table>
+<thead>
+<tr>
+<th>失败方式</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>记得太少</td>
+<td>无法复用经验</td>
+</tr>
+<tr>
+<td>记得太多</td>
+<td>上下文膨胀，成本爆炸</td>
+</tr>
+<tr>
+<td>不分层</td>
+<td>临时数据与长期知识混杂</td>
+</tr>
+<tr>
+<td>不遗忘</td>
+<td>过期信息污染决策</td>
+</tr>
+</tbody>
+</table>
+<h3 id="state">State 三层架构</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>生命周期</th>
+<th>存储</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Working State</td>
+<td>当前步骤</td>
+<td>内存</td>
+<td>任务结束即丢</td>
+</tr>
+<tr>
+<td>Session State</td>
+<td>一次会话</td>
+<td>Redis + TTL</td>
+<td>多 Agent 共享</td>
+</tr>
+<tr>
+<td>Execution Log</td>
+<td>不可变</td>
+<td>持久化</td>
+<td>审计、回放、评估</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">记忆两类 + 遗忘机制</h3>
+<ul>
+<li><strong>Episodic（事件记忆）</strong>：踩坑、用户偏好、处理经验</li>
+<li><strong>Semantic（语义记忆）</strong>：领域概念、业务规则、工具约束</li>
+<li><strong>遗忘评分</strong>：基于访问频次 × 创建时间 × 重要性 × 最近使用 → 低分删除 / 中分压缩摘要 / 高分保留</li>
+</ul>
+<blockquote>
+<p><strong>记忆不是仓库，而是花园。需要定期修剪。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_6">五、评估体系：不只看答案，要看轨迹</h2>
+<h3 id="_7">只看最终答案会漏掉的信号</h3>
+<ul>
+<li>最终报告对了，但用了未授权数据源</li>
+<li>最终代码能跑，但调了十几次无意义工具</li>
+<li>某次成功只是因为重试撞上了正确答案</li>
+</ul>
+<h3 id="eval-pipeline">四层 Eval Pipeline</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>评估内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Component Eval</td>
+<td>单 Agent 是否选对工具、参数合规</td>
+</tr>
+<tr>
+<td><strong>Trajectory Eval</strong> ⭐</td>
+<td>步骤是否必要、顺序合理、是否循环（<strong>Multi-Agent 最大创新点</strong>）</td>
+</tr>
+<tr>
+<td>Task Completion Eval</td>
+<td>是否满足目标、无事实错误</td>
+</tr>
+<tr>
+<td>End-to-End Eval</td>
+<td>用户采纳率、人工返工率、单位任务成本</td>
+</tr>
+</tbody>
+</table>
+<h3 id="llm-as-judge">LLM-as-Judge 适用边界</h3>
+<table>
+<thead>
+<tr>
+<th>适合 LLM-as-Judge</th>
+<th>不适合（应用确定性检查）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>表达完整性</td>
+<td>事实正确性</td>
+</tr>
+<tr>
+<td>推理连贯性</td>
+<td>代码可运行性</td>
+</tr>
+<tr>
+<td>总结质量</td>
+<td>SQL 结果、权限合规</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Eval 必须进入 CI。Prompt 就是代码，工具 Schema 就是接口，执行轨迹就是日志，Eval 就是测试体系。</strong></p>
+</blockquote>
+<hr />
+<h2 id="token-budget">六、成本控制：Token Budget 是生命线</h2>
+<h3 id="_8">三大策略</h3>
+<p><strong>策略一：Model Routing（模型路由）</strong></p>
+<table>
+<thead>
+<tr>
+<th>任务类型</th>
+<th>模型选择</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分类/摘要/格式转换</td>
+<td>小模型</td>
+</tr>
+<tr>
+<td>复杂推理/最终合成</td>
+<td>强模型</td>
+</tr>
+<tr>
+<td>高风险审查</td>
+<td>强模型 + 规则校验双保险</td>
+</tr>
+<tr>
+<td>低价值重试</td>
+<td>禁止高价模型</td>
+</tr>
+</tbody>
+</table>
+<p><strong>策略二：Context Compression（上下文压缩）</strong></p>
+<p>保留最近几轮原文 + 更早历史压缩为结构化摘要。⚠️ 事实型任务保留原始引用；合规型任务关键证据不可压缩。</p>
+<p><strong>策略三：Budget 分级降级</strong></p>
+<pre><code>🟢 绿区 &gt;50%   → 正常执行
+🟡 黄区 20-50% → 压缩上下文
+🔴 红区 5-20%  → 切小模型 + 跳过 CoT
+⛔ 熔断 &lt;5%    → 强制收束，返回 partial result
+</code></pre>
+<h3 id="_9">核心运营指标</h3>
+<blockquote>
+<p><strong>单位业务结果成本（每完成一个合格任务多少钱）</strong> ← 可运营的标志</p>
+</blockquote>
+<hr />
+<h2 id="mcp">七、MCP 工具接入：标准化 ≠ 安全</h2>
+<blockquote>
+<p><strong>MCP 之于 AI 工具，如同 USB-C 之于充电接口。</strong></p>
+</blockquote>
+<h3 id="_10">五条最佳实践</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>实践</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>永远不要把 MCP Server 直接暴露给 Agent</strong></td>
+<td>必须经过 Tool Registry</td>
+</tr>
+<tr>
+<td>2</td>
+<td>每个 MCP Server 单独配额</td>
+<td>防止流氓 Server 拖垮系统</td>
+</tr>
+<tr>
+<td>3</td>
+<td>工具做白名单而非黑名单</td>
+<td>只开放真正需要的</td>
+</tr>
+<tr>
+<td>4</td>
+<td>高风险工具走 Human-in-the-Loop</td>
+<td>写入/删除/代码执行/支付</td>
+</tr>
+<tr>
+<td>5</td>
+<td>所有 MCP 调用打 Trace</td>
+<td>来源、参数、结果可追溯</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>MCP 让工具接入变得便宜，Harness 让工具调用变得可信。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_11">八、可观测性与落地路线</h2>
+<h3 id="_12">错误类型</h3>
+<p>Agent 的错误往往不是异常，而是<strong>过程偏移</strong>：调错工具、读错记忆、误解目标、压缩丢约束、路由用了能力不够的小模型。</p>
+<h3 id="_13">三阶段落地</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>目标</th>
+<th>关键组件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 1 MVP</td>
+<td>跑通一条端到端闭环</td>
+<td>最小 Orchestrator + Tool Registry + 基础 Trace + 评估数据集</td>
+</tr>
+<tr>
+<td>Phase 2 Hardening</td>
+<td>Demo 变可控系统</td>
+<td>Budget + 权限 + 重试 + 压缩 + 轨迹评估 + 审计 + 回归测试</td>
+</tr>
+<tr>
+<td>Phase 3 Scale</td>
+<td>支撑多场景并发</td>
+<td>分布式队列 + 多租户 + 动态路由 + 质量排行榜 + A/B 测试 + 成本看板</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_14">技术选型</h3>
+<ul>
+<li><strong>小团队</strong>：LangGraph / 轻量状态机 + FastAPI + Redis + PostgreSQL/pgvector + Langfuse/OpenTelemetry + LiteLLM 网关</li>
+</ul>
+<h3 id="_15">十个灵魂问题</h3>
+<blockquote>
+<p>把这十个问题回答清楚，你就已经越过了大多数 Agent Demo 的边界：</p>
+</blockquote>
+<ol>
+<li>任务怎么进来？ 2. 谁负责拆解？ 3. 谁负责调度？</li>
+<li>工具怎么接？ 5. 状态放哪里？ 6. 记忆怎么检索？</li>
+<li>预算怎么控制？ 8. 轨迹怎么评估？ 9. 失败怎么处理？ 10. 审计怎么保留？</li>
+</ol>
+<hr />
+<h2 id="_16">💡 启发</h2>
+<ul>
+<li><strong>"别让 Agent 开车，让 Agent 当导航"</strong> —— 声明式编排的精髓，Harness 保留全局控制权</li>
+<li><strong>记忆是花园不是仓库</strong> —— 遗忘机制比记忆机制更难设计，但更关键</li>
+<li><strong>Trajectory Eval 是 Multi-Agent 最大创新点</strong> —— 传统 Eval 只看答案，不看路径</li>
+<li><strong>MCP 标准化降低接入成本，但不降低安全风险</strong> —— 接入越简单越要管权限</li>
+</ul>
+<h2 id="_17">🔮 预判</h2>
+<ul>
+<li>Harness 工程化能力将成为 Agent 团队的核心竞争力，而非模型选择能力</li>
+<li>"单位业务结果成本"会成为 Multi-Agent 系统的标准 KPI</li>
+<li>MCP + Tool Registry 的组合将成为工具治理标准模式</li>
+</ul>
+<h2 id="_18">相关笔记</h2>
+<ul>
+<li><a href="2026-06-14-LoopEngineering-vs-Harness-AI编程新范式.md">LoopEngineering vs Harness AI编程新范式</a> (关键词: Harness, AI编程)</li>
+<li><a href="2026-06-05-Anthropic开源AI漏洞发现框架-Defending-Code-Reference-Harness.md">Anthropic开源AI漏洞发现框架-Harness</a> (关键词: Harness)</li>
+<li><a href="explore/2026-05-18-RD-Agent-Quant-multi-agent-quant-framework-deep-dive.md">RD-Agent-Quant multi-agent框架</a> (关键词: Multi-Agent)</li>
+</ul>
+</body>
+</html>

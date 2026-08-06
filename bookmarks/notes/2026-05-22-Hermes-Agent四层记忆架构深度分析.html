@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes-Agent四层记忆架构深度分析</title>
+
+<meta property="og:title" content="Hermes-Agent四层记忆架构深度分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="hermes-agent">Hermes Agent 四层记忆架构 — 深度分析与进化笔记</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号文章 · Hermes Agent 记忆系统拆解 · 2026-05-22<br />
+<strong>原文</strong>：https://mp.weixin.qq.com/s/_DuJNVUIFFILCHZi9vgiRA<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含借鉴进化点 · RAG/wiki联动<br />
+<strong>关联</strong>：[[Hermes Agent]] [[memory-system]] [[neurofeedback]] [[obsidian]] [[wiki-knowledge-base]]</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>文章系统拆解了 Hermes Agent 的四层记忆架构：①内置 Markdown 记忆（MEMORY.md + USER.md）、②FTS5 会话历史搜索（state.db）、③外置记忆插件（Honcho/Mem0/Hindsight/Supermemory）、④Obsidian 知识库。每层设计都有明确的技术权衡和容量限制。核心洞察：当前系统只用了前两层，第三层未激活（provider 为空），第四层知识库虽已配置 skill 但未与外置记忆联动。文章提供了具体的配置方法和踩坑指南，有直接可执行的改进点。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="markdown">第一层：内置 Markdown 记忆</h3>
+<p>两个文件位于 ~/.hermes/memories/：<br />
+- MEMORY.md（Agent 笔记）：项目进展、环境配置、工作流偏好、踩坑记录。上限 2200 字符（默认，当前系统已扩至 4000）<br />
+- USER.md（用户画像）：角色、偏好、说话风格、工作习惯。上限 1375 字符（当前已扩至 1500）</p>
+<p><strong>关键机制：冻结快照（Freeze Snapshot）</strong><br />
+- 会话中途写入的 memory，磁盘立刻更新但当前会话不生效<br />
+- 原因：系统提示词有缓存（prompt caching），中途改了缓存失效导致 token 成本翻倍<br />
+- 设计哲学：牺牲实时性换性能</p>
+<h3 id="fts5-statedb">第二层：FTS5 全文搜索（state.db）</h3>
+<ul>
+<li>SQLite 数据库，索引所有会话（微信/飞书/Telegram/CLI）</li>
+<li>session_search 工具，FTS5 全文检索 + 摘要</li>
+<li>局限：关键词匹配，非语义检索。"手表 App"搜不到"腕表项目"</li>
+<li>与第一层互补：第一层是"一直带着的笔记本"，第二层是"随时能翻的档案室"</li>
+</ul>
+<h3 id="_3">第三层：外置记忆插件</h3>
+<table>
+<thead>
+<tr>
+<th>插件</th>
+<th>核心特点</th>
+<th>部署方式</th>
+<th>费用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Honcho</td>
+<td>用户动态模型，跨会话理解决策风格和思维习惯</td>
+<td>云端/自部署(Docker+Ollama)</td>
+<td>$2/百万消息，新用户$100额度</td>
+</tr>
+<tr>
+<td>Mem0</td>
+<td>LLM 提取语义化知识单元，向量检索</td>
+<td>云端/自部署</td>
+<td>免费1万写入/1千检索，付费$19/月</td>
+</tr>
+<tr>
+<td>Hindsight</td>
+<td>知识图谱+实体解析+多策略检索+Reflect推理</td>
+<td>本地Embedded/云端</td>
+<td>完全开源免费</td>
+</tr>
+<tr>
+<td>Supermemory</td>
+<td>多容器分区，独立保留策略+上下文围栏</td>
+<td>仅云端</td>
+<td>免费$5/月，付费$19/月</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键限制：同一时间只能跑一个插件，切换不迁移数据。</strong></p>
+<p>配置命令：</p>
+<pre><code class="language-bash">hermes memory setup    # 交互式选择
+hermes memory status   # 查看状态
+hermes memory off      # 关闭（内置不受影响）
+</code></pre>
+<h3 id="obsidian">第四层：Obsidian 知识库</h3>
+<ul>
+<li>不是记忆插件，是 skill</li>
+<li>Agent 读写 Markdown 文件，用 [[wikilink]] 互联</li>
+<li>适合长期结构化知识：行业调研、竞品分析、知识体系</li>
+<li>配置：OBSIDIAN_VAULT_PATH 环境变量</li>
+<li>不会自动注入上下文，需主动触发</li>
+</ul>
+<h3 id="_4">四层协作场景</h3>
+<p>以"HVAC AI报价工具"为例：<br />
+- 第一层：项目名称、用户角色 → memory.md<br />
+- 第二层：历史讨论细节 → state.db 检索<br />
+- 第三层：用户决策风格建模 → Honcho 自动推理<br />
+- 第四层：竞品分析、供应商数据 → Obsidian Wiki</p>
+<h2 id="_5">能力边界</h2>
+<ul>
+<li>四层架构设计合理，但实际启用率低——大多数用户只用前两层</li>
+<li>session_search 的 FTS5 关键词匹配是明确的短板（非语义检索）</li>
+<li>第三层插件互斥（只能选一个），切换成本高</li>
+<li>第四层 Obsidian skill 不自动注入，依赖用户主动触发</li>
+<li>冻结快照机制意味着紧急记忆需要等到下一轮会话才生效</li>
+</ul>
+<h2 id="_6">关键概念</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>定义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>冻结快照</td>
+<td>会话开始时加载 memory，中途写入下轮生效，当前会话不变</td>
+</tr>
+<tr>
+<td>FTS5</td>
+<td>SQLite 全文搜索引擎，关键词匹配，非语义</td>
+</tr>
+<tr>
+<td>语义检索</td>
+<td>基于向量嵌入的相似度搜索，"手表"能匹配"腕表"</td>
+</tr>
+<tr>
+<td>上下文围栏</td>
+<td>Supermemory 的机制，剥离已召回记忆防止递归污染</td>
+</tr>
+<tr>
+<td>记忆插件互斥</td>
+<td>同一时间只能激活一个第三方记忆提供者</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">🔍 借鉴学习进化点</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>第三层记忆激活</td>
+<td>当前 provider 为空，未启用任何外置记忆插件</td>
+<td>Hindsight 本地模式零成本，可直接启用提升语义检索能力</td>
+<td>评估 Hindsight 本地部署可行性，执行 hermes memory setup → hindsight → local</td>
+</tr>
+<tr>
+<td>2</td>
+<td>session_search 技巧</td>
+<td>FTS5 默认 AND 逻辑，用 OR 扩大检索范围</td>
+<td>更新 memory-system skill 的搜索指南</td>
+<td>patch memory-system skill，加入 FTS5 OR 搜索技巧</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Honcho 用户建模</td>
+<td>跨会话持续更新用户画像，不只记内容还理解决策风格</td>
+<td>双机共享用户画像可能提升协作一致性</td>
+<td>调研 Honcho 自部署 + Ollama 方案，评估是否适合 ubot+jbot 共享</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Obsidian 自动注入</td>
+<td>当前第四层不自动注入上下文，导致知识库利用率低</td>
+<td>可设计 session-boot 时自动读取最近 wiki 笔记</td>
+<td>评估在 session-boot skill 中加入 Obsidian 最近笔记预读</td>
+</tr>
+<tr>
+<td>5</td>
+<td>冻结快照认知</td>
+<td>会话内写 memory 不立即生效，可能导致"写完以为生效"的误判</td>
+<td>已知机制，但应在 memory-system skill 中显式标注</td>
+<td>patch memory-system skill 加入冻结快照说明</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Mem0 语义检索</td>
+<td>"手表App"能匹配"腕表项目"，解决 FTS5 关键词短板</td>
+<td>作为 session_search 的语义补充层</td>
+<td>评估 Mem0 免费额度（1万写入/月）是否够用</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_8">当前状态</h3>
+<ul>
+<li>第一层（MEMORY.md）：1755/4000 字符，使用率 44%</li>
+<li>第一层（USER.md）：1054/1500 字符，使用率 70%</li>
+<li>第二层（state.db）：存在，FTS5 正常</li>
+<li>第三层：未激活（provider 为空）</li>
+<li>第四层：Obsidian skill 存在但无自动注入</li>
+<li>Wiki KB：wiki-knowledge-base skill 已部署</li>
+</ul>
+<h3 id="_9">改进方案</h3>
+<ol>
+<li><strong>激活第三层</strong>：优先评估 Hindsight 本地模式（零成本、自部署门槛最低）</li>
+<li><strong>session-boot 增强</strong>：启动时预读 Obsidian 最近笔记摘要</li>
+<li><strong>FTS5 搜索优化</strong>：在 skill 中推广 OR 语法和关键词变体搜索</li>
+</ol>
+<h3 id="_10">已执行操作</h3>
+<ul>
+<li>✅ 分析完成，三档分类已出</li>
+<li>✅ 双格式笔记生成中</li>
+<li>⏳ memory-system skill patch 待执行</li>
+<li>⏳ 第三层插件评估待执行</li>
+</ul>
+<h2 id="_11">三档分类决策</h2>
+<table>
+<thead>
+<tr>
+<th>档次</th>
+<th>项目</th>
+<th>决策理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① 立刻进化</td>
+<td>patch memory-system skill 加入 FTS5 OR 搜索技巧和冻结快照说明</td>
+<td>零成本，立刻改善搜索行为</td>
+</tr>
+<tr>
+<td>① 立刻进化</td>
+<td>笔记生成并更新 index.md</td>
+<td>流程闭环</td>
+</tr>
+<tr>
+<td>② 有价值</td>
+<td>评估 Hindsight 本地部署</td>
+<td>需要研究配置细节和资源占用，不是一步能完成的</td>
+</tr>
+<tr>
+<td>② 有价值</td>
+<td>评估 Mem0 免费额度可行性</td>
+<td>需要实测写入量</td>
+</tr>
+<tr>
+<td>③ 知识库</td>
+<td>四层架构细节、插件对比表</td>
+<td>已记录在笔记中，需要时查阅</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_12">相关笔记</h2>
+<ul>
+<li><a href="2026-04-02-Agent Skills才是关键抽象层.md">Agent Skills才是关键抽象层</a></li>
+<li><a href="2026-04-03-Claude-Code四层记忆架构.md">Claude-Code四层记忆架构</a></li>
+<li><a href="2026-04-04-Claude-Code-324-prompts-analysis.md">Claude-Code-324-prompts-analysis</a></li>
+<li><a href="2026-04-05-SelfImproving-Agent-CLI-infra.md">SelfImproving-Agent-CLI-infra</a></li>
+<li><a href="2026-04-05-spatial-intelligence-agent-action.md">spatial-intelligence-agent-action</a></li>
+<li><a href="2026-04-07-agent-loop-core-scheduling.md">agent-loop-core-scheduling</a></li>
+<li><a href="2026-04-07-email-not-revival-agent-needs-it.md">email-not-revival-agent-needs-it</a></li>
+<li><a href="2026-04-07-hermes-agent-deep-dive-evolution-roadmap.md">hermes-agent-deep-dive-evolution-roadmap</a></li>
+<li><a href="2026-04-08-claude-code-tool-execution-orchestration.md">claude-code-tool-execution-orchestration</a></li>
+<li><a href="2026-04-09-SKILL-md-ai-agent-skills.md">SKILL-md-ai-agent-skills</a></li>
+<li><a href="2026-04-11-gbrain-hybrid-search-proposal.md">gbrain-hybrid-search-proposal</a></li>
+<li><a href="2026-04-13-hermes-agent-vs-openclaw.md">hermes-agent-vs-openclaw</a></li>
+<li><a href="2026-04-14-Cloudflare-EmDash-AI-Agent-CMS.md">Cloudflare-EmDash-AI-Agent-CMS</a></li>
+<li><a href="2026-04-18-Hermes-Agent-v0.10.0-release-analysis.md">Hermes-Agent-v0.10.0-release-analysis</a></li>
+<li><a href="2026-04-20-Claude-Opus4.7-Claude-Code-最佳实践.md">Claude-Opus4.7-Claude-Code-最佳实践</a></li>
+<li><a href="2026-04-23-深入源码-Hermes-Agent-如何实现Self-Improving.md">深入源码-Hermes-Agent-如何实现Self-Improving</a></li>
+<li><a href="2026-04-23-深入源码Hermes-Agent-Self-Improving.md">深入源码Hermes-Agent-Self-Improving</a></li>
+<li><a href="2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md">MCP协议生态与Agentic-RAG架构深度学习</a></li>
+<li><a href="2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="2026-04-30-Meta-Hyperagents自适应Agent框架.md">Meta-Hyperagents自适应Agent框架</a></li>
+<li><a href="2026-05-01-AI-Agent记忆架构前沿学习.md">AI-Agent记忆架构前沿学习</a></li>
+<li><a href="2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="2026-05-03-AI-Agent-Protocol-Ecosystem-2026-学习.md">AI-Agent-Protocol-Ecosystem-2026-学习</a></li>
+<li><a href="2026-05-03-ai-agent-resources-ecosystem.md">ai-agent-resources-ecosystem</a></li>
+<li><a href="2026-05-03-智能教育-自适应评估.md">智能教育-自适应评估</a></li>
+<li><a href="2026-05-04-Agent协议生态2026最新进展-MCP-A2A深度融合.md">Agent协议生态2026最新进展-MCP-A2A深度融合</a></li>
+<li><a href="2026-05-04-个人Agent自进化五步闭环.md">个人Agent自进化五步闭环</a></li>
+<li><a href="2026-05-05-tradingagents-deep-analysis.md">tradingagents-deep-analysis</a></li>
+<li><a href="2026-05-07-SOUL-md-Agent-Partner-Transformation.md">SOUL-md-Agent-Partner-Transformation</a></li>
+<li><a href="2026-05-08-AI-Agent控制流.md">AI-Agent控制流</a></li>
+<li><a href="2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="2026-05-11-具身智能2026-世界模型VLA车企入局.md">具身智能2026-世界模型VLA车企入局</a></li>
+<li><a href="2026-05-11-具身智能2026从实验到实战.md">具身智能2026从实验到实战</a></li>
+<li><a href="2026-05-13-Claude-3D-CAD-创意连接器深度分析.md">Claude-3D-CAD-创意连接器深度分析</a></li>
+<li><a href="2026-05-14-Agent工程4月实践-不要一上来就做Agent.md">Agent工程4月实践-不要一上来就做Agent</a></li>
+<li><a href="2026-05-14-HTML-Anything-Agent驱动HTML编辑器.md">HTML-Anything-Agent驱动HTML编辑器</a></li>
+<li><a href="2026-05-14-MATLAB-Agentic-Toolkit分析.md">MATLAB-Agentic-Toolkit分析</a></li>
+<li><a href="2026-05-14-手撸Agent-ReAct-Loop从零实现.md">手撸Agent-ReAct-Loop从零实现</a></li>
+<li><a href="2026-05-15-上下文才是Agent的命门-QClaw上下文竞争论.md">上下文才是Agent的命门-QClaw上下文竞争论</a></li>
+<li><a href="2026-05-16-OpenHuman-记忆树AI智能体-i龙虾.md">OpenHuman-记忆树AI智能体-i龙虾</a></li>
+<li><a href="2026-05-16-PicoClaw-超轻量AI-Agent框架.md">PicoClaw-超轻量AI-Agent框架</a></li>
+<li><a href="2026-05-17-具身智能前沿学习.md">具身智能前沿学习</a></li>
+<li><a href="2026-05-18-Agent元认知-LLM不确定性感知.md">Agent元认知-LLM不确定性感知</a></li>
+<li><a href="2026-05-18-SmallRustHermes-Agent自我进化三个闭环.md">SmallRustHermes-Agent自我进化三个闭环</a></li>
+<li><a href="2026-05-18-agent-memory-systems-comparison.md">agent-memory-systems-comparison</a></li>
+<li><a href="2026-05-18-具身智能机器人2025十大趋势.md">具身智能机器人2025十大趋势</a></li>
+<li><a href="2026-05-21-Qwen3.7-Agent Frontier.md">Qwen3.7-Agent Frontier</a></li>
+<li><a href="2026-05-21-react-agent-llm-agentic-training-research.md">react-agent-llm-agentic-training-research</a></li>
+<li><a href="2026-05-22-Agent自我进化与学习系统-深度研究.md">Agent自我进化与学习系统-深度研究</a></li>
+<li><a href="2026-05-22-OpenClaw日常聊天黑化Agent-ULSPB安全研究.md">OpenClaw日常聊天黑化Agent-ULSPB安全研究</a></li>
+<li><a href="20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化.md">20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化</a></li>
+<li><a href="ai-agent/2026-04-15-不管用ClaudeCode还是OpenClaw先记住这12个知识.md">不管用ClaudeCode还是OpenClaw先记住这12个知识</a></li>
+<li><a href="ai-agent/2026-05-04-智能教育-personalized-learning.md">智能教育-personalized-learning</a></li>
+<li><a href="ai-agent/2026-05-11-0元打通Claude-Codex-OpenCode免费模型6入口.md">0元打通Claude-Codex-OpenCode免费模型6入口</a></li>
+<li><a href="ai-agent/2026-05-13-HuggingFace-春季生态-Agentic-World-Modeling.md">HuggingFace-春季生态-Agentic-World-Modeling</a></li>
+<li><a href="ai-agent/2026-05-15-具身智能量产关键年.md">具身智能量产关键年</a></li>
+<li><a href="anthropic-managed-agents-dreaming-outcomes.md">anthropic-managed-agents-dreaming-outcomes</a></li>
+<li><a href="explore/2026-05-05-智能教育-AI-tutoring.md">智能教育-AI-tutoring</a></li>
+<li><a href="explore/2026-05-06-ai-agent-protocol-stack-2026.md">ai-agent-protocol-stack-2026</a></li>
+<li><a href="explore/2026-05-08-ai-agent-protocol-wars-a2a-mcp.md">ai-agent-protocol-wars-a2a-mcp</a></li>
+<li><a href="explore/2026-05-08-ai-coding-agent-competition-landscape.md">ai-coding-agent-competition-landscape</a></li>
+<li><a href="explore/2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="explore/2026-05-09-ai-agent-protocols-mcp-a2a-acp.md">ai-agent-protocols-mcp-a2a-acp</a></li>
+<li><a href="explore/2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="explore/2026-05-10-mcp-a2a-agent-ecosystem.md">mcp-a2a-agent-ecosystem</a></li>
+<li><a href="explore/2026-05-11-ai-agent-protocols-mcp-a2a.md">ai-agent-protocols-mcp-a2a</a></li>
+<li><a href="explore/2026-05-13-AI-Agent架构-MCP-A2A协议栈.md">AI-Agent架构-MCP-A2A协议栈</a></li>
+<li><a href="explore/2026-05-13-Agentic-SOC-安全自动化的范式转变.md">Agentic-SOC-安全自动化的范式转变</a></li>
+<li><a href="explore/2026-05-14-Agentic-Engineering-从Vibe-Coding到Agent工程.md">Agentic-Engineering-从Vibe-Coding到Agent工程</a></li>
+<li><a href="explore/2026-05-15-ai-agent-architecture.md">ai-agent-architecture</a></li>
+<li><a href="explore/2026-05-15-ai开源生态-huggingface春季.md">ai开源生态-huggingface春季</a></li>
+<li><a href="explore/2026-05-16-AI-Agent-协议生态-深度整合学习.md">AI-Agent-协议生态-深度整合学习</a></li>
+<li><a href="explore/2026-05-16-Agentic-AI元年-智能体全面落地趋势.md">Agentic-AI元年-智能体全面落地趋势</a></li>
+<li><a href="explore/2026-05-16-HuggingFace-Spring2026-开源生态报告.md">HuggingFace-Spring2026-开源生态报告</a></li>
+<li><a href="explore/2026-05-16-qclaw-上下文四层模型.md">qclaw-上下文四层模型</a></li>
+<li><a href="explore/2026-05-16-具身智能-从造产品到抢落地六大趋势.md">具身智能-从造产品到抢落地六大趋势</a></li>
+<li><a href="explore/2026-05-16-竞品动态-Agentic-Engineering范式转变.md">竞品动态-Agentic-Engineering范式转变</a></li>
+<li><a href="explore/2026-05-17-agent-collaboration-self-evolution.md">agent-collaboration-self-evolution</a></li>
+<li><a href="explore/2026-05-17-具身智能2026数据规模化元年.md">具身智能2026数据规模化元年</a></li>
+<li><a href="explore/2026-05-18-RD-Agent-Quant-multi-agent-quant-framework-deep-dive.md">RD-Agent-Quant-multi-agent-quant-framework-deep-dive</a></li>
+<li><a href="explore/2026-05-18-agent-self-evolution-quant-trading.md">agent-self-evolution-quant-trading</a></li>
+<li><a href="explore/2026-05-18-多模态Agent框架对比2026-深度探索.md">多模态Agent框架对比2026-深度探索</a></li>
+<li><a href="explore/2026-05-19-IBM2026多智能体趋势.md">IBM2026多智能体趋势</a></li>
+<li><a href="explore/2026-05-19-agent-self-evolution-reflexion-metacognition.md">agent-self-evolution-reflexion-metacognition</a></li>
+<li><a href="explore/2026-05-20-AgentSelfEvolution-LearningSystem-深度探索.md">AgentSelfEvolution-LearningSystem-深度探索</a></li>
+<li><a href="explore/2026-05-20-Hermes-Agent源码解析-越用越聪明的秘密.md">Hermes-Agent源码解析-越用越聪明的秘密</a></li>
+<li><a href="explore/2026-05-20-TencentDB-Agent-Memory架构深度分析与进化建议.md">TencentDB-Agent-Memory架构深度分析与进化建议</a></li>
+<li><a href="explore/2026-05-21-Agent自我进化-Reflexion-ReAct-元认知框架.md">Agent自我进化-Reflexion-ReAct-元认知框架</a></li>
+<li><a href="explore/2026-05-21-开源具身智能项目横评-LeRobot-OpenVLA-RT2.md">开源具身智能项目横评-LeRobot-OpenVLA-RT2</a></li>
+<li><a href="explore/2026-05-22-GROW开放世界VLM-Agent强化学习框架.md">GROW开放世界VLM-Agent强化学习框架</a></li>
+<li><a href="explore/agent-capability-boundary-detection-20260518.md">agent-capability-boundary-detection-20260518</a></li>
+<li><a href="explore/agent-drift-stability-degradation-20260518.md">agent-drift-stability-degradation-20260518</a></li>
+<li><a href="explore/agent-stability-degradation-drift-detection.md">agent-stability-degradation-drift-detection</a></li>
+<li><a href="explore/tradingagents-cn-deep-20260520.md">tradingagents-cn-deep-20260520</a></li>
+<li><a href="google-a2a-protocol-multi-agent-2026-05-19.md">google-a2a-protocol-multi-agent-2026-05-19</a></li>
+<li><a href="hermes-agent-arxiv-search.md">hermes-agent-arxiv-search</a></li>
+<li><a href="hermes-agent-源码拆解自我进化机制.md">hermes-agent-源码拆解自我进化机制</a></li>
+<li><a href="hermes-agent/2026-04-19-AI幻觉案例分析-Hermes-Agent不实报道.md">AI幻觉案例分析-Hermes-Agent不实报道</a></li>
+<li><a href="hermes-agent/2026-05-05-具身智能机器人2025年终盘点.md">具身智能机器人2025年终盘点</a></li>
+<li><a href="hermes-agent/2026-05-09-具身智能机器人2025-商业化元年.md">具身智能机器人2025-商业化元年</a></li>
+<li><a href="hermes-agent/2026-05-10-claude-learning-roadmap.md">claude-learning-roadmap</a></li>
+<li><a href="hermes-agent/2026-05-16-HTML的不合理有效性-Claude-Code-团队.md">HTML的不合理有效性-Claude-Code-团队</a></li>
+<li><a href="hermes-agent/GenericAgent.md">GenericAgent</a></li>
+<li><a href="llm-wiki-gbrain-agent-evolution_33aa818c.md">llm-wiki-gbrain-agent-evolution_33aa818c</a></li>
+<li><a href="skills-autonomous-ai-agents.md">skills-autonomous-ai-agents</a></li>
+<li><a href="竞品吸收笔记_GenericAgent.md">竞品吸收笔记_GenericAgent</a></li>
+</ul>
+</body>
+</html>

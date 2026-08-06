@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent在线KV-Cache压缩-代理查询选型实证</title>
+
+<meta property="og:title" content="Agent在线KV-Cache压缩-代理查询选型实证" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-kv-cache">Agent 在线 KV Cache 压缩：代理查询选型实证研究</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2608.00902<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2608.00902<br />
+<strong>作者</strong>：Yujian Liu, Jiabao Ji, Li An, Rohit Jain, Gungor Polatkan, Siyu Zhu, Shiyu Chang<br />
+<strong>记录日期</strong>：2026-08-04</p>
+</blockquote>
+<p><strong>标签</strong>：#KV-Cache压缩 #LLM-Agent #推理优化 #token-eviction #attention-matching</p>
+<hr />
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11-agent-kv-cache">1.1 核心问题：Agent 场景下 KV Cache 为何需要"在线"压缩</h3>
+<p>LLM Agent（代码编写、深度研究、网页浏览、个人助手）的核心能力来自持续维护上下文——推理步骤、工具调用、环境反馈不断追加。但这造成了一个直接的推理瓶颈：<strong>KV Cache 随轨迹增长而膨胀</strong>，成为显存占用的主要来源和每步解码成本的决定因素。</p>
+<blockquote>
+<p><strong>静态压缩 vs 在线压缩的本质区别</strong>：<br />
+- 静态：完整上下文在生成前可用，可离线采样真实查询信号做 query-aware 压缩<br />
+- 在线：信息逐步到达，<strong>压缩时未来相关性未知</strong>，且<strong>压缩必须在推理路径内完成</strong>（延迟预算极紧）</p>
+</blockquote>
+<p>论文聚焦两个关键约束：<br />
+1. <strong>未来相关性不可观测</strong>：当某个 turn 被压缩时，若干 turn 之后才需要的信息可能与当前 turn 或紧接的下一个 turn 关注的内容完全不同<br />
+2. <strong>延迟预算极紧</strong>：额外 rollout、长合成续写、梯度优化在离线可行，但在 Agent 推理路径内会叠加严重延迟</p>
+<h3 id="12">1.2 方法论：两大压缩族 × 三种代理查询源</h3>
+<p>论文不提出新算法，而是系统隔离<strong>压缩器放入 Agent 循环后的哪些选择最重要</strong>。</p>
+<p><strong>两大压缩族</strong>：</p>
+<ul>
+<li><strong>Token Eviction (TE)</strong> — 纯选择方法：用代理查询 Q 对每个缓存位置打分（root-mean-square attention mass），保留得分最高的 m 个位置的<strong>原始 K/V</strong>，不做任何修改</li>
+<li><strong>Attention Matching (AM)</strong> — 同样的 key 选择，但额外拟合加性偏置 β 和重建值 V_C，使压缩后注意力输出尽量匹配全缓存的注意力输出（两阶段优化：先拟合 β 使选中 key 吸收未归一化注意力质量，再拟合 V_C 匹配注意力输出）</li>
+</ul>
+<blockquote>
+<p><strong>核心差异</strong>：TE 承诺保留原始 KV 不变（纯选择），AM 保留选中 key 但允许调整注意力偏置和值（拟合优化）</p>
+</blockquote>
+<p><strong>三种代理查询源</strong>（从便宜到贵）：</p>
+<ul>
+<li><strong>❶ Boundary queries（当前轮）</strong> — 提取结构性结束/过渡 token 的 query 向量（如 Qwen3.5 的 <code>&lt;|im_end|&gt;</code> token），零额外前向传播，极低成本</li>
+<li><strong>❷ Repeat-prefill queries（当前轮）</strong> — 受 KVzip 启发，在已完成内容后追加重建提示，teacher-force 模型重复刚完成的 turn，从重复内容的 query 向量提取代理信号</li>
+<li><strong>❸ Future-generation queries（延迟 k 轮）</strong> — 推迟压缩 k 轮，用 Agent 自身后续轮次生成时产生的真实 query 向量作为代理信号</li>
+</ul>
+<h3 id="13">1.3 实验设置</h3>
+<ul>
+<li><strong>基准</strong>：BrowseComp-Plus（固定语料深度搜索，答案可验证）+ WideSearch（开放网络广度搜索，原子事实收集组织成表格）</li>
+<li><strong>模型</strong>：Qwen3.5 和 Gemma-4（均为 hybrid attention 模型，只压缩 full-attention 层）</li>
+<li><strong>规模</strong>：4B（主实验）→ 27B/31B（服务效率分析）</li>
+<li><strong>评判</strong>：Qwen3.5-397B judge 模型</li>
+<li><strong>压缩比</strong>：主实验固定 0.2（每个可压缩段缩减到原始长度的 20%）</li>
+</ul>
+<h3 id="14">1.4 关键实验结果</h3>
+<p><strong>Table 1 核心发现（压缩比 0.2，4B 模型）</strong>：</p>
+<p>代理查询选型对性能影响巨大：<br />
+- 无压缩基线 BrowseComp-Plus：Qwen3.5-4B 46.00% / Gemma-4-E4B 33.00%<br />
+- <strong>立即压缩（repeat-prefill）严重掉分</strong>：Qwen3.5-4B 32.75%（TE）/ 31.25%（AM），Gemma-4-E4B 仅 9.00%（TE）/ 11.25%（AM）<br />
+- <strong>Boundary queries 大幅挽回</strong>：Qwen3.5-4B 从 32.75% → 45.25%（TE-boundary），接近无压缩<br />
+- <strong>延迟 1 轮的未来查询效果最佳</strong>：四个模型×基准组合中，延迟查询在三个组合中优于所有当前轮代理</p>
+<blockquote>
+<p><strong>TE 对不完美代理更鲁棒</strong>：尽管 AM 设计更精巧（拟合 β 和 V_C），TE 在代理质量下降时性能衰减更小。论文认为原因在于 TE 的纯选择机制对代理噪声不敏感——选错位置也比"选对位置但拟合出错误值"更安全。</p>
+</blockquote>
+<p><strong>更多代理源 ≠ 更好</strong>：<br />
+- 对 TE，三种代理源组合（future + boundary + tool-response）与单种性能差距 ≤2 分<br />
+- 对 AM，添加 repeat-prefill 和 tool-response 作为优化目标无可靠增益<br />
+- <strong>结论：只要 future assistant generation 可用，TE 不需要额外代理源</strong></p>
+<p><strong>压缩改变 Agent 行为</strong>（重大发现）：<br />
+- Qwen3.5-4B 在压缩下显著延长轨迹：BrowseComp-Plus 中位数从 20 轮 → 30-39 轮<br />
+- Gemma-4-E4B 轨迹长度基本不变<br />
+- 搜索查询重复率上升：TE-boundary 的 nearest-neighbor 相似度从 0.72 → 0.78，重复率从 11.7% → 21.3%</p>
+<blockquote>
+<p><strong>行为补偿假说</strong>：Qwen3.5-4B 通过额外搜索和重复查询来补偿被压缩弱化的上下文，从环境中"找回"信息。这意味着压缩后保持的准确率部分来自行为适应，而非纯粹的信息保真。</p>
+</blockquote>
+<p><strong>大模型服务效率（Table 2，BrowseComp-Plus，27B/31B）</strong>：<br />
+- Qwen3.5-27B：峰值 KV 从 612.9K → ~175K tokens（3.5× 压缩），批处理从 8 → 32，吞吐 217 → 918（AM）/ 717（TE）queries/hour（4.2×/3.3× 提升）<br />
+- Gemma-4-31B：峰值 KV 从 272.1K → 99.6K（AM）/ 121.3K（TE），批处理 8 → 16，吞吐提升 1.7×/1.5×<br />
+- 两个大模型上 TE 和 AM 的准确率几乎无损（Qwen3.5-27B：无压缩 52.50% vs TE 52.00% vs AM 51.00%）</p>
+<h3 id="15">1.5 结论与局限性</h3>
+<p><strong>核心结论</strong>：代理查询选择是实用在线 KV 压缩的核心设计选择。延迟使用 Agent 自身未来生成查询比任何当前轮代理都更有效，而简单 TE 在不完美代理下比复杂 AM 更鲁棒。</p>
+<p><strong>三大局限性</strong>：<br />
+1. 仅覆盖搜索/文档阅读类 Agent 任务，未覆盖代码编辑、GUI 控制、状态变更任务（未来相关性结构不同）<br />
+2. 仅研究低成本在线代理源，未探索额外 rollout / 学习型压缩器 / 梯度优化（更大延迟预算下可能更强）<br />
+3. 评估固定压缩比和延迟窗口，未研究自适应策略（根据内存压力、轮次长度、工具类型、不确定性动态选择压缩时机和力度）</p>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-token-eviction-vs-attention-matching">2.1 Token Eviction vs Attention Matching 的理论背景</h3>
+<p>TE 属于 query-aware eviction 方法族，代表性工作包括 SnapKV (Li et al., 2024) 和 PyramidKV。核心思想是用注意力质量（attention mass）作为 token 重要性的代理指标。AM 则源于 KVzip (Zweiger et al., 2026) 和 StreamingLLM 的注意力偏置优化思路——不是简单丢弃，而是重建一个"等效"的短缓存。</p>
+<h3 id="22-hybrid-attention">2.2 Hybrid Attention 模型架构</h3>
+<p>Qwen3.5 和 Gemma-4 都是 hybrid attention 模型——部分层使用 full attention，部分层使用 sliding window attention 或 recurrent 结构。论文只压缩 full-attention 层，因为非 full-attention 层（如 Mamba-style state）本身就有固定大小的状态，不需要压缩。这与 Hermes Agent 生态中关注的 MLA（Multi-head Latent Attention）和 MHA→MLA 迁移方案直接相关。</p>
+<h3 id="23-browsecomp-plus-widesearch">2.3 BrowseComp-Plus 与 WideSearch 基准</h3>
+<p>BrowseComp-Plus 源自 Anthropic 的 BrowseComp 深度搜索评估，要求 Agent 迭代检索固定语料库获取证据，答案可验证。WideSearch 来自 Cohere/Wong et al.，要求广泛收集原子事实并组织成表格，衡量信息完整性（item-level F1）。两个基准互补：一个测深度推理，一个测广度覆盖。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-kv">3.1 在线 KV 压缩设计空间全景</h3>
+<pre><code>┌─────────────────────────────────────────────────────┐
+│            在线 KV Cache 压缩设计空间                 │
+├─────────────────────────────────────────────────────┤
+│                                                     │
+│  维度1: 压缩算法族                                   │
+│  ├── TE (Token Eviction) ─── 纯选择, 保原始KV        │
+│  └── AM (Attention Matching) ─ 选key + 拟合β+V_C    │
+│                                                     │
+│  维度2: 代理查询源 (Proxy Query)                     │
+│  ├── 当前轮 (delay=0)                               │
+│  │   ├── ❶ Boundary ── 结构token的query向量          │
+│  │   └── ❷ Repeat-prefill ── teacher-force重复       │
+│  └── 未来轮 (delay=k)                               │
+│      └── ❸ Future generation ── Agent自身后续查询     │
+│                                                     │
+│  维度3: 压缩比 (compaction ratio)                    │
+│  ├── 0.1 (激进, 10x压缩)                            │
+│  ├── 0.2 (推荐, 5x压缩, 精度基本无损)                │
+│  └── 0.4 (保守, 2.5x压缩)                           │
+│                                                     │
+│  维度4: 延迟窗口 (delay window)                      │
+│  ├── 0 (立即压缩, 信息丢失风险高)                    │
+│  ├── 1 (推荐, 1轮延迟, 精度大幅恢复)                 │
+│  ├── 3 (更多上下文, 边际递减)                        │
+│  └── 5 (最完整, 但显存峰值更高)                      │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="32-te-vs-am">3.2 TE vs AM 决策框架</h3>
+<ul>
+<li><strong>TE 更优场景</strong>：代理质量不可靠 / 在线延迟敏感 / 模型行为补偿能力强 / 跨越多种任务需要鲁棒性</li>
+<li><strong>AM 更优场景</strong>：代理查询质量高（有真实未来查询）/ 离线压缩 / 精确注意力匹配至关重要</li>
+<li><strong>通用推荐</strong>：delay=1 future-generation + TE，压缩比 0.2</li>
+</ul>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1agent">趋势1：Agent 推理的"行为补偿"效应将成为评估新维度</h3>
+<p>论文揭示压缩不只影响注意力近似质量，还<strong>改变了 Agent 与环境的交互模式</strong>（更多搜索、更多重复查询）。这意味着评估压缩方法不能只看准确率和内存节省，还必须看<strong>轨迹长度变化、工具调用频率变化、查询重复率变化</strong>。预计未来 Agent 压缩基准会纳入行为指标。</p>
+<p>依据：Table 3 明确显示 TE-boundary 的搜索查询重复率从 11.7% → 21.3%，Qwen3.5 轨迹长度翻倍。</p>
+<h3 id="2delayed-compaction">趋势2：延迟压缩（delayed compaction）将成为在线压缩标配</h3>
+<p>当前轮代理（boundary / repeat-prefill）无法预见未来信息需求，延迟 1 轮即可大幅恢复精度。这个"用未来 1 轮的真实查询指导压缩"的思路简单而有效，预计会成为在线 KV 压缩的默认配置。</p>
+<p>依据：四个模型×基准组合中三个组合，delay=1 优于所有 delay=0 方案。</p>
+<h3 id="3-te-am">趋势3：简单选择 &gt; 复杂拟合，在线场景下 TE 将超越 AM</h3>
+<p>AM 的拟合优化（β 和 V_C）在静态离线场景下优势明显，但在在线场景中，代理噪声使拟合变得不稳定。TE 的纯选择机制天然抗噪。预计在线 Agent 压缩的主流方案会趋向 TE。</p>
+<p>依据：TE 在所有四个组合中与 AM 性能差距 ≤2 分，且更稳定。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-kvarn-kv-cache">5.1 与 KVarN-KV-Cache 量化后端的关联</h3>
+<p>KVarN 探索的是 KV Cache 的<strong>量化压缩</strong>（降低每个 K/V 的精度），而本文探索的是<strong>结构压缩</strong>（减少 K/V 的数量）。两者正交互补——可以同时用量化降精度 + eviction 降数量，实现双重压缩。KVarN 的量化误差和 TE 的信息丢失需要联合评估。</p>
+<h3 id="52">5.2 与"压缩模型保真度不等于安全"的关联</h3>
+<p>前序笔记（2026-08-03）指出压缩模型的保真度提升不等于安全性提升。本文提供了类似洞察：<strong>压缩保真度 ≠ Agent 性能</strong>——即使注意力输出近似匹配（AM 的目标），Agent 行为仍可能因信息微弱丢失而退化（更多搜索、更长轨迹）。评估压缩效果必须在端到端 Agent 任务上进行，而非仅看注意力重建误差。</p>
+<h3 id="53-memdecay-kara">5.3 与 MemDecay / Kara 区域感知压缩的关联</h3>
+<p>MemDecay (2607.10582) 和 Kara (2607.01237) 都探索区域感知的 KV Cache 管理——对不同语义区域（system prompt / scratchpad / tool response）施加不同的保留策略。本文的 boundary queries 实际上就是一种隐式的区域感知——利用结构 token（<code>&lt;|im_end|&gt;</code>）的注意力模式来识别重要信息区域，与 MemDecay 的 region base priority 异曲同工。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Agent trajectories differ from static settings: an agent does not begin with a fixed document to compress; it gradually constructs its context through interactions with an environment.」— 点明在线压缩与静态压缩的本质差异</p>
+<p>「TE is surprisingly robust to imperfect proxies and remains competitive with AM across proxy, delay, and compaction-budget choices.」— 简单方法在线上场景中超越复杂方法</p>
+<p>「Online KV compaction should be evaluated not only by model-side memory savings and final accuracy, but also by how it changes the agent's interaction pattern with the environment.」— 呼吁新的评估范式</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>P0 借鉴点 — Hermes Agent 长会话 KV 管理</strong>：Hermes Agent 的长会话（论文精读、多轮搜索、cron 任务链）同样面临 KV Cache 膨胀。可借鉴论文的 delay=1 + TE + ratio=0.2 配置，在 Gateway 层面实现 turn-level KV eviction，预期降低 3-5× 峰值显存</li>
+<li><strong>P1 借鉴点 — Jetson 边缘部署</strong>：Jetson Orin Nano 16GB 显存极为有限，长 Agent 轨迹容易 OOM。TE 纯选择方法零额外计算，特别适合边缘场景。boundary queries 方案可直接从模型中间层提取 query 向量</li>
+<li><strong>P1 借鉴点 — 行为补偿检测</strong>：在 Hermes cron 监控中加入 Agent 行为指标（轨迹轮次、工具调用重复率），当检测到压缩导致的补偿性行为时发出预警</li>
+<li><strong>P2 借鉴点 — 自适应压缩策略</strong>：论文 Limitations 中提到的"根据内存压力、轮次长度动态选择压缩时机"是未来方向，可在 Hermes Gateway 中实现基于内存水位的自适应压缩触发器</li>
+</ul>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-04-本地模型部署-oMLX_SSD-KV-Cache.md">本地模型部署-oMLX_SSD-KV-Cache</a> — SSD offload 方案，与本篇 token eviction 路径互补</li>
+<li><a href="./2026-08-04-推测解码2026-SSD并行化与EAGLE3实战.md">推测解码2026-SSD并行化与EAGLE3实战</a> — 推测解码与 KV 管理的协同优化</li>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara-KVCache压缩</a> — KV Cache 压缩方法系</li>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KVCache量化压缩-TurboQuant-RotorQuant</a> — 量化路线的 KV 压缩</li>
+<li>SSD-KV-Cache-oMLX-本地部署前沿（~/explore）— KV Cache 基础设施化趋势深度分析</li>
+</ul>
+</body>
+</html>

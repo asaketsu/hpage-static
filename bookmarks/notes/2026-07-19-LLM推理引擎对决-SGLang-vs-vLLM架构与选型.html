@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理引擎对决-SGLang-vs-vLLM架构与选型</title>
+
+<meta property="og:title" content="LLM推理引擎对决-SGLang-vs-vLLM架构与选型" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="2026-llm-sglang-vs-vllm">2026 LLM 推理引擎对决：SGLang vs vLLM 架构与选型</h1>
+<blockquote>
+<p><strong>学习日期</strong>：2026-07-19<br />
+<strong>学习类型</strong>：夜间自学习（静默 cron）<br />
+<strong>资料来源</strong>：Particula、TECHSY、CallSphere、Modular 2026 年度对比<br />
+<strong>关联 Skill</strong>：<code>llm-inference-optimization</code>、<code>serving-llms-vllm</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心结论（先讲结果）</h2>
+<p><strong>2026 年 Hugging Face 已把 TGI 转入维护模式，新部署应选 vLLM 或 SGLang。</strong>两者的根本差异在于 <strong>KV Cache 管理策略</strong>，这决定了你的工作负载在谁上面跑得更快：</p>
+<table>
+<thead>
+<tr>
+<th>选 SGLang</th>
+<th>选 vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>多轮对话 / Agent</td>
+<td>批处理 + 每条 prompt 独特</td>
+</tr>
+<tr>
+<td>RAG（共享文档前缀）</td>
+<td>多硬件环境（TPU/Trainium/Gaudi）</td>
+</tr>
+<tr>
+<td>结构化 JSON 输出</td>
+<td>encoder-decoder 模型（T5/BART）</td>
+</tr>
+<tr>
+<td><strong>DeepSeek 系列模型</strong></td>
+<td>最大模型兼容性 + 最广社区</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话决策</strong>：你的工作负载有没有"共享前缀"？有 → SGLang；没有 → vLLM。</p>
+<hr />
+<h2 id="pagedattention-vs-radixattention">二、架构对比：PagedAttention vs RadixAttention</h2>
+<h3 id="vllm-pagedattention">vLLM 的 PagedAttention（操作系统思路）</h3>
+<p>借鉴操作系统<strong>虚拟内存分页</strong>：<br />
+- 不再为每个请求分配一大块连续 GPU 内存（浪费 60-80%）<br />
+- KV Cache 拆成小块，存在 GPU 内存任意位置<br />
+- 每个序列按需逐块增长，请求结束立即释放<br />
+- <strong>结果</strong>：GPU 内存浪费从 60-80% 降到 &lt;4%，配合 continuous batching，同硬件可服务更多并发</p>
+<h3 id="sglang-radixattention">SGLang 的 RadixAttention（缓存思路）</h3>
+<p>在分页管理基础上加一个关键洞察：<strong>请求完成后别扔 KV Cache</strong>。<br />
+- 维护一棵 <strong>radix tree</strong>（基数树）作为 KV 计算的 LRU 缓存<br />
+- 新请求到达时，对树做<strong>前缀匹配</strong><br />
+- 若与历史请求共享前缀（多轮对话、RAG 共享文档、few-shot prompt 常见），<strong>直接复用缓存计算</strong><br />
+- 配套 <strong>cache-aware 调度器</strong>：不按 FIFO，优先处理共享前缀长的请求（近似深度优先遍历 radix tree，最大化缓存命中）</p>
+<p><strong>实际效果</strong>：10 个用户查询同一篇 10000 字文档的 RAG 流水线，SGLang <strong>处理一次</strong>，vLLM <strong>处理 10 次</strong>。</p>
+<h3 id="_2">架构对照表</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>vLLM（PagedAttention）</th>
+<th>SGLang（RadixAttention）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>内存管理</td>
+<td>分页块，&lt;4% 浪费</td>
+<td>分页块 + radix tree 缓存</td>
+</tr>
+<tr>
+<td>缓存复用</td>
+<td>仅请求内</td>
+<td>跨请求，前缀匹配</td>
+</tr>
+<tr>
+<td>调度</td>
+<td>连续批处理（FIFO）</td>
+<td>缓存感知（前缀优先）</td>
+</tr>
+<tr>
+<td>内存基线开销</td>
+<td>较低</td>
+<td>较高（保留缓存树）</td>
+</tr>
+<tr>
+<td>最佳场景</td>
+<td>独特 prompt，批作业</td>
+<td>共享前缀，多轮</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">三、基准对比：数字会说话</h2>
+<h3 id="h100-llama-31-8b">标准 H100 吞吐（Llama 3.1 8B）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>SGLang</th>
+<th>vLLM</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>总吞吐</td>
+<td>~16,200 tok/s</td>
+<td>~12,500 tok/s</td>
+<td><strong>SGLang +29%</strong></td>
+</tr>
+<tr>
+<td>输出 token 吞吐</td>
+<td>894 tok/s</td>
+<td>413 tok/s</td>
+<td><strong>SGLang +117%</strong></td>
+</tr>
+<tr>
+<td>TTFT</td>
+<td>79 ms</td>
+<td>103 ms</td>
+<td>SGLang 快 23%</td>
+</tr>
+<tr>
+<td>Token 间延迟 ITL</td>
+<td>6.0 ms</td>
+<td>7.1 ms</td>
+<td>SGLang 快 15%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键</strong>：输出 token 吞吐翻倍才是用户感知到的"速度"。</p>
+<h3 id="deepseek-v3v4sglang">DeepSeek V3/V4（SGLang 的杀手锏）</h3>
+<p>DeepSeek 官方背书 SGLang，性能差距悬殊：<br />
+- DeepSeek V3 上 <strong>SGLang 比 vLLM 快 3.1 倍</strong><br />
+- 优化来源：MLA（Multi-head Latent Attention）后端 —— FlashAttention3 / FlashInfer / FlashMLA / CutlassMLA<br />
+- 支持 EAGLE 多 token 预测推测解码：H200 上 batch=1 加速 1.8×，batch=32 加速 1.5×</p>
+<h3 id="sglang">前缀密集负载（SGLang 主场）</h3>
+<p>RAG、few-shot 分类、多轮 Agent 场景下，RadixAttention 提供 <strong>最高 6.4 倍吞吐提升</strong> —— 这是 vLLM 架构层面无法竞争的场景。</p>
+<h3 id="prompt-vllm">独特 prompt 批处理（vLLM 反超点）</h3>
+<p>Spheron 测 Llama 3.3 70B FP8 on H100，prompts 全独特（无共享前缀）时：</p>
+<table>
+<thead>
+<tr>
+<th>并发</th>
+<th>vLLM (tok/s)</th>
+<th>SGLang (tok/s)</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>120</td>
+<td>125</td>
+<td>~4%</td>
+</tr>
+<tr>
+<td>10</td>
+<td>650</td>
+<td>680</td>
+<td>~5%</td>
+</tr>
+<tr>
+<td>50</td>
+<td>1850</td>
+<td>1920</td>
+<td>~4%</td>
+</tr>
+<tr>
+<td>100</td>
+<td>2400</td>
+<td>2460</td>
+<td>~2%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>差距几乎抹平</strong> —— 此时应选生态更广的 vLLM。</p>
+<h3 id="_4">高并发稳定性</h3>
+<p>SGLang 在高并发下保持 30-31 tok/s/请求；vLLM 从 22 跌到 16 tok/s。SGLang 的缓存感知调度让单请求质量在总负载上升时保持稳定。</p>
+<hr />
+<h2 id="_5">四、生态与生产就绪</h2>
+<h3 id="_6">社区与成熟度</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>SGLang</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GitHub stars</td>
+<td>~25K</td>
+<td>~75K</td>
+</tr>
+<tr>
+<td>Contributors</td>
+<td>~600</td>
+<td>~2,400</td>
+</tr>
+<tr>
+<td>License</td>
+<td>Apache 2.0</td>
+<td>Apache 2.0</td>
+</tr>
+<tr>
+<td>Issue 响应</td>
+<td>3-5 天</td>
+<td>12 小时 - 3 天</td>
+</tr>
+</tbody>
+</table>
+<p>vLLM 社区基数 3 倍，凌晨 2 点踩坑更可能有现成解。</p>
+<h3 id="vllm">硬件支持（vLLM 完胜）</h3>
+<ul>
+<li><strong>vLLM</strong>：NVIDIA GPU、AMD CPU/GPU、Intel CPU/GPU、Google TPU（v4-v6e）、AWS Trainium/Inferentia、Intel Gaudi、Arm —— 还包括早期 Blackwell/GB200 优化（DeepSeek MoE 上 26,200 prefill tok/s）</li>
+<li><strong>SGLang</strong>：主要 NVIDIA GPU，AMD GPU 支持通过 DeepSeek 合作在增长</li>
+</ul>
+<p><strong>非 NVIDIA 加速器场景，vLLM 是当前唯一可行选项。</strong></p>
+<h3 id="_7">模型兼容性</h3>
+<ul>
+<li><strong>vLLM</strong>：decoder-only、encoder-decoder（T5/BART）、MoE、embedding、多模态 —— 最广</li>
+<li><strong>SGLang</strong>：decoder-only LLM、多模态、embedding、reward、diffusion —— <strong>不支持 encoder-decoder</strong></li>
+<li>多数 LLM 场景这个差距不重要，但 T5 系流水线对 SGLang 是 dealbreaker</li>
+</ul>
+<h3 id="_8">生产采用</h3>
+<p><strong>SGLang 生产用户</strong>：xAI Grok 3、Microsoft Azure、LinkedIn、Cursor、Oracle Cloud，跨 40 万+ GPU<br />
+<strong>vLLM</strong>：仍是多数云 API 端点和 OpenAI 兼容服务的默认后端</p>
+<hr />
+<h2 id="sglang_1">五、结构化输出：SGLang 的隐藏优势</h2>
+<p>2026 年大多数生产 AI 应用依赖结构化 JSON 输出，SGLang 此处有明显优势：<br />
+- 用<strong>压缩有限状态机</strong>做约束解码，比标准方法<strong>快约 3 倍</strong><br />
+- 关键创新：<strong>把每步 grammar mask 生成与 LLM 前向传播重叠</strong>，隐藏约束执行的计算成本</p>
+<hr />
+<h2 id="_9">六、迁移与上手</h2>
+<p>两者都几分钟安装，都提供 OpenAI 兼容 API（<code>/v1/chat/completions</code>）—— <strong>切换只是改 base URL</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>调优重点</th>
+<th>SGLang</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>缓存保留设置</td>
+<td>✓ 针对特定前缀模式调</td>
+<td>—</td>
+</tr>
+<tr>
+<td>批大小 + 内存分配</td>
+<td>—</td>
+<td>✓ 针对并发画像调</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_10">七、决策框架（抄作业版）</h2>
+<pre><code>你的工作负载是什么？
+├─ 多轮对话 / Agent（共享上下文）         → SGLang
+├─ RAG（共享文档前缀）                    → SGLang
+├─ 结构化 JSON 输出                       → SGLang
+├─ DeepSeek 模型                          → SGLang（官方推荐）
+├─ 批处理 + 每条 prompt 独特              → vLLM
+├─ TPU / Trainium / Gaudi                → vLLM
+├─ encoder-decoder（T5/BART）             → vLLM
+├─ 凌晨踩坑需要大社区                     → vLLM
+└─ 工作负载类型混合 + 有运维能力           → 两个都跑，按路由分发
+</code></pre>
+<p><strong>生产建议</strong>：<br />
+- 3 人小团队 6 个月内 → "选团队已经熟悉的那个"，运维熟悉度胜过边际特性差异<br />
+- xAI、Microsoft、Cursor 等头部用户都已 SGLang 生产，可作为背书</p>
+<hr />
+<h2 id="skill">八、对我们 Skill 库的启示</h2>
+<table>
+<thead>
+<tr>
+<th>现有 Skill</th>
+<th>改进方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>serving-llms-vllm</code></td>
+<td>补充"何时该选 SGLang"章节；增加 prefix-cache 工作负载判别清单</td>
+</tr>
+<tr>
+<td><code>llm-inference-optimization</code></td>
+<td>加入 RadixAttention vs PagedAttention 架构对比；补充 DeepSeek MLA 优化路径</td>
+</tr>
+<tr>
+<td><code>model-adapter</code></td>
+<td>Hermes Gateway 若有 RAG/多轮密集场景，可评估 SGLang 作为备选后端</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Jetson Orin Nano 部署注意</strong>：本地推理（Ollama）与生产服务（vLLM/SGLang）属于不同量级，不可直接套用上述 H100 基准。但这些架构思想（前缀缓存、continuous batching）对 Jetson 优化同样有借鉴价值。</p>
+<hr />
+<h2 id="_11">九、金句摘录</h2>
+<blockquote>
+<p><em>"The inference engine war isn't about which is 'better', it's about which architecture matches your memory access patterns. Get that right, and everything else follows."</em></p>
+<p><em>"Switching a multi-turn chatbot from vLLM to SGLang on the same H100 cluster routinely lifts throughput by 30%+ and trims five figures off monthly GPU spend, at zero application-code cost."</em></p>
+<p><em>"RadixAttention's benefit disappears for unique-prompt workloads."</em> —— Spheron 测试结论</p>
+</blockquote>
+<hr />
+<h2 id="_12">十、参考链接</h2>
+<ul>
+<li>Particula《SGLang vs vLLM in 2026》：https://particula.tech/blog/sglang-vs-vllm-inference-engine-comparison</li>
+<li>TECHSY《vLLM vs SGLang 2026: H100 Benchmarks》：https://techsy.io/en/blog/vllm-vs-sglang</li>
+<li>CallSphere《2026 Throughput Benchmarks on Real Workloads》：https://callsphere.ai/blog/td30-fw-sglang-vs-vllm-throughput-2026-honest-benchmarks</li>
+<li>GitHub long context track（sglang issue #3471）：https://github.com/sgl-project/sglang/issues/3471</li>
+</ul>
+<hr />
+<p><strong>笔记结束</strong> | 作者：猫仔夜间自学习引擎 | 关联 Skill：<code>llm-inference-optimization</code>、<code>serving-llms-vllm</code></p>
+</body>
+</html>

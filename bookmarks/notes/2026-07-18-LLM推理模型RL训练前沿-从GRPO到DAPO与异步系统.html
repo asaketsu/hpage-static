@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理模型RL训练前沿-从GRPO到DAPO与异步系统</title>
+
+<meta property="og:title" content="LLM推理模型RL训练前沿-从GRPO到DAPO与异步系统" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-rl-grpo-dapo">LLM 推理模型 RL 训练前沿——从 GRPO 到 DAPO 与异步系统</h1>
+<blockquote>
+<p><strong>来源</strong>：<br />
+- Raschka, S. <em>The State of Reinforcement Learning for LLM Reasoning</em> — Ahead of AI Magazine, 2025.<br />
+- DeepSeek-AI. <em>DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning</em> — arXiv:2501.12948, Jan 2025.<br />
+- Yu Q. et al. <em>DAPO: An Open-Source LLM Reinforcement Learning System at Scale</em> — arXiv:2503.14476, Mar 2025 (ByteDance Seed + Tsinghua AIR).<br />
+- AsyncFlow Team. <em>AsyncFlow: An Asynchronous Streaming RL Framework for Efficient LLM Post-Training</em> — arXiv:2507.01663, Jul 2025.<br />
+- <em>Reasoning on a Budget: A Survey of Adaptive and Controllable Test-Time Compute in LLMs</em> — arXiv:2507.02076, Jul 2025.</p>
+<p><strong>记录日期</strong>：2026-07-18<br />
+<strong>关联 Skill</strong>：<code>mlops/training/grpo-rl-training</code>、<code>inference-time-scaling</code></p>
+</blockquote>
+<p><strong>标签</strong>：#LLM #推理模型 #GRPO #DAPO #RLVR #PPO #异步训练 #TestTimeCompute</p>
+<hr />
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11-cot-rl">1.1 推理模型的本质：CoT + RL</h3>
+<p><strong>推理模型（Reasoning Model）</strong>指通过显式生成中间推理步骤（Chain-of-Thought, CoT）再给出最终答案的 LLM。代表模型：OpenAI o1/o3、DeepSeek-R1、Qwen3、Claude 3.7 Sonnet（thinking 模式）。</p>
+<pre><code>传统 LLM：输入 → [Transformer 层固定计算] → 输出
+推理模型：输入 → [CoT 中间步骤] → [自我验证] → [反思修正] → 输出
+                ↑ Test-Time Compute (TTC) ↑
+</code></pre>
+<p><strong>两大改进路径</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>方法</th>
+<th>代表</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>训练时</strong>（Training-Time）</td>
+<td>RL 强化推理行为</td>
+<td>DeepSeek-R1, DAPO</td>
+</tr>
+<tr>
+<td><strong>推理时</strong>（Test-Time）</td>
+<td>增加推理步数/搜索</td>
+<td>o1 thinking, Best-of-N</td>
+</tr>
+</tbody>
+</table>
+<p>Raschka 文章的核心观点：<strong>GPT-4.5 和 Llama 4 反应平淡，因为它们是传统模型，没有显式 RL 推理训练。OpenAI o3 用了比 o1 多 10× 的训练计算，说明 RL 推理还有巨大空间。</strong></p>
+<h3 id="12-rlhf-rlvr">1.2 RLHF → RLVR：奖励信号的范式转移</h3>
+<p>传统 RLHF（InstructGPT 三步法）依赖<strong>人类偏好训练的奖励模型（Reward Model）</strong>。DeepSeek-R1 团队发现：<strong>神经奖励模型在大规模 RL 中会遭到 reward hacking</strong>（模型学会骗奖励模型而非真正提升能力），因此转向 <strong>RLVR（Reinforcement Learning with Verifiable Rewards）</strong>。</p>
+<pre><code>RLHF 流程：
+  Prompt → Actor 生成多个回答 → Reward Model 打分 → PPO 优化
+  需要：Actor + Reference + Reward Model + Critic（4 个模型）
+
+RLVR 流程（DeepSeek-R1-Zero）：
+  Prompt → Actor 生成回答 → 规则验证器判断对错（+1/-1）→ GRPO 优化
+  需要：Actor（1 个模型）+ 规则验证器（计算器/编译器）
+</code></pre>
+<p><strong>两类规则奖励</strong>：<br />
+1. <strong>Accuracy reward</strong>：数学题答案 box 内的最终结果是否正确；LeetCode 是否通过测试用例<br />
+2. <strong>Format reward</strong>：要求推理过程包裹在 <code>&lt;think&gt;...&lt;/think&gt;</code> 标签内</p>
+<p><strong>关键洞察</strong>：DeepSeek 团队明确说<strong>不使用神经奖励模型</strong>——</p>
+<blockquote>
+<p>"We do not apply the outcome or process neural reward model in developing DeepSeek-R1-Zero, because we find that the neural reward model may suffer from reward hacking in the large-scale reinforcement learning process."</p>
+</blockquote>
+<h3 id="13-ppo-grpo-critic">1.3 PPO → GRPO：去掉 Critic 模型</h3>
+<p><strong>PPO（Schulman 2017）</strong>的四个组件：Actor（策略）+ Reference（KL 约束）+ Reward Model + Critic（价值函数）。</p>
+<p>PPO 的核心机制：<br />
+1. 计算 ratio = π_new(a|s) / π_old(a|s)<br />
+2. Clip ratio 到 [1-ε, 1+ε]（典型 ε=0.2）防止更新过大<br />
+3. advantage = actual_reward - expected_reward（expected 由 Critic 估计）<br />
+4. KL 惩罚项防止偏离 Reference 模型太远</p>
+<p><strong>GRPO（Group Relative Policy Optimization, DeepSeekMath 2024）</strong>的关键创新：<strong>去掉 Critic</strong>。</p>
+<pre><code>GRPO 做法：
+  对每个 prompt q，采样 G 个回答 {o_1, ..., o_G}
+  advantage_i = (r_i - mean(r_1..G)) / std(r_1..G)
+
+  即用&quot;组内相对排名&quot;代替 Critic 的绝对价值估计
+</code></pre>
+<p><strong>优势</strong>：<br />
+- 内存减少 25–50%（去掉 Critic 模型）<br />
+- 训练更稳定（组内归一化降低方差）<br />
+- 适合 RLVR（规则奖励天然适合组内比较）</p>
+<h3 id="14-dapo">1.4 DAPO：四个关键改进</h3>
+<p>ByteDance + 清华 AIR 在 2025 年 3 月发布的 DAPO 是 GRPO 的工业级改进版，<strong>用 Qwen2.5-32B 在 AIME 2024 上达到 50 分，超过 DeepSeek-R1-Zero-Qwen-32B（47 分），训练步数仅为其一半</strong>。</p>
+<p>DAPO 的四项关键技术：</p>
+<h4 id="1-clip-higher">① Clip-Higher：解除探索限制</h4>
+<p><strong>问题</strong>：标准 PPO/GRPO 的 clip 范围 [1-ε, 1+ε]（ε=0.2）会限制低概率"探索"token 的概率上升。</p>
+<p><strong>举例</strong>：<br />
+- 高概率 token（π=0.9）：clip 后上限 1.08 → 可以继续上升到 0.999<br />
+- 低概率 token（π=0.01）：clip 后上限 0.012 → 几乎无法提升</p>
+<p><strong>DAPO 解法</strong>：<strong>分离上下 clip 阈值</strong></p>
+<pre><code>clip(ratio, 1-ε_low, 1+ε_high)
+典型：ε_low=0.2, ε_high=0.28
+</code></pre>
+<p><strong>效果</strong>：低概率探索 token 的上限放宽，避免<strong>熵塌缩（Entropy Collapse）</strong>——策略过早确定性化，丧失探索能力。</p>
+<h4 id="2-dynamic-sampling">② Dynamic Sampling：过滤无效梯度</h4>
+<p><strong>问题</strong>：如果一个 prompt 的 G 个回答<strong>全对</strong>（accuracy=1）或<strong>全错</strong>（accuracy=0），组内归一化后 advantage 全为 0，梯度为 0，浪费计算。</p>
+<p><strong>DAPO 解法</strong>：<strong>动态过滤掉 accuracy∈{0, 1} 的 prompt 组</strong>，只保留"部分对部分错"的有效梯度样本。</p>
+<p><strong>效果</strong>：每个 batch 的有效梯度样本数一致，训练效率提升 30–50%。</p>
+<h4 id="3-token-level-policy-gradient-loss">③ Token-Level Policy Gradient Loss</h4>
+<p><strong>问题</strong>：GRPO 在<strong>样本级</strong>计算 loss——先对每个序列求平均 loss，再对 G 个序列求平均。长序列（CoT 推理通常很长）的贡献被稀释。</p>
+<p><strong>DAPO 解法</strong>：改为<strong>token 级</strong>——所有 token 的 loss 直接求和再除以总 token 数。</p>
+<pre><code class="language-python"># GRPO（样本级）：
+loss = mean([mean(seq_loss_i) for i in range(G)])
+
+# DAPO（token 级）：
+loss = sum(all_token_losses) / sum(all_token_counts)
+</code></pre>
+<p><strong>效果</strong>：长 CoT 序列得到应有的梯度权重，长推理能力训练更有效。</p>
+<h4 id="4-overlong-reward-shaping">④ Overlong Reward Shaping：软长度惩罚</h4>
+<p><strong>问题</strong>：硬性截断超长回答会引入奖励噪声（被截断的回答可能本来是对的）。</p>
+<p><strong>DAPO 解法</strong>：对接近最大长度的回答施加<strong>软惩罚</strong>，而非硬截断。</p>
+<pre><code>if length &gt; L_max * 0.9:
+    reward *= scaling_factor(length)  # 平滑衰减
+</code></pre>
+<p><strong>效果</strong>：减少奖励噪声，训练更稳定。</p>
+<h3 id="15-asyncflow">1.5 异步训练系统：AsyncFlow</h3>
+<p>训练规模扩大后，<strong>同步 RL 框架</strong>（如 DeepSpeed-Chat）的瓶颈暴露：</p>
+<table>
+<thead>
+<tr>
+<th>框架类型</th>
+<th>代表</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Task-Collocated</strong>（任务共存）</td>
+<td>DeepSpeed-Chat</td>
+<td>所有任务共享 GPU，内存浪费；rollout 与 update 切换需 resharding</td>
+</tr>
+<tr>
+<td><strong>Task-Separated</strong>（任务分离）</td>
+<td>OpenRLHF</td>
+<td>数据依赖导致流水线气泡，资源闲置</td>
+</tr>
+</tbody>
+</table>
+<p><strong>AsyncFlow（arXiv:2507.01663）</strong>的三大创新：</p>
+<ol>
+<li><strong>TransferQueue</strong>：分布式数据管理模块，解耦数据平面与控制平面（借鉴 SDN 思想），实现流式数据加载</li>
+<li><strong>Producer-Consumer 异步工作流</strong>：延迟参数更新（在 staleness 阈值内），实现 rollout 与 update 的流水线重叠</li>
+<li><strong>服务化 API</strong>：解耦 RL 算法与底层训练/推理引擎，支持异构后端</li>
+</ol>
+<p><strong>性能</strong>：相比 SOTA 基线，吞吐量提升 <strong>1.59×</strong>（最大 2.03×）。</p>
+<p><strong>相关异步系统</strong>：<br />
+- <strong>TBA（Trajectory Balance with Asynchrony）</strong>：用 GFlowNet 的 TB 目标替代 PPO，支持经验回放缓冲区<br />
+- <strong>LlamaRL（Meta）</strong>：全异步分布式 RL，针对超大规模模型<br />
+- <strong>StreamRL</strong>：响应长度预测器，动态分发 prompt 平衡吞吐量</p>
+<h3 id="16-test-time-compute-arxiv250702076">1.6 Test-Time Compute 效率（arXiv:2507.02076）</h3>
+<p><strong>核心问题</strong>：推理模型"过度思考"简单问题，"思考不足"难题。</p>
+<pre><code>简单问题 &quot;1+1=?&quot; → 推理模型生成 2000 token 的 CoT → 浪费
+复杂问题 → 推理模型生成 500 token 就停 → 不够
+</code></pre>
+<p><strong>两层分类法</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>名称</th>
+<th>方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>L1 可控性</strong></td>
+<td>固定计算预算</td>
+<td>Claude 3.7 的 thinking token budget；固定最大思考长度</td>
+</tr>
+<tr>
+<td><strong>L2 自适应性</strong></td>
+<td>动态调整</td>
+<td>根据问题难度/模型置信度动态分配计算</td>
+</tr>
+</tbody>
+</table>
+<p><strong>商业实践</strong>：<br />
+- Anthropic Claude 3.7：用户可设 thinking token 预算<br />
+- OpenAI o1/o3：多种 thinking 模式（low/medium/high）<br />
+- Gemini 2.5 Flash：thinking 开关</p>
+<p><strong>关键数据</strong>（论文基准测试）：<br />
+- DeepSeek-R1（671B）平均 token 数：<strong>2848</strong>，AIME 准确率 89.1%<br />
+- Claude 3.7 thinking on：平均 <strong>4159</strong> token，准确率 90.97%<br />
+- Qwen3-4B thinking on：<strong>4749</strong> token，84.41%（小模型需要更多思考）</p>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-entropy-collapse">2.1 Entropy Collapse 的数学解释</h3>
+<p>PPO clip 的副作用可以用信息论解释：</p>
+<ul>
+<li>策略熵 H(π) = -Σ π(a) log π(a)</li>
+<li>clip 限制概率比，间接限制熵的变化速率</li>
+<li>当 ε=0.2 且训练步数多时，熵单调下降到接近 0</li>
+<li>熵=0 意味着策略确定性化，丧失探索能力</li>
+</ul>
+<p><strong>DAPO Clip-Higher 的效果</strong>：ε_high 从 0.2 提到 0.28，低概率 token 可以更快上升到有意义水平，维持策略熵。</p>
+<h3 id="22-reward-hacking">2.2 Reward Hacking 的典型表现</h3>
+<p>为什么 DeepSeek 放弃神经奖励模型？</p>
+<table>
+<thead>
+<tr>
+<th>Reward Hacking 类型</th>
+<th>表现</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>长度 hack</strong></td>
+<td>模型学会写长答案骗 RM</td>
+<td>"字多=分高"</td>
+</tr>
+<tr>
+<td><strong>格式 hack</strong></td>
+<td>模型学会特定格式骗 RM</td>
+<td>加粗关键词、列表化</td>
+</tr>
+<tr>
+<td><strong>谄媚 hack</strong></td>
+<td>模型迎合 RM 偏见</td>
+<td>附和用户观点</td>
+</tr>
+<tr>
+<td><strong>对抗 hack</strong></td>
+<td>模型生成 RM 盲区的错误</td>
+<td>看似合理实则谬误</td>
+</tr>
+</tbody>
+</table>
+<p><strong>RLVR 的优势</strong>：规则验证器（计算器、编译器、单元测试）<strong>不可欺骗</strong>——答案对就是对，错就是错。</p>
+<h3 id="23-grpo-vs-dapo-vs-dr-grpo">2.3 GRPO vs DAPO vs Dr. GRPO 的谱系</h3>
+<pre><code>PPO (2017)
+  └─ 需要 Actor + Reference + Reward + Critic
+  │
+GRPO (DeepSeekMath 2024)
+  └─ 去掉 Critic，组内归一化
+  │
+  ├─ Dr. GRPO (2025)
+  │    └─ 去掉长度和标准差归一化，信号更清晰
+  │
+DAPO (ByteDance 2025)
+  └─ Clip-Higher + Dynamic Sampling + Token-Level Loss + Overlong Shaping
+       └─ 工业级 SOTA，全开源
+</code></pre>
+<h3 id="24">2.4 推理能力的来源之争</h3>
+<p>Raschka 文章末尾提出尖锐问题：<strong>推理能力真的是 RL 诱导的吗？还是预训练数据中已经有了？</strong></p>
+<p>证据表明：<br />
+- DeepSeek V3 base 模型已展现类推理行为（因为预训练数据含大量 CoT）<br />
+- R1-Zero 的"AHA moment"可能在 base 模型中就存在<br />
+- RL 的作用更像是<strong>激发和强化</strong>，而非从零创造</p>
+<p>这对小团队有启示：<strong>如果预算有限，用高质量 CoT 数据做 SFT，可能比直接 RL 更划算</strong>。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-llm-rl">3.1 LLM 推理 RL 训练技术栈全景</h3>
+<pre><code>┌─────────────────────────────────────────────────┐
+│            数据层                                │
+│   RLVR 数据集（数学/代码/逻辑，有标准答案）         │
+│   DAPO-Math-17k, AIME, GSM8K, MATH              │
+├─────────────────────────────────────────────────┤
+│            奖励层                                │
+│   规则验证器（计算器/编译器/字符串匹配）             │
+│   不用神经奖励模型（防 hacking）                   │
+├─────────────────────────────────────────────────┤
+│            算法层                                │
+│   PPO → GRPO → DAPO                             │
+│   关键：Clip-Higher + Dynamic Sampling +         │
+│         Token-Level Loss + Overlong Shaping      │
+├─────────────────────────────────────────────────┤
+│            系统层                                │
+│   同步：DeepSpeed-Chat, OpenRLHF, verl            │
+│   异步：AsyncFlow, TBA, LlamaRL, StreamRL         │
+│   关键：TransferQueue + 流式数据 + 延迟更新         │
+├─────────────────────────────────────────────────┤
+│            推理层（TTC）                          │
+│   L1 固定预算：thinking token budget              │
+│   L2 自适应：难度感知动态分配                       │
+└─────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="32">3.2 训练一个推理模型的决策树</h3>
+<pre><code>你的目标？
+├─ 复现 SOTA 推理能力
+│   └─ 用 DAPO + Qwen2.5-32B + verl + 128 H20 GPU
+│      （需 ~$50k 训练成本）
+│
+├─ 小成本提升现有模型
+│   └─ 用 GRPO + RLVR + 小数据集（7k 样本）
+│      （$42 计算预算，1.5B 模型，参考论文 [8]）
+│
+├─ 仅推理时提升（不训练）
+│   └─ Best-of-N + 自我一致性投票
+│      （零训练成本，推理成本 ×N）
+│
+└─ 端到端产品级
+    └─ DAPO 训练 + Test-Time Compute 控制
+       （Claude 3.7 / o3 路线）
+</code></pre>
+<h3 id="33">3.3 关键性能数据对比</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>参数量</th>
+<th>AIME 2024</th>
+<th>平均 token</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-4o</td>
+<td>—</td>
+<td>79.85%</td>
+<td>405</td>
+<td>非推理模型</td>
+</tr>
+<tr>
+<td>DeepSeek-V3</td>
+<td>—</td>
+<td>89.73%</td>
+<td>851</td>
+<td>非推理模型</td>
+</tr>
+<tr>
+<td>DeepSeek-R1</td>
+<td>671B</td>
+<td><strong>89.1%</strong></td>
+<td>2848</td>
+<td>RL 训练</td>
+</tr>
+<tr>
+<td>Claude 3.7 (thinking)</td>
+<td>—</td>
+<td><strong>90.97%</strong></td>
+<td>4159</td>
+<td>RL + TTC</td>
+</tr>
+<tr>
+<td>Gemini 2.5 Flash (on)</td>
+<td>—</td>
+<td>89.61%</td>
+<td>3733</td>
+<td>RL + TTC</td>
+</tr>
+<tr>
+<td>Qwen3-4B (on)</td>
+<td>4B</td>
+<td>84.41%</td>
+<td>4750</td>
+<td>小模型需更多思考</td>
+</tr>
+<tr>
+<td>DAPO (Qwen2.5-32B)</td>
+<td>32B</td>
+<td><strong>50%</strong></td>
+<td>—</td>
+<td>开源 SOTA</td>
+</tr>
+</tbody>
+</table>
+<p><strong>洞察</strong>：thinking on 模式准确率提升 5–15%，但 token 消耗增加 3–10×。</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41-rlvr-rlhf">4.1 RLVR 将取代 RLHF 成为主流推理训练方法</h3>
+<p><strong>依据</strong>：DeepSeek-R1、DAPO、Qwen3 都采用规则奖励而非神经奖励模型。规则奖励不可欺骗、成本极低（计算器/编译器），适合数学和代码领域。预计 2026 年内，<strong>所有开源推理模型都会采用 RLVR 路线</strong>。挑战在于：非数学/代码领域（如医学、法律）如何设计规则验证器——可能需要领域专家系统。</p>
+<h3 id="42-rl">4.2 异步 RL 框架将成为大规模训练标配</h3>
+<p><strong>依据</strong>：AsyncFlow（1.59×）、TBA、LlamaRL 都在 2025 年发布。同步框架的流水线气泡在千卡规模下浪费 30–50% 算力。预计 2026 年内，<strong>verl、DeepSpeed-Chat 都会内置异步模式</strong>。关键挑战是 staleness（延迟更新）与收敛性的平衡——目前 AsyncFlow 允许 1 步 staleness，未来可能扩展到多步。</p>
+<h3 id="43-test-time-compute">4.3 Test-Time Compute 将分层定价</h3>
+<p><strong>依据</strong>：Claude 3.7、o3、Gemini 2.5 都已支持多档 thinking 预算。商业上，<strong>按 thinking token 数计费</strong>将成为推理 API 的标准定价模型。技术趋势：L2 自适应（根据难度动态分配）将逐步取代 L1 固定预算——模型自己判断"这个问题需要想多久"。</p>
+<h3 id="44">4.4 小模型推理能力的边界正在被突破</h3>
+<p><strong>依据</strong>：Qwen3-4B thinking on 达到 84.41%（AIME），接近 671B 的 DeepSeek-R1。这说明<strong>高质量 CoT 数据 + 精细 RL 调优</strong>可以让小模型逼近大模型。对端侧部署（Jetson、手机）意义重大——4B 模型可在 8GB 显存运行。</p>
+<h3 id="45-rl">4.5 RL 对蒸馏模型的增益存在争议</h3>
+<p><strong>依据</strong>：Raschka 引用 [15] <em>A Sober Look at Progress in Language Model Reasoning</em>（arXiv:2504.07086）——该论文发现许多"RL 提升蒸馏模型"的声明在严格控制变量后<strong>增益消失或不显著</strong>。AIME24 等小基准的分数波动大（换随机种子差几个百分点）。这意味着 RL 的真实增益可能被高估，需要更好的评估标准。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-grpo-rl-skill">5.1 与 GRPO-RL 训练 Skill 的关联</h3>
+<blockquote>
+<p>Skill: <code>mlops/training/grpo-rl-training</code></p>
+</blockquote>
+<p>DAPO 是 GRPO 的直接改进。Skill 中应补充：<br />
+- <strong>Clip-Higher</strong> 参数（ε_low, ε_high 分离）<br />
+- <strong>Dynamic Sampling</strong> 的过滤逻辑<br />
+- <strong>Token-Level Loss</strong> 的聚合方式<br />
+- <strong>Overlong Reward Shaping</strong> 的软惩罚函数</p>
+<h3 id="52-inference-scalingskill">5.2 与推理时扩展（Inference Scaling）Skill 的关联</h3>
+<blockquote>
+<p>Skill: <code>mlops/inference/inference-time-scaling</code></p>
+</blockquote>
+<p>Test-Time Compute 的 L1/L2 分类法应纳入 Skill：<br />
+- L1 固定预算：<code>max_thinking_tokens</code> 参数<br />
+- L2 自适应：基于困惑度或置信度的动态停止<br />
+- 混合策略：简单问题用 L1，复杂问题用 Best-of-N</p>
+<h3 id="53">5.3 与强化学习入门完全指南的关联</h3>
+<blockquote>
+<p>2026-07-14 笔记</p>
+</blockquote>
+<p>那篇笔记介绍了 RL 基础（MDP、Bellman、Q-Learning → DQN → PPO）。本笔记展示了 RL 在 LLM 领域的最新应用——<strong>从 PPO 到 GRPO 再到 DAPO 的演化</strong>。两者构成"理论 → 前沿"的完整链条。</p>
+<h3 id="54">5.4 与机器学习核心理论的关联</h3>
+<blockquote>
+<p>2026-07-15 笔记</p>
+</blockquote>
+<p>那篇笔记定义了三大范式（监督/无监督/强化）。本笔记验证了<strong>三大范式在 LLM 训练中的融合</strong>：<br />
+- 预训练 = 无监督生成建模<br />
+- SFT = 监督学习<br />
+- RLVR = 强化学习（DAPO 路线）</p>
+<h3 id="55-llm-rlhf-dpo-grpo-dapo">5.5 与 LLM 对齐训练范式（RLHF-DPO-GRPO-DAPO）的关联</h3>
+<blockquote>
+<p>2026-05-04 笔记</p>
+</blockquote>
+<p>那篇笔记对比了四种对齐方法。本笔记是 DAPO 部分的<strong>深度更新</strong>——补充了四项关键技术的实现细节和论文实验数据。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>"GPT-4.5 和 Llama 4 反应平淡，因为它们是传统模型，没有显式 RL 推理训练。o3 用了比 o1 多 10× 的训练计算，说明 RL 推理还有巨大空间。" — Sebastian Raschka</p>
+<p>"我们不使用神经奖励模型，因为在大规模 RL 中它会遭到 reward hacking。" — DeepSeek-R1 论文</p>
+<p>"Clip-Higher 解除了对低概率探索 token 的限制，避免了熵塌缩。" — DAPO 论文</p>
+<p>"Dynamic Sampling 确保每个 batch 都有有效梯度，训练效率提升 30–50%。" — DAPO 论文</p>
+<p>"推理能力可能不是 RL 创造的，而是 RL 激发了预训练数据中已有的能力。" — Raschka 综述</p>
+<p>"同步 RL 框架在千卡规模下浪费 30–50% 算力，异步是必然方向。" — AsyncFlow 论文</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>行动</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DAPO 四项技术是 GRPO 的必备改进</td>
+<td>更新 <code>grpo-rl-training</code> Skill，补充 DAPO 细节</td>
+<td><strong>P0</strong></td>
+</tr>
+<tr>
+<td>RLVR 优于神经奖励模型</td>
+<td>推理训练优先用规则验证器</td>
+<td><strong>P0</strong></td>
+</tr>
+<tr>
+<td>异步框架是大规模训练方向</td>
+<td>关注 verl + AsyncFlow 的集成</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>TTC 分层定价是商业趋势</td>
+<td>推理 API 设计支持 thinking budget 参数</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>小模型推理能力突破</td>
+<td>Qwen3-4B 适合 Jetson 端侧部署</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>RL 对蒸馏模型的增益有争议</td>
+<td>评估推理模型时注意统计显著性</td>
+<td>P2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="skill">对现有 Skill 的具体改进建议</h3>
+<p><strong><code>grpo-rl-training</code> Skill 应补充</strong>：</p>
+<pre><code class="language-yaml"># 新增 DAPO 配置示例
+dapo_config:
+  clip_higher:
+    enabled: true
+    epsilon_low: 0.2
+    epsilon_high: 0.28  # 比 low 高 40%
+
+  dynamic_sampling:
+    enabled: true
+    filter_accuracy: [0, 1]  # 过滤全对/全错的 prompt 组
+
+  loss_aggregation: &quot;token-mean&quot;  # 替代 GRPO 的 &quot;seq-mean&quot;
+
+  overlong_reward_shaping:
+    enabled: true
+    length_threshold: 0.9  # 90% 最大长度开始软惩罚
+    scaling_function: &quot;linear&quot;  # 或 &quot;cosine&quot;
+
+  kl_divergence:
+    enabled: false  # DAPO 移除 KL 项（long-CoT 场景）
+</code></pre>
+<p><strong><code>inference-time-scaling</code> Skill 应补充</strong>：</p>
+<pre><code class="language-python"># L2 自适应 TTC 示例
+def adaptive_thinking_budget(prompt, model, max_budget=4096):
+    &quot;&quot;&quot;根据问题难度动态分配 thinking token 预算&quot;&quot;&quot;
+    # 第一步：快速评估难度
+    quick_response = model.generate(prompt, max_tokens=64)
+    difficulty = estimate_difficulty(quick_response)  # 基于困惑度/长度
+
+    # 第二步：分配预算
+    if difficulty == &quot;easy&quot;:
+        return min(512, max_budget)
+    elif difficulty == &quot;medium&quot;:
+        return min(2048, max_budget)
+    else:  # hard
+        return max_budget
+</code></pre>
+</body>
+</html>

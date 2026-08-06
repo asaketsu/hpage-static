@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>experience-loop-engine-deep-dive</title>
+
+<meta property="og:title" content="experience-loop-engine-deep-dive" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="_1">经验闭环引擎：从错误到肌肉记忆的自动化系统</h1>
+<blockquote>
+<p>2026-05-18 | proactive-learn 深度研究 | Topic: Agent 自我进化与自治<br />
+方法：本地知识蒸馏 — 基于 Hermes 现有 5 大进化子系统 + 29 条错误案例 + 行业模式分析<br />
+字数: ~4200 | 难度: L4（架构设计级）</p>
+</blockquote>
+<hr />
+<h2 id="5">一、核心发现（5 个关键发现）</h2>
+<h3 id="1-5">发现 1：经验闭环 ≠ 错误记录，而是 5 阶段自动管道</h3>
+<p>大多数人把"经验闭环"理解为记录错误日志。这只是第一步。真正的经验闭环引擎是一个 5 阶段管道：</p>
+<pre><code>COLLECT → IDENTIFY → ROOT_CAUSE → ENCODE → PREVENT
+  采集     识别模式    根因分析     编码规则    自动防复发
+</code></pre>
+<p><strong>Hermes 现状对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>理想状态</th>
+<th>Hermes 现状</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>COLLECT</td>
+<td>全信号源自动采集</td>
+<td>error-case-library + feedback.md + cron logs</td>
+<td>🟢 基本覆盖</td>
+</tr>
+<tr>
+<td>IDENTIFY</td>
+<td>自动模式识别</td>
+<td>evolver-scan.sh 手动触发，阈值≥2次/7天</td>
+<td>🟡 半自动</td>
+</tr>
+<tr>
+<td>ROOT_CAUSE</td>
+<td>结构化根因分析</td>
+<td>人工写入 root_cause 字段</td>
+<td>🔴 纯手动</td>
+</tr>
+<tr>
+<td>ENCODE</td>
+<td>自动生成规则/Skill/脚本</td>
+<td>evolver pipeline 有定义但 cron 不执行</td>
+<td>🔴 管道断裂</td>
+</tr>
+<tr>
+<td>PREVENT</td>
+<td>主动拦截+自动防复发</td>
+<td>无主动拦截机制</td>
+<td>🔴 缺失</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心洞察</strong>：COLLECT 和 IDENTIFY 已有基础，但 ROOT_CAUSE → ENCODE → PREVENT 三段是断裂的。这就像人类只有痛觉（感受到错误）但没有肌肉记忆（自动规避）。</p>
+<h3 id="2">发现 2：根因分析是最大瓶颈 — 需要分层策略</h3>
+<p>分析 29 条错误案例，根因可以分 4 层：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>根因类型</th>
+<th>占比</th>
+<th>可自动化程度</th>
+<th>典型案例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L1 语法/配置</td>
+<td>拼写错误、路径错误、格式错误</td>
+<td>31% (9/29)</td>
+<td>🟢 高</td>
+<td>EC-001 包名不一致、EC-003 cron路径</td>
+</tr>
+<tr>
+<td>L2 逻辑/边界</td>
+<td>边界条件、空值、类型假设</td>
+<td>34% (10/29)</td>
+<td>🟡 中</td>
+<td>EC-010 NaN传播、EC-012 高价股0交易</td>
+</tr>
+<tr>
+<td>L3 架构/设计</td>
+<td>架构决策失误、抽象不当</td>
+<td>21% (6/29)</td>
+<td>🔴 低</td>
+<td>EC-004 飞书bot消息结构差异、EC-009 空chunks</td>
+</tr>
+<tr>
+<td>L4 环境/时序</td>
+<td>竞态条件、环境差异、时序依赖</td>
+<td>14% (4/29)</td>
+<td>🔴 低</td>
+<td>EC-013 .pyc缓存、EC-005 日志时间戳解析</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键模式识别</strong>：</p>
+<ol>
+<li><strong>NaN 传播链</strong>（EC-010, EC-011）：pandas 中 NaN 的算术和比较行为。根因相同（未处理 NaN），出现在不同模块。这是典型的"一个根因，多种症状"模式。</li>
+<li><strong>误报链</strong>（EC-005, EC-006, EC-007）：auto-diagnose-fix 系统自身的检测逻辑问题。根因模式相同：检测条件太宽泛或格式不匹配。</li>
+<li><strong>初始化链</strong>（EC-009, EC-014）：Python 变量初始化和 ABC 抽象方法。根因模式：假设前置条件一定满足。</li>
+</ol>
+<p><strong>自动化策略</strong>：<br />
+- L1：模式匹配即可（正则检测常见语法/路径/格式错误）<br />
+- L2：需要语义理解（LLM 辅助分析边界条件）<br />
+- L3/L4：需要人类参与（Agent 标记为"需人工分析"）</p>
+<h3 id="3">发现 3：防复发机制需要"主动拦截"，不是"被动查阅"</h3>
+<p>当前 error-case-library 的设计是<strong>被动查阅</strong>：遇到错误→查库→匹配→复用。这依赖 Agent 每次都主动查库，但实际上：</p>
+<ul>
+<li>Agent 在遇到错误时，优先用自己的推理能力解决，不会先查库</li>
+<li>即使查库，关键词匹配的召回率有限（同义表述、不同表述的同一问题）</li>
+<li>新 session 没有"上次犯了什么错"的记忆</li>
+</ul>
+<p><strong>人类肌肉记忆的类比</strong>：人类不需要每次都"回忆"怎么骑自行车——大脑已经把运动模式编码成了反射弧。经验闭环引擎需要类似机制：</p>
+<pre><code>被动模式:  遇错 → 查库 → 匹配 → 复用解法
+主动模式:  操作 → 触发规则 → 自动检查 → 阻断/修正
+</code></pre>
+<p><strong>实现方案 — 三级防复发</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>级别</th>
+<th>机制</th>
+<th>示例</th>
+<th>触发点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>编译期</strong></td>
+<td>skill pitfalls 注入</td>
+<td>"pandas rolling 必须设 min_periods=1" 写入 skill</td>
+<td>skill_view 加载时自动注入</td>
+</tr>
+<tr>
+<td><strong>运行期</strong></td>
+<td>pre-hook 检查</td>
+<td>写 pandas 代码前自动检查 NaN 处理</td>
+<td>工具调用前拦截</td>
+</tr>
+<tr>
+<td><strong>验证期</strong></td>
+<td>post-hook 验证</td>
+<td>代码运行后检查结果是否有 NaN</td>
+<td>工具调用后验证</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Hermes 的最佳切入点</strong>：编译期。每次 skill_view() 加载 skill 时，pitfalls 部分就是"肌肉记忆"。当前 evolver 已经在 skill 中有 pitfalls 段落，但缺乏从错误案例自动生成 pitfalls 的管道。</p>
+<h3 id="4">发现 4：进化闭环的"最后一公里"断裂 — 从学到用的转化率</h3>
+<p>分析 evolution-log.jsonl，发现一个关键问题：</p>
+<pre><code>学习产出 → 评估 → 写笔记 ✅ (100% 完成)
+笔记 → Skill/Memory 更新 ✅ (~60% 完成)
+Skill/Memory → 实际使用 ❌ (~20% 完成)
+</code></pre>
+<p><strong>原因分析</strong>：</p>
+<ol>
+<li><strong>Skill 创建后无使用触发</strong>：创建了 skill 但没有场景主动调用它</li>
+<li><strong>Memory 写入后无检索优化</strong>：写入的记忆在下次遇到类似场景时不一定被检索到</li>
+<li><strong>规则沉淀后无执行保障</strong>：skill 中的 pitfalls 是"建议"而非"强制"</li>
+</ol>
+<p><strong>解决方案 — 进化闭环完整性指标</strong>：</p>
+<pre><code class="language-python">class EvolutionCompleteness:
+    &quot;&quot;&quot;衡量经验闭环的完整性&quot;&quot;&quot;
+
+    def measure(self, experience_id: str) -&gt; dict:
+        return {
+            # 阶段1：经验采集
+            &quot;collected&quot;: True,  # 有错误案例？
+            &quot;root_caused&quot;: bool,  # 有根因分析？
+
+            # 阶段2：知识编码
+            &quot;encoded_as_skill&quot;: bool,  # 写入 skill pitfalls？
+            &quot;encoded_as_memory&quot;: bool,  # 写入 memory？
+            &quot;encoded_as_script&quot;: bool,  # 有自动修复脚本？
+
+            # 阶段3：实际使用（关键）
+            &quot;skill_loaded_count&quot;: int,  # skill 被加载次数
+            &quot;pitfall_triggered_count&quot;: int,  # pitfalls 被触发次数
+            &quot;same_error_reoccurred&quot;: bool,  # 同类错误是否再次出现？
+
+            # 最终指标
+            &quot;completeness_score&quot;: 0.0  # 0-1, 1=完整闭环
+        }
+</code></pre>
+<p><strong>目标</strong>：completeness_score ≥ 0.7 才算"经验已内化"。</p>
+<h3 id="5-5">发现 5：现有 5 大子系统的整合缺口</h3>
+<p>Hermes 目前有 5 个与经验闭环相关的子系统，但它们之间缺少统一的编排层：</p>
+<table>
+<thead>
+<tr>
+<th>子系统</th>
+<th>角色</th>
+<th>输入</th>
+<th>输出</th>
+<th>触发方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>error-case-library</strong></td>
+<td>错误记录</td>
+<td>错误事件</td>
+<td>JSONL 案例</td>
+<td>手动/Watchdog</td>
+</tr>
+<tr>
+<td><strong>evolver</strong></td>
+<td>进化引擎</td>
+<td>反馈+模式</td>
+<td>规则/Skill/脚本</td>
+<td>Cron/手动</td>
+</tr>
+<tr>
+<td><strong>agent-reflection</strong></td>
+<td>反思机制</td>
+<td>会话上下文</td>
+<td>修正建议</td>
+<td>Session End/启发式</td>
+</tr>
+<tr>
+<td><strong>sensor-grid</strong></td>
+<td>传感器层</td>
+<td>系统信号</td>
+<td>偏差报告</td>
+<td>定时/事件</td>
+</tr>
+<tr>
+<td><strong>active-learning</strong></td>
+<td>学习框架</td>
+<td>兴趣队列</td>
+<td>笔记+进化</td>
+<td>时间/事件</td>
+</tr>
+</tbody>
+</table>
+<p><strong>缺口</strong>：</p>
+<ol>
+<li><strong>无统一编排</strong>：5 个系统各自运行，无统一调度器</li>
+<li><strong>无闭环追踪</strong>：没有"经验 ID"贯穿全链路，无法追踪从错误到防复发的完整路径</li>
+<li><strong>无反馈量化</strong>：不知道某个规则沉淀后是否真的减少了同类错误</li>
+<li><strong>信号去重缺失</strong>：同一错误可能被 error-case-library 和 agent-reflection 同时记录，无去重</li>
+</ol>
+<hr />
+<h2 id="v10">二、技术架构设计：经验闭环引擎 v1.0</h2>
+<h3 id="21">2.1 核心数据模型</h3>
+<pre><code class="language-python">@dataclass
+class Experience:
+    &quot;&quot;&quot;经验闭环核心实体&quot;&quot;&quot;
+    id: str              # EXP-YYYY-NNN
+    created: datetime
+    category: str        # 错误类别
+
+    # 阶段1：采集
+    symptoms: list[str]  # 可观测症状
+    context: dict        # 发生时的上下文（工具、文件、参数）
+
+    # 阶段2：根因
+    root_cause: str       # 根因描述
+    root_cause_layer: str # L1/L2/L3/L4
+    confidence: float     # 分析置信度 0-1
+
+    # 阶段3：编码
+    encoded_as: list[str] # [&quot;skill:pitfall&quot;, &quot;memory&quot;, &quot;script:fix&quot;]
+    encoded_at: datetime
+
+    # 阶段4：防复发
+    prevention_type: str  # &quot;compile&quot;/&quot;runtime&quot;/&quot;validate&quot;
+    triggered_count: int  # 被触发次数
+    last_triggered: datetime
+
+    # 阶段5：验证
+    reoccurred: bool      # 同类错误是否再出现
+    verified_at: datetime
+
+    # 元数据
+    related_cases: list[str]   # 关联的 EC-YYYY-NNN
+    evolution_log_ids: list[str]  # 对应的进化日志条目
+</code></pre>
+<h3 id="22">2.2 自动根因分析管道</h3>
+<pre><code class="language-python">class RootCauseAnalyzer:
+    &quot;&quot;&quot;分层自动根因分析&quot;&quot;&quot;
+
+    # L1 规则库（模式匹配，高自动化）
+    L1_PATTERNS = {
+        &quot;ModuleNotFoundError&quot;: &quot;import 路径与目录结构不匹配&quot;,
+        &quot;FileNotFoundError.*cron&quot;: &quot;cron 环境 PATH 隔离，需绝对路径&quot;,
+        &quot;json.loads.*YAML&quot;: &quot;用 json 解析了 YAML 格式文件&quot;,
+        &quot;UnboundLocalError&quot;: &quot;循环/条件内赋值变量未初始化&quot;,
+        &quot;TypeError.*abstract&quot;: &quot;ABC 抽象方法未实现&quot;,
+    }
+
+    # L2 规则库（语义匹配，中等自动化）
+    L2_PATTERNS = {
+        &quot;NaN.*False|NaN.*True&quot;: {
+            &quot;root_cause&quot;: &quot;NaN 参与比较运算结果恒为 False&quot;,
+            &quot;fix&quot;: &quot;比较前 fillna(0) 或 dropna()&quot;,
+            &quot;auto_fixable&quot;: True
+        },
+        &quot;rolling.*NaN|min_periods&quot;: {
+            &quot;root_cause&quot;: &quot;pandas rolling 默认 min_periods=window&quot;,
+            &quot;fix&quot;: &quot;设置 min_periods=1&quot;,
+            &quot;auto_fixable&quot;: True
+        },
+    }
+
+    def analyze(self, error: dict) -&gt; dict:
+        &quot;&quot;&quot;自动分析根因，返回结构化结果&quot;&quot;&quot;
+
+        # Step 1: L1 模式匹配
+        for pattern, cause in self.L1_PATTERNS.items():
+            if re.search(pattern, error.get('message', '')):
+                return {
+                    &quot;layer&quot;: &quot;L1&quot;, &quot;confidence&quot;: 0.95,
+                    &quot;root_cause&quot;: cause, &quot;auto_fixable&quot;: True
+                }
+
+        # Step 2: L2 语义匹配
+        for pattern, analysis in self.L2_PATTERNS.items():
+            if re.search(pattern, error.get('message', '')):
+                return {
+                    &quot;layer&quot;: &quot;L2&quot;, &quot;confidence&quot;: 0.8,
+                    **analysis
+                }
+
+        # Step 3: L3/L4 标记需人工分析
+        return {
+            &quot;layer&quot;: &quot;L3+&quot;, &quot;confidence&quot;: 0.3,
+            &quot;root_cause&quot;: &quot;需人工分析&quot;, &quot;auto_fixable&quot;: False,
+            &quot;suggestion&quot;: self._generate_analysis_hints(error)
+        }
+</code></pre>
+<h3 id="23">2.3 自动防复发注入器</h3>
+<pre><code class="language-python">class PreventionInjector:
+    &quot;&quot;&quot;将经验编码为防复发规则，注入到各层级&quot;&quot;&quot;
+
+    def inject(self, experience: Experience):
+        &quot;&quot;&quot;根据根因层级选择注入方式&quot;&quot;&quot;
+
+        if experience.root_cause_layer == &quot;L1&quot;:
+            # 编译期：写入 skill pitfalls
+            self._inject_to_skill_pitfalls(experience)
+
+        elif experience.root_cause_layer == &quot;L2&quot;:
+            # 运行期：创建 pre-hook 检查
+            self._inject_runtime_check(experience)
+
+        elif experience.root_cause_layer in (&quot;L3&quot;, &quot;L4&quot;):
+            # 验证期：添加 post-task 验证
+            self._inject_post_validation(experience)
+
+    def _inject_to_skill_pitfalls(self, exp: Experience):
+        &quot;&quot;&quot;将经验注入到相关 skill 的 pitfalls 段落&quot;&quot;&quot;
+        # 1. 找到受影响的 skill
+        affected_skills = self._find_affected_skills(exp.category)
+
+        for skill_name in affected_skills:
+            # 2. 读取当前 skill
+            skill = skill_view(skill_name)
+
+            # 3. 生成 pitfall 条目
+            pitfall = f&quot;- **{exp.root_cause}**：{exp.symptoms[0]}。修复：{exp.fix}&quot;
+
+            # 4. 注入到 pitfalls 段落
+            skill_manage(
+                action='patch',
+                name=skill_name,
+                old_string='## Pitfalls',
+                new_string=f'## Pitfalls\n\n{pitfall}'
+            )
+</code></pre>
+<h3 id="24">2.4 闭环完整性追踪器</h3>
+<pre><code class="language-python">class ExperienceTracker:
+    &quot;&quot;&quot;追踪经验闭环的完整性&quot;&quot;&quot;
+
+    def __init__(self):
+        self.log_path = &quot;~/.hermes/experience-tracker.jsonl&quot;
+
+    def track(self, experience_id: str):
+        &quot;&quot;&quot;周期性检查经验是否形成了完整闭环&quot;&quot;&quot;
+
+        exp = self._load_experience(experience_id)
+
+        metrics = {
+            &quot;has_root_cause&quot;: bool(exp.root_cause),
+            &quot;has_encoding&quot;: len(exp.encoded_as) &gt; 0,
+            &quot;skill_loaded&quot;: exp.triggered_count &gt; 0,
+            &quot;prevented_reoccurrence&quot;: not exp.reoccurred,
+        }
+
+        completeness = sum(metrics.values()) / len(metrics)
+
+        if completeness &lt; 0.5:
+            # 闭环不完整，触发补全动作
+            self._trigger_completion(exp, metrics)
+
+        return completeness
+</code></pre>
+<hr />
+<h2 id="hermes">三、实践案例：从 Hermes 错误案例提炼防复发规则</h2>
+<h3 id="1nan-ec-010-ec-011">案例 1：NaN 传播链（EC-010 + EC-011）</h3>
+<p><strong>根因模式</strong>：pandas 中 NaN 参与算术/比较运算的行为不符合直觉</p>
+<p><strong>自动编码为 skill pitfall</strong>：</p>
+<pre><code>## Pitfalls (自动生成 from EXP-2026-001)
+
+### pandas NaN 传播
+- **症状**：rolling 均值/量比全 NaN，或 crossover 返回全 0
+- **根因**：rolling 默认 min_periods=window，前期全 NaN；NaN 比较恒 False
+- **修复**：rolling 设 min_periods=1；比较前 fillna(0)
+- **强制检查**：所有 pandas 指标计算代码必须包含 NaN 处理
+</code></pre>
+<h3 id="2ec-005-ec-006-ec-007">案例 2：误报链（EC-005 + EC-006 + EC-007）</h3>
+<p><strong>根因模式</strong>：检测条件太宽泛，缺少精确匹配</p>
+<p><strong>自动编码为设计规则</strong>：</p>
+<pre><code>## Rules (自动生成 from EXP-2026-002)
+
+### 故障检测精确性原则
+1. 检测模式必须包含上下文关键词（不能只匹配 &quot;error&quot;）
+2. 必须限定检测文件范围（不能扫描所有日志）
+3. 时间窗口必须基于行内时间戳（不能只看文件 mtime）
+4. 配置文件检查必须区分格式（JSON vs YAML vs TOML）
+</code></pre>
+<h3 id="3ec-009-ec-014">案例 3：初始化链（EC-009 + EC-014）</h3>
+<p><strong>根因模式</strong>：假设前置条件一定满足</p>
+<p><strong>自动编码为代码模板</strong>：</p>
+<pre><code class="language-python"># 自动注入的防御性编程模板
+def safe_iteration(items):
+    &quot;&quot;&quot;从 EC-009 提炼：循环前必须处理空输入&quot;&quot;&quot;
+    if not items:
+        return None  # 空输入提前返回
+    result = None  # 初始化循环内变量
+    for item in items:
+        result = process(item)
+    return result
+
+def implement_abc_methods(cls):
+    &quot;&quot;&quot;从 EC-014 提炼：继承 ABC 必须实现所有抽象方法&quot;&quot;&quot;
+    abstract_methods = getattr(cls, '__abstractmethods__', set())
+    for method in abstract_methods:
+        if not hasattr(cls, method):
+            raise TypeError(
+                f&quot;{cls.__name__} must implement abstract method: {method}&quot;
+            )
+</code></pre>
+<hr />
+<h2 id="experience-loop-engine">四、整合方案：Experience Loop Engine 作为统一编排层</h2>
+<h3 id="41">4.1 架构图</h3>
+<pre><code>                    ┌─────────────────────────┐
+                    │  Experience Loop Engine  │
+                    │    (统一编排层 v1.0)      │
+                    └─────────┬───────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+   ┌────▼────┐          ┌─────▼─────┐         ┌─────▼─────┐
+   │ COLLECT  │          │ ENCODE    │         │ PREVENT   │
+   │ Collector│          │ Encoder   │         │ Injector  │
+   └────┬────┘          └─────┬─────┘         └─────┬─────┘
+        │                     │                     │
+   ┌────▼────┐          ┌─────▼─────┐         ┌─────▼─────┐
+   │error-   │          │evolver    │         │skill      │
+   │case-lib │          │agent-     │         │pitfalls   │
+   │sensor-  │          │reflection │         │pre-hooks  │
+   │grid     │          │active-    │         │post-hooks │
+   │         │          │learning   │         │           │
+   └─────────┘          └───────────┘         └───────────┘
+</code></pre>
+<h3 id="42">4.2 统一事件总线</h3>
+<pre><code class="language-python">class ExperienceBus:
+    &quot;&quot;&quot;经验闭环事件总线 — 贯穿全链路&quot;&quot;&quot;
+
+    def __init__(self):
+        self.bus = &quot;~/.hermes/experience-bus.jsonl&quot;
+
+    def emit(self, event_type: str, data: dict):
+        &quot;&quot;&quot;发布事件&quot;&quot;&quot;
+        event = {
+            &quot;id&quot;: f&quot;EXP-{datetime.now():%Y%m%d}-{self._next_seq()}&quot;,
+            &quot;type&quot;: event_type,  # &quot;error_detected&quot; | &quot;root_caused&quot; | &quot;encoded&quot; | &quot;prevented&quot; | &quot;reoccurred&quot;
+            &quot;data&quot;: data,
+            &quot;timestamp&quot;: datetime.now().isoformat()
+        }
+        append_jsonl(self.bus, event)
+        return event[&quot;id&quot;]
+
+    def trace(self, experience_id: str) -&gt; list:
+        &quot;&quot;&quot;追踪一条经验的完整生命周期&quot;&quot;&quot;
+        events = read_jsonl(self.bus)
+        return [e for e in events if e[&quot;id&quot;] == experience_id]
+</code></pre>
+<h3 id="43">4.3 与现有系统的集成点</h3>
+<table>
+<thead>
+<tr>
+<th>现有系统</th>
+<th>集成方式</th>
+<th>变更量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>error-case-library</td>
+<td>case-add 时自动触发 ExperienceBus.emit("error_detected")</td>
+<td>+3 行代码</td>
+</tr>
+<tr>
+<td>evolver</td>
+<td>scan 结果通过 ExperienceBus 追踪，不再写独立日志</td>
+<td>改输出格式</td>
+</tr>
+<tr>
+<td>agent-reflection</td>
+<td>微反思写入 ExperienceBus 而非 reflection-pending.jsonl</td>
+<td>改输出路径</td>
+</tr>
+<tr>
+<td>sensor-grid</td>
+<td>Tier 1 传感器信号接入 ExperienceBus</td>
+<td>+接口适配</td>
+</tr>
+<tr>
+<td>active-learning</td>
+<td>进化闭环评估使用 ExperienceTracker.measure()</td>
+<td>+调用</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">五、知识缺口与未来方向</h2>
+<h3 id="51">5.1 已识别的知识缺口</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>缺口</th>
+<th>优先级</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>G1</td>
+<td>根因分析 L3/L4 自动化率低</td>
+<td>P1</td>
+<td>引入 LLM 辅助分析（Prompt 模板 + few-shot）</td>
+</tr>
+<tr>
+<td>G2</td>
+<td>无闭环完整性量化指标</td>
+<td>P1</td>
+<td>实现 ExperienceTracker，cron 每日评估</td>
+</tr>
+<tr>
+<td>G3</td>
+<td>Skill pitfalls 无自动注入管道</td>
+<td>P2</td>
+<td>实现 PreventionInjector</td>
+</tr>
+<tr>
+<td>G4</td>
+<td>经验去重/合并逻辑缺失</td>
+<td>P2</td>
+<td>基于语义相似度的聚类</td>
+</tr>
+<tr>
+<td>G5</td>
+<td>跨 session 经验传递依赖 memory 检索</td>
+<td>P3</td>
+<td>ExperienceBus 作为持久化事件流</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52">5.2 与学术研究的关联</h3>
+<p>经验闭环引擎的设计与以下研究领域相关：</p>
+<ol>
+<li><strong>Reinforcement Learning from Human Feedback (RLHF)</strong>：将人类反馈（错误纠正）编码为奖励信号</li>
+<li><strong>Case-Based Reasoning (CBR)</strong>：基于案例的推理，与 error-case-library 直接对应</li>
+<li><strong>Self-Supervised Learning</strong>：从无标注的错误日志中自动发现模式</li>
+<li><strong>Autonomic Computing</strong>：IBM 提出的自计算系统（自我配置、自我修复、自我优化、自我保护）</li>
+<li><strong>Muscle Memory in Robotics</strong>：机器人运动技能的"肌肉记忆"编码，从 demonstration 中提取运动原语</li>
+</ol>
+<h3 id="53">5.3 实施路线图</h3>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>内容</th>
+<th>时间</th>
+<th>产出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P0</td>
+<td>ExperienceBus + Experience 数据模型</td>
+<td>1天</td>
+<td>事件总线 + JSONL 追踪</td>
+</tr>
+<tr>
+<td>P1</td>
+<td>RootCauseAnalyzer L1/L2 规则库</td>
+<td>2天</td>
+<td>从 29 条案例自动提炼规则</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>PreventionInjector (skill pitfalls 注入)</td>
+<td>1天</td>
+<td>自动 patch skill</td>
+</tr>
+<tr>
+<td>P3</td>
+<td>ExperienceTracker 闭环评估</td>
+<td>1天</td>
+<td>每日完整性报告</td>
+</tr>
+<tr>
+<td>P4</td>
+<td>与现有 5 系统集成</td>
+<td>2天</td>
+<td>统一编排层上线</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">六、实践启发</h2>
+<ol>
+<li>
+<p><strong>经验闭环的最大价值不在"记录"而在"预防"</strong>：29 条错误案例如果只是记录在 JSONL 里，下次遇到同样问题时 Agent 未必会查。只有把经验编码成"强制检查"（pitfalls、pre-hooks），才能真正防复发。</p>
+</li>
+<li>
+<p><strong>分层自动化是务实策略</strong>：不是所有根因都需要 LLM 分析。L1 的模式匹配（31% 的错误）可以用正则自动完成，成本低、精度高。先把这部分自动化，再逐步扩展。</p>
+</li>
+<li>
+<p><strong>闭环完整性需要量化</strong>："我进化了"不能只靠进化日志数量衡量。需要追踪从错误到防复发的完整路径，completeness_score ≥ 0.7 才算"经验已内化"。</p>
+</li>
+<li>
+<p><strong>现有系统的整合比重建更重要</strong>：Hermes 已有 5 个相关子系统，不需要推翻重建。ExperienceBus 作为薄层编排，最小化变更量，最大化整合效果。</p>
+</li>
+<li>
+<p><strong>"肌肉记忆"的本质是"被动→主动"的转变</strong>：从"遇到问题查库"（被动）到"操作时自动检查"（主动）。这是经验闭环引擎的核心设计理念。</p>
+</li>
+</ol>
+<h2 id="_4">相关笔记</h2>
+<ul>
+<li><a href="explore/2026-05-18-skill-lifecycle-management-deep-dive.md">skill-lifecycle-management-deep-dive</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>边缘端LLM推理优化与量化鲁棒性</title>
+
+<meta property="og:title" content="边缘端LLM推理优化与量化鲁棒性" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llmvlm-20267">边缘端 LLM/VLM 推理优化与量化鲁棒性 — 2026年7月最新技术</h1>
+<blockquote>
+<p><strong>出处</strong>: NVIDIA TensorRT Edge-LLM 技术博客 / arXiv 2607.20981 (边缘多模态MoE量化交互) / arXiv 2607.18540 (Recti-Q 量化鲁棒性) / arXiv 2607.18101 (端侧模型自适应)<br />
+<strong>日期</strong>: 2026-07-26<br />
+<strong>标签</strong>: #边缘AI #LLM推理 #量化 #TensorRT #Jetson #MoE #VLM #机器人感知 #SWaP #OTA更新</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-llmvlm">1.1 核心问题：LLM/VLM 从云到边的鸿沟</h3>
+<p>LLM 和多模态推理系统正快速向边缘扩展。汽车和机器人开发者越来越希望<strong>在车端/机器人端</strong>直接运行对话AI、多模态感知和高层规划——因为延迟、可靠性、离线能力在这些场景至关重要。</p>
+<p>但数据中心推理框架（vLLM/TGI/TensorRT-LLM）面向的是<strong>高并发吞吐优化</strong>，而边缘推理的核心特征完全不同：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>数据中心</th>
+<th>边缘（车/机器人）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>并发用户</td>
+<td>大量并发</td>
+<td>少数用户或单用户</td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td>大（吞吐优先）</td>
+<td>小（通常跨摄像头）</td>
+</tr>
+<tr>
+<td>延迟要求</td>
+<td>尽力而为</td>
+<td><strong>最小且可预测</strong></td>
+</tr>
+<tr>
+<td>资源</td>
+<td>弹性扩展</td>
+<td><strong>最小磁盘/内存/计算</strong></td>
+</tr>
+<tr>
+<td>可靠性</td>
+<td>可重试</td>
+<td><strong>高鲁棒性、不可失败</strong></td>
+</tr>
+<tr>
+<td>网络</td>
+<td>常在线</td>
+<td><strong>离线运行</strong></td>
+</tr>
+<tr>
+<td>标准</td>
+<td>无特殊要求</td>
+<td><strong>生产标准合规</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-nvidia-tensorrt-edge-llm">1.2 NVIDIA TensorRT Edge-LLM：边缘推理专用框架</h3>
+<p>NVIDIA 发布的开源 C++ 框架（JetPack 7.1，GitHub: NVIDIA/TensorRT-Edge-LLM），专为 DRIVE AGX Thor 和 Jetson Thor 设计。三大核心技术：</p>
+<p><strong>① EAGLE-3 推测解码（Speculative Decoding）</strong></p>
+<p>传统自回归解码每步只生成1个token。推测解码用一个小的"草稿模型"同时预测多个token，再用大模型并行验证——如果草稿正确，一次就能确认多个token，大幅降低解码延迟。</p>
+<p>EAGLE-3 是目前最先进的推测解码方法之一，相比EAGLE-2进一步优化了草稿质量和验证效率。</p>
+<p><strong>② NVFP4 量化（4-bit浮点）</strong></p>
+<p>NVFP4 是 NVIDIA 定义的 4-bit 浮点格式，相比传统INT4量化：<br />
+- 保留了浮点的动态范围（exponent），精度损失更小<br />
+- Thor GPU 有原生NVFP4硬件支持，零额外开销<br />
+- 支持训练后量化（PTQ），不需要重训练</p>
+<p><strong>③ Chunked Prefill（分块预填充）</strong></p>
+<p>将长prompt的prefill阶段分成多个chunk，与decode阶段交错执行，避免长prompt独占GPU导致decode延迟飙升。这对边缘场景的实时性至关重要。</p>
+<p><strong>三阶段工作流</strong>：</p>
+<pre><code>1. 导出：HuggingFace模型 → ONNX（支持量化、LoRA适配器、EAGLE-3草稿模型）
+2. 引擎构建：ONNX → 针对目标硬件优化的TensorRT引擎
+3. 运行时：C++ Runtime在目标硬件上执行decoding循环
+</code></pre>
+<blockquote>
+<p><strong>金句</strong>："数据中心推理框架面向的是高并发吞吐优化，而嵌入式推理需要专用解决方案——延迟必须最小且可预测，可靠性必须高，且必须能离线运行。"</p>
+</blockquote>
+<h3 id="13">1.3 产业采用案例</h3>
+<p>CES 2026 上三家合作伙伴展示：</p>
+<ul>
+<li><strong>Bosch</strong>：与Microsoft+NVIDIA合作开发AI Cockpit，车载AI助手用端侧ASR+TTS+LLM推理（TensorRT Edge-LLM），再通过编排器与云端大模型协作</li>
+<li><strong>ThunderSoft</strong>：AIBOX平台基于DRIVE AGX Orin，在严格功耗和内存限制内实现低延迟对话和座舱辅助</li>
+<li><strong>MediaTek</strong>：CX1 SoC用于座舱AI和HMI，包括驾驶员和座舱活动监控（VLM推理）</li>
+</ul>
+<h3 id="14-arxiv-260720981">1.4 量化不是独立优化——交互效应（arXiv 2607.20981）</h3>
+<p>这篇综述提出了一个反直觉的核心论点：<strong>边缘多模态推理的效率技术不能独立优化</strong>。</p>
+<p>视觉token压缩、视频token管理、KV-cache优化、MoE路由、低比特量化、边缘部署——这些技术之间存在<strong>级联交互效应</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>交互</th>
+<th>影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>视觉token压缩 → MoE路由</td>
+<td>压缩改变了下游特征分布，影响路由决策</td>
+</tr>
+<tr>
+<td>MoE路由 → 量化敏感度</td>
+<td>路由行为影响专家利用率，不同专家量化敏感度不同</td>
+</tr>
+<tr>
+<td>量化router logits → 专家分配</td>
+<td>量化后的路由logits影响专家分配准确性</td>
+</tr>
+<tr>
+<td>KV-cache策略 → 多模态证据保留</td>
+<td>缓存策略决定保留了多少多模态证据</td>
+</tr>
+<tr>
+<td>硬件约束 → 瓶颈转换</td>
+<td>计算节省常转化为内存和通信瓶颈</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>核心金句</strong>："这些技术不能当作独立优化。视觉token压缩改变了下游特征分布和MoE路由决策，路由行为影响了专家利用率和量化敏感度，量化后的路由logits影响了专家分配。"</p>
+</blockquote>
+<p>论文引入了 <strong>Temporal Routing Consistency（时间路由一致性）</strong> 作为视频MoE模型的诊断指标——如果相邻帧的路由决策频繁跳变，说明路由不稳定，会放大量化误差。</p>
+<h3 id="15-recti-qarxiv-260718540">1.5 Recti-Q：量化导致的鲁棒性鸿沟（arXiv 2607.18540）</h3>
+<p><strong>发现了一个被忽视的严重问题</strong>：4-bit PTQ 在干净数据上几乎无损，但在分布偏移下（传感器噪声、恶劣天气、新环境）<strong>显著退化</strong>——存在"量化诱导的鲁棒性鸿沟"。</p>
+<p>在 ImageNet-C（损坏鲁棒性）和 PACS（域泛化）上，4-bit PTQ 模型即使ID准确率损失可忽略，鲁棒性也<strong>大幅退化</strong>。</p>
+<p>Recti-Q 的解法极其轻量：</p>
+<pre><code>冻结量化后的backbone
+    ↓
+只训练一个小classifier-head LoRA适配器（仅用源域数据）
+    ↓
+&lt;1%参数开销（最小6KB）
+    ↓
+保留99%的PTQ内存节省，计算开销可忽略
+    ↓
+恢复大部分丢失的鲁棒性，某些情况下超过FP32
+    ↓
+额外优势：支持低带宽OTA补丁更新（部署后机器人集群远程修复）
+</code></pre>
+<blockquote>
+<p><strong>核心洞察</strong>："量化不仅要保ID准确率，更要保OoD鲁棒性。4-bit PTQ在干净数据上无损，但在传感器噪声/恶劣天气/新环境下会显著退化——这对部署在不可预测物理环境中的机器人集群是致命的。"</p>
+</blockquote>
+<h3 id="16-arxiv-260718101">1.6 端侧模型自适应加速器（arXiv 2607.18101）</h3>
+<p>端侧模型自适应（on-device adaptation）对终身个性化至关重要，但资源受限设备让端到端反向传播不现实。这篇论文提出了一个边缘AI推理加速器，使端侧模型适配成为可能——为持续学习打开了硬件层面的大门。</p>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-2026">2.1 量化技术谱系（2026现状）</h3>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>bit-width</th>
+<th>精度损失</th>
+<th>硬件支持</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP32</td>
+<td>32</td>
+<td>基准</td>
+<td>通用</td>
+<td>训练、高精度推理</td>
+</tr>
+<tr>
+<td>FP16/BF16</td>
+<td>16</td>
+<td>~0.1%</td>
+<td>通用GPU</td>
+<td>标准推理</td>
+</tr>
+<tr>
+<td>INT8</td>
+<td>8</td>
+<td>~0.5%</td>
+<td>通用</td>
+<td>边缘部署主力</td>
+</tr>
+<tr>
+<td>NVFP4</td>
+<td>4 (float)</td>
+<td>~1-2%</td>
+<td>Thor原生</td>
+<td>边缘实时推理</td>
+</tr>
+<tr>
+<td>INT4</td>
+<td>4 (int)</td>
+<td>~2-3%</td>
+<td>需硬件支持</td>
+<td>极致压缩</td>
+</tr>
+<tr>
+<td>1-bit/三值</td>
+<td>1-1.58</td>
+<td>~5-10%</td>
+<td>定制</td>
+<td>极端边缘（如Bonsai）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-eagle">2.2 EAGLE 系列推测解码演进</h3>
+<pre><code>EAGLE-1 (2024): 用单层transformer做草稿，接受率~60%
+EAGLE-2 (2024): 动态草稿树，接受率~70%
+EAGLE-3 (2025): 改进草稿质量+验证效率，接受率~80%+
+</code></pre>
+<p>推测解码的延迟加速比 ≈ 1/(2-接受率)，所以EAGLE-3的80%接受率意味着约 <strong>3-4x 加速</strong>。</p>
+<h3 id="23-jetson">2.3 Jetson 生态的推理框架对比</h3>
+<table>
+<thead>
+<tr>
+<th>框架</th>
+<th>语言</th>
+<th>定位</th>
+<th>TensorRT Edge-LLM 对比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TensorRT-LLM</td>
+<td>C++/Python</td>
+<td>数据中心</td>
+<td>面向高并发，非边缘优化</td>
+</tr>
+<tr>
+<td>vLLM</td>
+<td>Python</td>
+<td>数据中心</td>
+<td>PagedAttention，非嵌入式</td>
+</tr>
+<tr>
+<td>llama.cpp</td>
+<td>C/C++</td>
+<td>通用轻量</td>
+<td>跨平台，但非GPU专用优化</td>
+</tr>
+<tr>
+<td>MLC-LLM</td>
+<td>多语言</td>
+<td>通用</td>
+<td>跨平台编译</td>
+</tr>
+<tr>
+<td><strong>TensorRT Edge-LLM</strong></td>
+<td><strong>C++</strong></td>
+<td><strong>边缘专用</strong></td>
+<td><strong>Thor原生NVFP4+EAGLE-3+chunked prefill</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-llm">3.1 边缘LLM推理优化全景</h3>
+<pre><code>输入层优化
+├── 视觉token压缩（减少VLM输入token数）
+├── Chunked Prefill（避免长prompt独占GPU）
+└── KV-cache管理（选择性保留多模态证据）
+
+模型层优化
+├── 量化（NVFP4/INT4/INT8）
+├── MoE稀疏路由（只激活部分专家）
+├── 推测解码（EAGLE-3草稿+验证）
+└── LoRA适配器（轻量微调）
+
+部署层优化
+├── OTA补丁更新（Recti-Q的6KB鲁棒性补丁）
+├── 生产标准合规（ASIL/ISO 26262）
+└── 离线运行（无云依赖）
+
+⚠️ 关键约束：这些优化存在级联交互，不能独立调优
+</code></pre>
+<h3 id="32">3.2 五大核心发现</h3>
+<p><strong>发现1：边缘推理需要专用框架，数据中心框架不适用（TensorRT Edge-LLM）</strong></p>
+<blockquote>
+<p>数据中心追求高并发吞吐，边缘追求最小可预测延迟+离线运行+高可靠。TensorRT Edge-LLM用C++实现、最小依赖、专注嵌入式需求，Bosch/ThunderSoft/MediaTek已采用。</p>
+</blockquote>
+<p><strong>发现2：NVFP4 + EAGLE-3 + Chunked Prefill 是边缘三件套</strong></p>
+<blockquote>
+<p>NVFP4浮点量化比INT4精度更高（保留动态范围），EAGLE-3推测解码提供3-4x加速，Chunked Prefill保证长prompt下decode不被阻塞。三者组合是2026边缘LLM推理的最优解。</p>
+</blockquote>
+<p><strong>发现3：量化优化不能独立做——存在级联交互（arXiv 2607.20981）</strong></p>
+<blockquote>
+<p>视觉token压缩影响MoE路由，路由影响量化敏感度，量化logits影响专家分配。论文提出"时间路由一致性"诊断指标——相邻帧路由跳变会放大量化误差。这意味着压缩+量化+路由必须联合优化。</p>
+</blockquote>
+<p><strong>发现4：4-bit量化存在隐藏的鲁棒性鸿沟（Recti-Q）</strong></p>
+<blockquote>
+<p>4-bit PTQ在干净数据上无损，但在传感器噪声/恶劣天气/新环境下显著退化。对部署在物理世界的机器人，这个鸿沟是致命的。Recti-Q用&lt;1%参数（最小6KB）的LoRA适配器恢复鲁棒性，且支持OTA远程补丁。</p>
+</blockquote>
+<p><strong>发现5：边缘推理已进入产业落地阶段</strong></p>
+<blockquote>
+<p>Bosch的AI Cockpit、ThunderSoft的AIBOX、MediaTek的CX1——CES 2026上三家展示的都是<strong>量产产品</strong>而非原型。边缘LLM推理从"论文demo"进入"车载量产"阶段。</p>
+</blockquote>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41-nvfp4-4-bit">4.1 NVFP4 将成为边缘4-bit量化的事实标准（高确定性）</h3>
+<p>依据：NVIDIA Thor 原生硬件支持+TensorRT Edge-LLM 框架支持+Bosch/MediaTek产业采用。浮点格式天然优于整数格式的动态范围，且已有硬件落地。INT4/GGUF Q4_K 等整数格式在GPU生态中将逐步边缘化（但在纯CPU场景如llama.cpp仍有价值）。</p>
+<h3 id="42">4.2 推测解码将成为边缘实时推理的标配（高确定性）</h3>
+<p>依据：EAGLE-3 接受率达80%，提供3-4x加速。对边缘场景（低batch size），推测解码的加速比比数据中心更显著（因为小batch下decode是纯延迟瓶颈）。TensorRT Edge-LLM已原生支持。</p>
+<h3 id="43-ai">4.3 量化鲁棒性将成为机器人AI部署的必检项（中高确定性）</h3>
+<p>依据：Recti-Q 证明了4-bit PTQ在OoD下大幅退化。随着更多机器人公司部署量化模型，"量化诱导鲁棒性鸿沟"将成为已知风险。Recti-Q的OTA补丁模式（6KB远程修复）将推动"量化+鲁棒性补丁"成为标准部署流程。</p>
+<h3 id="44-">4.4 压缩-路由-量化联合优化将成为新研究方向（中确定性）</h3>
+<p>依据：arXiv 2607.20981 系统性地揭示了三者的交互效应，提出了"时间路由一致性"诊断指标。此前这些技术都是独立研究的，这篇论文开创了联合优化的研究范式。预计2026下半年将出现联合优化的训练框架。</p>
+<h3 id="45-jetson-thor-orin">4.5 Jetson Thor 将取代 Orin 成为人形机器人主控首选（中确定性）</h3>
+<p>依据：TensorRT Edge-LLM 目前同时支持 Orin 和 Thor，但 NVFP4 原生加速只在 Thor 上。NVFP4 的2x压缩+EAGLE-3的3-4x加速意味着 Thor 上可运行 ~2x 参数量的模型。对于需要VLM推理的人形机器人，Thor 的优势显著。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-jetson-orin-nano">5.1 与 Jetson Orin Nano 本地环境的关系</h3>
+<p>当前运行环境是 Jetson Orin Nano Super（67 TOPS）。TensorRT Edge-LLM 的部分特性适用：</p>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>Orin Nano 支持</th>
+<th>Thor 专有</th>
+<th>当前可用性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TensorRT 引擎</td>
+<td>✅</td>
+<td>-</td>
+<td>已可用</td>
+</tr>
+<tr>
+<td>EAGLE-3 推测解码</td>
+<td>✅（需JetPack 7.1+）</td>
+<td>-</td>
+<td>可尝试</td>
+</tr>
+<tr>
+<td>NVFP4 量化</td>
+<td>❌</td>
+<td>✅原生</td>
+<td>Orin不支持</td>
+</tr>
+<tr>
+<td>Chunked Prefill</td>
+<td>✅</td>
+<td>-</td>
+<td>可用</td>
+</tr>
+<tr>
+<td>C++ Runtime</td>
+<td>✅</td>
+<td>-</td>
+<td>可用</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：Orin Nano 可用 TensorRT Edge-LLM 的大部分功能（除NVFP4），但有性能上限。人形机器人项目（wheel-legged-robot-v2）如果需要VLM推理，长期应考虑升级到 Thor。</p>
+<h3 id="52-edge-llm-quantization-llm-inference-optimization-skill">5.2 与 edge-llm-quantization / llm-inference-optimization skill 的关联</h3>
+<p>现有 skill 主要覆盖 GGUF 量化（llama.cpp 路线）和通用推理优化。需要补充：</p>
+<ul>
+<li><strong>TensorRT Edge-LLM 工作流</strong>（HF→ONNX→TRT引擎→C++ Runtime）</li>
+<li><strong>NVFP4 vs INT4 vs GGUF Q4 的选择决策树</strong></li>
+<li><strong>EAGLE-3 推测解码的配置和调优</strong></li>
+<li><strong>Recti-Q 鲁棒性补丁模式</strong>（对部署在物理世界的机器人尤其重要）</li>
+</ul>
+<h3 id="53-wheel-legged-robot-v2">5.3 与 wheel-legged-robot-v2 项目的关联</h3>
+<p>双轮腿机器人项目当前用STM32H743+ESP32-S3，无LLM推理。如果要加入语音交互（小智集成方案已在 docs/xiaozhi-integration.md）：</p>
+<ul>
+<li><strong>短期</strong>：ESP32-S3 端跑小模型（&lt;100M参数量化模型），语音指令识别</li>
+<li><strong>中期</strong>：Jetson Orin Nano 跑 TensorRT Edge-LLM + 小型VLM（如 Qwen3-1.7B NVFP4），实现环境理解+任务规划</li>
+<li><strong>长期</strong>：升级到 Jetson Thor，运行更大VLM实现多模态感知</li>
+</ul>
+<p>Recti-Q 的洞察直接适用：机器人部署在不可预测的物理环境，量化模型的OoD鲁棒性必须验证。</p>
+<h3 id="54-sim-to-real">5.4 与双轮腿机器人的 Sim-to-Real 关联</h3>
+<p>曼宁框架笔记（2026-07-24）指出"仿真作为因果实验室"。如果机器人在仿真中训练，部署到真机时：<br />
+- 传感器噪声分布不同（仿真 vs 真实相机/IMU）<br />
+- 环境外观不同（域差距）<br />
+- 这正是 Recti-Q 解决的"分布偏移"问题</p>
+<p><strong>建议</strong>：在 wheel-legged-robot-v2 的 Sim-to-Real 流程中，部署量化感知模型时必须加 Recti-Q 风格的鲁棒性适配器，而不是只验证仿真域准确率。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>"数据中心推理框架面向高并发吞吐优化，而嵌入式推理需要专用解决方案——延迟必须最小且可预测，可靠性必须高，且必须能离线运行。" — NVIDIA TensorRT Edge-LLM</p>
+<p>"这些效率技术不能当作独立优化。视觉token压缩改变了下游特征分布和MoE路由决策。" — arXiv 2607.20981</p>
+<p>"量化不仅要保ID准确率，更要保OoD鲁棒性。4-bit PTQ在干净数据上无损，但在传感器噪声/恶劣天气/新环境下会显著退化。" — Recti-Q</p>
+<p>"Recti-Q 以不到1%的参数开销（最小6KB），保留了99%的PTQ内存节省，实现了低带宽OTA韧性补丁。" — Recti-Q</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>行动项</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TensorRT Edge-LLM 可在 Orin Nano 上试用</td>
+<td>clone repo，测试 Qwen3 小模型的 TRT 引擎推理</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>EAGLE-3 推测解码提供3-4x加速</td>
+<td>评估对 Jetson 上现有 Ollama 推理的替代方案</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>量化鲁棒性鸿沟是机器人部署隐患</td>
+<td>补充 edge-llm-quantization skill 的"OoD鲁棒性验证"章节</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>压缩-路由-量化联合优化是新方向</td>
+<td>关注 MoE 模型在 Jetson 上的部署优化</td>
+<td>P3</td>
+</tr>
+<tr>
+<td>OTA补丁模式适合机器人集群</td>
+<td>wheel-legged-robot-v2 中预留模型热更新接口</td>
+<td>P3</td>
+</tr>
+<tr>
+<td>NVFP4 只在 Thor 支持</td>
+<td>长期规划：评估人形机器人主控升级到 Thor</td>
+<td>P3</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-24-Jetson-PI端侧VLA实时控制8.66倍加速.md">Jetson-PI 端侧VLA实时控制8.66倍加速</a> — 端侧实时控制频率优化，本文补充量化鲁棒性维度</li>
+<li><a href="./2026-07-23-边缘AI推理优化-TinyML到TinyLM的2026现状.md">边缘AI推理优化-TinyML到TinyLM</a> — 边缘 AI 2026 全景，本文聚焦 LLM/VLM 层面的深度展开</li>
+<li><a href="./2026-07-24-Bonsai-1bit-Ternary极限量化-27B模型塞进手机.md">Bonsai 1bit/Ternary 极限量化</a> — 极限量化方案对比，本文关注量化对 MoE/VLM 的鲁棒性影响</li>
+<li><a href="./2026-07-20-tensorrt-edge-llm-jetson.md">TensorRT-Edge-LLM Jetson</a> — TensorRT 部署细节，本文从量化交互角度补充</li>
+<li><a href="../explore/2026-07-26-consumer-gpu-llm-inference-deep-dive.md">消费级 GPU 推理全景</a> — 桌面端推理选型，边缘端 SWaP 约束下的对照参考（explore 目录）</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DashAttention可微分稀疏层次注意力</title>
+
+<meta property="og:title" content="DashAttention可微分稀疏层次注意力" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="dashattention-differentiable-and-adaptive-sparse-hierarchical-attention">DashAttention: Differentiable and Adaptive Sparse Hierarchical Attention</h1>
+<ul>
+<li>📅 2026-05-20</li>
+<li>⭐ 4.5/5 — 稀疏注意力领域的实质性突破，用 α-entmax 替代 top-k 实现端到端可微</li>
+<li>🏷️ #稀疏注意力 #LLM推理优化 #长上下文 #α-entmax #注意力机制</li>
+<li>📰 arXiv:2605.18753 | 2026-05-18</li>
+<li>🔗 https://arxiv.org/abs/2605.18753</li>
+<li>👥 Yuxiang Huang, Nuno M. T. Gonçalves, Federico Alvetreti et al. (deep-spin)</li>
+<li>💻 https://github.com/deep-spin/dash-attention</li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>DashAttention 提出了一种可微分、自适应的稀疏层次注意力机制，解决了现有稀疏注意力方案（NSA、InfLLMv2 等）中 top-k 选择的两大缺陷：梯度不可传和固定选择数量。通过引入 α-entmax 变换替代硬性 top-k，实现了端到端可训练的稀疏注意力。实验表明，在 75% 稀疏度下 DashAttention 达到与全注意力相当的精度，且在高稀疏度区间显著优于 NSA 和 InfLLMv2。</p>
+<h2 id="_2">核心问题与研究动机</h2>
+<h3 id="_3">问题背景</h3>
+<p>长上下文 LLM 推理面临的核心瓶颈是注意力计算的 O(n²) 复杂度。现有稀疏注意力方案采用两阶段设计：<br />
+1. <strong>粗选阶段</strong>：从 KV cache 中选取关键 block<br />
+2. <strong>细选阶段</strong>：在选中的 block 内做 token 级注意力</p>
+<h3 id="_4">现有方案的致命缺陷</h3>
+<table>
+<thead>
+<tr>
+<th>缺陷</th>
+<th>具体表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不可微分</strong></td>
+<td>top-k 是离散操作，梯度无法从细选阶段回传到粗选阶段</td>
+</tr>
+<tr>
+<td><strong>固定选择数</strong></td>
+<td>所有 query 强制选 k 个 block，忽略不同 query 对上下文量的差异需求</td>
+</tr>
+<tr>
+<td><strong>信息浪费</strong></td>
+<td>简单 query 选了过多 block，复杂 query 又选不够</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">研究动机</h3>
+<blockquote>
+<p>"如果粗选阶段能端到端学习哪些 block 值得关注，并且每个 query 自适应选择不同数量的 block，稀疏注意力就能真正逼近全注意力的效果。"</p>
+</blockquote>
+<h2 id="_6">方法论（详细）</h2>
+<h3 id="_7">三阶段架构</h3>
+<h4 id="stage-0-local-chunk-summarization">Stage 0: Local Chunk Summarization（局部块摘要）</h4>
+<ul>
+<li>将 token 级的 KV cache 按 chunk size B 分块</li>
+<li>每个 chunk 内做 local attention，生成 chunk summary</li>
+<li>输出：粗粒度的 KV 表示，供 Stage 1 快速路由</li>
+</ul>
+<h4 id="stage-1-entmax-block-routing">Stage 1: α-entmax Block Routing（自适应块路由）</h4>
+<ul>
+<li><strong>核心创新点</strong>：用 α-entmax 替代 top-k</li>
+<li>α-entmax 是一种可学习的稀疏变换：</li>
+<li>当 α &gt; 1 时，自动产生精确零值（不需要显式截断）</li>
+<li>每个 query head 自适应决定选多少个 block（非固定 k 值）</li>
+<li>非分散性（non-dispersive）数学性质保证：不会被分散到大量微小权重上</li>
+<li><strong>梯度流通</strong>：α-entmax 是可微的，粗选阶段的参数可以从细选阶段的 loss 获得梯度</li>
+</ul>
+<pre><code>Query head h × Chunk summaries → Routing Weights [.32, .68, .00]
+                                              ↑ α-entmax 自动归零
+</code></pre>
+<h4 id="stage-2-prior-induced-sparse-softmax">Stage 2: Prior-induced Sparse Softmax（先验引导稀疏注意力）</h4>
+<ul>
+<li>在 Stage 1 选中的 block 上做 token 级全精度注意力</li>
+<li><strong>关键设计</strong>：将 Stage 1 的粗选分数作为先验（prior），融入 Stage 2 的 softmax</li>
+<li>相当于"粗选分数告诉你这些 block 大致多重要，细选阶段在此基础上精修"</li>
+<li>形成两阶段之间的信息传递，而非独立决策</li>
+<li>被丢弃的 block（权重为 0）不参与计算，节省内存和计算</li>
+</ul>
+<h3 id="_8">端到端训练流程</h3>
+<pre><code>Input → Stage 0 (Chunk Summary) → Stage 1 (α-entmax Routing) → Stage 2 (Prior Softmax) → Output
+           ↑                              ↑                            ↑
+           └────────── 梯度通过 α-entmax 连续回传 ──────────────────┘
+</code></pre>
+<h2 id="_9">关键实验结果与数据</h2>
+<h3 id="llm">主实验：LLM 长上下文建模</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>稀疏度</th>
+<th>精度 vs 全注意力</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DashAttention</td>
+<td>75%</td>
+<td><strong>相当</strong></td>
+<td>端到端训练</td>
+</tr>
+<tr>
+<td>NSA</td>
+<td>75%</td>
+<td>略低</td>
+<td>top-k，不可微</td>
+</tr>
+<tr>
+<td>InfLLMv2</td>
+<td>75%</td>
+<td>略低</td>
+<td>top-k，不可微</td>
+</tr>
+<tr>
+<td>Full Attention</td>
+<td>0%</td>
+<td>基准</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pareto">Pareto 前沿对比</h3>
+<ul>
+<li><strong>高稀疏度区间</strong>（&gt;80%）：DashAttention 优势最显著</li>
+<li><strong>中稀疏度区间</strong>（50-80%）：与 NSA/InfLLMv2 持平或略优</li>
+<li><strong>低稀疏度区间</strong>（&lt;50%）：三种方法接近</li>
+</ul>
+<h3 id="_10">消融实验</h3>
+<ul>
+<li>α-entmax vs top-k：α-entmax 在所有稀疏度下均优于 top-k</li>
+<li>有 prior vs 无 prior：Stage 1 先验引入带来 ~2-5% 相对提升</li>
+<li>自适应 block 数 vs 固定 k：自适应选择在复杂 query 上优势明显</li>
+</ul>
+<h2 id="_11">创新点分析</h2>
+<h3 id="1-entmax-top-k">1. α-entmax 替代 top-k（核心创新）</h3>
+<ul>
+<li><strong>理论贡献</strong>：证明 α-entmax 的非分散性（non-dispersive property），即权重不会分散到大量微小值</li>
+<li><strong>实践意义</strong>：无需显式阈值或 top-k 截断，自动学习稀疏结构</li>
+</ul>
+<h3 id="2">2. 两阶段信息传递</h3>
+<ul>
+<li>粗选分数作为先验融入细选阶段</li>
+<li>不同于 NSA 的独立两阶段决策</li>
+<li>梯度可以从 loss 回传到粗选阶段，实现真正的端到端优化</li>
+</ul>
+<h3 id="3">3. 自适应上下文选择</h3>
+<ul>
+<li>不同 query head 可以选择不同数量的 block</li>
+<li>简单 query 选少、复杂 query 选多</li>
+<li>更接近人类阅读的"按需关注"模式</li>
+</ul>
+<h2 id="_12">局限性与未来方向</h2>
+<h3 id="_13">当前局限</h3>
+<ol>
+<li><strong>α 超参数敏感</strong>：α-entmax 的 α 值需要调优，不同任务可能需要不同 α</li>
+<li><strong>chunk size 影响</strong>：Stage 0 的 chunk size 对性能有显著影响，需根据上下文长度调整</li>
+<li><strong>硬件适配</strong>：α-entmax 的稀疏模式对 GPU 并行不友好，实际加速比可能低于理论值</li>
+<li><strong>预训练兼容</strong>：需要在预训练阶段就使用 DashAttention，后训练插入效果有限</li>
+</ol>
+<h3 id="_14">未来方向</h3>
+<ol>
+<li>与 FlashAttention 系列结合，优化 GPU kernel 实现</li>
+<li>探索 α 值的动态调整（per-layer 或 per-head）</li>
+<li>扩展到多模态注意力（视觉-语言模型）</li>
+<li>与量化/蒸馏组合，进一步压缩推理成本</li>
+</ol>
+<h2 id="_15">🔍 借鉴点</h2>
+<h3 id="hermes-agent">对 Hermes Agent 的启发</h3>
+<ul>
+<li><strong>长上下文处理</strong>：Agent 处理长文档/多轮对话时，可用类似机制动态选择关键上下文</li>
+<li><strong>记忆检索优化</strong>：α-entmax 的自适应稀疏可用于 RAG 检索中的 chunk 路由，替代固定 top-k</li>
+<li><strong>端到端可训练</strong>：Agent 的检索→推理管线可借鉴两阶段梯度流通设计</li>
+</ul>
+<h3 id="jetson-orin">对 Jetson Orin 边缘部署的意义</h3>
+<ul>
+<li><strong>显存节省</strong>：75% 稀疏度意味着 KV cache 占用大幅降低，对 8GB 显存的 Jetson 至关重要</li>
+<li><strong>计算加速</strong>：跳过 75% 的 attention 计算，推理延迟显著降低</li>
+<li><strong>长上下文可行</strong>：原本因显存限制无法运行的长上下文模型，稀疏化后可能可以在边缘设备运行</li>
+</ul>
+<h3 id="_16">对量化交易的关联</h3>
+<ul>
+<li><strong>时序数据处理</strong>：长序列行情数据可用类似稀疏注意力机制，自动聚焦关键时间窗口</li>
+<li><strong>因子挖掘</strong>：自适应选择相关因子，避免全量因子带来的噪声干扰</li>
+</ul>
+<h2 id="_17">🔗 关联论文</h2>
+<ol>
+<li><strong>NSA (Native Sparse Attention)</strong> — DeepMind 的 top-k 稀疏注意力基线</li>
+<li><strong>InfLLMv2</strong> — 高效长上下文推理的稀疏注意力方案</li>
+<li><strong>α-entmax (Peters et al., 2019)</strong> — 原始 α-entmax 稀疏变换理论</li>
+<li><strong>FlashAttention 1/2/3</strong> — 硬件高效的精确注意力实现</li>
+<li><strong>Longformer</strong> — 稀疏注意力的早期探索（固定模式）</li>
+<li><strong>MInference</strong> — 微软的推理阶段稀疏注意力加速方案</li>
+</ol>
+<h2 id="_18">相关笔记</h2>
+<ul>
+<li><a href="explore/llm-inference-opt-2026-05-17.md">llm-inference-opt-2026-05-17</a></li>
+</ul>
+</body>
+</html>

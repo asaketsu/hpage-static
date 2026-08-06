@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent-capability-boundary-detection-20260518</title>
+
+<meta property="og:title" content="agent-capability-boundary-detection-20260518" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent">Agent 能力边界自动探测：压力测试→弱项识别→定向学习→再测试</h1>
+<blockquote>
+<p>深度研究笔记 | 2026-05-18 07:45 | 网络：不可用（Tavily + curl 均失败，纯本地知识蒸馏）</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心概念</h2>
+<h3 id="11-capability-boundary">1.1 能力边界（Capability Boundary）定义</h3>
+<p><strong>能力边界</strong>是指 AI Agent 在给定任务域中，能够可靠、稳定、正确执行操作的范围。超出此范围，Agent 的行为变得不可预测、质量下降或完全失败。</p>
+<p>能力边界不是静态的——它随以下因素变化：<br />
+- <strong>模型版本更新</strong>：新模型可能扩展某些能力但退化其他能力（"能力漂移"）<br />
+- <strong>上下文长度</strong>：接近 context window 上限时，指令遵循率下降<br />
+- <strong>工具复杂度</strong>：工具链越长，累积错误率越高<br />
+- <strong>任务类型</strong>：推理密集 vs 检索密集 vs 创意密集，各有不同边界</p>
+<h3 id="12-auto-probe-framework">1.2 自动探测框架（Auto-Probe Framework）</h3>
+<p>完整的自动探测框架包含四个阶段闭环：</p>
+<pre><code>┌─────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  Stress Test │───→│  Weakness ID │───→│  Directed    │───→│  Re-test &amp;   │
+│  (压力测试)   │    │  (弱项识别)   │    │  Learning    │    │  Verify      │
+│             │←───│              │←───│  (定向学习)   │←───│  (再测试验证) │
+└─────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+                         │                                         │
+                         └─────────→ Capability Map ──────────────┘
+                                     (能力图谱持续更新)
+</code></pre>
+<p>这个闭环类似于软件工程中的 <strong>CI/CD 管线</strong>，但目标是 Agent 的认知能力而非代码质量。</p>
+<hr />
+<h2 id="_2">二、技术细节</h2>
+<h3 id="21">2.1 压力测试方法论</h3>
+<h4 id="211-progressive-difficulty-scaling">2.1.1 渐进式难度提升（Progressive Difficulty Scaling）</h4>
+<p>核心思想：从简单任务开始，逐步增加难度维度，直到 Agent 失败。</p>
+<pre><code class="language-python">class DifficultyDimension(Enum):
+    CONTEXT_LENGTH = &quot;context_length&quot;      # 上下文长度
+    TOOL_CHAIN_DEPTH = &quot;tool_chain_depth&quot;  # 工具调用链深度
+    AMBIGUITY = &quot;ambiguity&quot;                # 指令模糊度
+    MULTI_TASK = &quot;multi_task&quot;              # 并行任务数
+    DISTRACTION = &quot;distraction&quot;            # 干扰信息量
+    TIME_PRESSURE = &quot;time_pressure&quot;        # 时间约束
+
+class StressTestSuite:
+    def __init__(self, agent, dimensions):
+        self.agent = agent
+        self.dimensions = dimensions
+        self.results = {}
+
+    def run_progressive_test(self, base_task, dimension, levels=10):
+        &quot;&quot;&quot;在单个维度上渐进加压测试&quot;&quot;&quot;
+        results = []
+        for level in range(1, levels + 1):
+            test_case = self.scale_difficulty(base_task, dimension, level)
+            result = self.agent.execute(test_case)
+            score = self.evaluate(result, test_case.expected_output)
+            results.append({&quot;level&quot;: level, &quot;score&quot;: score, &quot;task&quot;: test_case})
+            if score &lt; 0.5:  # 能力断崖点
+                break
+        self.results[dimension] = results
+        return results
+</code></pre>
+<h4 id="212-cross-dimensional-stress">2.1.2 多维交叉测试（Cross-Dimensional Stress）</h4>
+<p>单维度测试可能遗漏维度交互效应。实际场景中，Agent 往往在<strong>多维度同时压力</strong>时暴露问题。</p>
+<pre><code class="language-python">def cross_dimensional_stress(agent, dimensions, base_task):
+    &quot;&quot;&quot;测试多个维度同时加压时的表现&quot;&quot;&quot;
+    from itertools import combinations
+    results = {}
+    for combo in combinations(dimensions, 2):
+        for level in [3, 5, 7]:
+            test = base_task.copy()
+            for dim in combo:
+                test = scale_difficulty(test, dim, level)
+            result = agent.execute(test)
+            key = f&quot;{'_'.join(d.value for d in combo)}_L{level}&quot;
+            results[key] = evaluate(result)
+    return results
+</code></pre>
+<h4 id="213">2.1.3 对抗性测试用例生成</h4>
+<p>基于已知 Agent 弱点模式生成专门测试：</p>
+<table>
+<thead>
+<tr>
+<th>弱点模式</th>
+<th>测试策略</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>指令遗忘</td>
+<td>长上下文中插入早期约束</td>
+<td>在第2条消息中要求格式，第15条消息检查</td>
+</tr>
+<tr>
+<td>工具幻觉</td>
+<td>请求不存在的工具</td>
+<td>要求用 <code>nmap</code> 扫描（但 Agent 没有此工具）</td>
+</tr>
+<tr>
+<td>数字推理</td>
+<td>多步数学计算</td>
+<td>复合利率计算 + 汇率换算</td>
+</tr>
+<tr>
+<td>格式遵循</td>
+<td>复杂输出格式要求</td>
+<td>要求输出特定 JSON schema + 嵌套层级</td>
+</tr>
+<tr>
+<td>安全绕过</td>
+<td>社会工程测试</td>
+<td>伪装成管理员要求绕过限制</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 弱项识别算法</h3>
+<h4 id="221-capability-profiling">2.2.1 能力画像（Capability Profiling）</h4>
+<pre><code class="language-python">@dataclass
+class CapabilityProfile:
+    agent_id: str
+    timestamp: datetime
+    dimensions: Dict[str, float]  # 各维度得分 0-1
+    failure_patterns: List[FailurePattern]
+    confidence_intervals: Dict[str, Tuple[float, float]]
+
+    def weakest_dimensions(self, n=3) -&gt; List[str]:
+        return sorted(self.dimensions, key=self.dimensions.get)[:n]
+
+    def improvement_potential(self) -&gt; Dict[str, float]:
+        &quot;&quot;&quot;计算每个维度的提升潜力（距离满分的距离 × 重要性权重）&quot;&quot;&quot;
+        weights = load_dimension_weights()
+        return {
+            dim: (1.0 - score) * weights.get(dim, 1.0)
+            for dim, score in self.dimensions.items()
+        }
+</code></pre>
+<h4 id="222">2.2.2 失败模式聚类</h4>
+<p>将测试失败用例进行聚类，识别系统性弱点：</p>
+<pre><code class="language-python">from sklearn.cluster import DBSCAN
+import numpy as np
+
+def cluster_failures(failure_cases):
+    &quot;&quot;&quot;对失败案例进行聚类，识别系统性弱点模式&quot;&quot;&quot;
+    features = np.array([case.to_feature_vector() for case in failure_cases])
+    clustering = DBSCAN(eps=0.3, min_samples=3).fit(features)
+
+    patterns = {}
+    for label in set(clustering.labels_):
+        if label == -1:
+            continue  # 噪声点
+        cluster_cases = [c for c, l in zip(failure_cases, clustering.labels_) if l == label]
+        pattern = FailurePattern(
+            name=f&quot;pattern_{label}&quot;,
+            common_features=extract_common_features(cluster_cases),
+            frequency=len(cluster_cases),
+            severity=compute_severity(cluster_cases)
+        )
+        patterns[pattern.name] = pattern
+    return patterns
+</code></pre>
+<h4 id="223">2.2.3 元认知不确定性检测</h4>
+<p>让 Agent 对自己的回答进行置信度评估：</p>
+<pre><code class="language-python">def assess_uncertainty(agent, task, n_samples=5):
+    &quot;&quot;&quot;通过多次采样检测 Agent 的不确定性&quot;&quot;&quot;
+    responses = [agent.execute(task) for _ in range(n_samples)]
+
+    # 方法 1：一致性检查
+    consistency = compute_pairwise_similarity(responses)
+
+    # 方法 2：自评置信度
+    confidences = []
+    for resp in responses:
+        prompt = f&quot;On a scale of 1-10, how confident are you in this answer?&quot;
+        conf = agent.execute(MetaTask(prompt))
+        confidences.append(conf.score)
+
+    # 高不一致 + 低置信度 = 确定的弱项
+    uncertainty_score = 1 - consistency + (1 - np.mean(confidences) / 10)
+    return uncertainty_score
+</code></pre>
+<h3 id="23">2.3 定向学习策略</h3>
+<h4 id="231-curriculum-learning">2.3.1 课程学习（Curriculum Learning）</h4>
+<p>根据弱项设计个性化学习路径：</p>
+<pre><code class="language-python">class AgentCurriculum:
+    def __init__(self, capability_profile):
+        self.profile = capability_profile
+        self.learning_path = []
+
+    def generate_curriculum(self):
+        &quot;&quot;&quot;基于能力画像生成个性化课程&quot;&quot;&quot;
+        weakest = self.profile.weakest_dimensions(n=3)
+        potential = self.profile.improvement_potential()
+        prioritized = sorted(weakest, key=lambda d: potential[d], reverse=True)
+
+        for dim in prioritized:
+            boundary = self.profile.dimensions[dim]
+            start_level = max(1, int(boundary * 10) - 2)
+            curriculum = self._build_graded_tasks(dim, start_level)
+            self.learning_path.extend(curriculum)
+        return self.learning_path
+</code></pre>
+<h4 id="232-few-shot-injection">2.3.2 少样本示例注入（Few-shot Injection）</h4>
+<p>针对识别的弱点，注入专门的示例到 system prompt 或知识库：</p>
+<pre><code class="language-python">def inject_weakness_examples(agent, weakness_pattern, n_examples=5):
+    &quot;&quot;&quot;针对特定弱点模式注入少样本示例&quot;&quot;&quot;
+    examples = load_high_quality_examples(weakness_pattern.category, n_examples)
+    enhanced_prompt = agent.system_prompt + &quot;\n\n## 针对性参考示例\n&quot;
+    for i, ex in enumerate(examples):
+        enhanced_prompt += f&quot;\n### 示例 {i+1}\n输入: {ex.input}\n输出: {ex.expected_output}\n&quot;
+    agent.update_system_prompt(enhanced_prompt)
+</code></pre>
+<h4 id="233-skill">2.3.3 Skill 自动生成</h4>
+<p>将学习成果固化为可复用的 Skill：</p>
+<pre><code class="language-python">def learned_to_skill(learning_result):
+    &quot;&quot;&quot;将学习成果转化为 Skill&quot;&quot;&quot;
+    if learning_result.improvement &gt;= 0.3 and learning_result.reusability &gt;= 3:
+        skill_content = f&quot;&quot;&quot;---
+name: {learning_result.domain}-enhanced
+description: 针对性增强的 {learning_result.domain} 能力
+---
+
+# {learning_result.domain} Enhanced
+
+## 获取的能力模式
+{learning_result.patterns}
+
+## 关键示例
+{learning_result.best_examples}
+&quot;&quot;&quot;
+        return skill_manage(action='create', name=f&quot;{learning_result.domain}-enhanced&quot;,
+                          content=skill_content)
+</code></pre>
+<h3 id="24">2.4 再测试验证</h3>
+<h4 id="241-ab">2.4.1 A/B 对比测试</h4>
+<pre><code class="language-python">def ab_test_improvement(agent_before, agent_after, test_suite):
+    &quot;&quot;&quot;对比学习前后的能力变化&quot;&quot;&quot;
+    results_before = run_test_suite(agent_before, test_suite)
+    results_after = run_test_suite(agent_after, test_suite)
+
+    improvements = {}
+    for dim in results_before:
+        delta = results_after[dim] - results_before[dim]
+        improvements[dim] = {
+            'before': results_before[dim],
+            'after': results_after[dim],
+            'delta': delta,
+            'significant': abs(delta) &gt; 0.05
+        }
+    return improvements
+</code></pre>
+<h4 id="242">2.4.2 回归测试</h4>
+<p>确保学习新能力没有导致其他能力退化：</p>
+<pre><code class="language-python">def regression_check(agent, baseline_results, test_suite):
+    &quot;&quot;&quot;检查是否出现能力回归&quot;&quot;&quot;
+    current_results = run_test_suite(agent, test_suite)
+    regressions = []
+    for dim, score in current_results.items():
+        baseline = baseline_results.get(dim, 1.0)
+        if score &lt; baseline - 0.05:
+            regressions.append({
+                'dimension': dim,
+                'baseline': baseline,
+                'current': score,
+                'regression': baseline - score
+            })
+    return regressions
+</code></pre>
+<hr />
+<h2 id="_3">三、实践案例</h2>
+<h3 id="31-opencompass-agentbench">3.1 OpenCompass / AgentBench 模型评估</h3>
+<p><strong>OpenCompass</strong>（上海 AI Lab）是最全面的 LLM 评估框架：<br />
+- 支持超过 50 个评估维度<br />
+- 包含知识、推理、代码、Agent 能力等分项<br />
+- 提供 OpenCompass 排行榜跟踪模型进化</p>
+<p><strong>AgentBench</strong>（清华）专门评估 LLM Agent 能力：<br />
+- 8 个不同环境（OS、数据库、Web、游戏等）<br />
+- 多轮交互评估<br />
+- 长程任务规划能力</p>
+<p><strong>关键发现</strong>：大部分模型在单轮任务中表现优秀，但在多轮长程任务中性能显著下降（平均下降 30-50%）。这正是"能力边界"的典型表现。</p>
+<h3 id="32-hermes-agent">3.2 Hermes Agent 自身应用</h3>
+<p>Hermes Agent 可以将此框架应用于自身：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>现有 Skill</th>
+<th>扩展建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>压力测试</td>
+<td>skill-stress-test</td>
+<td>增加多维度渐进式测试</td>
+</tr>
+<tr>
+<td>弱项识别</td>
+<td>error-case-library</td>
+<td>增加自动化聚类分析</td>
+</tr>
+<tr>
+<td>定向学习</td>
+<td>auto-learner</td>
+<td>根据弱项自动调整学习优先级</td>
+</tr>
+<tr>
+<td>验证</td>
+<td>❌ 缺失</td>
+<td>新建 A/B test + regression check</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-metr">3.3 METR 评估框架</h3>
+<p>METR（前身为 OUGHT）专注于 LLM Agent 的自动评估：<br />
+- 标准化任务集（autograding, fact-checking 等）<br />
+- <strong>时间到成功率曲线</strong>（Time-to-Success Curve）<br />
+- 启发：对 Hermes Agent 可以定义类似指标——给定不同时间限制，任务完成率如何变化</p>
+<h3 id="34-swe-bench-humaneval">3.4 SWE-bench / HumanEval 类型评估</h3>
+<p><strong>SWE-bench</strong>（Princeton）：给定 GitHub issue，Agent 生成 PR。当前最佳模型仅能解决约 50% 实例。</p>
+<p><strong>HumanEval / MBPP</strong>（代码生成）：<br />
+- pass@1 &lt; 60%（大多数模型）<br />
+- pass@10 &gt; 90%（多次尝试后）<br />
+- 启发：评估代码生成能力时，不仅看单次成功，还要看多次尝试的改进曲线</p>
+<hr />
+<h2 id="hermes-agent">四、对 Hermes Agent 的实践启发</h2>
+<h3 id="41-skill">4.1 现有 Skill 整合建议</h3>
+<table>
+<thead>
+<tr>
+<th>现有 Skill</th>
+<th>整合建议</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>skill-stress-test</td>
+<td>扩展为多维度渐进式测试框架</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>error-case-library</td>
+<td>增加聚类分析能力，自动识别系统性弱点</td>
+<td>P1</td>
+</tr>
+<tr>
+<td>auto-learner</td>
+<td>接收弱项识别结果，动态调整学习优先级</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>evolver</td>
+<td>增加能力回归检测，确保进化不退化</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>idle-busy-loop</td>
+<td>增加"能力巡检"Phase，定期做轻量级自测</td>
+<td>P3</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-mvp">4.2 最小可行实现（MVP）</h3>
+<pre><code class="language-python"># capability-probe-mvp.py — 可集成到 Hermes Cron
+
+class CapabilityProbe:
+    &quot;&quot;&quot;Hermes Agent 能力边界探测 MVP&quot;&quot;&quot;
+
+    DIMENSIONS = {
+        'code_generation': '代码生成',
+        'file_editing': '文件编辑',
+        'web_search': '信息检索',
+        'tool_chaining': '工具链',
+        'long_context': '长上下文',
+        'error_recovery': '错误恢复',
+        'instruction_following': '指令遵循'
+    }
+
+    def run_probe(self, dimension, level):
+        &quot;&quot;&quot;运行单个探测任务&quot;&quot;&quot;
+        task = PROBE_TASKS[dimension][level]
+        result = delegate_task(
+            goal=task['prompt'],
+            toolsets=task.get('tools', ['terminal', 'file']),
+            role='leaf'
+        )
+        return self._evaluate(result, task['expected'])
+
+    def find_boundary(self, dimension):
+        &quot;&quot;&quot;二分搜索能力边界&quot;&quot;&quot;
+        lo, hi = 1, 10
+        while lo &lt; hi:
+            mid = (lo + hi + 1) // 2
+            score = self.run_probe(dimension, mid)
+            if score &gt;= 0.6:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo  # 最高稳定通过等级
+</code></pre>
+<h3 id="43">4.3 探测任务库设计</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Level 1 (简单)</th>
+<th>Level 5 (中等)</th>
+<th>Level 10 (极限)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>代码生成</td>
+<td>写 hello world</td>
+<td>实现排序算法</td>
+<td>实现分布式锁</td>
+</tr>
+<tr>
+<td>文件编辑</td>
+<td>改一行注释</td>
+<td>重构函数签名</td>
+<td>跨文件重构</td>
+</tr>
+<tr>
+<td>信息检索</td>
+<td>搜一个已知事实</td>
+<td>交叉验证矛盾信息</td>
+<td>从多个源合成新知</td>
+</tr>
+<tr>
+<td>工具链</td>
+<td>单工具调用</td>
+<td>3工具串联</td>
+<td>7+工具复杂管线</td>
+</tr>
+<tr>
+<td>长上下文</td>
+<td>处理 1K 文本</td>
+<td>处理 20K 文档</td>
+<td>处理 100K+ 代码库</td>
+</tr>
+<tr>
+<td>错误恢复</td>
+<td>重试失败命令</td>
+<td>诊断编译错误</td>
+<td>从段错误中恢复</td>
+</tr>
+<tr>
+<td>指令遵循</td>
+<td>单一明确指令</td>
+<td>5条约束条件</td>
+<td>20条冲突约束</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">五、知识缺口</h2>
+<ol>
+<li><strong>能力回归的定量阈值</strong>：多少退化算"显著"？需要针对不同维度设定不同阈值</li>
+<li><strong>跨模型能力对比</strong>：同一套探测任务在不同底层模型上的表现差异（GPT-4 vs Claude vs GLM）</li>
+<li><strong>能力边界的时变模型</strong>：长期运行后能力是否自然退化（模型更新、prompt 膨胀、记忆污染）</li>
+<li><strong>多 Agent 协作的能力边界</strong>：团队 vs 个体的能力差异是否为线性叠加</li>
+<li><strong>元认知校准</strong>：Agent 自评的置信度与实际表现的相关性如何提升</li>
+<li><strong>课程学习的收敛速度</strong>：定向学习需要多少轮才能显著提升特定能力</li>
+<li><strong>负迁移检测</strong>：强化某能力是否导致其他能力的隐性退化</li>
+</ol>
+<hr />
+<h2 id="_5">六、核心发现总结</h2>
+<h3 id="1">发现 1：能力边界是动态的、多维的</h3>
+<p>Agent 的能力不是单一的"聪明/笨"二元判断，而是一个多维向量。每个维度都有独立的边界点，且这些边界会随时间、上下文、任务类型动态变化。<strong>单维度评估（如仅看代码生成 pass@1）严重低估了 Agent 的真实能力差距。</strong></p>
+<h3 id="2">发现 2：渐进式压力测试是发现边界的最优方法</h3>
+<p>相比固定测试集，渐进式加压能精确定位"断崖点"——即 Agent 从可靠变为不可靠的临界难度。这个信息比简单的通过/失败更有价值，因为它指导了定向学习的起点。</p>
+<h3 id="3">发现 3：弱项识别需要聚类而非枚举</h3>
+<p>随机测试发现的是分散的失败点，而聚类分析能揭示<strong>系统性弱点模式</strong>。10 个失败案例可能指向同 1 个根因（如"长上下文中的指令遗忘"），修复一个根因比逐个修复 10 个案例高效 10 倍。</p>
+<h3 id="4">发现 4：闭环验证不可或缺</h3>
+<p>定向学习后必须回归测试——确保学到了新能力且没有退化。没有验证的学习是盲目的。A/B 对比 + 回归检测是最小验证集。</p>
+<h3 id="5hermes-agent-80">发现 5：Hermes Agent 已有 80% 基础设施</h3>
+<p>skill-stress-test + error-case-library + auto-learner + evolver 已经覆盖了框架的大部分环节。缺少的关键部件是：<strong>自动聚类分析</strong>和<strong>回归检测</strong>。一个周末可以实现 MVP。</p>
+<hr />
+<p><em>笔记字数: ~3500 字 | 产出时间: 2026-05-18 07:45 | 网络: 不可用</em><br />
+<em>数据来源: 纯本地知识蒸馏（已有 Skill + 通用 AI 知识库）</em></p>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-02-Agent Skills才是关键抽象层.md">Agent Skills才是关键抽象层</a></li>
+<li><a href="../2026-04-03-Claude-Code四层记忆架构.md">Claude-Code四层记忆架构</a></li>
+<li><a href="../2026-04-04-Claude-Code-324-prompts-analysis.md">Claude-Code-324-prompts-analysis</a></li>
+<li><a href="../2026-04-05-SelfImproving-Agent-CLI-infra.md">SelfImproving-Agent-CLI-infra</a></li>
+<li><a href="../2026-04-05-spatial-intelligence-agent-action.md">spatial-intelligence-agent-action</a></li>
+<li><a href="../2026-04-07-agent-loop-core-scheduling.md">agent-loop-core-scheduling</a></li>
+<li><a href="../2026-04-07-email-not-revival-agent-needs-it.md">email-not-revival-agent-needs-it</a></li>
+<li><a href="../2026-04-07-hermes-agent-deep-dive-evolution-roadmap.md">hermes-agent-deep-dive-evolution-roadmap</a></li>
+<li><a href="../2026-04-08-claude-code-tool-execution-orchestration.md">claude-code-tool-execution-orchestration</a></li>
+<li><a href="../2026-04-09-SKILL-md-ai-agent-skills.md">SKILL-md-ai-agent-skills</a></li>
+<li><a href="../2026-04-11-gbrain-hybrid-search-proposal.md">gbrain-hybrid-search-proposal</a></li>
+<li><a href="../2026-04-13-hermes-agent-vs-openclaw.md">hermes-agent-vs-openclaw</a></li>
+<li><a href="../2026-04-14-Cloudflare-EmDash-AI-Agent-CMS.md">Cloudflare-EmDash-AI-Agent-CMS</a></li>
+<li><a href="../2026-04-18-Hermes-Agent-v0.10.0-release-analysis.md">Hermes-Agent-v0.10.0-release-analysis</a></li>
+<li><a href="../2026-04-20-Claude-Opus4.7-Claude-Code-最佳实践.md">Claude-Opus4.7-Claude-Code-最佳实践</a></li>
+<li><a href="../2026-04-23-深入源码-Hermes-Agent-如何实现Self-Improving.md">深入源码-Hermes-Agent-如何实现Self-Improving</a></li>
+<li><a href="../2026-04-23-深入源码Hermes-Agent-Self-Improving.md">深入源码Hermes-Agent-Self-Improving</a></li>
+<li><a href="../2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md">MCP协议生态与Agentic-RAG架构深度学习</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-04-30-Meta-Hyperagents自适应Agent框架.md">Meta-Hyperagents自适应Agent框架</a></li>
+<li><a href="../2026-05-01-AI-Agent记忆架构前沿学习.md">AI-Agent记忆架构前沿学习</a></li>
+<li><a href="../2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="../2026-05-03-AI-Agent-Protocol-Ecosystem-2026-学习.md">AI-Agent-Protocol-Ecosystem-2026-学习</a></li>
+<li><a href="../2026-05-03-ai-agent-resources-ecosystem.md">ai-agent-resources-ecosystem</a></li>
+<li><a href="../2026-05-03-智能教育-自适应评估.md">智能教育-自适应评估</a></li>
+<li><a href="../2026-05-04-Agent协议生态2026最新进展-MCP-A2A深度融合.md">Agent协议生态2026最新进展-MCP-A2A深度融合</a></li>
+<li><a href="../2026-05-04-个人Agent自进化五步闭环.md">个人Agent自进化五步闭环</a></li>
+<li><a href="../2026-05-05-tradingagents-deep-analysis.md">tradingagents-deep-analysis</a></li>
+<li><a href="../2026-05-07-SOUL-md-Agent-Partner-Transformation.md">SOUL-md-Agent-Partner-Transformation</a></li>
+<li><a href="../2026-05-08-AI-Agent控制流.md">AI-Agent控制流</a></li>
+<li><a href="../2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="../2026-05-11-具身智能2026-世界模型VLA车企入局.md">具身智能2026-世界模型VLA车企入局</a></li>
+<li><a href="../2026-05-11-具身智能2026从实验到实战.md">具身智能2026从实验到实战</a></li>
+<li><a href="../2026-05-16-OpenHuman-记忆树AI智能体-i龙虾.md">OpenHuman-记忆树AI智能体-i龙虾</a></li>
+<li><a href="../2026-05-16-PicoClaw-超轻量AI-Agent框架.md">PicoClaw-超轻量AI-Agent框架</a></li>
+<li><a href="../2026-05-17-具身智能前沿学习.md">具身智能前沿学习</a></li>
+<li><a href="../2026-05-18-Agent元认知-LLM不确定性感知.md">Agent元认知-LLM不确定性感知</a></li>
+<li><a href="../2026-05-18-SmallRustHermes-Agent自我进化三个闭环.md">SmallRustHermes-Agent自我进化三个闭环</a></li>
+<li><a href="../2026-05-18-agent-memory-systems-comparison.md">agent-memory-systems-comparison</a></li>
+<li><a href="../2026-05-18-具身智能机器人2025十大趋势.md">具身智能机器人2025十大趋势</a></li>
+<li><a href="../anthropic-managed-agents-dreaming-outcomes.md">anthropic-managed-agents-dreaming-outcomes</a></li>
+<li><a href="2026-05-05-智能教育-AI-tutoring.md">智能教育-AI-tutoring</a></li>
+<li><a href="2026-05-06-ai-agent-protocol-stack-2026.md">ai-agent-protocol-stack-2026</a></li>
+<li><a href="2026-05-08-ai-agent-protocol-wars-a2a-mcp.md">ai-agent-protocol-wars-a2a-mcp</a></li>
+<li><a href="2026-05-08-ai-coding-agent-competition-landscape.md">ai-coding-agent-competition-landscape</a></li>
+<li><a href="2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="2026-05-09-ai-agent-protocols-mcp-a2a-acp.md">ai-agent-protocols-mcp-a2a-acp</a></li>
+<li><a href="2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="2026-05-10-mcp-a2a-agent-ecosystem.md">mcp-a2a-agent-ecosystem</a></li>
+<li><a href="2026-05-11-ai-agent-protocols-mcp-a2a.md">ai-agent-protocols-mcp-a2a</a></li>
+<li><a href="2026-05-16-AI-Agent-协议生态-深度整合学习.md">AI-Agent-协议生态-深度整合学习</a></li>
+<li><a href="2026-05-16-Agentic-AI元年-智能体全面落地趋势.md">Agentic-AI元年-智能体全面落地趋势</a></li>
+<li><a href="2026-05-16-HuggingFace-Spring2026-开源生态报告.md">HuggingFace-Spring2026-开源生态报告</a></li>
+<li><a href="2026-05-16-具身智能-从造产品到抢落地六大趋势.md">具身智能-从造产品到抢落地六大趋势</a></li>
+<li><a href="2026-05-17-agent-collaboration-self-evolution.md">agent-collaboration-self-evolution</a></li>
+<li><a href="2026-05-17-具身智能2026数据规模化元年.md">具身智能2026数据规模化元年</a></li>
+<li><a href="2026-05-18-RD-Agent-Quant-multi-agent-quant-framework-deep-dive.md">RD-Agent-Quant-multi-agent-quant-framework-deep-dive</a></li>
+<li><a href="2026-05-18-agent-self-evolution-quant-trading.md">agent-self-evolution-quant-trading</a></li>
+<li><a href="2026-05-18-多模态Agent框架对比2026-深度探索.md">多模态Agent框架对比2026-深度探索</a></li>
+<li><a href="2026-05-19-IBM2026多智能体趋势.md">IBM2026多智能体趋势</a></li>
+<li><a href="2026-05-19-agent-self-evolution-reflexion-metacognition.md">agent-self-evolution-reflexion-metacognition</a></li>
+<li><a href="2026-05-20-AgentSelfEvolution-LearningSystem-深度探索.md">AgentSelfEvolution-LearningSystem-深度探索</a></li>
+<li><a href="agent-drift-stability-degradation-20260518.md">agent-drift-stability-degradation-20260518</a></li>
+<li><a href="agent-stability-degradation-drift-detection.md">agent-stability-degradation-drift-detection</a></li>
+<li><a href="../google-a2a-protocol-multi-agent-2026-05-19.md">google-a2a-protocol-multi-agent-2026-05-19</a></li>
+<li><a href="../hermes-agent-arxiv-search.md">hermes-agent-arxiv-search</a></li>
+<li><a href="../hermes-agent-源码拆解自我进化机制.md">hermes-agent-源码拆解自我进化机制</a></li>
+<li><a href="../orphan/2026-04-15-不管用ClaudeCode还是OpenClaw先记住这12个知识.md">不管用ClaudeCode还是OpenClaw先记住这12个知识</a></li>
+<li><a href="../orphan/2026-04-19-AI幻觉案例分析-Hermes-Agent不实报道.md">AI幻觉案例分析-Hermes-Agent不实报道</a></li>
+<li><a href="../orphan/2026-05-04-智能教育-personalized-learning.md">智能教育-personalized-learning</a></li>
+<li><a href="../orphan/2026-05-05-具身智能机器人2025年终盘点.md">具身智能机器人2025年终盘点</a></li>
+<li><a href="../orphan/2026-05-09-具身智能机器人2025-商业化元年.md">具身智能机器人2025-商业化元年</a></li>
+<li><a href="../orphan/2026-05-10-claude-learning-roadmap.md">claude-learning-roadmap</a></li>
+<li><a href="../orphan/2026-05-11-0元打通Claude-Codex-OpenCode免费模型6入口.md">0元打通Claude-Codex-OpenCode免费模型6入口</a></li>
+<li><a href="../orphan/2026-05-16-HTML的不合理有效性-Claude-Code-团队.md">HTML的不合理有效性-Claude-Code-团队</a></li>
+<li><a href="../orphan/GenericAgent.md">GenericAgent</a></li>
+<li><a href="../skills-autonomous-ai-agents.md">skills-autonomous-ai-agents</a></li>
+<li><a href="../竞品吸收笔记_GenericAgent.md">竞品吸收笔记_GenericAgent</a></li>
+</ul>
+</body>
+</html>

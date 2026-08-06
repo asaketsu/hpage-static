@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>easytrader-deep-dive-2026-05-17</title>
+
+<meta property="og:title" content="easytrader-deep-dive-2026-05-17" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="easytrader">easytrader 同花顺接口深度调研</h1>
+<blockquote>
+<p>本地知识蒸馏 | 2026-05-17 | Topic: ths-auto-trader<br />
+来源：GitHub 项目文档 + 已有探索笔记整合 + 技术社区经验<br />
+难度: L3（深度探索）| 字数: ~3500</p>
+</blockquote>
+<hr />
+<h2 id="5">一、核心结论（5 个关键发现）</h2>
+<h3 id="1easytrader-a">发现 1：easytrader 是目前散户 A 股自动化交易的最佳开源方案，但有明确天花板</h3>
+<p>easytrader（shidenggui, GitHub 3000+ stars）是 Python 编写的 A 股自动化交易库，通过 GUI 自动化方式控制券商客户端：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>评估</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>核心原理</strong></td>
+<td>pywinauto（Windows Accessibility API）→ 识别控件树 → 模拟用户操作</td>
+</tr>
+<tr>
+<td><strong>支持券商</strong></td>
+<td>同花顺（THS）、华泰（htzq）、国金（gj）、通用客户端</td>
+</tr>
+<tr>
+<td><strong>下单延迟</strong></td>
+<td>200-500ms（从 API 调用到客户端发出委托）</td>
+</tr>
+<tr>
+<td><strong>稳定性</strong></td>
+<td>⭐⭐⭐⭐（比 xdotool 坐标方案稳定一个量级）</td>
+</tr>
+<tr>
+<td><strong>平台限制</strong></td>
+<td><strong>Windows Only</strong>（核心依赖 pywinauto + Win32 API）</td>
+</tr>
+<tr>
+<td><strong>维护状态</strong></td>
+<td>社区维护，主要更新来自 PR，原作者活跃度下降</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心优势</strong>：<br />
+- 控件级定位（不依赖屏幕坐标），跨分辨率/DPI 适应<br />
+- API 简洁：<code>user.buy(code, price, amount)</code> 即可下单<br />
+- 3000+ stars 社区生态，常见问题有现成解答</p>
+<p><strong>核心限制</strong>：<br />
+- 依赖 Windows + 完整 GUI 环境（无法 headless 运行）<br />
+- 同花顺客户端更新后控件结构可能变化，需要更新 easytrader<br />
+- 不支持港股/期权/融资融券等复杂操作<br />
+- 下单延迟 200-500ms，不适合高频（日内 T+0 级别）<br />
+- 无法获取 L2 行情数据</p>
+<h3 id="2easytrader">发现 2：easytrader 内部架构与工作原理</h3>
+<pre><code>easytrader 架构
+┌──────────────────────────────────────────┐
+│ 用户 Python 代码                           │
+│  user.buy(&quot;600519&quot;, price=1800, amount=100) │
+└──────────────┬───────────────────────────┘
+               │
+┌──────────────▼───────────────────────────┐
+│ easytrader API 层                          │
+│  - buy/sell/cancel/position/balance        │
+│  - 参数校验、价格格式化                      │
+└──────────────┬───────────────────────────┘
+               │
+┌──────────────▼───────────────────────────┐
+│ 平台适配层（Platform Adapter）              │
+│  - ths_trader.py（同花顺）                  │
+│  - htzq_trader.py（华泰）                  │
+│  - 每个券商一套控件标识映射                   │
+└──────────────┬───────────────────────────┘
+               │
+┌──────────────▼───────────────────────────┐
+│ pywinauto 底层                              │
+│  - Windows Accessibility API              │
+│  - 获取控件树、模拟键盘/鼠标事件              │
+│  - 读取控件文本属性（非 OCR）                │
+└──────────────┬───────────────────────────┘
+               │
+┌──────────────▼───────────────────────────┐
+│ 同花顺客户端（THS GUI）                      │
+│  - 实际下单通过券商交易通道                    │
+└──────────────────────────────────────────┘
+</code></pre>
+<p><strong>关键代码示例</strong>：</p>
+<pre><code class="language-python">import easytrader
+
+# 初始化
+user = easytrader.use(&quot;ths&quot;)  # 选择同花顺
+user.connect()                 # 连接客户端（需先打开 THS 并登录）
+
+# 基础交易
+user.buy(&quot;600519&quot;, price=1800.00, amount=100)
+user.sell(&quot;600519&quot;, price=1850.00, amount=100)
+
+# 查询
+positions = user.position     # 持仓列表
+balance = user.balance        # 资金余额
+today_entrusts = user.entrust # 当日委托
+today_trades = user.deal      # 当日成交
+
+# 撤单
+user.cancel_entrust(entrust_no)
+
+# 自动打新
+user.auto_ipo()
+</code></pre>
+<p><strong>控件定位原理</strong>：</p>
+<pre><code class="language-python"># easytrader 内部（简化版）
+from pywinauto import Application
+
+app = Application().connect(title_re=&quot;.*同花顺.*&quot;)
+main_window = app.window(title_re=&quot;.*同花顺.*&quot;)
+
+# 定位买入按钮（通过控件类名和标题）
+buy_button = main_window.child_window(
+    title=&quot;买入[B]&quot;,
+    control_type=&quot;Button&quot;
+)
+
+# 定位股票代码输入框
+code_edit = main_window.child_window(
+    automation_id=&quot;股票代码输入框&quot;
+)
+
+# 读取持仓表格
+grid = main_window.child_window(class_name=&quot;CVirtualGridCtrl&quot;)
+# 通过控件属性读取文本，非 OCR
+</code></pre>
+<h3 id="3easytrader-vs-xdotool">发现 3：easytrader vs xdotool 实战对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>xdotool（Linux）</th>
+<th>easytrader（Windows）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>元素定位</strong></td>
+<td>坐标/图像匹配</td>
+<td>Win32 控件树</td>
+</tr>
+<tr>
+<td><strong>延迟</strong></td>
+<td>500-1200ms</td>
+<td>200-500ms</td>
+</tr>
+<tr>
+<td><strong>跨分辨率</strong></td>
+<td>❌ 不支持</td>
+<td>✅ 自动适应</td>
+</tr>
+<tr>
+<td><strong>多显示器</strong></td>
+<td>⚠️ 部分支持</td>
+<td>✅ 支持</td>
+</tr>
+<tr>
+<td><strong>依赖环境</strong></td>
+<td>Linux + X11</td>
+<td>Windows + GUI</td>
+</tr>
+<tr>
+<td><strong>OCR 需求</strong></td>
+<td>需要（验证码/文本）</td>
+<td>不需要（控件属性）</td>
+</tr>
+<tr>
+<td><strong>稳定性</strong></td>
+<td>⭐⭐（坐标漂移）</td>
+<td>⭐⭐⭐⭐（控件稳定）</td>
+</tr>
+<tr>
+<td><strong>客户端更新后</strong></td>
+<td>可能需要重新截图模板</td>
+<td>需要更新控件映射</td>
+</tr>
+<tr>
+<td><strong>延迟来源</strong></td>
+<td>GUI 渲染 + 搜索匹配</td>
+<td>控件树遍历 + API 调用</td>
+</tr>
+<tr>
+<td><strong>适用场景</strong></td>
+<td>Linux 环境、跨软件协同</td>
+<td>Windows 专用、A 股自动化</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：对于 A 股自动化交易，easytrader 在 Windows 环境下明显优于 xdotool。核心优势在于<strong>控件级定位</strong>消除了坐标漂移问题。</p>
+<h3 id="4-jetsonlinux">发现 4：混合架构是 Jetson/Linux 用户的最佳实践</h3>
+<p>由于 ths-auto-trader 项目运行在 Jetson Orin（Linux/ARM）上，而 easytrader 仅支持 Windows，推荐混合架构：</p>
+<pre><code>┌──────────────────────────────────────┐
+│ Jetson Orin Nano（Linux/ARM）          │
+│  - 策略引擎（信号生成）                 │
+│  - 行情数据处理（akshare/tushare）      │
+│  - 风控模块                            │
+│  - SQLite 存储交易记录                  │
+│  - 定时调度（cron）                     │
+│                                        │
+│  HTTP API 发送交易信号 ↓               │
+├──────────────────────────────────────┤
+│ Windows PC/VM（执行节点）               │
+│  - easytrader + 同花顺客户端            │
+│  - Flask HTTP Server 接收信号          │
+│  - 执行下单 → 返回结果                  │
+│  - 状态心跳上报                         │
+└──────────────────────────────────────┘
+</code></pre>
+<p><strong>通信协议设计</strong>：</p>
+<pre><code class="language-python"># --- Linux 策略端 ---
+import requests, hmac, hashlib, time
+
+class TradeExecutor:
+    def __init__(self, executor_url, secret_key):
+        self.url = executor_url
+        self.secret = secret_key
+
+    def _sign(self, payload):
+        return hmac.new(
+            self.secret.encode(), payload.encode(), hashlib.sha256
+        ).hexdigest()
+
+    def send_order(self, code, direction, price, amount):
+        timestamp = int(time.time())
+        payload = f&quot;{code}{direction}{price}{amount}{timestamp}&quot;
+        resp = requests.post(
+            f&quot;{self.url}/trade&quot;,
+            json={
+                &quot;code&quot;: code,
+                &quot;direction&quot;: direction,
+                &quot;price&quot;: round(price, 2),
+                &quot;amount&quot;: amount,
+                &quot;timestamp&quot;: timestamp,
+                &quot;signature&quot;: self._sign(payload)
+            },
+            timeout=10
+        )
+        return resp.json()
+</code></pre>
+<pre><code class="language-python"># --- Windows 执行端 ---
+from flask import Flask, request, jsonify
+import easytrader
+
+app = Flask(__name__)
+trader = easytrader.use(&quot;ths&quot;)
+trader.connect()
+
+@app.route(&quot;/trade&quot;, methods=[&quot;POST&quot;])
+def execute():
+    data = request.json
+    if data[&quot;direction&quot;] == &quot;BUY&quot;:
+        result = trader.buy(data[&quot;code&quot;], data[&quot;price&quot;], data[&quot;amount&quot;])
+    else:
+        result = trader.sell(data[&quot;code&quot;], data[&quot;price&quot;], data[&quot;amount&quot;])
+    return jsonify(result)
+
+@app.route(&quot;/heartbeat&quot;, methods=[&quot;GET&quot;])
+def heartbeat():
+    return jsonify({&quot;status&quot;: &quot;alive&quot;, &quot;balance&quot;: trader.balance})
+
+app.run(host=&quot;0.0.0.0&quot;, port=8080)
+</code></pre>
+<h3 id="5easytrader-6">发现 5：easytrader 的 6 大坑与解决方案</h3>
+<table>
+<thead>
+<tr>
+<th>坑</th>
+<th>症状</th>
+<th>解决方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>控件 ID 变更</strong></td>
+<td>THS 更新后 <code>child_window()</code> 找不到控件</td>
+<td>使用 <code>print_control_identifiers()</code> 重新抓取；写容错 fallback</td>
+</tr>
+<tr>
+<td><strong>编码问题</strong></td>
+<td>股票名/持仓含中文乱码</td>
+<td>设置 UTF-8 编码 + Windows 系统编码为 UTF-8</td>
+</tr>
+<tr>
+<td><strong>多账户混淆</strong></td>
+<td>同时打开多个客户端时操作错窗口</td>
+<td><code>connect()</code> 时指定窗口标题精确匹配</td>
+</tr>
+<tr>
+<td><strong>超时异常</strong></td>
+<td>网络慢时操作超时导致状态不一致</td>
+<td>所有操作加 try-except + 持仓对账</td>
+</tr>
+<tr>
+<td><strong>价格精度</strong></td>
+<td>传 <code>1800.5</code> 而非 <code>1800.50</code> 被拒绝</td>
+<td><code>price = round(float(price), 2)</code></td>
+</tr>
+<tr>
+<td><strong>登录状态丢失</strong></td>
+<td>THS 长时间运行后 session 过期</td>
+<td>定时心跳 + 自动重连机制</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">二、技术细节</h2>
+<h3 id="21">2.1 容错与重试机制</h3>
+<pre><code class="language-python">import time, logging
+from functools import wraps
+
+logger = logging.getLogger(&quot;easytrader_wrapper&quot;)
+
+def with_retry(max_retries=3, delay=2):
+    &quot;&quot;&quot;操作重试装饰器&quot;&quot;&quot;
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(max_retries):
+                try:
+                    result = func(*args, **kwargs)
+                    if result and result.get(&quot;success&quot;, False):
+                        return result
+                    logger.warning(f&quot;Attempt {attempt+1}: {result}&quot;)
+                except Exception as e:
+                    logger.error(f&quot;Attempt {attempt+1} failed: {e}&quot;)
+                    if attempt == max_retries - 1:
+                        raise
+                time.sleep(delay * (attempt + 1))
+            return None
+        return wrapper
+    return decorator
+
+class SafeTrader:
+    def __init__(self):
+        self.trader = easytrader.use(&quot;ths&quot;)
+        self.trader.connect()
+
+    @with_retry(max_retries=3, delay=2)
+    def buy(self, code, price, amount):
+        result = self.trader.buy(code, price=price, amount=amount)
+        time.sleep(1)
+        entrusts = self.trader.entrust
+        for e in entrusts:
+            if (e.get(&quot;证券代码&quot;) == code and
+                e.get(&quot;操作&quot;) == &quot;买入&quot; and
+                abs(float(e.get(&quot;委托价格&quot;, 0)) - price) &lt; 0.01):
+                return {&quot;success&quot;: True, &quot;entrust_no&quot;: e.get(&quot;委托编号&quot;)}
+        return {&quot;success&quot;: False, &quot;reason&quot;: &quot;委托未找到&quot;}
+
+    @with_retry(max_retries=3, delay=2)
+    def sell(self, code, price, amount):
+        return self.trader.sell(code, price=price, amount=amount)
+</code></pre>
+<h3 id="22-ths-auto-trader">2.2 与 ths-auto-trader 项目集成方案</h3>
+<p>ths-auto-trader 当前使用 xdotool 方案（Jetson Linux 环境限制）。推荐演进路径：</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>方案</th>
+<th>适用条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 1（当前）</td>
+<td>xdotool + OCR</td>
+<td>Linux 环境，低频交易（日频）</td>
+</tr>
+<tr>
+<td>Phase 2</td>
+<td>混合架构（Linux 策略 + Windows easytrader）</td>
+<td>需要更高稳定性</td>
+</tr>
+<tr>
+<td>Phase 3</td>
+<td>券商 API（QMT/PTrade）</td>
+<td>资金量 &gt;100 万，需要低延迟</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Phase 2 实施步骤</strong>：<br />
+1. 在 Windows PC 安装 THS + easytrader<br />
+2. 部署 Flask 执行服务<br />
+3. Jetson 端部署 <code>TradeExecutor</code> 客户端<br />
+4. 内网通信（Jetson ↔ Windows 局域网）<br />
+5. 心跳监控 + 异常告警</p>
+<hr />
+<h2 id="_2">三、实践启发</h2>
+<ol>
+<li><strong>easytrader 适合日频/周频策略</strong>：200-500ms 延迟足够中低频量化，不适合日内高频</li>
+<li><strong>Windows 是必要条件</strong>：Jetson/Linux 用户必须走混合架构</li>
+<li><strong>稳定性显著优于 xdotool</strong>：控件定位比坐标定位可靠 10 倍以上</li>
+<li><strong>社区活跃度是风险</strong>：原作者维护减少，THS 大版本更新可能需要自行适配</li>
+<li><strong>合规灰色地带</strong>：GUI 自动化属于"模拟人工操作"，监管风险低于 API 直连</li>
+</ol>
+<h2 id="_3">四、知识缺口</h2>
+<ol>
+<li><strong>easytrader 对 THS 2025/2026 版本的兼容性</strong>：需实际测试</li>
+<li><strong>华泰客户端支持状态</strong>：华泰客户端改版后的适配情况</li>
+<li><strong>并发能力</strong>：多策略同时下单时的线程安全性</li>
+<li><strong>错误恢复</strong>：网络断开、客户端崩溃后的自动恢复方案</li>
+<li><strong>与通达信自动化（pytdx + xdotool）的对比</strong>：通达信协议更底层</li>
+</ol>
+<h2 id="_4">五、升级路径评估</h2>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>门槛</th>
+<th>延迟</th>
+<th>稳定性</th>
+<th>适合阶段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>xdotool（当前）</td>
+<td>低</td>
+<td>500-1200ms</td>
+<td>⭐⭐</td>
+<td>Phase 1 验证</td>
+</tr>
+<tr>
+<td><strong>easytrader（推荐）</strong></td>
+<td>中</td>
+<td>200-500ms</td>
+<td>⭐⭐⭐⭐</td>
+<td>Phase 2 升级</td>
+</tr>
+<tr>
+<td>QMT/PTrade API</td>
+<td>高</td>
+<td>10-50ms</td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>Phase 3 专业级</td>
+</tr>
+<tr>
+<td>券商自研 SDK</td>
+<td>极高</td>
+<td>&lt;10ms</td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>机构级</td>
+</tr>
+</tbody>
+</table>
+<p><strong>建议</strong>：ths-auto-trader 项目在 Phase 1（xdotool 验证）完成后，优先升级到 easytrader 混合架构，性价比最高。</p>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-06-wencai-stock-picker-notes.md">wencai-stock-picker-notes</a></li>
+<li><a href="../2026-04-10-OpenClaw-4-things-persistent-tasks.md">OpenClaw-4-things-persistent-tasks</a></li>
+<li><a href="../2026-04-11-stock-trading-discipline-washout.md">stock-trading-discipline-washout</a></li>
+<li><a href="../2026-04-24-通达信tdxquant量化模拟交易封装.md">通达信tdxquant量化模拟交易封装</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-05-08-MACD-KDJ共振策略.md">MACD-KDJ共振策略</a></li>
+<li><a href="../2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="../2026-05-11-RSI布林带组合策略.md">RSI布林带组合策略</a></li>
+<li><a href="../2026-05-11-板块轮动资金流向分析.md">板块轮动资金流向分析</a></li>
+<li><a href="../2026-05-18-板块轮动概念轮动.md">板块轮动概念轮动</a></li>
+<li><a href="2026-05-06-rsi-bollinger-strategy.md">rsi-bollinger-strategy</a></li>
+<li><a href="2026-05-06-板块轮动与北向资金流向.md">板块轮动与北向资金流向</a></li>
+<li><a href="2026-05-09-技术指标组合策略-多指标确认.md">技术指标组合策略-多指标确认</a></li>
+<li><a href="2026-05-17-动态止损策略对比.md">动态止损策略对比</a></li>
+<li><a href="2026-05-17-北向资金主力资金流向指标有效性验证-深度研究.md">北向资金主力资金流向指标有效性验证-深度研究</a></li>
+<li><a href="2026-05-17-北向资金主力资金流向指标有效性验证.md">北向资金主力资金流向指标有效性验证</a></li>
+<li><a href="2026-05-17-实盘模拟vs真实交易技术差异.md">实盘模拟vs真实交易技术差异</a></li>
+<li><a href="2026-05-18-ths-auto-trader-2025-2026-tech-ecosystem-update.md">ths-auto-trader-2025-2026-tech-ecosystem-update</a></li>
+<li><a href="2026-05-19-VLA-AD视觉语言动作策略蒸馏.md">VLA-AD视觉语言动作策略蒸馏</a></li>
+<li><a href="2026-05-19-ths-auto-trader-api-era-ecosystem.md">ths-auto-trader-api-era-ecosystem</a></li>
+<li><a href="2026-05-19-板块轮动-北向资金.md">板块轮动-北向资金</a></li>
+<li><a href="2026-05-19-板块轮动-概念轮动.md">板块轮动-概念轮动</a></li>
+<li><a href="ths-auto-trader-2025-2026-ecosystem-update.md">ths-auto-trader-2025-2026-ecosystem-update</a></li>
+<li><a href="ths-auto-trader-2026.md">ths-auto-trader-2026</a></li>
+<li><a href="ths-auto-trader-20260517.md">ths-auto-trader-20260517</a></li>
+<li><a href="ths-auto-trader-architecture-deep-dive-20260517.md">ths-auto-trader-architecture-deep-dive-20260517</a></li>
+<li><a href="ths-auto-trader-deep-dive.md">ths-auto-trader-deep-dive</a></li>
+<li><a href="ths-auto-trader-deep-learn.md">ths-auto-trader-deep-learn</a></li>
+<li><a href="ths-auto-trader-ecosystem-update-20260518.md">ths-auto-trader-ecosystem-update-20260518</a></li>
+<li><a href="ths-auto-trader-production-ops-20260517.md">ths-auto-trader-production-ops-20260517</a></li>
+<li><a href="ths-auto-trader-qmt-xtquant-tick-strategy-20260518.md">ths-auto-trader-qmt-xtquant-tick-strategy-20260518</a></li>
+<li><a href="ths-auto-trader-update-20260519.md">ths-auto-trader-update-20260519</a></li>
+<li><a href="ths-jqktrader-ecosystem-update-20260518.md">ths-jqktrader-ecosystem-update-20260518</a></li>
+<li><a href="../stock-analysis-system.md">stock-analysis-system</a></li>
+<li><a href="../tdx-quant-trader.md">tdx-quant-trader</a></li>
+</ul>
+</body>
+</html>

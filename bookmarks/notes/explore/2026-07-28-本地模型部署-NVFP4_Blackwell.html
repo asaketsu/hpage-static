@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-NVFP4_Blackwell</title>
+
+<meta property="og:title" content="本地模型部署-NVFP4_Blackwell" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="nvfp4-blackwell">本地模型部署：NVFP4 / Blackwell 量化</h1>
+<blockquote>
+<p>📅 2026-07-28 | auto-explore 嗅探学习<br />
+🔗 来源: Google News RSS, DDG, raw.githubusercontent.com (mit-han-lab/fouroversix)<br />
+⚠️ 网络环境: Tavily/HF/arXiv/NVIDIA blog 均 SSL EOF，仅 DDG+GitHub raw+GN RSS 可达。笔记基于可获取素材整合。</p>
+</blockquote>
+<h2 id="_1">核心摘要</h2>
+<p>NVFP4 是 NVIDIA 在 Blackwell 架构（B200/GB200/GB300/RTX 50 系列）上引入的 4-bit 浮点量化格式，采用 block-scaled 设计（每 16 个元素共享一个 E4M3 scale factor）。相比 FP8/INT4，NVFP4 在显存占用减半（vs FP8）的同时，通过 Tensor Core 原生支持实现接近 FP8 的精度和 2-4 倍的吞吐提升，是 2025-2026 年大规模 LLM 本地部署和推理的关键技术路径。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1-nvfp4">1. NVFP4 格式定义</h3>
+<ul>
+<li><strong>数据类型</strong>: 4-bit 浮点（FP4），配合 8-bit block scale factor（E4M3）</li>
+<li><strong>分块策略</strong>: 每 16 个 FP4 元素共享 1 个 scale factor（block-scaled quantization）</li>
+<li><strong>硬件支持</strong>: 仅 Blackwell 架构原生支持（compute capability 10.0/12.0）</li>
+<li>数据中心: B200, GB200, GB300</li>
+<li>工作站: RTX Pro 6000 Blackwell, RTX 5090</li>
+<li><strong>软件栈</strong>: CUDA 12.8+, PyTorch 2.8+, vLLM, TensorRT-LLM, Diffusers</li>
+</ul>
+<h3 id="2">2. 精度与性能（行业共识）</h3>
+<ul>
+<li><strong>精度</strong>: 标准 NVFP4 RTN（round-to-nearest）在大多数 LLM benchmark 上精度损失 &lt;2%，但部分模型/任务会有显著退化</li>
+<li><strong>吞吐</strong>: 相比 BF16，推理吞吐提升 2-4 倍；训练吞吐也有显著提升</li>
+<li><strong>显存</strong>: 相比 BF16 节省 75%，相比 FP8 节省 50%</li>
+<li><strong>成本</strong>: VentureBeat 报道 Blackwell + NVFP4 推理成本降低最高 10 倍</li>
+<li><strong>实际案例</strong>:</li>
+<li>NVIDIA + Mistral AI: Mistral 3 在 GB200 NVL72 上推理加速 10 倍</li>
+<li>DeepSeek V4: Blackwell Day-0 支持，1.6T 模型达 3500 tokens/s</li>
+<li>FLUX.2 图像生成: NVFP4 在数据中心 GPU 上实现规模推理</li>
+</ul>
+<h3 id="3-nvfp4">3. NVFP4 的精度问题与改进方案（前沿研究）</h3>
+<p>标准 NVFP4 的主要痛点是 <strong>block scaling 粒度固定</strong>，对异常值（outlier）敏感。2026 年学术界提出改进：</p>
+<ul>
+<li><strong>Four Over Six (4/6)</strong> — MIT Han Lab (arXiv:2512.02010)</li>
+<li>核心创新: <strong>Adaptive Block Scaling（自适应块缩放）</strong></li>
+<li>在 NVFP4 基础上，用 MSE 最优策略选择哪些 block 使用 FP4、哪些升级为 FP6</li>
+<li>结果: 在相同 4-bit 平均位宽下，精度显著优于标准 NVFP4 RTN</li>
+<li>开源: <code>pip install fouroversix</code>，支持 CUDA/Triton/PyTorch 三种后端</li>
+<li>
+<p>论文续作: Adaptive Block-Scaled Data Types (arXiv:2603.28765)</p>
+</li>
+<li>
+<p><strong>Quantization-Aware Distillation (QAD)</strong> — NVIDIA (arXiv:2601.20088)</p>
+</li>
+<li>训练阶段引入 NVFP4 量化感知，蒸馏补偿精度损失</li>
+<li>
+<p>应用: Nemotron-3-Nano-30B NVFP4 checkpoint，推理效率显著提升</p>
+</li>
+<li>
+<p><strong>Pretraining with NVFP4</strong> (arXiv:2509.25149)</p>
+</li>
+<li>直接在 NVFP4 精度下预训练大模型，证明 NVFP4 可用于训练而非仅推理</li>
+</ul>
+<h3 id="4">4. 本地部署实践路径</h3>
+<p><strong>推理部署（按成熟度排序）</strong>:<br />
+1. <strong>TensorRT-LLM</strong>: NVIDIA 官方，性能最优，支持 NVFP4 KV Cache 优化<br />
+2. <strong>vLLM</strong>: 社区主流，fouroversix 已集成 vLLM PTQ 流程<br />
+3. <strong>Diffusers</strong>: 图像/视频模型（FLUX 等），<code>FourOverSixConfig</code> 一行代码量化<br />
+4. <strong>PyTorch 原生</strong>: <code>torch.nn.functional</code> 已支持 NVFP4 操作（2.8+）</p>
+<p><strong>量化流程示例（fouroversix）</strong>:</p>
+<pre><code class="language-python">from fouroversix import ModelQuantizationConfig, quantize_model
+from transformers import AutoModelForCausalLM
+
+# 标准 NVFP4 RTN
+model = AutoModelForCausalLM.from_pretrained(&quot;meta-llama/Llama-3.2-1B&quot;)
+config = ModelQuantizationConfig(scale_rule=&quot;static_6&quot;)
+quantize_model(model, config)
+
+# 改进版 4/6（自适应块缩放）
+quantize_model(model)  # 默认使用 MSE block selection
+</code></pre>
+<p><strong>无 Blackwell GPU 的开发</strong>:</p>
+<pre><code class="language-bash">SKIP_CUDA_BUILD=1 pip install fouroversix --no-build-isolation
+# 使用 PyTorch reference 后端（慢但可测试）
+</code></pre>
+<h3 id="5-nvfp4-vs">5. NVFP4 vs 其他量化格式对比</h3>
+<ul>
+<li><strong>vs INT4 (GPTQ/AWQ)</strong>: NVFP4 是浮点格式，对 LLM 权重分布更友好；INT4 需要复杂的校准流程</li>
+<li><strong>vs FP8 (E4M3/E5M2)</strong>: NVFP4 显存减半，但精度略低；FP8 是当前"安全选择"</li>
+<li><strong>vs MXFP4 (OCP 标准)</strong>: NVFP4 是 NVIDIA 私有变体，block scale 策略不同；MXFP4 是开放标准</li>
+<li><strong>决策建议</strong>:</li>
+<li>有 Blackwell GPU + 追求极致吞吐 → NVFP4</li>
+<li>Hopper/Ampere GPU → FP8 或 INT4（NVFP4 不支持）</li>
+<li>精度敏感场景 → 4/6 改进方案 或 FP8</li>
+</ul>
+<h2 id="_3">对工作的价值</h2>
+<ol>
+<li><strong>Jetson Orin 部署无关</strong>: NVFP4 仅限 Blackwell，我们的 Jetson Orin Nano（Ampere 架构）不支持。但了解趋势有助于规划未来硬件升级</li>
+<li><strong>量化决策树更新</strong>: 当前 <code>本地模型部署: 量化选择决策树</code>（队列中的下一个任务）应纳入 NVFP4 作为 Blackwell 选项</li>
+<li><strong>边缘部署启示</strong>: NVFP4 的 block-scaled 思路可启发边缘设备的量化策略设计</li>
+<li><strong>技术雷达</strong>: NVFP4 + 4/6 改进是 2026 量化领域最活跃方向，值得持续关注</li>
+</ol>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li>✅ 完成 <code>量化选择决策树</code> 笔记，将 NVFP4 作为 Blackwell 专用路径纳入</li>
+<li>📋 关注 fouroversix 项目演进（MIT Han Lab，Song Han 团队，质量高）</li>
+<li>📋 如果未来采购 Blackwell 工作站，优先测试 NVFP4 + vLLM 推理链路</li>
+<li>📋 跟踪 NVIDIA Nemotron-3 NVFP4 checkpoint 的实际性能数据</li>
+</ol>
+<h2 id="_5">参考资料</h2>
+<ul>
+<li>NVIDIA 官方 Blog:</li>
+<li>Introducing NVFP4 for Efficient and Accurate Low-Precision Inference</li>
+<li>3 Ways NVFP4 Accelerates AI Training and Inference (2026-02)</li>
+<li>Scaling NVFP4 Inference for FLUX.2 on Blackwell (2026-01)</li>
+<li>Optimizing Inference with NVFP4 KV Cache</li>
+<li>Using NVFP4 Low-Precision Model Training (2026-02)</li>
+<li>学术论文:</li>
+<li>arXiv:2509.25149 — Pretraining Large Language Models with NVFP4</li>
+<li>arXiv:2512.02010 — Four Over Six: More Accurate NVFP4 Quantization (MIT Han Lab)</li>
+<li>arXiv:2601.20088 — Quantization-Aware Distillation for NVFP4 Inference</li>
+<li>arXiv:2603.28765 — Adaptive Block-Scaled Data Types</li>
+<li>开源项目:</li>
+<li>github.com/mit-han-lab/fouroversix — 4/6 量化工具（MIT license）</li>
+<li>行业报道:</li>
+<li>VentureBeat: AI inference costs dropped up to 10x on Blackwell (2026-02)</li>
+<li>Wccftech: DeepSeek V4 Day-0 Blackwell, 3500 tokens/s (2026-04)</li>
+<li>Tom's Hardware: NVFP4 efficiency for LLM training</li>
+</ul>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-27-本地模型部署-Gemma4-31B大模型本跑.md">Gemma4-31B大模型本跑</a> — 本地大模型部署实践，量化方案对比</li>
+<li><a href="./2026-07-22-本地模型部署-ROI决策框架.md">本地部署ROI决策框架</a> — 本地部署成本与收益分析</li>
+<li><a href="./2026-07-28-LLM推理优化2026-三路线交叉综合-增量蒸馏.md">LLM推理优化三路线综合</a> — 推理优化交叉分析（同日姊妹篇）</li>
+<li><a href="../../../explore/2026-07-28-gguf-quantization-iq-quants-qat-moe-kv-cache-deep-dive.md">GGUF量化体系deep dive</a> — IQ量化/QAT/MoE KV Cache全面分析</li>
+<li><a href="../../../explore/2026-07-26-consumer-gpu-llm-inference-deep-dive.md">消费级GPU LLM推理</a> — 消费级GPU推理方案对比</li>
+</ul>
+</body>
+</html>

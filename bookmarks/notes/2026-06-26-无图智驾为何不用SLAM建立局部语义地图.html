@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无图智驾为何不用SLAM建立局部语义地图</title>
+
+<meta property="og:title" content="无图智驾为何不用SLAM建立局部语义地图" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="slam">为什么无图智驾不使用SLAM建立局部语义地图？</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号「智驾最前沿」（作者：陈云培）<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/qo6bzxzYYv5wF3QmfoawDw<br />
+<strong>记录日期</strong>：2026-06-26</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、文章概要</h2>
+<p>自动驾驶领域正从"高度依赖高精地图"转向"无图智驾"（不依赖预设地图，实时感知理解环境）。在这个过程中，<strong>BEV + Occupancy + Transformer</strong> 组合成为主流，而曾经在机器人领域立下汗马功劳的 <strong>SLAM 方案却没有被智驾采用</strong>。文章系统回答了一个核心问题：为什么？</p>
+<hr />
+<h2 id="_2">二、内容详细整理</h2>
+<h3 id="21">2.1 为什么传统几何建图跟不上变化？</h3>
+<p>SLAM 的核心逻辑是<strong>基于几何约束</strong>：</p>
+<ul>
+<li>提取路边建筑边缘、交通标志转角等<strong>特征点</strong></li>
+<li>通过数学公式计算这些点在三维空间的坐标</li>
+<li>在静态/刚性环境下非常精确</li>
+</ul>
+<p><strong>但在城市交通这种动态、非刚性环境下，几何逻辑遭遇严重挑战：</strong></p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>机制</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>拼图错位</td>
+<td>相机角度微小偏移→几何投影错位</td>
+<td>地图物体重影/位置漂移</td>
+</tr>
+<tr>
+<td>算力消耗不均</td>
+<td>环境复杂度↑→维护局部特征地图内存/时间↑</td>
+<td>系统过载</td>
+</tr>
+<tr>
+<td>语义断层</td>
+<td>必须先"看懂"物体才能"画进"地图</td>
+<td>无法归类的物体（树枝、建筑垃圾、特种车辆）在地图中<strong>缺失</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心缺陷</strong>：语义地图要求系统先识别再建图 → 无法识别 = 感知盲区 → 对自动驾驶安全要求是巨大隐患。</p>
+<h3 id="22-transformer">2.2 Transformer 如何重塑空间感？</h3>
+<p>传统 2D→3D 转换依赖<strong>深度估计</strong>：猜每个像素距离→投射到3D。但"猜深度"极不稳定，受光影、雨雾干扰。</p>
+<p><strong>Transformer 引入"主动询问"机制</strong>：</p>
+<pre><code>BEV画布上每个位置（Query）→ 主动向所有摄像头画面打听：
+  &quot;你们视野里有没有哪个像素属于我这个地理位置？&quot;
+</code></pre>
+<p><strong>三大优势：</strong></p>
+<table>
+<thead>
+<tr>
+<th>优势</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>特征级融合（非结果级拼接）</td>
+<td>在最底层特征阶段就把360°信息融为一体，而非各自算完再凑</td>
+</tr>
+<tr>
+<td>全局注意力</td>
+<td>利用道路整体轮廓推断被遮挡区域（"脑补"货车后方道路结构）</td>
+</tr>
+<tr>
+<td>空间感涌现</td>
+<td>通过大规模数据学习建立类人的空间直觉，不依赖精准深度计算</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：左侧相机看到车头 + 后侧相机看到车尾 → BEV画布上汇聚为同一物理实体。这种逻辑连贯性是传统SLAM难以企及的。</p>
+<h3 id="23-occupancy">2.3 Occupancy 网络如何解决感知死角？</h3>
+<p>如果 BEV+Transformer 解决了"看清世界"的问题，那么 Occupancy Network 解决的是<strong>"叫不出名字的物体"问题</strong>。</p>
+<p><strong>核心范式转变：</strong></p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>SLAM 语义地图</th>
+<th>Occupancy 网络</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>识别逻辑</td>
+<td>先分类再建图</td>
+<td><strong>只判断空间是否被占据</strong></td>
+</tr>
+<tr>
+<td>未知物体</td>
+<td>识别不出→忽略→危险</td>
+<td><strong>不需要知道叫什么，只需知道被占据→避让</strong></td>
+</tr>
+<tr>
+<td>世界观</td>
+<td>贴满标签的分类表</td>
+<td><strong>充满障碍物的物理空间</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>4D 时空连续性：</strong><br />
+- 注入 Transformer 特征 → 存储过去几帧信息 → 形成带记忆的 4D 空间感知<br />
+- 即使障碍物瞬间被遮挡，系统仍记得该体素曾检测到物体 → 根据运动趋势预测当前位置</p>
+<h3 id="24">2.4 为什么这种组合成为必然选择？</h3>
+<p>BEV + Transformer + Occupancy 的本质是将感知统一到<strong>同一个坐标系和同一种数学语言</strong>下。</p>
+<p>SLAM 失败的根本原因：</p>
+<blockquote>
+<p>SLAM 试图在一个不断变动的世界里建立一套永恒不变的坐标，这在复杂城市环境中成本太高、容错率太低。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>SLAM</th>
+<th>BEV+Transformer+Occ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>坐标系</td>
+<td>永恒不变的绝对坐标</td>
+<td>实时更新的相对BEV坐标</td>
+</tr>
+<tr>
+<td>传感器兼容</td>
+<td>强依赖特定配置</td>
+<td>对安装位置/型号更强兼容</td>
+</tr>
+<tr>
+<td>下游对接</td>
+<td>飘忽的语义标签 + 散乱点云</td>
+<td><strong>高清实时含物理占用的3D鸟瞰图</strong></td>
+</tr>
+<tr>
+<td>路径规划</td>
+<td>需要额外解读</td>
+<td><strong>像玩赛车游戏一样直观</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">三、查询拓展</h2>
+<h3 id="31-bev">3.1 BEV 感知的技术演进脉络</h3>
+<p>BEV（Bird's Eye View）感知的里程碑论文和产品：</p>
+<table>
+<thead>
+<tr>
+<th>时间</th>
+<th>里程碑</th>
+<th>核心贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2020</td>
+<td>LSS（Lift, Splat, Shoot）</td>
+<td>首次系统化提出 2D→BEV 的范式转换</td>
+</tr>
+<tr>
+<td>2021</td>
+<td>BEVFormer</td>
+<td>引入时序Transformer，空间+时间联合注意力</td>
+</tr>
+<tr>
+<td>2022</td>
+<td>Tesla AI Day</td>
+<td>公开占用网络概念，行业级验证</td>
+</tr>
+<tr>
+<td>2023</td>
+<td>OCC（Occupancy）系列</td>
+<td>从 2D 占用栅格升级到 3D 体素占用</td>
+</tr>
+<tr>
+<td>2024-2025</td>
+<td>端到端架构（UniAD等）</td>
+<td>感知→预测→规划全链路Transformer统一</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-slam">3.2 为什么 SLAM 在智驾"失败"但机器人大获成功</h3>
+<p>这是本文没有展开但关键的对比：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>机器人SLAM</th>
+<th>自动驾驶</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>速度</td>
+<td>低速（&lt;2m/s）</td>
+<td>高速（&gt;10m/s）</td>
+</tr>
+<tr>
+<td>环境</td>
+<td>静态/半静态</td>
+<td>高度动态</td>
+</tr>
+<tr>
+<td>帧率要求</td>
+<td>10-20Hz足够</td>
+<td>需50Hz+实时</td>
+</tr>
+<tr>
+<td>可接受延迟</td>
+<td>100ms</td>
+<td>&lt;20ms</td>
+</tr>
+<tr>
+<td>地图有效期</td>
+<td>分钟-小时级</td>
+<td>秒级（环境秒变）</td>
+</tr>
+<tr>
+<td>遮挡频率</td>
+<td>低</td>
+<td>极高（车辆/行人频繁遮挡）</td>
+</tr>
+</tbody>
+</table>
+<p>SLAM 的"先建图再定位"范式适合<strong>环境变化慢于运动速度</strong>的场景。自动驾驶恰好相反——<strong>环境变化快于车辆运动</strong>，SLAM 的地图刚建好就过时了。</p>
+<h3 id="33-occupancy-network-nerf3dgs">3.3 Occupancy Network 与 NeRF/3DGS 的关系</h3>
+<p>Occupancy Network 的体素思想与 NeRF/3D Gaussian Splatting 有深层联系：</p>
+<ul>
+<li><strong>Occupancy</strong>：离散体素，二值/概率占据 → 推理快，适合实时避障</li>
+<li><strong>NeRF</strong>：连续隐式表示 → 渲染质量高，但推理慢</li>
+<li><strong>3DGS</strong>：半离散高斯基元 → 介于两者之间，渲染快质量高</li>
+</ul>
+<p>自动驾驶选择 Occupancy 而非 NeRF/3DGS，核心是<strong>实时性 &gt; 渲染精度</strong>。</p>
+<h3 id="34">3.4 "无图"不等于"无先验"</h3>
+<p>行业常说的"无图智驾"实际仍有先验信息：<br />
+- <strong>SD地图</strong>（标准导航地图）：道路拓扑、限速<br />
+- <strong>车道级导航</strong>：粗粒度车道信息<br />
+- <strong>道路经验</strong>：Tesla 的 fleet learning 积累的统计先验</p>
+<p>"无图"指的是<strong>不依赖高精地图（HD Map）的厘米级精确几何信息</strong>，而非完全从零感知。</p>
+<hr />
+<h2 id="_4">四、归纳总结</h2>
+<h3 id="41-vs">4.1 范式之争的本质：确定性建模 vs 数据驱动</h3>
+<pre><code>SLAM（确定性建模）              BEV+Transformer+Occ（数据驱动）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+人工设计特征                      数据自动学习特征
+几何约束优化                      端到端梯度优化
+可解释性强                        可解释性弱
+静态环境最优                      动态环境最优
+边际场景需人工补丁                边际场景靠数据覆盖
+低数据依赖                        高数据依赖
+</code></pre>
+<p><strong>自动驾驶选择后者，因为城市交通的边际场景无穷多，人工设计特征的"打地鼠"游戏永远赢不了。</strong></p>
+<h3 id="42">4.2 三层感知架构对比</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>SLAM 方案</th>
+<th>无图智驾方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>空间重构</td>
+<td>深度估计→3D投影</td>
+<td>Transformer BEV（主动Query）</td>
+</tr>
+<tr>
+<td>物体理解</td>
+<td>语义标签→分类建图</td>
+<td>Occupancy体素→物理占据判断</td>
+</tr>
+<tr>
+<td>时序记忆</td>
+<td>回环检测→全局优化</td>
+<td>4D时序注意力→短时记忆</td>
+</tr>
+<tr>
+<td>下游输出</td>
+<td>语义标签+点云</td>
+<td>3D占用BEV图→直接路径规划</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43">4.3 为什么"无法归类"是最大安全隐患</h3>
+<p>这是文章最深刻的洞察之一：</p>
+<blockquote>
+<p>传统语义地图的致命假设是"世界上的物体都可以被分类"。但现实世界中存在大量<strong>长尾未知物体</strong>（洒落的建筑垃圾、特殊形态的施工围挡、侧翻的异形货车）。</p>
+</blockquote>
+<ul>
+<li><strong>SLAM方案</strong>：无法分类 → 不画进地图 → 系统不知道它存在 → <strong>直接撞上去</strong></li>
+<li><strong>Occupancy方案</strong>：不需要分类 → 只要空间被占据就避让 → <strong>物理保底</strong></li>
+</ul>
+<p>这个差异是<strong>生死级别的安全差异</strong>。</p>
+<hr />
+<h2 id="_5">五、趋势判断</h2>
+<h3 id="51">5.1 端到端架构将统一感知与规控</h3>
+<p>BEV+Transformer+Occupancy 的下一步是<strong>端到端（E2E）</strong>：<br />
+- UniAD（CVPR 2023 最佳论文）已证明可行性<br />
+- Tesla FSD V12+ 实现了感知到控制的全程神经网络化<br />
+- 预测：2026-2027年主流车企将量产端到端架构</p>
+<h3 id="52-occupancy">5.2 Occupancy 分辨率将大幅提升</h3>
+<p>当前 Occupancy 网络的体素分辨率约 0.5-1m，未来趋势：<br />
+- <strong>多尺度体素</strong>：近处密集(0.1m) + 远处稀疏(1m)，类似LOD(Level of Detail)<br />
+- <strong>神经辐射场增强</strong>：在关键区域用 NeRF 补充细节<br />
+- 预测：2027年实现 0.1m 级近场占用感知</p>
+<h3 id="53-slam">5.3 SLAM 不会消亡但角色转变</h3>
+<p>SLAM 在自动驾驶中并非完全消失，而是<strong>退入幕后</strong>：<br />
+- <strong>离线建图</strong>：仍用于停车场记忆、高精地图众包更新<br />
+- <strong>多传感器标定</strong>：外参标定仍是SLAM技术<br />
+- <strong>泊车场景</strong>：低速+静态环境，SLAM仍有优势（如记忆泊车）<br />
+- 预测：SLAM将成为自动驾驶的<strong>补充技术</strong>而非核心感知方案</p>
+<h3 id="54-">5.4 "感知-建图"边界模糊化</h3>
+<p>传统SLAM的"建图"和"定位"是分离的两个阶段。BEV+Occ方案实际上在做<strong>隐式建图</strong>——每一帧BEV特征图本身就是一张局部地图，只是它不持久化、不复用。这标志着<strong>显式建图正在被隐式表征替代</strong>。</p>
+<hr />
+<h2 id="_6">六、关联分析</h2>
+<h3 id="61-slam">6.1 与上一篇激光雷达SLAM笔记的深度对比</h3>
+<p>上一篇笔记（200线以上激光雷达SLAM踩坑）和本文形成完美的<strong>技术路线对照</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>激光雷达SLAM（上篇）</th>
+<th>无图智驾BEV+Occ（本文）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心传感器</td>
+<td>激光雷达 + IMU</td>
+<td>多摄像头（+可选雷达）</td>
+</tr>
+<tr>
+<td>建图方式</td>
+<td>显式点云地图</td>
+<td>隐式BEV特征图</td>
+</tr>
+<tr>
+<td>定位方式</td>
+<td>几何约束优化</td>
+<td>端到端网络推断</td>
+</tr>
+<tr>
+<td>动态环境</td>
+<td>痛点（动态物体干扰）</td>
+<td>优势（数据驱动处理动态）</td>
+</tr>
+<tr>
+<td>算力瓶颈</td>
+<td>后端优化（海森矩阵）</td>
+<td>Transformer推理</td>
+</tr>
+<tr>
+<td>适合场景</td>
+<td>低速/静态/园区</td>
+<td>高速/动态/城市道路</td>
+</tr>
+</tbody>
+</table>
+<p><strong>两者不是替代关系，而是互补</strong>：激光SLAM适合机器人/园区/仓储，BEV+Occ适合自动驾驶/高速场景。</p>
+<h3 id="62">6.2 与用户机器人项目的技术映射</h3>
+<table>
+<thead>
+<tr>
+<th>文中概念</th>
+<th>用户项目映射</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Occupancy 体素避障</td>
+<td>双轮腿式机器人导航的局部避障层</td>
+</tr>
+<tr>
+<td>Transformer BEV</td>
+<td>如果机器人加装多摄像头，可用BEV替代传统视觉感知</td>
+</tr>
+<tr>
+<td>"物理保底"思想</td>
+<td>ESP32平衡小车的倾角&gt;45°自动停机——同样的"物理安全兜底"理念</td>
+</tr>
+<tr>
+<td>SLAM退入幕后</td>
+<td>机器人项目仍以SLAM为主（低速静态环境），自动驾驶方案参考价值有限</td>
+</tr>
+</tbody>
+</table>
+<h3 id="63-ai">6.3 与西门子工业AI笔记的交叉</h3>
+<p>三篇笔记形成了一条完整的技术认知链：</p>
+<pre><code>西门子工业AI（宏观范式）
+  → Physical AI = AI直接控制物理世界
+  → 数字孪生 = 虚拟验证 + 零成本试错
+
+激光雷达SLAM（传感器层）
+  → 高线束雷达 = 高精度数字孪生的传感器
+  → 但算力/时序/故障是系统瓶颈
+
+无图智驾BEV+Occ（算法层）
+  → 放弃显式建图，用数据驱动替代几何约束
+  → &quot;物理占用&quot;替代&quot;语义标签&quot;——不需要看懂，只需要避让
+</code></pre>
+<p>三者共同指向一个趋势：<strong>未来的Physical AI系统将混合使用显式建图（SLAM）和隐式表征（BEV+Occ），根据场景动态切换</strong>。</p>
+<h3 id="64-occupancy">6.4 Occupancy 思想对机器人感知的启发</h3>
+<p>虽然本文讲的是自动驾驶，但 Occupancy 网络的"<strong>不需要分类，只需判断占据</strong>"思想对机器人感知有直接启发：<br />
+- 传统机器人导航：SLAM建图→语义分割→路径规划（三步串联，级联误差）<br />
+- 启发方案：直接用轻量 Occupancy 网络输出局部可通行性 → 跳过语义分割环节 → 降低延迟和算力</p>
+<p>这与用户 ESP32 平衡小车项目的"<strong>物理安全兜底</strong>"理念高度一致。</p>
+<hr />
+<h2 id="_7">七、金句摘录</h2>
+<ol>
+<li><strong>「SLAM 试图在一个不断变动的世界里建立一套永恒不变的坐标」</strong> — SLAM 失败本质的精准概括</li>
+<li><strong>「占用网络不需要知道那个东西叫什么，只需要知道那里的物理空间被占据了」</strong> — 范式转变的核心</li>
+<li><strong>「特征级融合，而不是结果级的拼接」</strong> — BEV Transformer 的根本优势</li>
+<li><strong>「系统可以结合前后的车道线走向，在BEV空间里脑补出货车后方的道路结构」</strong> — 全局注意力的直觉解释</li>
+<li><strong>「把世界看作一个充满障碍物的物理空间，而不是一张贴满标签的分类表」</strong> — 世界观的根本转变</li>
+<li><strong>「当规控拿到的不再是散乱的点云，而是一张实时含物理占用的3D鸟瞰图时，路径规划就像玩赛车游戏一样直观」</strong> — 架构简化对落地的意义</li>
+</ol>
+<hr />
+<h2 id="_8">八、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>具体行动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Occupancy思想可用于机器人</td>
+<td>在Jetson平台上实验轻量Occupancy网络，替代传统代价地图</td>
+</tr>
+<tr>
+<td>SLAM仍是低速机器人首选</td>
+<td>用户园区/室内机器人项目继续用SLAM，不需追无图智驾</td>
+</tr>
+<tr>
+<td>"物理保底"是安全设计通用原则</td>
+<td>所有机器人项目应增加不依赖语义识别的物理安全层</td>
+</tr>
+<tr>
+<td>感知-规控对接简化</td>
+<td>如果机器人从SLAM迁移到BEV方案，路径规划模块可大幅简化</td>
+</tr>
+<tr>
+<td>注意技术路线选型的场景依赖</td>
+<td>不要盲目将自动驾驶方案移植到机器人，速度/动态性/算力差异巨大</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="./2026-06-26-200线以上激光雷达SLAM踩坑指南.md">2026-06-26-200线以上激光雷达SLAM踩坑指南</a></li>
+<li><a href="./2026-06-26-西门子CEO物理AI工业AI革命-VivaTech2026.md">2026-06-26-西门子CEO物理AI工业AI革命-VivaTech2026</a></li>
+<li><a href="./2026-06-26-YOLO-SLAM语义几何双重锁定动态环境定位.md">2026-06-26-YOLO-SLAM语义几何双重锁定动态环境定位</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-GGUF量化部署</title>
+
+<meta property="og:title" content="本地模型部署-GGUF量化部署" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="gguf">本地模型部署：GGUF 量化部署</h1>
+<blockquote>
+<p><strong>主题</strong>: 本地大模型 GGUF 量化格式 + llama.cpp 部署 | <strong>类型</strong>: auto-explore<br />
+<strong>学习日期</strong>: 2026-07-30 | <strong>触发</strong>: 嗅探队列（本地模型部署领域）</p>
+</blockquote>
+<hr />
+<h2 id="1">1. 摘要</h2>
+<p>GGUF（GPT-Generated Unified Format）是 llama.cpp 团队推出的二进制模型文件格式，将模型权重、tokenizer、超参数打包为单文件，配合 k-quants 量化算法，使 7B-70B 级大模型可在消费级 GPU/CPU 上高效推理。相比旧版 GGML 格式，GGUF 支持增量加载、兼容性更好，已成为开源模型本地部署的事实标准。</p>
+<h2 id="2">2. 关键发现</h2>
+<h3 id="gguf-vs-ggml">GGUF vs GGML</h3>
+<ul>
+<li><strong>GGUF</strong> 是 GGML v1 的继任者（2023年8月起），解决了旧格式每次架构变更都破坏向后兼容的问题</li>
+<li>关键改进：所有元数据集中在文件头，支持 KV-cache 量化，支持 mmap 内存映射加载</li>
+</ul>
+<h3 id="_1">量化等级选择（核心决策）</h3>
+<p>k-quants 采用混合精度策略——不同层使用不同量化位数，兼顾速度和精度：</p>
+<ul>
+<li><strong>Q4_K_M</strong> — 甜点档位。7B 模型约 4.1GB，精度损失 &lt;2%，推理速度最快。绝大多数场景首选</li>
+<li><strong>Q5_K_M</strong> — 精度优先。约 4.8GB（7B），精度损失 &lt;1%，适合需要高质量输出的场景（代码生成、数学推理）</li>
+<li><strong>Q8_0</strong> — 几乎无损。约 6.7GB（7B），精度损失可忽略，但速度/显存劣势明显，仅用于基准对比</li>
+<li><strong>Q3_K_M</strong> — 极限压缩。约 3.3GB（7B），精度损失 3-5%，仅适合显存极度受限的设备</li>
+<li><strong>Q2_K</strong> — 不推荐。精度损失显著（&gt;8%），仅做可行性验证</li>
+</ul>
+<p>经验法则：显存够用 Q5_K_M，显存紧张 Q4_K_M，两者覆盖 95% 场景。</p>
+<h3 id="llamacpp">llama.cpp 部署流程</h3>
+<pre><code># 1. 下载 GGUF 模型（HuggingFace 搜索 model-name-GGUF）
+# 2. 编译 llama.cpp
+git clone https://github.com/ggerganov/llama.cpp &amp;&amp; cd llama.cpp
+cmake -B build -DGGML_CUDA=ON  # NVIDIA GPU
+cmake --build build --config Release
+
+# 3. 量化（从 FP16 转 Q4_K_M）
+./build/bin/llama-quantize model-fp16.gguf model-q4km.gguf Q4_K_M
+
+# 4. 推理
+./build/bin/llama-cli -m model-q4km.gguf -p &quot;你好&quot; -n 512 -ngl 99
+# -ngl 99 = 全部层 offload 到 GPU
+</code></pre>
+<h3 id="7b-q4_k_m">硬件适配参考（7B 模型 Q4_K_M）</h3>
+<ul>
+<li><strong>Jetson Orin Nano（8GB）</strong> — 可运行，~3GB 权重 + 2GB KV-cache，剩余空间用于上下文。功耗 7-15W</li>
+<li><strong>RTX 3060 12GB</strong> — 舒适运行 7B，可勉强跑 13B Q4</li>
+<li><strong>CPU-only（32GB RAM）</strong> — 可运行但速度约 3-8 token/s，适合非实时场景</li>
+<li><strong>Apple M2/M3（16GB 统一内存）</strong> — Metal 加速，7B 可达 30+ token/s</li>
+</ul>
+<h2 id="3">3. 对工作的价值</h2>
+<ul>
+<li><strong>直接可用</strong>：Jetson Orin 上已有 nexa-local-inference Skill 使用 Ollama，底层正是 GGUF。理解量化等级选择可优化当前部署的精度/速度平衡</li>
+<li><strong>成本优化</strong>：Q4_K_M 相比 FP16 减少约 75% 显存占用，同等硬件可部署更大模型或留出更多上下文空间</li>
+<li><strong>与现有研究衔接</strong>：2026-07-30 推测解码笔记提到"7B+INT4+标准KV cache"作为 Phase 1 方案，GGUF Q4_K_M 正是这个 INT4 的具体实现路径</li>
+</ul>
+<h2 id="4">4. 行动建议</h2>
+<ol>
+<li><strong>短期（本周）</strong>：检查 Jetson 上当前 Ollama 模型的量化等级，确认是否用 Q4_K_M。如果用了 Q8 或 FP16，降级到 Q4_K_M 可释放显存给更长上下文</li>
+<li><strong>中期</strong>：为 nexa-local-inference Skill 补充量化等级选择的决策树（显存预算 → 推荐量化档位）</li>
+<li><strong>长期</strong>：探索 GGUF + KV-cache 量化组合（<code>--cache-type-k q4_0</code>），在 Jetson 8GB 上进一步扩展可用上下文长度</li>
+</ol>
+<hr />
+<p><em>数据来源限制说明：本次搜索基础设施（Tavily）全面不可用（SSL EOF + HTTP 432），内容基于领域专业知识和本地已有笔记（2026-07-30 边缘推理笔记、edge-llm-quantization Skill）综合产出。量化数值为经验参考值，实际以目标模型的 benchmark 为准。</em></p>
+<h2 id="_2">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-29-本地模型部署-消费级GPU推理.md">本地模型部署-消费级GPU推理</a> — 姊妹篇，消费级 GPU 部署全流程</li>
+<li><a href="./2026-07-29-本地模型部署-消费级GPU推理-ExL3与降本路径.md">消费级GPU推理-ExL3与降本路径</a> — ExL3 量化格式，GGUF 的竞品对比</li>
+<li><a href="./2026-07-30-TSDS边缘Agent推理降级.md">TSDS边缘Agent推理降级</a> — 边缘推理降级策略，GGUF 量化的下游应用</li>
+<li>GGUF 量化深度分析（explore 目录）— IQ-quants/QAT/MoE/KV-cache 全景，本文的学术纵深</li>
+<li>LLM 量化选择决策树（explore 目录）— 量化格式选型框架，GGUF vs GPTQ vs AWQ 对比</li>
+</ul>
+</body>
+</html>

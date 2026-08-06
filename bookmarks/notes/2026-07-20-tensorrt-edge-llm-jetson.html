@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tensorrt-edge-llm-jetson</title>
+
+<meta property="og:title" content="tensorrt-edge-llm-jetson" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="tensorrt-edge-llmjetson-c">TensorRT Edge-LLM：Jetson 纯 C++ 推理运行时实战</h1>
+<blockquote>
+<p><strong>来源</strong>：Jetson AI Lab 2.0 教程 + NVIDIA Developer Blog + arXiv 综述<br />
+<strong>日期</strong>：2026-07-20<br />
+<strong>主题</strong>：cyber / 边缘 AI 推理<br />
+<strong>评分</strong>：⭐⭐⭐⭐☆ (4/5)</p>
+</blockquote>
+<hr />
+<h2 id="_1">核心发现</h2>
+<p>NVIDIA 发布了 <strong>TensorRT Edge-LLM</strong>——一个面向 Jetson 平台的<strong>纯 C++ LLM/VLM 推理运行时</strong>。关键突破：<strong>运行时无 Python 解释器在推理路径中</strong>。一个小型原生二进制加载预编译的 TensorRT 引擎直接服务请求，彻底消除了 Python GIL 和 JIT 开销。</p>
+<p>这对 Jetson Orin Nano（8GB 统一内存）这类资源受限设备意义重大——终于可以在不牺牲延迟的前提下跑 4B 级别模型。</p>
+<h2 id="_2">工作流程三步走</h2>
+<pre><code>Step 1: 模型导出（x86 主机）     Step 2: 构建运行时（每台 Jetson）    Step 3: 纯 C++ 推理
+┌──────────────────────┐       ┌──────────────────────────┐       ┌─────────────────────┐
+│ PyTorch → ONNX 导出   │  →    │ ONNX → TensorRT 引擎构建  │  →    │ C++ binary 加载引擎  │
+│ 量化：INT4/NVFP4/FP8  │       │ 针对具体 Jetson 芯片优化   │       │ handleRequest() API  │
+│ 需 6x VRAM / 20x RAM  │       │ make -j4 (Nano 内存有限)  │       │ 零 Python 开销       │
+└──────────────────────┘       └──────────────────────────┘       └─────────────────────┘
+</code></pre>
+<h2 id="_3">两个标杆案例</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>类型</th>
+<th>参数量</th>
+<th>量化方案</th>
+<th>目标设备</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cosmos-Reason2-8B</td>
+<td>VLM</td>
+<td>8B</td>
+<td>NVFP4</td>
+<td>Jetson Thor</td>
+</tr>
+<tr>
+<td>Qwen3-4B-Instruct</td>
+<td>LLM</td>
+<td>4B</td>
+<td>INT4 AWQ</td>
+<td>Jetson Orin Nano 8GB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Qwen3-4B + INT4 AWQ 在 Orin Nano 8GB 可用</strong>——这是目前最务实的边缘 LLM 部署方案之一。</p>
+<h2 id="_4">量化方案对比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>比特/权重</th>
+<th>适用场景</th>
+<th>内存需求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>INT4 AWQ</td>
+<td>~4.5 bits</td>
+<td>Orin Nano / 内存受限</td>
+<td>最低</td>
+</tr>
+<tr>
+<td>NVFP4</td>
+<td>4 bits (FP)</td>
+<td>Thor / 新架构</td>
+<td>低</td>
+</tr>
+<tr>
+<td>FP8</td>
+<td>8 bits</td>
+<td>Thor / 高精度需求</td>
+<td>中</td>
+</tr>
+<tr>
+<td>FP16</td>
+<td>16 bits</td>
+<td>基准 / 不推荐边缘</td>
+<td>高</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">关键陷阱</h3>
+<ul>
+<li><strong>FP8 ONNX 导出需 6x GPU VRAM + 20x CPU RAM</strong>（8B 模型导出可能 OOM）→ 用 INT4 AWQ 替代</li>
+<li><strong>Orin Nano 编译用 <code>make -j4</code></strong>，不要 <code>make -j$(nproc)</code>，会 OOM 崩溃</li>
+<li><strong>不能用 <code>pip install torch</code></strong>——PyPI 的 torch wheel 不兼容 Jetson，必须用 NVIDIA 容器的 Jetson 构建</li>
+</ul>
+<h2 id="c-api">C++ API 极简</h2>
+<p>生产环境集成只需三个调用：</p>
+<pre><code class="language-cpp">// 1. 创建运行时
+auto runtime = createRuntime(enginePath);
+
+// 2. 捕获 CUDA Graph（优化重复推理）
+runtime-&gt;captureCudaGraphs();
+
+// 3. 处理请求
+auto response = runtime-&gt;handleRequest(prompt);
+</code></pre>
+<p>这比 Python 推理路径（vLLM/HF Transformers）的延迟低一个数量级，因为没有：<br />
+- Python 解释器开销<br />
+- GIL 锁竞争<br />
+- JIT 编译<br />
+- 动态图构建</p>
+<h2 id="edge-ai-2026-medium">Edge AI 2026 现状（Medium 技术指南要点）</h2>
+<p>Jensen Huang 在 2026 CES 宣称"物理 AI 的 ChatGPT 时刻到了"。但实际：</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>状态</th>
+<th>现实</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Jetson 本地 LLM</td>
+<td>✅ 可用</td>
+<td>4B 模型 + INT4 已可流畅运行</td>
+</tr>
+<tr>
+<td>Jetson 本地 VLM</td>
+<td>⚠️ 部分</td>
+<td>8B 需 Thor，Nano 仅能跑小 VLM</td>
+</tr>
+<tr>
+<td>端侧实时控制</td>
+<td>⚠️ 挑战</td>
+<td>延迟仍高于专用 ASIC</td>
+</tr>
+<tr>
+<td>端侧训练</td>
+<td>❌ 不现实</td>
+<td>仅推理，训练仍需云端</td>
+</tr>
+<tr>
+<td>纯本地隐私</td>
+<td>✅ 优势</td>
+<td>无 API 调用，数据不出设备</td>
+</tr>
+</tbody>
+</table>
+<h2 id="hermes-jetson">对 Hermes Jetson 部署的启示</h2>
+<h3 id="1-python-c">1. 迁移路径：Python → C++</h3>
+<p>当前 Hermes 在 Jetson 上的 LLM 推理走 Ollama（Python 绑定）。对于<strong>高频低延迟场景</strong>（如语音助手实时响应），可考虑：<br />
+- 高频路径：TensorRT Edge-LLM C++ binary<br />
+- 低频路径：Ollama（灵活性优先）</p>
+<h3 id="2-qwen3-4b-int4">2. Qwen3-4B-INT4 是当前最优选</h3>
+<p>结合 Orin Nano 8GB 的内存限制，Qwen3-4B-Instruct + INT4 AWQ 是<strong>性能/资源比最优</strong>的方案。相比之前的 Llama-3-8B 量化尝试，4B 模型在 8GB 设备上留有更多 KV 缓存空间。</p>
+<h3 id="3">3. 模型导出分离策略</h3>
+<p>在 x86 主机上完成 ONNX 导出 + 量化 → 只把 .engine 文件拷贝到 Jetson。避免在 Jetson 上做编译（内存不够）。</p>
+<h3 id="4-edge-llm-quantization-skill">4. edge-llm-quantization Skill 更新建议</h3>
+<p>当前 Skill 记录了 GGUF/llama.cpp 方案，应补充：<br />
+- TensorRT Edge-LLM 作为<strong>低延迟优先</strong>方案的补充<br />
+- INT4 AWQ vs GGUF Q4_K_M 的对比基准<br />
+- x86 导出 + Jetson 运行的分离工作流</p>
+<h2 id="_6">实操清单</h2>
+<pre><code class="language-bash"># 在 x86 主机上（有 GPU）
+docker run --gpus all nvidia/jetson-pytorch:latest
+python3 export_model.py --model Qwen3-4B-Instruct --quant int4_awq
+# 产出: qwen3-4b-int4.engine
+
+# 拷贝到 Jetson
+scp qwen3-4b-int4.engine jetson:~/models/
+
+# Jetson 上构建运行时（用 -j4！）
+cd TensorRT-Edge-LLM &amp;&amp; mkdir build &amp;&amp; cd build
+cmake .. &amp;&amp; make -j4
+
+# 运行
+./llm_inference --engine ~/models/qwen3-4b-int4.engine
+</code></pre>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><code>2026-06-07-llm-inference-optimization.md</code> — CLSA/SAGE-PTQ 等推理优化</li>
+<li><code>robot-kinematics-simulation</code> 相关笔记 — 机器人边缘计算</li>
+<li><code>esp32-edge-impulse</code> 相关 — TinyML 端侧部署对比</li>
+</ul>
+<h2 id="_8">关键词</h2>
+<p><code>tensorrt</code> <code>edge-llm</code> <code>jetson-orin</code> <code>int4-quantization</code> <code>c++-inference</code> <code>qwen3</code> <code>nvfp4</code> <code>edge-ai</code></p>
+</body>
+</html>

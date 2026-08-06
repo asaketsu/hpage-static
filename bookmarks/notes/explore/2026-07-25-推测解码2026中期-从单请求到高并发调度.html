@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>推测解码2026中期-从单请求到高并发调度</title>
+
+<meta property="og:title" content="推测解码2026中期-从单请求到高并发调度" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="2026">推测解码 2026 中期：从单请求加速到高并发调度</h1>
+<blockquote>
+<p>2026-07-25 夜间自学习 · LLM 推理优化方向<br />
+来源论文：<br />
+- arXiv:2607.14647《D-cut: Adaptive Verification Depth Pruning for Batched Speculative Decoding》2026-07-16<br />
+- arXiv:2607.05147《DSpark: Confidence-Scheduled Speculative Decoding with Semi-Autoregressive Generation》2026-07-06（DeepSeek，HN 797pts）<br />
+关联笔记：2026-07-21-EAGLE3-P-EAGLE推测解码2026生产实践.md</p>
+</blockquote>
+<hr />
+<h2 id="2026_1">一、范式转变：2026 推测解码的核心矛盾转移</h2>
+<p>2024–2025 年推测解码（Speculative Decoding, SD）的研究重心是<strong>单请求加速</strong>：如何让 draft 模型多猜对几个 token、如何设计树形 draft 提高接受率。</p>
+<p>2026 年中的两篇代表作（D-cut 和 DSpark）标志着矛盾转移到了<strong>高并发服务场景</strong>：</p>
+<blockquote>
+<p><strong>当多个请求同时在线时，长 draft 不仅不再加速，反而可能比纯自回归还慢。</strong></p>
+</blockquote>
+<p>原因：高并发下 GPU 算力已被 batch 填满，长 draft 的验证会消耗大量"浪费计算"——那些被拒绝的 token 的验证算力本来可以用来服务其他请求。这是单请求视角看不到的系统性问题。</p>
+<hr />
+<h2 id="d-cut">二、D-cut：自适应验证深度剪枝（跨请求）</h2>
+<h3 id="_1">核心问题</h3>
+<p>并行 draft 方法（如 DFlash）可以在一次前向传播中生成整块 draft token，单请求下 mean accepted tokens (MAT) 很高。但在高并发下：</p>
+<ul>
+<li>不同请求的接受长度差异巨大（有的请求 draft 全对，有的全错）</li>
+<li>统一验证所有 draft token，会把大量算力浪费在即将被拒绝的 token 上</li>
+<li>极端情况下，长 draft 基线比纯自回归<strong>更慢</strong></li>
+</ul>
+<h3 id="d-cut_1">D-cut 方案</h3>
+<p>两个关键观察驱动设计：</p>
+<ol>
+<li><strong>跨请求剪枝</strong>：不是每个请求独立决定验证多少，而是在整个 batch 层面联合选择 token，把验证预算集中到"最可能被接受"的 token 上。</li>
+<li><strong>运行时成本模型</strong>：验证成本强依赖于部署环境（GPU 架构、并行策略）。D-cut 内建成本模型，自适应调整剪枝深度到目标环境。</li>
+</ol>
+<h3 id="_2">实验结果</h3>
+<table>
+<thead>
+<tr>
+<th>模型类型</th>
+<th>基线加速</th>
+<th>D-cut 加速</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dense 模型（高并发）</td>
+<td>1.26×</td>
+<td><strong>1.65×</strong></td>
+<td>且恢复了长 draft 基线"比 AR 更慢"的配置</td>
+</tr>
+<tr>
+<td>MoE 模型</td>
+<td>—</td>
+<td><strong>最高 3.0×</strong></td>
+<td>相比纯自回归</td>
+</tr>
+</tbody>
+</table>
+<p>关键意义：D-cut 首次系统性地证明了"在高并发下，SD 的验证预算分配是一个跨请求的联合优化问题"。</p>
+<hr />
+<h2 id="dspark-deepseek">三、DSpark：置信度调度 + 半自回归（DeepSeek 生产级）</h2>
+<h3 id="_3">核心问题</h3>
+<p>DSpark 来自 DeepSeek，已在 <strong>DeepSeek-V4 生产服务系统</strong>中部署，处理真实用户流量。它攻击并行 draft 的两个痛点：</p>
+<ol>
+<li><strong>块内依赖缺失</strong>：并行 draft 逐位置独立预测，token 间没有因果关系建模，导致"后缀衰减"（suffix decay）——块尾部的 token 接受率急剧下降。</li>
+<li><strong>验证浪费</strong>：不加区分地验证长块，会用宝贵的 batch 容量去验证那些高概率被拒绝的 token。</li>
+</ol>
+<h3 id="dspark">DSpark 双重创新</h3>
+<p><strong>创新一：半自回归架构（Semi-Autoregressive）</strong></p>
+<p>将一个<strong>并行主干</strong>（parallel backbone）与一个<strong>轻量序列模块</strong>（lightweight sequential module）耦合：<br />
+- 并行主干一次性生成整块 draft（高吞吐）<br />
+- 序列模块引入块内依赖建模，缓解后缀衰减</p>
+<p>这比纯并行 draft 的接受长度显著提升。</p>
+<p><strong>创新二：置信度调度验证（Confidence-Scheduled Verification）</strong></p>
+<p>动态为每个请求定制验证长度，依据：<br />
+- 估计的<strong>前缀存活概率</strong>（prefix survival probability）<br />
+- 引擎特定的<strong>吞吐量画像</strong>（throughput profile）</p>
+<p>即：对高置信度的请求给更长验证，对低置信度的请求早停，避免浪费 batch 容量。</p>
+<h3 id="deepseek-v4">生产实测数据（DeepSeek-V4 真实流量）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>对比基线 MTP-1</th>
+<th>DSpark 提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单用户生成速度（等吞吐）</td>
+<td>基准</td>
+<td><strong>+60% ~ +85%</strong></td>
+</tr>
+<tr>
+<td>严格交互延迟约束下的吞吐</td>
+<td>严重退化</td>
+<td><strong>可达到此前不可达的性能档位</strong></td>
+</tr>
+</tbody>
+</table>
+<p>DSpark 的核心价值不仅是"更快"，而是<strong>推动了帕累托前沿（Pareto frontier）</strong>——在严格交互延迟约束下，原来根本无法实现的吞吐档位现在变得可用。</p>
+<hr />
+<h2 id="_4">四、两篇论文的共同范式</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>单请求时代（2024-2025）</th>
+<th>高并发时代（2026）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>优化目标</td>
+<td>最大化 MAT（平均接受 token 数）</td>
+<td><strong>最大化系统吞吐</strong>，约束交互延迟</td>
+</tr>
+<tr>
+<td>决策粒度</td>
+<td>单请求内</td>
+<td><strong>跨请求联合调度</strong></td>
+</tr>
+<tr>
+<td>验证策略</td>
+<td>验证全部 draft</td>
+<td><strong>自适应深度/置信度调度</strong></td>
+</tr>
+<tr>
+<td>成本建模</td>
+<td>不考虑部署环境</td>
+<td><strong>内建运行时成本模型</strong></td>
+</tr>
+<tr>
+<td>核心矛盾</td>
+<td>draft 准确率 vs draft 速度</td>
+<td><strong>验证浪费 vs batch 容量</strong></td>
+</tr>
+</tbody>
+</table>
+<p>D-cut 和 DSpark 不约而同地把"验证"从被动步骤变成了<strong>主动调度对象</strong>——这是 2026 年推测解码最重要的范式转变。</p>
+<hr />
+<h2 id="eagle-3p-eagle">五、与 EAGLE-3/P-EAGLE 的关系</h2>
+<p>回顾 2026-07-21 笔记《EAGLE3-P-EAGLE 推测解码生产实践》：</p>
+<ul>
+<li>EAGLE 系列解决的是"draft 模型怎么更准"——属于单请求时代的延续。</li>
+<li>D-cut/DSpark 解决的是"准了之后，高并发下怎么调度验证"——是新的层次。</li>
+</ul>
+<p>两者是互补的：先用 EAGLE 式方法提高 draft 质量，再用 DSpark 式置信度调度决定"哪些 draft 值得验证"。生产部署应是<strong>两层叠加</strong>。</p>
+<hr />
+<h2 id="jetson">六、对本地部署（Jetson/边缘）的启示</h2>
+<p>虽然 D-cut 和 DSpark 面向数据中心高并发，但其思路对边缘部署也有启发：</p>
+<ol>
+<li><strong>单用户边缘场景</strong>：高并发调度不是主要矛盾，D-cut/DSpark 的增益有限。EAGLE 式提高 draft 准确率仍是首选。</li>
+<li><strong>边缘多模型共存</strong>：如果 Jetson 上同时跑多个模型（如 Hermes 的多 provider fallback），验证预算的跨模型分配思路可借鉴 D-cut 的"跨请求联合优化"。</li>
+<li><strong>半自回归思路</strong>：DSpark 的"并行主干 + 轻量序列模块"对边缘设备有吸引力——轻量序列模块的额外开销很小，但能显著改善后缀衰减。</li>
+</ol>
+<hr />
+<h2 id="_5">七、核心发现总结</h2>
+<ol>
+<li><strong>2026 推测解码矛盾转移</strong>：从"单请求加速"转向"高并发下验证预算的跨请求调度"。</li>
+<li><strong>D-cut</strong>：跨请求剪枝 + 运行时成本模型，MoE 模型达 3.0× 加速，恢复了长 draft 在高并发下"比 AR 更慢"的失败配置。</li>
+<li><strong>DSpark（DeepSeek 生产级）</strong>：半自回归架构 + 置信度调度，在 DeepSeek-V4 真实流量下实现 +60%~85% 单用户速度提升，推动了帕累托前沿。</li>
+<li><strong>共同范式</strong>：验证从被动步骤变为主动调度对象，决策粒度从单请求升级到 batch 级联合优化。</li>
+<li><strong>生产部署应是两层叠加</strong>：EAGLE 式提高 draft 质量（单请求层）+ DSpark 式置信度调度验证（系统层）。</li>
+</ol>
+<hr />
+<p><em>笔记生成于夜间自学习 cron（2026-07-25）。搜索层：arXiv Atom API + HN Algolia（Tavily 432 降级）。核心素材为两篇 arXiv 论文摘要 + HN 社区讨论 + 关联本地笔记交叉验证。</em></p>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-22-本地模型部署-ROI决策框架.md">本地模型部署-ROI决策框架</a> — 推理加速技术直接影响本地部署 ROI 计算</li>
+<li>EAGLE3-P-EAGLE推测解码生产实践（uclaw/notes/explore）— 本篇引用的前置笔记，推测解码验证框架</li>
+<li>Disaggregated Prefill-Decode 生产生态（~/explore）— 推测解码与 PD 分离的协同调度，高并发推理的互补架构</li>
+</ul>
+</body>
+</html>

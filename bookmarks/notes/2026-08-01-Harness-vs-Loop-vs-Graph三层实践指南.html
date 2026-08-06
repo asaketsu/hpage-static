@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harness-vs-Loop-vs-Graph三层实践指南</title>
+
+<meta property="og:title" content="Harness-vs-Loop-vs-Graph三层实践指南" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-harness-vs-loop-vs-graph-engineering">Agent Harness vs Loop vs Graph Engineering：三层实践指南</h1>
+<blockquote>
+<p><strong>来源</strong>: <a href="https://x.com/LunarResearcher/status/2082076425465762082">X @LunarResearcher (Lunar)</a><br />
+<strong>副标题</strong>: A Practical Guide To The 3 Layers People Keep Mixing Together<br />
+<strong>日期</strong>: 2026-07-28<br />
+<strong>Views</strong>: 599.8K<br />
+<strong>标签</strong>: <code>Harness</code> <code>Loop</code> <code>Graph</code> <code>Agent架构</code> <code>三层体系</code> <code>工程化</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p>大多数人把 AI Agent 当成一个东西。它不是。当 Agent 超越玩具 Demo，开始触碰文件、API、文档、客户或生产代码时，你不再只是"提示模型"，你在<strong>设计系统</strong>。这个系统有三个经常被混为一谈的层：<strong>Harness（环境）→ Loop（反馈）→ Graph（流程）</strong>。它们解决不同问题，搞混了就会在错误的层调试。</p>
+<hr />
+<h2 id="30">一、30 秒答案</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>一句话</th>
+<th>心智模型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Harness Engineering</strong></td>
+<td>围绕模型构建<strong>环境</strong></td>
+<td>Environment（环境）</td>
+</tr>
+<tr>
+<td><strong>Loop Engineering</strong></td>
+<td>设计重复的<strong>工作-反馈循环</strong></td>
+<td>Feedback（反馈）</td>
+</tr>
+<tr>
+<td><strong>Graph Engineering</strong></td>
+<td>让工作流拓扑<strong>显式化</strong></td>
+<td>Flow（流程）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Environment → Feedback → Flow</strong></p>
+</blockquote>
+<ul>
+<li>Harness 给模型工具、记忆、控制和<strong>工作空间</strong></li>
+<li>Loop 决定工作如何被<strong>重试、检查、改进</strong></li>
+<li>Graph 定义<strong>下一步允许发生什么</strong></li>
+</ul>
+<hr />
+<h2 id="_2">二、为什么这三层现在重要？</h2>
+<h3 id="_3">裸模型无法独立完成真正的工作</h3>
+<p>它<strong>不能</strong>：维护跨会话状态 / 安全调用工具 / 检查浏览器 / 强制权限 / 重试失败工作 / 验证输出质量 / 跨专家路由任务 / 在正确时刻停止。</p>
+<blockquote>
+<p>所有这些都来自模型周围的<strong>系统</strong>。</p>
+</blockquote>
+<h3 id="agent">成熟 Agent 软件的实践技术栈</h3>
+<pre><code>1. Harness → 给模型操作条件
+2. Loops   → 让工作可重复且可验证
+3. Graph   → 让复杂工作流显式且可控
+
+一旦你把它们视为独立层，大量 AI 架构困惑就消失了。
+</code></pre>
+<hr />
+<h2 id="harness-engineering">三、Harness Engineering 详解</h2>
+<h3 id="harness">Harness 包含的六大模块</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>包含什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① Context Injection（上下文注入）</strong></td>
+<td>指令 / 检索知识 / 对话状态 / 记忆 / 策略 / 任务规则</td>
+</tr>
+<tr>
+<td><strong>② Action Surfaces（动作面）</strong></td>
+<td>API 调用 / 浏览器动作 / Shell 命令 / 代码执行 / MCP 工具 / 数据库 / 自定义函数</td>
+</tr>
+<tr>
+<td><strong>③ Persistence（持久化）</strong></td>
+<td>文件 / 检查点 / 会话状态 / 进度日志 / Git 历史 / 长期记忆</td>
+</tr>
+<tr>
+<td><strong>④ Execution Control（执行控制）</strong></td>
+<td>重试 / 超时 / 预算 / 模型选择 / 子 Agent 生成 / 审批门</td>
+</tr>
+<tr>
+<td><strong>⑤ Safety &amp; Governance（安全治理）</strong></td>
+<td>最小权限 / 隔离 / 白名单 / 密钥处理 / 人工审批</td>
+</tr>
+<tr>
+<td><strong>⑥ Observability（可观测性）</strong></td>
+<td>Trace / 工具输入输出 / 状态转换 / 延迟 / 成本 / 评估结果</td>
+</tr>
+</tbody>
+</table>
+<h3 id="harness_1">为什么 Harness 重要？</h3>
+<blockquote>
+<p>两个团队用同一个模型，结果完全不同——因为一个给了干净的<strong>工作条件</strong>，另一个给了模糊 Prompt + 混乱工具 + 噪声上下文。</p>
+</blockquote>
+<p><strong>Harness 有问题时的症状</strong>：</p>
+<ul>
+<li>Agent 无法访问正确能力</li>
+<li>会话间丢失上下文</li>
+<li>跨环境行为不一致</li>
+<li>无法审计</li>
+<li>权限过大</li>
+<li>中断后无法干净恢复</li>
+</ul>
+<blockquote>
+<p><strong>如果模型无法可靠运行，第一个要看的就是 Harness。</strong></p>
+</blockquote>
+<hr />
+<h2 id="loop-engineering">四、Loop Engineering 详解</h2>
+<h3 id="agent_1">每个工具使用 Agent 都有内置小循环</h3>
+<pre><code>1. 调用模型
+2. 观察结果
+3. 运行工具
+4. 反馈观察结果
+5. 重复直到完成
+</code></pre>
+<blockquote>
+<p>Loop Engineering 始于你<strong>有意识地在这个行为周围设计额外循环</strong>——不是"再问一次"或"重试"，而是真正的<strong>工作-反馈系统</strong>。</p>
+</blockquote>
+<h3 id="_4">好循环的七大要素</h3>
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trigger（触发器）</strong></td>
+<td>什么开始新循环？（用户请求/测试失败/新文档/定时/Webhook/评估反馈）</td>
+</tr>
+<tr>
+<td><strong>Goal（目标）</strong></td>
+<td>要达到什么<strong>具体条件</strong>？（不是"持续改进"，而是真实目标）</td>
+</tr>
+<tr>
+<td><strong>State（状态）</strong></td>
+<td>下一循环需要知道什么？（当前草稿/上次尝试/工具结果/错误/进度）</td>
+</tr>
+<tr>
+<td><strong>Action Policy（动作策略）</strong></td>
+<td>Agent 被允许做什么？（编辑/委托/调工具/花Token/写文件/开PR）</td>
+</tr>
+<tr>
+<td><strong>Evidence（证据）</strong></td>
+<td>怎么知道成功了？（测试/Schema 验证/引用/Diff/指标/审核批准）</td>
+</tr>
+<tr>
+<td><strong>Feedback（反馈）</strong></td>
+<td>具体什么失败了？（反馈应紧凑且可操作）</td>
+</tr>
+<tr>
+<td><strong>Stop Rule（停止规则）</strong></td>
+<td>何时结束？（成功/超时/预算耗尽/最大重试/不可恢复失败/升级人工）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="loop-engineering_1">Loop Engineering 最重要原则</h3>
+<blockquote>
+<p><strong>不要基于信心（confidence）循环。基于证据（evidence）循环。</strong></p>
+</blockquote>
+<p>❌ "Agent 说它完成了" ≠ 停止条件</p>
+<p>✅ 真实停止条件：</p>
+<ul>
+<li>测试通过</li>
+<li>Schema 验证通过</li>
+<li>引用可解析</li>
+<li>审核者批准</li>
+<li>策略检查干净</li>
+</ul>
+<h3 id="loop-prompt-engineering">Loop ≠ Prompt Engineering</h3>
+<table>
+<thead>
+<tr>
+<th>Prompt</th>
+<th>Loop</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>告诉模型在<strong>调用期间</strong>做什么</td>
+<td>定义系统在<strong>调用之后</strong>做什么</td>
+</tr>
+<tr>
+<td>改善一次响应</td>
+<td>改善一个<strong>流程</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="graph-engineering">五、Graph Engineering 详解</h2>
+<h3 id="_5">它回答的问题不同</h3>
+<blockquote>
+<p>不是"Agent 应该做什么？"，而是"<strong>下一步允许发生什么？</strong>"</p>
+</blockquote>
+<p>在图工程中：</p>
+<ul>
+<li>步骤 = <strong>节点</strong></li>
+<li>转换 = <strong>边</strong></li>
+<li>分支 = <strong>显式</strong></li>
+<li>并行 = <strong>显式</strong></li>
+<li>汇聚 = <strong>显式</strong></li>
+<li>重试 = <strong>显式</strong></li>
+<li>人工中断 = <strong>显式</strong></li>
+</ul>
+<blockquote>
+<p>图成为系统的<strong>控制地图</strong>。</p>
+</blockquote>
+<h3 id="_6">图工程师实际设计什么</h3>
+<table>
+<thead>
+<tr>
+<th>设计点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>节点边界</strong></td>
+<td>什么属于确定性函数 / LLM 调用 / 专家 Agent / 人工审核</td>
+</tr>
+<tr>
+<td><strong>状态 Schema</strong></td>
+<td>每个节点能读/写什么</td>
+</tr>
+<tr>
+<td><strong>路由条件</strong></td>
+<td>什么证据让任务前进/后退/转向/升级</td>
+</tr>
+<tr>
+<td><strong>并发</strong></td>
+<td>什么可以并行，什么必须等待</td>
+</tr>
+<tr>
+<td><strong>循环和退出</strong></td>
+<td>哪里允许重试、允许多少次、如何停止</td>
+</tr>
+<tr>
+<td><strong>持久性</strong></td>
+<td>检查点在哪里发生，中断后如何恢复</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">什么时候图值得用？</h3>
+<p>✅ <strong>值得</strong>：有意义的分支 / 审批 / 专家交接 / 并行工作 / 恢复路径 / 多步工作流带显式控制点</p>
+<p>❌ <strong>不值得</strong>："给一个 Agent 几个工具让它干活"——这种情况下，扎实的 Harness + 几个循环就够了。</p>
+<blockquote>
+<p>图增加清晰度，但也增加结构。<strong>过早加太多结构会让系统脆弱。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_8">六、三层如何协同工作（实例）</h2>
+<p>以"研究-发布 Agent"为例（选题→收集来源→筛选引用→起草报告→法务审核→审批后发布）：</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Harness</strong></td>
+<td>浏览器访问 / 搜索工具 / 文件工作区 / 记忆 / 引用 / 审批 / Trace / 模型路由</td>
+</tr>
+<tr>
+<td><strong>Loop</strong></td>
+<td>证据弱时重试来源检索 / 修复引用失败 / 运行评分检查 / 市场变化时刷新</td>
+</tr>
+<tr>
+<td><strong>Graph</strong></td>
+<td>选题→研究→筛选→综合→起草→审核→发布的路径，发布前有人工门</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>三层不可互换，协同工作但不是同一件事。</p>
+</blockquote>
+<hr />
+<h2 id="_9">七、诊断法则：先定位故障，再选修复</h2>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>修哪层</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agent 无法运行</strong>（缺工具/状态陈旧/记忆弱/权限坏/无可观测性）</td>
+<td>→ 修 <strong>Harness</strong></td>
+</tr>
+<tr>
+<td><strong>Agent 差一点但不稳定</strong>（初稿接近但弱/成功不一致/重试不可控/无完成证明）</td>
+<td>→ 修 <strong>Loop</strong></td>
+</tr>
+<tr>
+<td><strong>流程本身复杂</strong>（多专家/审批/分支逻辑/并行路径/结构化交接）</td>
+<td>→ 修 <strong>Graph</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_10">八、五个常见错误</h2>
+<table>
+<thead>
+<tr>
+<th>错误</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① 过早构建图</strong></td>
+<td>先画巨大流程图，而非观察工作实际行为。<strong>更好</strong>：从简单 Harness 开始 → 收集 Trace → 发现稳定模式 → 只形式化值得控制的</td>
+</tr>
+<tr>
+<td><strong>② 同一模型写+评分</strong></td>
+<td>自评有相同盲点。<strong>更好</strong>：确定性检查 / 独立审核上下文 / 外部评估器 / 高影响操作需人工审批</td>
+</tr>
+<tr>
+<td><strong>③ 用"持续尝试"当循环</strong></td>
+<td>那不是循环设计，是不可控的成本泄漏。每个循环需要：可测量目标 / 真实证据 / 重试限制 / 升级规则</td>
+</tr>
+<tr>
+<td><strong>④ 把 Harness 当杂物抽屉</strong></td>
+<td>工具越多 ≠ Agent 越好。太多工具 → 选择错误 / 噪声上下文 / 可靠性弱 / 风险面大。<strong>好 Harness 不是拥挤的，是精准的</strong></td>
+</tr>
+<tr>
+<td><strong>⑤ 把编排失败归咎于模型</strong></td>
+<td>模型无法补偿：坏 API / 陈旧状态 / 缺退出条件 / 模糊工具 Schema / 不可见失败模式。<strong>修拥有故障的那层</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_11">九、生产检查清单</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>检查项</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Harness</strong></td>
+<td>工具是否窄且有文档？状态是否持久？权限是否最小化？操作者能否暂停/检查/恢复？Trace 是否可见？</td>
+</tr>
+<tr>
+<td><strong>Loop</strong></td>
+<td>什么证据证明成功？失败时返回什么反馈？允许多少次重试？停止规则是什么？预算耗尽时怎么办？</td>
+</tr>
+<tr>
+<td><strong>Graph</strong></td>
+<td>哪些路径必须确定性？什么可以并行？人工门在哪里？共享什么状态？恢复路径从哪开始？</td>
+</tr>
+<tr>
+<td><strong>Evaluation</strong></td>
+<td>能否重放真实 Trace？能否对比版本？能否把改进归因到真实变更？</td>
+</tr>
+<tr>
+<td><strong>Operations</strong></td>
+<td>是否追踪成本？延迟？失败率？干预率？生产任务成功率？</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_12">十、最终记忆法</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Harness</strong></td>
+<td>让模型<strong>可运行</strong></td>
+</tr>
+<tr>
+<td><strong>Loop</strong></td>
+<td>让工作<strong>可迭代且可验证</strong></td>
+</tr>
+<tr>
+<td><strong>Graph</strong></td>
+<td>让执行路径<strong>显式且可控</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>None replaces the others.</strong></p>
+<p>完美的图救不了弱的 Harness。强 Harness 没有好 Loop 仍然浪费钱。干净的 Loop 在分支和审批隐藏在临时代码中时会变得难以管理。</p>
+<p><strong>可靠的 Agent 系统在三层都被有意识设计时才会出现。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_13">十一、与现有笔记的关联</h2>
+<table>
+<thead>
+<tr>
+<th>关联笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agent Harness 知识体系总纲</strong></td>
+<td>本文是总纲中"Loop→Harness→FDE 三层体系"的<strong>权威定义版</strong>——总纲是索引，本文是每层的详细实践指南</td>
+</tr>
+<tr>
+<td><strong>图工程构建多因子 Alpha 模型</strong></td>
+<td>本文是 Roan 文章的理论基础——Roan 讲"怎么做图"，本文讲"为什么图是第三层而非第一层"</td>
+</tr>
+<tr>
+<td><strong>学 Agent 正确顺序</strong></td>
+<td>本文的诊断法则（先修Harness→再修Loop→最后Graph）与学习顺序（Phase 1→4→5）完全一致</td>
+</tr>
+<tr>
+<td><strong>AI Agent 从玩具走向生产系统</strong></td>
+<td>本文三层 = 生产系统的架构栈</td>
+</tr>
+<tr>
+<td><strong>Loop工程已死-Graph工程永生</strong></td>
+<td>本文澄清：Graph 不是替代 Loop，而是在 Loop 之上增加显式流程控制层</td>
+</tr>
+<tr>
+<td><strong>Kun 的 Pi Agent 配置</strong></td>
+<td>Pi 的配置正是 Harness 层的精准实践——工具少但精准，不是杂物抽屉</td>
+</tr>
+<tr>
+<td><strong>Hermes AGENTS.md</strong></td>
+<td>Hermes 的质量门禁(Harness)、自愈重试(Loop)、Team Session 调度(Graph)正是三层体系</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_14">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-01-Agent公司终局两种活法.md">Agent公司终局两种活法</a> — 三层工程能力 = Agent 公司壁垒</li>
+<li><a href="./2026-08-02-YC开源QM多人Agent-Harness.md">YC开源QM多人Agent-Harness</a> — QM 的权限管控 = Graph 层实践</li>
+<li><a href="./2026-08-01-图工程构建多因子Alpha模型.md">图工程构建多因子Alpha模型</a> — Graph 工程的量化实战</li>
+</ul>
+</body>
+</html>

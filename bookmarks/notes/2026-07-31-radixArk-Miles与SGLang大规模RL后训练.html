@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>radixArk-Miles与SGLang大规模RL后训练</title>
+
+<meta property="og:title" content="radixArk-Miles与SGLang大规模RL后训练" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="radixark-miles-sglang-rl">radixArk 的 Miles 与 SGLang：大规模 RL 后训练的双引擎</h1>
+<blockquote>
+<p><strong>类型</strong>: 原创技术研究笔记<br />
+<strong>日期</strong>: 2026-07-31<br />
+<strong>标签</strong>: <code>radixArk</code> <code>Miles</code> <code>SGLang</code> <code>RL</code> <code>后训练</code> <code>MoE</code> <code>FP8</code> <code>Rollout</code> <code>RLHF</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p>radixArk 是一家聚焦大规模 RL 后训练基础设施的公司。其核心产品 <strong>Miles</strong> 是企业级强化学习框架（fork 自清华 slime），与 <strong>SGLang</strong>（LMSYS 的高性能推理引擎）深度耦合，共同解决大规模 RL 训练的三大难题：<strong>训练-推理不一致（Mismatch）、MoE 模型训练崩溃、Rollout 吞吐瓶颈</strong>。Miles 主攻训练稳定性与低精度优化，SGLang 主攻高吞吐推理。两者共同构成了"<strong>SGLang 推理生成 → Miles 训练更新</strong>"的 RL 闭环。</p>
+<hr />
+<h2 id="radixark-miles">一、radixArk 与 Miles 是什么？</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>radixArk</strong></td>
+<td>AI 基础设施公司，聚焦大规模 RL 后训练</td>
+</tr>
+<tr>
+<td><strong>Miles</strong></td>
+<td>企业级 RL 框架，fork 自清华 <a href="https://github.com/THUDM/slime">slime</a></td>
+</tr>
+<tr>
+<td><strong>定位</strong></td>
+<td>"Enterprise-Grade RL for Large-Scale Model Post-Training"</td>
+</tr>
+<tr>
+<td><strong>GitHub</strong></td>
+<td><a href="https://github.com/radixark/miles">radixark/miles</a> ⭐1836</td>
+</tr>
+<tr>
+<td><strong>发起方</strong></td>
+<td>InfiXAI + 蚂蚁集团 + SGLang RL Team + Miles 社区</td>
+</tr>
+<tr>
+<td><strong>首发</strong></td>
+<td>2025-11</td>
+</tr>
+<tr>
+<td><strong>技术栈</strong></td>
+<td>Miles（训练）+ SGLang（推理/Rollout）+ Megatron-LM（大模型训练组件）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Miles 官方名言：<em>"A journey of a thousand miles begins with a single rollout."</em></p>
+</blockquote>
+<hr />
+<h2 id="sglang-miles-rl">二、SGLang 与 Miles 的关系：RL 闭环的双引擎</h2>
+<pre><code>大规模 RL 后训练的完整闭环:
+
+┌─────────────────────────────────────────────────────┐
+│                    RL 训练循环                        │
+│                                                     │
+│  ┌──────────────────────────────────────────────┐   │
+│  │  SGLang (Rollout 引擎)                        │   │
+│  │  • 高吞吐推理生成                              │   │
+│  │  • RadixAttention 前缀缓存                    │   │
+│  │  • FP8 推理量化                               │   │
+│  │  • 推测解码 (Speculative Decoding)            │   │
+│  │  • 路由决策记录 (R3)                          │   │
+│  │  ↓                                           │   │
+│  │  生成轨迹 (trajectories) + log prob           │   │
+│  └──────────────────────┬───────────────────────┘   │
+│                         │                           │
+│                    权重同步 (Zero-Copy)              │
+│                         │                           │
+│  ┌──────────────────────┴───────────────────────┐   │
+│  │  Miles (训练引擎)                             │   │
+│  │  • GRPO / PPO 等 RL 算法                      │   │
+│  │  • Megatron-LM / FSDP 训练后端                 │   │
+│  │  • FP8 训练量化                               │   │
+│  │  • 路由决策回放 (R3)                          │   │
+│  │  • 重要性采样修正 (TIS/MIS)                   │   │
+│  │  ↓                                           │   │
+│  │  更新后的模型权重                             │   │
+│  └──────────────────────┬───────────────────────┘   │
+│                         │                           │
+│                    权重重载到 SGLang                  │
+│                         │                           │
+│  ──────────────────────┴────────────────────────    │
+│                       下一个 Epoch                   │
+└─────────────────────────────────────────────────────┘
+
+核心协同:
+  SGLang 负责&quot;快&quot;——高吞吐 Rollout
+  Miles 负责&quot;稳&quot;——稳定的大规模训练
+</code></pre>
+<h3 id="_2">分工矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>SGLang</th>
+<th>Miles</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>推理生成 (Rollout)</td>
+<td>✅ <strong>核心</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>RL 算法 (GRPO/PPO)</td>
+<td>—</td>
+<td>✅ <strong>核心</strong></td>
+</tr>
+<tr>
+<td>梯度更新/训练</td>
+<td>—</td>
+<td>✅ <strong>核心</strong> (Megatron/FSDP)</td>
+</tr>
+<tr>
+<td>高吞吐 KV 缓存</td>
+<td>✅ RadixAttention</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FP8 推理</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td>FP8 训练</td>
+<td>—</td>
+<td>✅ <strong>Unified FP8</strong></td>
+</tr>
+<tr>
+<td>MoE 专家路由</td>
+<td>✅ 记录路由 (R3)</td>
+<td>✅ 回放路由 (R3)</td>
+</tr>
+<tr>
+<td>推测解码</td>
+<td>✅</td>
+<td>✅ Online SFT Draft</td>
+</tr>
+<tr>
+<td>权重同步</td>
+<td>✅ 零拷贝映射</td>
+<td>✅ CUDA IPC</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="miles">三、Miles 的核心技术贡献</h2>
+<h3 id="31-train-inference-mismatch">3.1 消除训练-推理不一致（Train-Inference Mismatch）</h3>
+<p>这是大规模 MoE RL 的<strong>头号难题</strong>：训练用 BF16/FP32，推理用 FP8/INT4 量化，精度差异导致 log prob 不一致，RL 训练发散甚至崩溃。</p>
+<table>
+<thead>
+<tr>
+<th>解法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Unified FP8</strong> (2025-11)</td>
+<td>业界首个端到端 FP8 采样+训练统一管线——训练和推理用完全相同的 FP8 量化逻辑，消除量化误差导致的 RL 崩溃</td>
+</tr>
+<tr>
+<td><strong>R3: Rollout Routing Replay</strong> (2025-12)</td>
+<td>记录 SGLang 推理时的专家路由决策，训练时回放——消除 MoE 模型的"训练-推理路由不一致"，防止 Qwen3/DeepSeek-V3 等 MoE 训练崩溃</td>
+</tr>
+<tr>
+<td><strong>Bit-wise Identical Log Probs</strong></td>
+<td>内核级优化（FlashAttention-3, DeepGEMM）实现确定性的前向/反向传播</td>
+</tr>
+<tr>
+<td><strong>TIS/MIS 算法修正</strong></td>
+<td>当不一致不可避免时，用截断重要性采样 (TIS) 和掩码重要性采样 (MIS) 缓解 off-policy 偏差</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sglang-r3-sglang">+SGLang 协同：R3 是 SGLang 联合发布</h3>
+<blockquote>
+<p>R3（Rollout Routing Replay）由 <strong>Miles 与 SGLang 联合开发</strong>——SGLang 记录路由，Miles 回放路由，两端协同解决 MoE RL 不稳定问题。</p>
+</blockquote>
+<h3 id="32">3.2 极致性能优化</h3>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Speculative RL Training</strong></td>
+<td>用 Online SFT Draft Model 做推测解码，Rollout 加速 <strong>25%+</strong>（与传统冻结 draft 不同，Miles 在线更新 draft 策略防漂移）</td>
+</tr>
+<tr>
+<td><strong>Zero-Copy Weight Sync</strong></td>
+<td>CUDA IPC 零拷贝映射 + 异步张量聚合 + 桶式展平，权重同步时间减少 <strong>50%</strong></td>
+</tr>
+<tr>
+<td><strong>Partial Rollout &amp; Over-Sampling</strong></td>
+<td>多轮 RL 的"长尾效应"——过度采样请求并回收半成品轨迹，最大化 GPU 利用率</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-int4-qat1tb">3.3 INT4 QAT：1TB 模型单机训练</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>动机</strong></td>
+<td>1TB+ 级别模型（如 DeepSeek-V3 671B）跨节点训练通信开销巨大</td>
+</tr>
+<tr>
+<td><strong>方案</strong></td>
+<td>INT4 W4A16 量化感知训练，受 Kimi K2-Thinking 报告启发</td>
+</tr>
+<tr>
+<td><strong>效果</strong></td>
+<td>1TB 模型可装入单机（如 H200），消除跨节点瓶颈，<strong>Rollout 效率翻倍</strong>，精度保持 BF16 水平</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">四、模型与场景支持</h2>
+<h3 id="41">4.1 支持的模型</h3>
+<table>
+<thead>
+<tr>
+<th>家族</th>
+<th>支持型号</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DeepSeek</strong></td>
+<td>R1, V3, V3.2</td>
+</tr>
+<tr>
+<td><strong>Qwen</strong></td>
+<td>Qwen 2, 2.5, 3</td>
+</tr>
+<tr>
+<td><strong>Llama</strong></td>
+<td>Llama 3, 3.1, 3.3, 4</td>
+</tr>
+<tr>
+<td><strong>GLM</strong></td>
+<td>GLM-4.5, 4.6, 4.7</td>
+</tr>
+<tr>
+<td><strong>Gemma</strong></td>
+<td>Gemma 2, 3, 3N</td>
+</tr>
+<tr>
+<td><strong>MiniMax</strong></td>
+<td>M2, M2.1</td>
+</tr>
+<tr>
+<td><strong>其他</strong></td>
+<td>Mistral, Mixtral, Phi, gpt-oss 等 SGLang/Megatron 支持的任意模型</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42">4.2 训练场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Multi-Turn Interaction</strong></td>
+<td>多轮对话和工具使用</td>
+</tr>
+<tr>
+<td><strong>VLM &amp; LLM</strong></td>
+<td>视觉-语言模型 + 纯文本模型统一框架</td>
+</tr>
+<tr>
+<td><strong>Reasoning &amp; Coding</strong></td>
+<td>数学/逻辑推理 + 编码 Agent 专项优化</td>
+</tr>
+<tr>
+<td><strong>Multi-Agent RL</strong></td>
+<td>MrlX 协同进化框架——多 Agent 共同训练（如医患模拟、DeepResearch 流水线）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="radixark">五、radixArk 的完整技术栈</h2>
+<table>
+<thead>
+<tr>
+<th>仓库</th>
+<th>Star</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong><a href="https://github.com/radixark/miles">miles</a></strong></td>
+<td>⭐1836</td>
+<td>核心 RL 框架</td>
+</tr>
+<tr>
+<td><strong><a href="https://github.com/radixark/sgl-router-for-miles">sgl-router-for-miles</a></strong></td>
+<td>⭐6</td>
+<td>SGLang 路由器（专门为 Miles 优化的 SGLang 分支/封装）</td>
+</tr>
+<tr>
+<td><strong><a href="https://github.com/radixark/Megatron-Bridge">Megatron-Bridge</a></strong></td>
+<td>⭐4</td>
+<td>Megatron 训练库 + HF 双向转换</td>
+</tr>
+<tr>
+<td><strong><a href="https://github.com/radixark/Megatron-LM">Megatron-LM</a></strong></td>
+<td>⭐10</td>
+<td>Megatron fork（定制优化）</td>
+</tr>
+<tr>
+<td><strong><a href="https://github.com/radixark/miles_diffusion">miles_diffusion</a></strong></td>
+<td>⭐23</td>
+<td>[实验] 扩散模型 RL 后训练框架</td>
+</tr>
+<tr>
+<td><strong><a href="https://github.com/radixark/gorilla">gorilla</a></strong></td>
+<td>⭐0</td>
+<td>函数调用/工具调用训练评估</td>
+</tr>
+<tr>
+<td><strong><a href="https://github.com/radixark/docs">docs</a></strong></td>
+<td>⭐0</td>
+<td>文档</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="miles-rl">六、Miles 与其他 RL 框架对比</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Miles</th>
+<th>verl</th>
+<th>slime</th>
+<th>AReaL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>起源</strong></td>
+<td>radixArk (fork slime)</td>
+<td>字节火山</td>
+<td>清华 THUDM</td>
+<td>蚂蚁 inclusionAI</td>
+</tr>
+<tr>
+<td><strong>推理引擎</strong></td>
+<td><strong>SGLang</strong> (深度协同)</td>
+<td>SGLang</td>
+<td>SGLang</td>
+<td>SGLang</td>
+</tr>
+<tr>
+<td><strong>训练后端</strong></td>
+<td>Megatron + FSDP</td>
+<td>FSDP</td>
+<td>FSDP</td>
+<td>Megatron</td>
+</tr>
+<tr>
+<td><strong>FP8 训练</strong></td>
+<td>✅ <strong>Unified FP8</strong></td>
+<td>✅</td>
+<td>部分</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>MoE 路由一致性</strong></td>
+<td>✅ <strong>R3</strong></td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>INT4 QAT</strong></td>
+<td>✅</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>推测 RL</strong></td>
+<td>✅ Online SFT Draft</td>
+<td>—</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>多 Agent RL</strong></td>
+<td>✅ MrlX</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>企业级</strong></td>
+<td>✅ 核心定位</td>
+<td>✅</td>
+<td>研究</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>VLM 多轮</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Miles 与 SGLang 的关系最紧密——R3 和 Unified FP8 都是两者联合开发的。SGLang README 也将 Miles 列为 RL 后训练的核心采用方之一。</p>
+</blockquote>
+<hr />
+<h2 id="sglang-rl">七、SGLang RL 生态全景</h2>
+<p>SGLang 是多个 RL 框架的推理后端：</p>
+<table>
+<thead>
+<tr>
+<th>RL 框架</th>
+<th>团队</th>
+<th>与 SGLang 关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Miles</strong></td>
+<td>radixArk + 蚂蚁</td>
+<td><strong>最深度协同</strong>——联合开发 R3/FP8</td>
+</tr>
+<tr>
+<td><strong>verl</strong></td>
+<td>字节火山</td>
+<td>采用 SGLang 做 rollout</td>
+</tr>
+<tr>
+<td><strong>slime</strong></td>
+<td>清华 THUDM</td>
+<td>Miles 的上游</td>
+</tr>
+<tr>
+<td><strong>AReaL</strong></td>
+<td>蚂蚁 inclusionAI</td>
+<td>采用 SGLang</td>
+</tr>
+<tr>
+<td><strong>Tunix</strong></td>
+<td>Google</td>
+<td>采用 SGLang</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">八、快速启动参考（文档记录）</h2>
+<pre><code class="language-bash"># Docker
+docker pull radixark/miles:latest
+
+# FP8 GRPO 训练 Qwen3 示例
+python train.py \
+    --advantage-estimator grpo \
+    --model-name qwen3-30b-a3b \
+    --hf-checkpoint /path/to/qwen3-30b-a3b-hf \
+    --rollout-batch-size 512 \
+    --n-samples-per-prompt 8
+</code></pre>
+<hr />
+<h2 id="_5">九、技术演进时间线</h2>
+<table>
+<thead>
+<tr>
+<th>时间</th>
+<th>里程碑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2025-11</td>
+<td>Miles 项目启动（InfiXAI + 蚂蚁 + SGLang RL Team）</td>
+</tr>
+<tr>
+<td>2025-11</td>
+<td>Unified FP8 发布（首个端到端 FP8 RL）</td>
+</tr>
+<tr>
+<td>2025-11</td>
+<td>推测解码 RL 集成</td>
+</tr>
+<tr>
+<td>2025-12</td>
+<td><strong>R3: Rollout Routing Replay</strong>（与 SGLang 联合，解决 MoE RL 崩溃）</td>
+</tr>
+<tr>
+<td>2026-01</td>
+<td>INT4 QAT（1TB 模型单机训练）</td>
+</tr>
+<tr>
+<td>2026-01</td>
+<td>VLM 多轮训练 + MrlX 多 Agent 共进化</td>
+</tr>
+<tr>
+<td>2026-02</td>
+<td>详细 CLI 参数文档</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">十、关键术语速查</h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Miles</strong></td>
+<td>radixArk 企业级 RL 框架，fork 自 slime</td>
+</tr>
+<tr>
+<td><strong>SGLang</strong></td>
+<td>LMSYS 高性能推理引擎，Miles 的 rollout 后端</td>
+</tr>
+<tr>
+<td><strong>Rollout</strong></td>
+<td>RL 中的推理生成阶段——用当前策略生成轨迹</td>
+</tr>
+<tr>
+<td><strong>Train-Inference Mismatch</strong></td>
+<td>训练（高精度）与推理（量化）的 log prob 不一致，导致 RL 发散</td>
+</tr>
+<tr>
+<td><strong>Unified FP8</strong></td>
+<td>训练和推理统一 FP8 量化，消除精度不一致</td>
+</tr>
+<tr>
+<td><strong>R3 (Rollout Routing Replay)</strong></td>
+<td>记录推理路由→训练回放，解决 MoE 路由不一致</td>
+</tr>
+<tr>
+<td><strong>TIS</strong></td>
+<td>Truncated Importance Sampling，截断重要性采样</td>
+</tr>
+<tr>
+<td><strong>MIS</strong></td>
+<td>Masked Importance Sampling，掩码重要性采样</td>
+</tr>
+<tr>
+<td><strong>QAT</strong></td>
+<td>Quantization-Aware Training，量化感知训练</td>
+</tr>
+<tr>
+<td><strong>Zero-Copy Weight Sync</strong></td>
+<td>CUDA IPC 零拷贝权重同步</td>
+</tr>
+<tr>
+<td><strong>Speculative RL</strong></td>
+<td>推测解码加速 RL Rollout</td>
+</tr>
+<tr>
+<td><strong>slime</strong></td>
+<td>清华 THUDM RL 框架，Miles 的上游</td>
+</tr>
+<tr>
+<td><strong>Megatron-LM</strong></td>
+<td>NVIDIA 大规模训练框架</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">十一、与现有笔记的关联</h2>
+<table>
+<thead>
+<tr>
+<th>关联笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SGLang vs vLLM</strong></td>
+<td>本笔记是 SGLang 在 RL 训练领域的深度展开——SGLang 不只是推理引擎，更是 Miles/verl/slime 等 RL 框架的 rollout 后端</td>
+</tr>
+<tr>
+<td><strong>PyTorch</strong></td>
+<td>Miles/SGLang/Megatron 全部基于 PyTorch 构建</td>
+</tr>
+<tr>
+<td><strong>飞机结构设计 AI</strong></td>
+<td>研究策划中的"专家模型训练"阶段需要 RL 后训练（GRPO），Miles 是候选框架</td>
+</tr>
+<tr>
+<td><strong>Gemini Robotics 2</strong></td>
+<td>VLA 模型的 RL 后训练可参考 Miles 的 VLM 多轮 RL 范式</td>
+</tr>
+<tr>
+<td><strong>具身智能产业链</strong></td>
+<td>算法类企业（星海图/深谋/达闼）的模型训练基础设施</td>
+</tr>
+<tr>
+<td><strong>VLA Action Head</strong></td>
+<td>Action Head 模型的 RL 微调可参考 Miles 的 VLM 多轮训练</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-02-LLM后训练RL框架2026全景-slime-Miles-verl-vime生态.md">LLM 后训练 RL 框架 2026 全景 slime verl vime</a> — 本文续篇，四大引擎生态扩展</li>
+<li><a href="./2026-07-18-LLM推理模型RL训练前沿-从GRPO到DAPO与异步系统.md">LLM 推理模型 RL 训练前沿 GRPO 到 DAPO</a> — RL 算法演进路径</li>
+<li><a href="./2026-07-28-推理时计算扩展-从Best-of-N到Compute-Optimal自适应分配.md">推理时计算扩展 Best-of-N 到 Compute-Optimal</a> — 训练后推理优化配合</li>
+<li><a href="./2026-06-05-ES-GRPO混合训练Pipeline-无梯度与有梯度RL的最优切换.md">ES-GRPO 混合训练 Pipeline</a> — 混合 RL 训练策略</li>
+</ul>
+</body>
+</html>

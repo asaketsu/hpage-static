@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prophet-ETS-LSTM分层融合时间序列预测</title>
+
+<meta property="og:title" content="Prophet-ETS-LSTM分层融合时间序列预测" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="prophetetslstm">Prophet+ETS+LSTM分层融合时间序列预测</h1>
+<p>来源：微信公众号「cos大壮 / 深夜努力写Python」<br />
+链接：https://mp.weixin.qq.com/s/0ljqsL9l30hlD9OibkFeJw<br />
+日期：2026-04-24<br />
+评分：⭐4/5<br />
+标签：#时间序列 #LSTM #Prophet #ETS #混合模型 #预测 #量化<br />
+关联：<a href="2026-04-24-歸藏PPT-Skill-电子杂志风网页演示.md">2026-04-24-歸藏PPT-Skill-电子杂志风网页演示</a></p>
+<hr />
+<h2 id="_1">摘要</h2>
+<p>文章提出「<strong>分解-重建</strong>」思路做时间序列预测：用 Prophet 抓低频趋势+多季节性，用 ETS 做中频平滑+短期外推，用 LSTM 学高频非线性残差。三者加性融合得到最终预测。用 5 年合成数据（含趋势、周/年季节性、假日尖峰、结构渐变）做完整实战演示。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1">1. 分层建模思想</h3>
+<table>
+<thead>
+<tr>
+<th>频段</th>
+<th>比喻</th>
+<th>方法</th>
+<th>负责什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>低频</td>
+<td>低音鼓</td>
+<td>Prophet</td>
+<td>长期趋势 + 多季节性（周/年） + 节假日</td>
+</tr>
+<tr>
+<td>中频</td>
+<td>节奏</td>
+<td>ETS</td>
+<td>短期平滑 + 局部趋势外推</td>
+</tr>
+<tr>
+<td>高频</td>
+<td>即兴演奏</td>
+<td>LSTM</td>
+<td>非线性残差、突变、相位漂移</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2">2. 数学模型</h3>
+<p><strong>分解</strong>：<code>y(t) = T(t) + S_week(t) + S_year(t) + ε(t)</code></p>
+<p><strong>Prophet</strong>：<code>y(t) = g(t) + s(t) + h(t) + ε(t)</code> — 分段线性/逻辑增长趋势 + 傅里叶季节项 + 节假日效应</p>
+<p><strong>ETS(A,Ad,A)</strong>（含阻尼趋势）：<br />
+- 水平：<code>l_t = α(y_t - s_{t-m}) + (1-α)(l_{t-1} + φb_{t-1})</code><br />
+- 趋势：<code>b_t = β(l_t - l_{t-1}) + (1-β)φb_{t-1}</code><br />
+- 季节：<code>s_t = γ(y_t - l_t) + (1-γ)s_{t-m}</code></p>
+<p><strong>融合</strong>：<code>ŷ_hybrid = ŷ_prophet + ŷ_ets + ŷ_lstm(resid)</code></p>
+<h3 id="3">3. 实战流程</h3>
+<ol>
+<li><strong>生成/准备数据</strong>：5年天粒度，含线性趋势（后期放缓）+ 周季节 + 年季节 + 25个随机假日尖峰 + 渐增噪声</li>
+<li><strong>拆分</strong>：前4年训练 → 半年验证 → 半年测试</li>
+<li><strong>Prophet 建模</strong>：weekly + yearly seasonality，additive 模式</li>
+<li><strong>ETS 建模</strong>：加性 + 阻尼趋势 + 周季节(7)</li>
+<li><strong>计算残差</strong>：<code>resid = y_train - ŷ_prophet_train - ŷ_ets_train</code></li>
+<li><strong>LSTM 训练</strong>：28天窗口 → 预测下1天残差，2层LSTM(hidden=64)，Adam lr=1e-3，30 epochs</li>
+<li><strong>滚动预测</strong>：用训练残差末尾28天作为上下文，逐步滚动预测验证+测试期残差</li>
+<li><strong>融合</strong>：三模型预测加性叠加</li>
+</ol>
+<h3 id="4">4. 分析工具</h3>
+<ul>
+<li><strong>频谱分析</strong>（periodogram）：确认数据在 1/7 和 1/365 频率有显著能量峰</li>
+<li><strong>ACF/PACF</strong>：验证残差中仍有相关结构，说明 LSTM 有用武之地</li>
+<li><strong>误差分布</strong>（KDE）：对比三种模型误差的集中度和长尾</li>
+</ul>
+<h3 id="5">5. 评估指标</h3>
+<p>MAE、RMSE、MAPE 三指标，文章结论：Hybrid 在尖峰和复杂波段更贴近真实值。</p>
+<h3 id="6">6. 增强策略</h3>
+<ul>
+<li>权重学习（堆叠）：用线性层/softmax 学习模型权重</li>
+<li>多特征 LSTM：加入日历特征（周几、月份）、移动平均、滚动标准差</li>
+<li>节假日明确加入 Prophet</li>
+<li>异常检测 + 局部再训练（Regime shift）</li>
+<li>置信区间 + 风险控制</li>
+</ul>
+<h2 id="_3">事实核查</h2>
+<table>
+<thead>
+<tr>
+<th>声明</th>
+<th>验证</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prophet 分段线性+傅里叶季节</td>
+<td>文档一致</td>
+<td>✅ 标准实现</td>
+</tr>
+<tr>
+<td>ETS(A,Ad,A) 含阻尼趋势</td>
+<td>statsmodels 文档一致</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>LSTM 2层 hidden=64</td>
+<td>代码中确认</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>滚动预测使用上下文窗口</td>
+<td>代码中实现</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>文章定位为"字节面试"题</td>
+<td>⚠️ 标题党嫌疑</td>
+<td>营销标题，内容本身质量OK</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">借鉴点（可执行）</h2>
+<ol>
+<li><strong>分解-重建思路适用于我们的量化系统</strong>：Kronos 引擎目前用 5 因子概率模型，可以借鉴「先确定性分解 → 再残差建模」的思路增强预测</li>
+<li><strong>LSTM 残差学习可直接用于 A 股</strong>：在 quant-trading 的 kronos_engine.py 基础上，加一层 LSTM 学残差</li>
+<li><strong>滚动预测模式</strong>：28天窗口滑动是实用模式，可用于我们的回测引擎</li>
+<li><strong>频谱分析</strong>：periodogram 验证周期性，这是数据分析的好习惯，加到 quant_tool.py</li>
+</ol>
+<h2 id="_5">启发（超越原文）</h2>
+<ol>
+<li><strong>「分频处理」是时间序列的核心智慧</strong>：不做一把梭，按频段分配最适合的工具——这和信号处理中的滤波器组思想一致</li>
+<li><strong>残差 = 信息的金矿</strong>：确定性模型（Prophet+ETS）解释不了的残差，往往藏着最有价值的非线性模式。类比：好的 AI Agent 系统也是先处理规则性任务，把「残差」（异常/边缘case）交给更智能的模块</li>
+<li><strong>加性融合优于堆叠的场合</strong>：当各模型负责不同频段时，加性比加权堆叠更稳定——因为不抢同一结构</li>
+</ol>
+<h2 id="_6">预判</h2>
+<ul>
+<li><strong>趋势</strong>：混合模型在金融时序预测中会成为标配，单一模型（纯 LSTM 或纯 Transformer）难以覆盖所有频段</li>
+<li><strong>行动</strong>：基于此文章形成项目 <code>~/uclaw/project/hybrid-timeseries/</code>，实现完整可运行的混合预测框架，并集成到 quant-trading skill</li>
+<li><strong>风险</strong>：合成数据和真实 A 股数据差距大（停牌、涨跌停、政策突变），需要额外处理</li>
+</ul>
+<h2 id="_7">项目规划</h2>
+<p>已创建项目：<code>~/uclaw/project/hybrid-timeseries/</code></p>
+<h3 id="phase-1">Phase 1：基础框架（本文内容）</h3>
+<ul>
+<li>数据生成/加载模块</li>
+<li>Prophet/ETS/LSTM 三模型</li>
+<li>残差计算与滚动预测</li>
+<li>评估与可视化</li>
+</ul>
+<h3 id="phase-2a">Phase 2：A 股适配</h3>
+<ul>
+<li>对接新浪/腾讯行情数据</li>
+<li>交易日历过滤</li>
+<li>涨跌停处理</li>
+<li>集成到 quant-trading skill</li>
+</ul>
+<h3 id="phase-3">Phase 3：生产化</h3>
+<ul>
+<li>模型持久化（保存/加载）</li>
+<li>自动再训练机制</li>
+<li>预测区间估计</li>
+<li>Web API 接口</li>
+</ul>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li>[[2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap]] (关键词: 量化)</li>
+</ul>
+</body>
+</html>

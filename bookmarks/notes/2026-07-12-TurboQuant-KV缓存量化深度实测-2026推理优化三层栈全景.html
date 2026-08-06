@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TurboQuant-KV缓存量化深度实测-2026推理优化三层栈全景</title>
+
+<meta property="og:title" content="TurboQuant-KV缓存量化深度实测-2026推理优化三层栈全景" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="turboquant-kv-2026-llm">TurboQuant KV 缓存量化深度实测 — 2026 LLM 推理优化三层栈全景</h1>
+<blockquote>
+<p>📅 2026-07-12 | 来源：vLLM Blog 2026-05-11, morphllm.com, arXiv:2504.19874 (TurboQuant), QVAC/Tether<br />
+关键词：KV Cache Quantization, TurboQuant, FP8, Speculative Decoding, Context Compaction, Continuous Batching</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现：推理优化的三层栈模型</h2>
+<p>2026 年 LLM 推理优化已经形成了清晰的<strong>三层栈</strong>架构，每层解决不同瓶颈，可叠加使用，综合降低 80%+ 成本：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>优化目标</th>
+<th>典型收益</th>
+<th>实施成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>模型层</strong></td>
+<td>每参数计算成本</td>
+<td>2-4x 内存，~50% 成本</td>
+<td>低（工具链成熟）</td>
+</tr>
+<tr>
+<td><strong>系统层</strong></td>
+<td>GPU 利用率</td>
+<td>3-10x 吞吐</td>
+<td>低（引擎配置）</td>
+</tr>
+<tr>
+<td><strong>应用层</strong></td>
+<td>输入 token 数</td>
+<td>50-70% token 减少</td>
+<td>低（API 调用）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：三层互相独立、可叠加。一个量化模型 + 连续批处理 + 上下文压缩 = 比未优化基线降低约 80% 每任务成本。</p>
+<hr />
+<h2 id="turboquantkv">二、TurboQuant：KV 缓存极限压缩实测</h2>
+<h3 id="21-kv">2.1 背景：KV 缓存为何是瓶颈</h3>
+<p>以 Qwen3.5-4B 为例（262K 上下文）：<br />
+- FP16 KV 缓存 = <strong>8 GiB</strong><br />
+- 模型权重 = ~8 GiB<br />
+- 缓存几乎与模型等大！</p>
+<p>KV 缓存随上下文线性增长，在消费级硬件上是长上下文推理的主导内存开销。</p>
+<h3 id="22-turboquant">2.2 TurboQuant 核心算法</h3>
+<p>Google Research + NYU (ICLR 2026)：<br />
+- 两阶段压缩：<strong>旋转 + 查找表</strong><br />
+- <strong>无需校准数据</strong>（data-oblivious）<br />
+- 每坐标压缩到 3-4 bits<br />
+- 在线逐 token 处理（适合自回归解码）<br />
+- 从标准 16-bit 压缩到约 3-bit = <strong>最高 5x 压缩</strong></p>
+<h3 id="23-vllm-4-5">2.3 vLLM 实测结论（4 模型 × 5 基准）</h3>
+<p>vLLM 团队用 Llama-3.3-70B、Qwen3-30B-A3B（Instruct/Thinking）、MiniMax-M2.7 做了系统评测：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>KV 容量倍数</th>
+<th>长上下文检索</th>
+<th>推理任务</th>
+<th>吞吐影响</th>
+<th>推荐场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FP8</strong></td>
+<td>2x</td>
+<td>✅ 几乎无损</td>
+<td>✅ 98%+ 恢复</td>
+<td>⚡ 无损甚至更快</td>
+<td><strong>大多数工作负载的最佳默认</strong></td>
+</tr>
+<tr>
+<td><strong>TQ k8v4</strong></td>
+<td>2.4x</td>
+<td>✅ 竞争力强</td>
+<td>✅ 98%+ 恢复</td>
+<td>📉 一致负影响</td>
+<td>不推荐（优势太小）</td>
+</tr>
+<tr>
+<td><strong>TQ 4bit-nc</strong></td>
+<td>3.4x</td>
+<td>✅ 轻微下降</td>
+<td>⚠️ 1-4点下降</td>
+<td>📉 中等下降</td>
+<td><strong>内存受限部署</strong></td>
+</tr>
+<tr>
+<td><strong>TQ k3v4-nc</strong></td>
+<td>~4x</td>
+<td>⚠️ 明显下降</td>
+<td>❌ 严重下降(-20点)</td>
+<td>📉 大幅下降</td>
+<td>不推荐</td>
+</tr>
+<tr>
+<td><strong>TQ 3bit-nc</strong></td>
+<td>~5x</td>
+<td>❌ 长上下文崩溃</td>
+<td>❌ 严重下降(-20点)</td>
+<td>📉 大幅下降</td>
+<td>不推荐</td>
+</tr>
+</tbody>
+</table>
+<h3 id="24">2.4 关键发现</h3>
+<ol>
+<li><strong>FP8 是最佳默认选择</strong>：2x 容量，吞吐无损，精度几乎无损，在突发负载下 TTFT 表现优异</li>
+<li><strong>TQ 4bit-nc 有价值</strong>：在内存受限场景下（如边缘设备/消费级 GPU），用吞吐换容量</li>
+<li><strong>3-bit 方案不成熟</strong>：推理任务（AIME25、LiveCodeBench）精度暴跌 20 点</li>
+<li><strong>量化误差随序列长度累积</strong>：128K-256K 上下文下，低 bit 量化退化加剧</li>
+</ol>
+<h3 id="25-fp8">2.5 与 FP8 的关键差异</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>FP8</th>
+<th>TurboQuant</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>存储压缩</td>
+<td>✅ KV 存储压到 8-bit</td>
+<td>✅ KV 存储压到 3-4 bit</td>
+</tr>
+<tr>
+<td>注意力计算</td>
+<td>✅ FP8 Tensor Core 原生加速</td>
+<td>❌ 反量化回 BF16 计算</td>
+</tr>
+<tr>
+<td>硬件利用</td>
+<td>⚡ 高效</td>
+<td>📉 反量化开销</td>
+</tr>
+<tr>
+<td>校准需求</td>
+<td>不需要</td>
+<td>不需要</td>
+</tr>
+<tr>
+<td>精度损失</td>
+<td>几乎无损</td>
+<td>与 bit 数正相关</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：TurboQuant 只压缩存储，不加速计算。FP8 同时压缩存储和加速计算——这就是 FP8 在多数场景下优于 TurboQuant 的根本原因。</p>
+<hr />
+<h2 id="_2">三、系统层优化全景</h2>
+<h3 id="31-continuous-batching">3.1 连续批处理 (Continuous Batching)</h3>
+<ul>
+<li>静态批处理：等整批完成后才接收新请求 → 短请求空等长请求</li>
+<li>连续批处理：动态插入新请求，GPU 保持饱和</li>
+<li><strong>吞吐提升 3-10x</strong>，Anyscale 实测生产环境 <strong>23x</strong> 提升</li>
+</ul>
+<h3 id="32-pagedattention">3.2 PagedAttention</h3>
+<ul>
+<li>KV 缓存预分配导致 90% GPU 内存浪费</li>
+<li>PagedAttention (vLLM) 按需分配小页面 → 内存浪费降低 90% → 吞吐提升最高 <strong>24x</strong></li>
+</ul>
+<h3 id="33-speculative-decoding">3.3 推测解码 (Speculative Decoding)</h3>
+<table>
+<thead>
+<tr>
+<th>方面</th>
+<th>数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>典型加速</td>
+<td>2-3x（通用查询，EAGLE3）</td>
+</tr>
+<tr>
+<td>优化极限</td>
+<td>5-5.5x（领域/硬件定制）</td>
+</tr>
+<tr>
+<td>质量影响</td>
+<td><strong>零</strong>（输出与自回归解码数学等价）</td>
+</tr>
+<tr>
+<td>关键瓶颈</td>
+<td>Draft 模型延迟（非精度）决定端到端速度</td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-2026-h100">3.4 2026 推理引擎横评（H100）</h3>
+<table>
+<thead>
+<tr>
+<th>引擎</th>
+<th>吞吐 (tok/s)</th>
+<th>核心特性</th>
+<th>最佳场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SGLang</strong> v0.4.3</td>
+<td>16,200</td>
+<td>RadixAttention 前缀缓存</td>
+<td>前缀密集（RAG/聊天）</td>
+</tr>
+<tr>
+<td><strong>LMDeploy</strong></td>
+<td>16,200</td>
+<td>持久批调度</td>
+<td>高吞吐服务</td>
+</tr>
+<tr>
+<td><strong>vLLM</strong> v0.7.3</td>
+<td>12,500</td>
+<td>PagedAttention, Blackwell 支持</td>
+<td>灵活、频繁换模型</td>
+</tr>
+<tr>
+<td><strong>TensorRT-LLM</strong></td>
+<td>最高（高并发）</td>
+<td>编译 CUDA kernel</td>
+<td>单模型长期生产</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="roi">四、应用层优化（最高 ROI）</h2>
+<h3 id="41-vs">4.1 上下文压缩 vs 摘要</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>压缩比</th>
+<th>精度评分</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>摘要式 (LLMLingua)</td>
+<td>最高 20x</td>
+<td>3.4-3.7/5</td>
+<td>改写文件路径/错误码 → agent 轨迹长 13-15%</td>
+</tr>
+<tr>
+<td>逐字压缩 (Verbatim)</td>
+<td>50-70%</td>
+<td>高</td>
+<td>删除低信息 token，保留句子原文</td>
+</tr>
+</tbody>
+</table>
+<p><strong>JetBrains 发现</strong>：摘要压缩导致 agent 轨迹比逐字压缩长 13-15%，因为 agent 需要重新推导被改写掉的信息。</p>
+<h3 id="42-prompt">4.2 Prompt 缓存</h3>
+<ul>
+<li>共享前缀（系统提示、对话历史）的 KV 张量可复用</li>
+<li>10K+ token 上下文：缓存部分延迟降低 <strong>80-90%</strong></li>
+<li>Anthropic：缓存 token 不计入速率限制 → 80% 命中率下有效 5x 吞吐</li>
+</ul>
+<h3 id="43">4.3 模型路由</h3>
+<ul>
+<li>分类/提取任务 → 路由到小模型 → <strong>12x 成本降低</strong></li>
+<li>生产路由通常 <strong>2-5x</strong> 综合成本节约</li>
+</ul>
+<hr />
+<h2 id="hermesjetson">五、对 Hermes/Jetson 部署的实际建议</h2>
+<h3 id="51-jetson-orin-nano">5.1 Jetson Orin Nano 推理优化路径</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>当前状态</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>模型层</td>
+<td>GGUF Q4_K_M</td>
+<td>✅ 已量化，维持现状</td>
+</tr>
+<tr>
+<td>KV 缓存</td>
+<td>FP16 默认</td>
+<td><strong>切换到 FP8</strong>（如 llama.cpp 支持）</td>
+</tr>
+<tr>
+<td>批处理</td>
+<td>单请求</td>
+<td>无法改进（边缘设备）</td>
+</tr>
+<tr>
+<td>上下文</td>
+<td>全量</td>
+<td><strong>引入上下文压缩</strong>（context-compressor skill）</td>
+</tr>
+<tr>
+<td>模型路由</td>
+<td>单模型</td>
+<td>已有 model-switch skill</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52">5.2 具体行动项</h3>
+<ol>
+<li><strong>检查 llama.cpp FP8 KV 缓存支持</strong>：<code>--cache-type-k q8_0 --cache-type-v q8_0</code> 可获得 2x 上下文容量</li>
+<li><strong>TQ 4bit-nc 边缘验证</strong>：Jetson 内存受限场景可能有价值，需精度验证</li>
+<li><strong>推测解码</strong>：检查 llama.cpp <code>--draft</code> 参数是否可用小模型加速</li>
+<li><strong>上下文压缩常态化</strong>：长对话 cron 任务中启用 context-compressor skill</li>
+</ol>
+<hr />
+<h2 id="_3">六、衡量指标（正确的指标才有正确的优化）</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>含义</th>
+<th>常见误区</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>每任务 token 数</strong></td>
+<td>完成单位工作消耗的总 token</td>
+<td>最接近成本的指标</td>
+</tr>
+<tr>
+<td><strong>TTFT</strong></td>
+<td>首 token 延迟</td>
+<td>上下文压缩直接改善</td>
+</tr>
+<tr>
+<td><strong>TPS</strong></td>
+<td>解码吞吐</td>
+<td>量化/批处理/推测解码影响</td>
+</tr>
+<tr>
+<td><strong>每任务成本</strong></td>
+<td>tokens/task × 价格/token</td>
+<td><strong>最终优化目标</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键警告</strong>：优化 TPS 而忽略 tokens/task = 用更快的引擎处理膨胀的上下文，成本反而更高。从应用向外优化，不是从 GPU 向内。</p>
+<hr />
+<h2 id="_4">七、引用</h2>
+<ul>
+<li><a href="https://vllm.ai/blog/2026-05-11-turboquant">vLLM: TurboQuant Comprehensive Study</a> — Kurtić et al., May 2026</li>
+<li><a href="https://arxiv.org/abs/2504.19874">TurboQuant Paper</a> — ICLR 2026</li>
+<li><a href="https://qvac.tether.io/blog/turboquant-in-qvac-sdk-0-12-0-kv-cache-quantization-for-production-local-ai">QVAC/Tether: TurboQuant SDK</a></li>
+<li><a href="https://www.morphllm.com/llm-inference-optimization">LLM Inference Optimization Guide 2026</a></li>
+<li><a href="https://www.aussieai.com/blog/llm-inference-optimization">500+ LLM Inference Techniques</a></li>
+</ul>
+</body>
+</html>

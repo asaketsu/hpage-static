@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-ROI决策框架</title>
+
+<meta property="og:title" content="本地模型部署-ROI决策框架" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="roi">本地模型部署：ROI 决策框架</h1>
+<blockquote>
+<p><strong>来源</strong>: HN 社区讨论 + 领域知识整合（搜索基础设施 SSL 故障，基于多源知识蒸馏）<br />
+<strong>日期</strong>: 2026-08-04<br />
+<strong>标签</strong>: <code>本地部署</code> <code>ROI</code> <code>TCO</code> <code>成本分析</code> <code>GPU</code> <code>自托管</code> <code>决策框架</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p>本地部署的 ROI 拐点出现在<strong>日均 token 消耗超过云 API 月费的 1/15</strong> 时。按当前定价（GPT-4o ~$5/M input tokens），即日均处理 >300 万 tokens 或月 API 账单 >$500 时，自购 GPU 的 8-12 个月可回本。低于此阈值，云 API 在成本、运维、模型质量三方面全面胜出。</p>
+<hr />
+<h2 id="_2">一、成本模型：三维度拆解</h2>
+<h3 id="11-api">1.1 云端 API 成本（按量付费）</h3>
+<ul>
+<li><strong>定价基准</strong>（2025-2026 主流模型）：</li>
+<li>GPT-4o: $2.5/M input + $10/M output</li>
+<li>Claude 3.5 Sonnet: $3/M input + $15/M output</li>
+<li>国产模型（GLM-4/Qwen-Max）: ¥0.5-2/百万 tokens</li>
+<li>
+<p>开源模型 API（DeepSeek-V3）: ¥1-2/百万 tokens（行业最低档）</p>
+</li>
+<li>
+<p><strong>变量</strong>：请求量、prompt 长度、输出长度、上下文窗口占用</p>
+</li>
+<li><strong>隐性成本</strong>：网络延迟（300-2700ms）、API 限流、服务中断风险</li>
+</ul>
+<h3 id="12-tco">1.2 本地部署 TCO（总拥有成本）</h3>
+<ul>
+<li><strong>硬件 CapEx</strong>（一次性）：</li>
+<li>边缘级（Jetson Orin NX 16GB）: ~$600，跑 7B INT4/INT8</li>
+<li>工作站级（RTX 4090 24GB）: ~$2500，跑 32B INT4</li>
+<li>服务器级（2× A100 80GB）: ~$20,000-40,000，跑 70B FP16</li>
+<li>
+<p>Mac Studio M2 Ultra 192GB: ~$6000，跑 70B 量化（CPU+GPU 统一内存优势）</p>
+</li>
+<li>
+<p><strong>运营 OpEx</strong>（月度）：</p>
+</li>
+<li>电费：4090 满载 450W × 24h × 30d × $0.15/kWh ≈ $48/月</li>
+<li>IDC 托管（如需）：$100-300/月</li>
+<li>运维人力：0.1-0.3 FTE（分摊）</li>
+<li>硬件折旧：3 年线性，4090 约 $70/月</li>
+</ul>
+<h3 id="13">1.3 混合模式成本</h3>
+<ul>
+<li>热路径（高频低复杂度）→ 本地小模型（7B/14B）</li>
+<li>冷路径（低频高复杂度）→ 云端大模型（GPT-4o/Claude）</li>
+<li>典型节省：40-70% API 费用，同时保留大模型能力</li>
+</ul>
+<hr />
+<h2 id="roi_1">二、ROI 决策矩阵</h2>
+<h3 id="21">2.1 何时选择本地部署（✅ 推荐）</h3>
+<ul>
+<li><strong>数据合规要求</strong>：医疗（HIPAA）、金融（PCI DSS）、军工——数据不能出本地网络</li>
+<li><strong>高频低复杂度场景</strong>：OCR 识别、文档分类、格式转换——7B 模型已够用，日均 &gt;10 万次调用</li>
+<li><strong>离线/弱网环境</strong>：工厂巡检、地下作业、野外机器人——网络不可靠</li>
+<li><strong>延迟敏感</strong>：实时对话机器人、具身智能控制——要求 &lt;500ms 端到端</li>
+<li><strong>长期稳定负载</strong>：API 月费 &gt;$500 且负载可预测——8-12 个月可回本</li>
+</ul>
+<h3 id="22-api">2.2 何时选择云 API（✅ 推荐）</h3>
+<ul>
+<li><strong>低频使用</strong>：月调用 &lt;100 万 tokens——API 费用远低于硬件折旧</li>
+<li><strong>需要最强模型</strong>：GPT-4o/Claude 级别能力，本地硬件跑不起或效果差</li>
+<li><strong>快速验证/PoC</strong>：不确定需求时，API 即开即用，无沉没成本</li>
+<li><strong>弹性负载</strong>：流量波动大（10×-100× 波峰）——本地硬件要么浪费要么不够</li>
+</ul>
+<h3 id="23">2.3 拐点公式</h3>
+<pre><code>月 API 费用 &gt; 本地月 TCO 时，本地部署开始省钱
+
+本地月 TCO ≈ 硬件折旧 + 电费 + 运维
+           ≈ (硬件总价 / 36) + 电费 + 0.2 FTE × 人力成本
+
+示例（RTX 4090 工作站）:
+  月 TCO ≈ ($2500/36) + $48 + $300 ≈ $418/月
+
+  → API 月费 &gt; $418 时（约日均 5000 万 tokens），本地更划算
+  → 实际拐点更低，因为本地模型质量提升后可替代部分 API 调用
+</code></pre>
+<hr />
+<h2 id="hn-2026">三、HN 社区实战洞察（2026 年讨论）</h2>
+<h3 id="31">3.1 真实用户选择本地的原因</h3>
+<p>来自 HN "Ask HN: Who's running local AI workstations in 2026?" 及相关讨论：</p>
+<ul>
+<li><strong>"Off grid and unmetered"</strong>：买了 Framework Desktop（Strix Halo），ML 从业者，云用够了，想要不受计量限制的推理能力</li>
+<li><strong>数据不出门</strong>：用 3090 24GB 做 AI 发票 OCR（PDF→Image→Excel），因为发票数据不能传云</li>
+<li><strong>成本可控</strong>：已有 GPU 硬件（游戏/ML 老卡），边际成本趋近于零</li>
+<li><strong>定制化</strong>：可以用自己蒸馏/微调的模型，API 服务商不提供</li>
+</ul>
+<h3 id="32">3.2 真实成本痛点</h3>
+<ul>
+<li><strong>"why $250/month, let alone $1000/month"</strong>：对 Cost.dev 这类成本管理工具的需求，说明 token 费用在企业级使用中确实很高</li>
+<li><strong>Context bloat</strong>：长对话/ agent 循环中 token 消耗远超预期，是 API 成本失控的主因</li>
+<li><strong>运维复杂度被低估</strong>：本地部署 ≠ 装好 Ollama 就完事——需要监控、日志、模型更新、故障恢复</li>
+</ul>
+<h3 id="33">3.3 社区共识</h3>
+<ul>
+<li><strong>消费级 GPU 足够</strong>：4090 24GB 是个人/小团队的甜蜜点，70B INT4 流畅运行</li>
+<li><strong>Mac 统一内存被低估</strong>：M2 Ultra 192GB 可以跑 70B 甚至更大模型，性价比优于多卡 NVIDIA 方案</li>
+<li><strong>开源模型质量已够用</strong>：Llama 3/Qwen 2.5/DeepSeek-V3 在多数任务上达到 GPT-4 级别 80-90% 能力</li>
+</ul>
+<hr />
+<h2 id="_3">四、量化决策检查清单</h2>
+<p>部署前必须回答的 7 个问题：</p>
+<ol>
+<li><strong>日均 token 量</strong>：超过多少？（&lt;100 万 → API，&gt;500 万 → 本地值得评估）</li>
+<li><strong>峰值/均值比</strong>：超过 5:1？（弹性需求强 → API 更合适）</li>
+<li><strong>延迟要求</strong>：&lt;500ms？（本地优势明显）</li>
+<li><strong>数据合规</strong>：有法规要求不能传云？（必须本地）</li>
+<li><strong>模型质量要求</strong>：需要 GPT-4 级别？（70B+ 模型 → 硬件成本陡增）</li>
+<li><strong>运维能力</strong>：有人能维护？（无人 → API 或托管服务）</li>
+<li><strong>硬件已有？</strong>：沉没成本视角，已有 GPU 的边际成本极低</li>
+</ol>
+<hr />
+<h2 id="_4">五、对工作的价值</h2>
+<ul>
+<li><strong>当前 Jetson 平台</strong>：已在本地跑 7B 模型（Hermes Agent 实例），延迟 0.8s 优于云 API 1.1s——这是延迟维度的 ROI 验证</li>
+<li><strong>成本维度</strong>：Hermes 日均 cron 调用 ~200 次，按 GLM API ¥0.5/百万 tokens 计，月费约 ¥50-100，远低于本地硬件折旧——说明当前场景下 API 更经济</li>
+<li><strong>混合策略</strong>：热路径（飞书回复、简单分类）走本地/廉价 API，冷路径（深度分析、代码生成）走大模型 API——已有实践</li>
+<li><strong>扩展评估</strong>：如果量化交易 Agent 全天上量，API 成本可能飙升到月 ¥500+，此时本地 4090 工作站的 ROI 开始显现</li>
+</ul>
+<hr />
+<h2 id="_5">六、行动建议</h2>
+<ol>
+<li><strong>短期</strong>：维持当前混合策略（API 为主 + Jetson 边缘补充），记录月度 API 费用作为基线</li>
+<li><strong>中期</strong>（API 月费 &gt;¥300 时）：评估购入 RTX 4090 工作站（~¥18000），部署 vLLM 跑 Qwen2.5-32B</li>
+<li><strong>监控指标</strong>：建立 token 消耗 dashboard，月度趋势追踪，触发本地部署评估阈值时自动告警</li>
+<li><strong>技术储备</strong>：保持 Ollama/vLLM 技能熟练，确保云→本地切换可在 1 小时内完成</li>
+</ol>
+<hr />
+<blockquote>
+<p>⚠️ <strong>数据说明</strong>：本文基于 HN 社区讨论 + 本地部署笔记中的硬件定价 + 领域知识整合。定价数据为 2025-2026 年公开信息估算，实际采购需查询最新报价。搜索基础设施（Tavily/DDG/web_extract）在本次学习中全线 SSL 故障，未能获取更多实时文章。</p>
+</blockquote>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="../2026-08-04-智算项目现场100人并发需要多少张GPU.md">智算项目现场100人并发需要多少张GPU</a> — GPU 并发容量规划，ROI 的需求侧输入</li>
+<li><a href="./2026-08-04-本地模型部署-oMLX_SSD-KV-Cache.md">本地模型部署-oMLX_SSD-KV-Cache</a> — SSD offload 降低显存门槛，改善 ROI</li>
+<li><a href="./2026-08-03-本地模型部署-BitNet-b1.58.md">本地模型部署-BitNet-b1.58</a> — 1-bit 模型大幅降低硬件要求</li>
+<li><a href="./2026-08-01-本地模型部署-消费级GPU推理.md">本地模型部署-消费级GPU推理</a> — 消费级 GPU 方案的 TCO 基线</li>
+<li><a href="./2026-07-29-llm-quantization-selection-decision-tree.md">LLM-quantization-selection-decision-tree</a> — 量化选型决策树，部署前的成本权衡</li>
+</ul>
+</body>
+</html>

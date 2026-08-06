@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoE投机解码-稀疏激活与推理加速深度解析</title>
+
+<meta property="og:title" content="MoE投机解码-稀疏激活与推理加速深度解析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="moe">MoE 投机解码：稀疏激活与推理加速的深层交叉</h1>
+<ul>
+<li>📅 2026-05-13</li>
+<li>⭐4.8/5 — 颠覆认知：MoE 模型从投机解码中获益比 Dense 模型更大</li>
+<li>🏷️ #MoE #投机解码 #推理优化 #稀疏激活 #EAGLE #专家路由</li>
+<li>📰 论文综合研究（MoESD/MoE-Spec/EVICT/Jakiro/SP-MoE/SSD）</li>
+<li>🔗 关联：[[2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理]] / [[2026-05-06-MoE混合专家模型-路由策略-负载均衡-训练稳定性]] / [[2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理]]</li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>传统观点认为投机解码（Speculative Decoding, SD）对 MoE 模型效果有限——EAGLE 原论文报告 Mixtral 8x7B 仅获得 1.5x 加速，而 Dense 模型可达 ~3x。然而 2025-2026 年的一系列研究彻底推翻了这一认知：MoESD（NeurIPS 2025 Spotlight）证明在中等 batch size 下，MoE 反而从 SD 中获益更多，最高达 2.29x 加速（Qwen2-57B-A14B）。核心原因在于 MoE 的低算术强度（arithmetic intensity = k/N，k 为激活专家数，N 为总专家数）使其在更大 batch 范围内保持 bandwidth-bound，而 SD 验证步骤在 bandwidth-bound 时几乎"免费"。随后 MoE-Spec、EVICT、Jakiro、SP-MoE 等论文分别从专家预算、自适应验证、Draft 多样性、预取流水线等角度优化，形成了 MoE 投机解码的完整方法论。本文系统梳理六大前沿方向，建立与已有知识（投机解码四代演进、MoE 路由机制、蒸馏压缩）的深度关联。</p>
+<h2 id="_2">一、核心发现</h2>
+<h3 id="11-moe-dense-sd">1.1 反直觉的结论：MoE 比 Dense 从 SD 中获益更多</h3>
+<p>MoESD（NeurIPS 2025 Spotlight, arXiv:2505.19645）的核心贡献：</p>
+<ul>
+<li><strong>MoE 的低算术强度</strong>是其 SD 优势的根源。Dense 模型的算术强度约 50-100 FLOPS/byte，而 MoE 仅为 k/N × Dense（如 k=2, N=64 时仅约 3%）。这意味着 MoE 在更大的 batch size 范围内保持 bandwidth-bound</li>
+<li><strong>"目标效率"（Target Efficiency）新指标</strong>：传统 SD 优化只关注接受率 α，但 MoESD 引入 target efficiency = T_AR / T_SD，综合衡量 SD 对目标模型前向传递次数的节省。即使 α 很高，如果 target efficiency 低（验证步骤激活了太多专家），加速也会被抵消</li>
+<li><strong>稀疏度越高，SD 收益范围越广</strong>：随着 MoE 设计趋势向更高稀疏度发展（如 DeepSeek-V3 的 256 专家选 8 个），SD 有效的 batch size 范围不断扩大</li>
+<li><strong>实验数据</strong>：Qwen2-57B-A14B 在 A100 上实现 2.29x 加速（中等 batch size），验证了理论预测</li>
+</ul>
+<h3 id="12">1.2 专家路由时间相关性降低验证成本</h3>
+<p>Cohere 技术报告（2026-04）量化了三个关键因素：</p>
+<ol>
+<li><strong>专家路由时间相关性</strong>（Temporal Correlation）：连续 token 的路由路径高度相关，导致验证阶段多个 token 激活的专家联合（union）远小于 worst-case。实际加载的专家数 ≈ 单 token 激活数的 1.3-1.8 倍，而非理论的 K × batch_size</li>
+<li><strong>共享专家比例</strong>（Shared Expert Ratio f）：DeepSeek 系列的共享专家减少了 routed 部分的比例，在低 batch 时降低验证成本，但会提高有效 k/N，使模型更早进入 compute-bound</li>
+<li><strong>降低 k/N 的双重收益</strong>：更少的激活专家/总专家比，既保持低算术强度，又在高 batch 时仍保持 bandwidth-bound</li>
+</ol>
+<h3 id="13-moe-specexpert-budgeting">1.3 MoE-Spec：Expert Budgeting 解耦投机深度与内存成本</h3>
+<p>MoE-Spec（arXiv:2602.16052）的关键创新：</p>
+<ul>
+<li><strong>问题</strong>：SD 的 draft tree 越大，不同分支激活不同专家，验证时需要加载的专家联合急剧增长，导致内存压力和带宽消耗抵消加速收益</li>
+<li><strong>方案</strong>：Training-free 的 expert budgeting——每层设置固定专家容量上限，只加载贡献最大的专家，丢弃长尾低频专家</li>
+<li><strong>原理</strong>：利用了 MoE 验证中的"幂律特性"——top-4 专家通常覆盖 80-90% 的验证路径，剩余专家只贡献 10-20% 但占 50% 的加载开销</li>
+<li><strong>效果</strong>：比 EAGLE-3 baseline 提升 10-30% throughput，且可以灵活调节精度/延迟权衡</li>
+</ul>
+<h3 id="14-evict-draft-tree">1.4 EVICT：自适应 Draft Tree 截断</h3>
+<p>EVICT（arXiv:2605.00342）的无参数自适应方法：</p>
+<ul>
+<li><strong>核心洞察</strong>：不是所有 draft token 都值得验证。随着 draft tree 变深，边际 token 的"性价比"（接受概率 × 节省的延迟 / 验证成本）递减</li>
+<li><strong>方法</strong>：在验证前截断 draft tree，仅保留 cost-effective 的前缀。利用 draft model 的信号估计候选 token 的价值，结合离线 profile 的验证成本</li>
+<li><strong>特点</strong>：Training-free、Hyperparameter-free、Lossless（不改变输出分布）</li>
+<li><strong>效果</strong>：比自回归解码快 2.35x，比 EAGLE-3 平均快 1.21x</li>
+<li><strong>兼容性</strong>：已集成到 SGLang 高性能图执行框架</li>
+</ul>
+<h3 id="15-jakiro-moe-draft-model">1.5 Jakiro：用 MoE 增强 Draft Model 的多样性</h3>
+<p>Jakiro（arXiv:2502.06282）换个角度——不是优化目标 MoE 的验证，而是用 MoE 增强 draft model 本身：</p>
+<ul>
+<li><strong>问题</strong>：传统 tree-based sampling 中，同一层级的候选 token 来自相同特征表示，导致候选之间高度相关，限制多样性</li>
+<li><strong>方案</strong>：在 draft model 中引入 MoE 层，不同专家独立生成预测，解耦候选之间的相关性</li>
+<li><strong>混合推理策略</strong>：前几个 token 用自回归解码（精度优先），后续 token 切换为并行解码 + 对比特征增强（速度优先）</li>
+<li><strong>效果</strong>：在 MT-bench 上平均 2.84x 加速（对比 EAGLE-2 的 2.46x），树立了新的 SOTA</li>
+</ul>
+<h3 id="16-sp-moe">1.6 SP-MoE：投机解码 + 专家预取联合优化</h3>
+<p>SP-MoE（arXiv:2510.10302）针对 CPU-offloading 场景：</p>
+<ul>
+<li><strong>问题</strong>：MoE + SD 的组合会放大 GPU 内存压力和 CPU-GPU 带宽竞争。验证时多 token 激活的专家联合远超单 token</li>
+<li><strong>投机专家预取</strong>：利用 draft model 和 target model 的路由结构对应关系，在 draft 阶段预测验证时需要的专家，提前从 CPU 预取到 GPU</li>
+<li><strong>Cutoff-layer 策略</strong>：基于经验 profile 和解析延迟模型，限制每层预取深度，确保刚好及时可用而不浪费带宽</li>
+<li><strong>异步流水线</strong>：预取线程 + 批量 I/O 隐藏加载延迟</li>
+<li><strong>效果</strong>：TPOT 加速 1.07-3.5x（跨多数据集、环境和 MoE 模型）</li>
+</ul>
+<h2 id="_3">二、技术原理解析</h2>
+<h3 id="21-moe">2.1 MoE 投机解码的理论基础</h3>
+<p>标准投机解码的加速比为：</p>
+<pre><code>Speedup = E[接受token数] / (1 + T_draft/T_target)
+</code></pre>
+<p>对于 Dense 模型，T_target 主要取决于 batch size。当 batch 增大到 compute-bound 时，验证的额外计算成为瓶颈，SD 收益递减。</p>
+<p>对于 MoE 模型，关键区别在于：</p>
+<ul>
+<li><strong>权重加载主导延迟</strong>：MoE 的总参数巨大但只激活少量专家，延迟瓶颈是加载 k 个专家的权重（bandwidth-bound）</li>
+<li><strong>验证的"半免费"特性</strong>：验证 K 个 draft token 时，由于路由时间相关，实际只需加载少量额外专家（≈1.3-1.8x 单 token 的专家数），但验证了 K 个 token</li>
+<li><strong>算术强度模型</strong>：MoE 的 roofline model 中，k/N 越小，bandwidth-bound 的区间越大，SD 验证的"免费"窗口越宽</li>
+</ul>
+<p>MoESD 的理论模型引入 target efficiency η：</p>
+<pre><code>η = T_AR / T_SD = (f_batch × N_experts_per_token) / (f_batch × union_experts + overhead)
+</code></pre>
+<p>当 η &gt; 1 时 SD 有效，MoE 的低 k/N 使 η &gt; 1 的 batch 范围远大于 Dense。</p>
+<h3 id="22-moe-spec">2.2 专家预算机制（MoE-Spec）</h3>
+<p>Draft tree 的验证过程中，每个 token 激活 k 个专家，但 tree 的多个分支可能激活不同专家。假设 draft tree 有 D 层、每层 B 个分支：</p>
+<pre><code>最坏情况 union_experts = min(k × D × B, N)
+实际 union_experts ≈ k × D^0.6（路由相关性）
+</code></pre>
+<p>MoE-Spec 的 budgeting 设定每层最多加载 C 个专家（C &lt; N），按以下优先级选择：</p>
+<ol>
+<li>统计当前 draft tree 中每个专家的覆盖路径数</li>
+<li>按覆盖数降序排列</li>
+<li>加载 top-C 个专家，其余路径的 token 用 fallback 策略（重新路由到已加载的最近专家）</li>
+</ol>
+<p>关键：这种截断是 lossy 的，但实验显示 C = N/2 时精度损失 &lt; 0.1%，而吞吐提升 20%+。</p>
+<h3 id="23-draft-tree-evict">2.3 Draft Tree 截断机制（EVICT）</h3>
+<p>EVICT 的自适应截断基于 cost-benefit 分析：</p>
+<pre><code>对于 draft tree 中位置 k 的 token t:
+  benefit(t) = P_accept(t) × (k - k_reject) × T_target_saving
+  cost(t) = P_reach(t) × Δ_experts(t) × T_load_expert
+
+保留条件: benefit(t) / cost(t) &gt; threshold
+</code></pre>
+<p>其中：<br />
+- P_accept(t) 由 draft model 的置信度估计<br />
+- Δ_experts(t) 由离线 profile 得到（每个位置平均新增多少专家）<br />
+- threshold 自适应调整，确保整体不增加延迟</p>
+<h3 id="24">2.4 前沿方法对比矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>核心思路</th>
+<th>优化目标</th>
+<th style="text-align: center;">Training-free</th>
+<th style="text-align: center;">Lossless</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MoESD</td>
+<td>理论建模 + target efficiency</td>
+<td>理解加速边界</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td>2.29x</td>
+</tr>
+<tr>
+<td>MoE-Spec</td>
+<td>Expert budgeting</td>
+<td>降低验证专家数</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">❌（微小精度损失）</td>
+<td>+10-30% over EAGLE-3</td>
+</tr>
+<tr>
+<td>EVICT</td>
+<td>Draft tree 截断</td>
+<td>裁剪低性价比验证</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td>2.35x over AR</td>
+</tr>
+<tr>
+<td>Jakiro</td>
+<td>MoE 增强 draft model</td>
+<td>增加候选多样性</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">✅</td>
+<td>2.84x</td>
+</tr>
+<tr>
+<td>SP-MoE</td>
+<td>投机预取 + 流水线</td>
+<td>隐藏 CPU-GPU 延迟</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td>1.07-3.5x TPOT</td>
+</tr>
+<tr>
+<td>SSD</td>
+<td>异步投机-验证并行</td>
+<td>隐藏 draft 延迟</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td>5x over AR</td>
+</tr>
+<tr>
+<td>Self-SD</td>
+<td>MoE 自身 skip 层做 draft</td>
+<td>端侧无额外模型</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+<td>端侧 1.5-2x</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">三、知识关联</h2>
+<ul>
+<li>[[2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理]] → 本次回答了该笔记"待深入问题#2"：MoE 的稀疏激活如何影响投机解码。结论：稀疏激活反而让 MoE 比 Dense 更适合 SD，因为 bandwidth-bound 区间更宽</li>
+<li>[[2026-05-06-MoE混合专家模型-路由策略-负载均衡-训练稳定性]] → 路由时间相关性是 MoE-SD 加速的隐性基础。Token Choice 路由中连续 token 的路由高度相关，Expert Choice 路由相关性更弱，可能对 SD 不利</li>
+<li>[[2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理]] → MoE-SVD 的 60% 压缩模型能否用 MoE-Spec 的 budgeting？压缩后专家分布可能更均匀，budgeting 的收益可能降低</li>
+<li>[[2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap]] → 量化 MoE + 投机解码的组合：量化后算术强度进一步降低，SD 的 bandwidth-bound 窗口可能更宽。EAGLE-3 draft head 需要匹配量化精度</li>
+<li>[[2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet]] → 量化模型的 SD 兼容性：AWQ INT4 量化后 MoE 的 k/N 不变但权重加载带宽降低 4x，SD 收益可能不同</li>
+<li>[[2026-04-28-LLM推理优化前沿技术2026]] → 早期笔记中的投机解码概述，本次提供了 MoE 场景的完整补充</li>
+<li>obs_notes: [[RLHF]]、[[大模型训练]] → RL 训练后的模型（如 DeepSeek-R1）推理链更长，SD 对长输出的收益更大</li>
+</ul>
+<h2 id="actionable-insights">四、Actionable Insights</h2>
+<ol>
+<li><strong>vLLM/SGLang MoE 推理配置</strong>：当前 vLLM 已原生支持 EAGLE-3 + MoE 投机解码。Red Hat 实测 gpt-oss-120B MoE 模型用 EAGLE-3 在 vLLM 上降低 19.4% 的每百万输出 token 成本（SWE-bench 代码任务），200 并发仍有效。建议在我们自己的 MoE 推理服务中启用</li>
+<li><strong>MoE-Spec 的 Expert Budgeting 思路</strong>：可以集成到 Hermes 的推理优化 skill 中。对 DeepSeek-V3 这类大 MoE，budgeting 设为 top-50% 专家即可获得显著吞吐提升</li>
+<li><strong>Draft model 选择指南</strong>：对于 MoE 目标模型，draft model 应优先选择延迟低而非精度高。小型 Dense model（如 Qwen2.5-0.5B 为 Qwen2-57B-A14B 做 draft）比同系列小 MoE 更好——因为 Dense draft 的延迟更稳定</li>
+<li><strong>投机解码 + 量化 MoE 的组合</strong>：量化（INT4/FP8）使 MoE 更 bandwidth-bound → SD 收益可能更大。值得在 Qwen3-30B-A3B + AWQ 上实测验证</li>
+<li><strong>美团 LongCat 的启发</strong>：LongCat-Flash-Lite（685 亿参数，激活 29-45 亿）通过 N-gram 嵌入 + 推测解码协同，实现了 500-700 token/s。draft model 使用常规嵌入层规避 N-gram 查找开销，这种"非对称 draft"思路值得借鉴</li>
+</ol>
+<h2 id="_5">五、待深入的问题清单</h2>
+<ol>
+<li><strong>Expert Choice 路由 vs Token Choice 路由对 SD 的影响</strong>：Token Choice 的路由时间相关性有利于 SD；Expert Choice 按专家选 token，时间相关性可能更弱</li>
+<li><strong>量化 MoE + SD 的精确收益</strong>：INT4 量化后 k/N 不变但权重加载带宽降 4x，是否使 SD 的"免费验证"窗口更大？</li>
+<li><strong>Draft model 也是 MoE 的情况</strong>：如果 draft 和 target 都是 MoE，路由预测的准确度如何？Jakiro 方案的实际部署成本</li>
+<li><strong>MLA（Multi-head Latent Attention）+ MoE SD</strong>：DeepSeek 的 MLA 已经压缩了 KV Cache，SD 对 MLA-MoE 的收益是否有变化</li>
+<li><strong>高并发（&gt;200 batch）下 MoE SD 的收益衰减点</strong>：Cohere 报告的带宽-计算切换点在哪？对不同 GPU 架构（H100 vs A100）的差异</li>
+<li><strong>MoE-Spec budgeting 与 Expert Parallelism 的交互</strong>：EP 下专家分布在不同 GPU，budgeting 可能减少跨卡通信</li>
+<li><strong>SSD（异步投机-验证）+ MoE 的叠加效果</strong>：SSD 的 5x 加速是 Dense 上的结果，MoE 上能否保持</li>
+<li><strong>端侧 MoE 推理的投机解码</strong>：SMoLPU 的 122µJ/token 能耗数据是否可在其他端侧平台复现</li>
+</ol>
+<h2 id="_6">六、关键论文与来源</h2>
+<h3 id="_7">学术论文</h3>
+<table>
+<thead>
+<tr>
+<th>论文</th>
+<th>核心贡献</th>
+<th>发表</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MoESD (arXiv:2505.19645)</td>
+<td>MoE 比 Dense 从 SD 获益更多，target efficiency 指标</td>
+<td>NeurIPS 2025 Spotlight</td>
+</tr>
+<tr>
+<td>MoE-Spec (arXiv:2602.16052)</td>
+<td>Expert budgeting，training-free，10-30% throughput 提升</td>
+<td>arXiv 2026.02</td>
+</tr>
+<tr>
+<td>EVICT (arXiv:2605.00342)</td>
+<td>自适应 draft tree 截断，lossless，2.35x 加速</td>
+<td>arXiv 2026.05</td>
+</tr>
+<tr>
+<td>Jakiro (arXiv:2502.06282)</td>
+<td>MoE 增强 draft model，解耦候选多样性，2.84x SOTA</td>
+<td>arXiv 2025.02</td>
+</tr>
+<tr>
+<td>SP-MoE (arXiv:2510.10302)</td>
+<td>投机预取 + 流水线，1.07-3.5x TPOT 加速</td>
+<td>arXiv 2025.10</td>
+</tr>
+<tr>
+<td>SSD (arXiv:2603.03251)</td>
+<td>异步投机-验证并行，5x over AR</td>
+<td>ICLR 2026</td>
+</tr>
+<tr>
+<td>DECO (arXiv:2605.10933)</td>
+<td>端侧 MoE 架构，20% 激活匹配 Dense 性能，3x 加速</td>
+<td>arXiv 2026.05</td>
+</tr>
+<tr>
+<td>Self-SD for on-device MoE</td>
+<td>MoE 自身 skip 层做 draft（端侧无需额外模型）</td>
+<td>ACM 2026</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">网络来源</h3>
+<ol>
+<li>Cohere Blog — Why MoE models get more from speculative decoding（2026-04）</li>
+<li>Red Hat Developer — vLLM MoE 投机解码实测：gpt-oss-120B，19.4% 成本降低（2026-04）</li>
+<li>美团技术 — LongCat-Flash-Lite：N-gram 嵌入 + 推测解码协同，500-700 token/s（2026-02）</li>
+<li>Tian Pan — 投机解码实战：那顿并非免费的午餐（2026-04）</li>
+<li>量子位 — 华为 Omni-Infer：开源 MoE 推理加速套件，投机加速 1148→1528 token/s（2025-07）</li>
+</ol>
+<hr />
+<p><em>学习时间：约 45 分钟 | 覆盖本地笔记 6 篇 + 论文 8 篇 + 网络文章 5 篇</em><br />
+<em>本次学习深度：L4（理论推导 + 6 篇前沿论文完整解析 + 工程落地指南 + 知识体系整合）</em></p>
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="2026-05-13-从零训练GPT完整指南.md">从零训练GPT完整指南</a></li>
+<li><a href="2026-05-14-多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解.md">多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解</a></li>
+<li><a href="2026-05-15-序列并行与上下文并行-长上下文训练的第四维并行.md">序列并行与上下文并行-长上下文训练的第四维并行</a></li>
+</ul>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="2026-05-12-数据治理-data-catalog.md">2026-05-12-数据治理-data-catalog</a></li>
+<li><a href="2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案.md">2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案</a></li>
+<li><a href="2026-05-15-序列并行与上下文并行-长上下文训练的第四维并行.md">2026-05-15-序列并行与上下文并行-长上下文训练的第四维并行</a></li>
+<li><a href="index.md">index</a></li>
+<li><a href="explore/2026-05-15-数据治理-governance-framework.md">2026-05-15-数据治理-governance-framework</a></li>
+</ul>
+</body>
+</html>

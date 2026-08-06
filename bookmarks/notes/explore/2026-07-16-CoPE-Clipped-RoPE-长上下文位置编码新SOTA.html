@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoPE-Clipped-RoPE-长上下文位置编码新SOTA</title>
+
+<meta property="og:title" content="CoPE-Clipped-RoPE-长上下文位置编码新SOTA" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="cope-clipped-rope-llm">CoPE: Clipped RoPE — 长上下文 LLM 的免费午餐</h1>
+<blockquote>
+<p>论文：<a href="https://arxiv.org/abs/2602.05258">arXiv:2602.05258</a> | 作者：Haoran Li, Sucheng Ren, Alan Yuille, Feng Wang (CMU/JHU) | 2026-02<br />
+代码：<a href="https://github.com/hrlics/CoPE">github.com/hrlics/CoPE</a> | HF 模型：<a href="https://huggingface.co/collections/haoranli-ml/cope">haoranli-ml/Llama-3-8B-CoPE-64k</a></p>
+</blockquote>
+<h2 id="_1">核心结论</h2>
+<p>CoPE 通过对 RoPE（旋转位置编码）的低频分量进行<strong>软裁剪（soft clipping）</strong>，以零额外参数、零额外训练的"免费午餐"方式，将 LLM 的有效上下文窗口扩展到 <strong>256k tokens</strong>，建立新的长度泛化 SOTA。</p>
+<hr />
+<h2 id="1-rope">1. 问题背景：RoPE 在长上下文中的两大缺陷</h2>
+<p>RoPE 通过不同频率的旋转编码位置信息，高频分量捕获局部位置、低频分量捕获全局位置。当上下文超出训练窗口时：</p>
+<table>
+<thead>
+<tr>
+<th>缺陷</th>
+<th>根因</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>OOD 外推</strong></td>
+<td>低频分量周期超过训练窗口，遭遇未见过的值</td>
+<td>注意力分数严重退化（outlier 激增）</td>
+</tr>
+<tr>
+<td><strong>语义信号衰减</strong></td>
+<td>RoPE 隐含的长程语义衰减效应</td>
+<td>远距离相关 token 注意力被削弱</td>
+</tr>
+<tr>
+<td><strong>频谱泄漏</strong></td>
+<td>硬裁剪（如 NTK-aware、YaRN）引入频率不连续</td>
+<td>注意力分数出现振荡伪影（ringing），引入虚假关联</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-cope">2. CoPE 方法：极简软裁剪</h2>
+<h3 id="21">2.1 核心思想</h3>
+<p>对 RoPE 的低频维度应用一个平滑的裁剪函数，使超出训练范围的角度被"温和地"限制在边界内，而非硬截断。</p>
+<h3 id="22">2.2 三重作用</h3>
+<ol>
+<li><strong>消除 OOD outlier</strong> — 超出训练窗口周期的低频分量被平滑限制，不再产生极端值</li>
+<li><strong>改善长程语义信号</strong> — 缓解 RoPE 引入的隐性语义注意力衰减</li>
+<li><strong>防止频谱泄漏</strong> — 软裁剪的平滑过渡避免了硬裁剪的频率不连续</li>
+</ol>
+<h3 id="23">2.3 与已有方法的对比</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>策略</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NTK-aware scaling</td>
+<td>整体频率缩放</td>
+<td>仍然存在硬截断边界</td>
+</tr>
+<tr>
+<td>YaRN</td>
+<td>分段频率插值</td>
+<td>复杂的分区策略，过渡不平滑</td>
+</tr>
+<tr>
+<td><strong>CoPE</strong></td>
+<td><strong>低频软裁剪</strong></td>
+<td><strong>无参数、即插即用、过渡平滑</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 实验结果</h2>
+<ul>
+<li><strong>256k 上下文</strong>：在多个长上下文 benchmark 上显著优于 YaRN、NTK-aware 等方法</li>
+<li><strong>训练窗口内也提升</strong>：不仅外推有效，在训练长度内的性能也有一致提升</li>
+<li><strong>即插即用</strong>：已发布 Llama-3-8B-CoPE-64k-Base/Instruct 模型，可直接使用</li>
+<li>已有 6 个衍生模型基于 CoPE</li>
+</ul>
+<h2 id="4">4. 对我们的实际价值</h2>
+<h3 id="41">4.1 直接应用场景</h3>
+<ul>
+<li><strong>本地部署长上下文模型</strong>：Jetson Orin 上的本地 LLM（如 Llama-3-8B）可通过 CoPE 扩展有效上下文，无需额外训练</li>
+<li><strong>Agent 长对话管理</strong>：减少因上下文衰减导致的"遗忘早期指令"问题</li>
+<li><strong>RAG 场景</strong>：更长的有效检索窗口意味着可以减少 chunk 分割</li>
+</ul>
+<h3 id="42">4.2 与已有技术的协同</h3>
+<ul>
+<li>与 <strong>Squeezed Attention</strong>（ACL 2025）互补：CoPE 解决位置编码外推，Squeezed Attention 解决 KV-cache 计算加速</li>
+<li>与 <strong>KVCache 压缩</strong>（如 Kara、FreqDepthKV）正交：可同时使用</li>
+</ul>
+<h2 id="5">5. 关键洞察</h2>
+<blockquote>
+<p><strong>"免费午餐"的含义</strong>：CoPE 不需要额外训练数据、不增加模型参数、不改变推理架构，仅在位置编码阶段做一个温和的数学变换。这种极简主义设计使其具有极高的工程可落地性。</p>
+</blockquote>
+<p>对比之前的"长上下文需要大量长序列继续训练"的范式，CoPE 展示了一个重要的方向：<strong>很多长上下文退化问题源于位置编码的数值不稳定，而非模型容量的不足</strong>。</p>
+<hr />
+<h2 id="_2">参考链接</h2>
+<ul>
+<li>论文：https://arxiv.org/abs/2602.05258</li>
+<li>代码：https://github.com/hrlics/CoPE</li>
+<li>HF 模型集：https://huggingface.co/collections/haoranli-ml/cope</li>
+<li>博客解读：https://alanhou.org/blog/arxiv-cope-clipped-rope</li>
+</ul>
+<p><em>学习日期：2026-07-16 | 来源：夜间自学习 cron</em></p>
+<h2 id="_3">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-17-LongStraw.md">LongStraw: 百万Token长上下文RL训练</a> — 训练侧扩展上下文窗口</li>
+<li><a href="./2026-07-15-Prefill-Decode分离架构-DPD.md">Prefill-Decode分离架构 DPD</a> — 推理架构优化</li>
+</ul>
+</body>
+</html>

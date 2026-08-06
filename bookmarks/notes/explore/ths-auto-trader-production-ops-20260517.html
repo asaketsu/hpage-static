@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ths-auto-trader-production-ops-20260517</title>
+
+<meta property="og:title" content="ths-auto-trader-production-ops-20260517" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="_1">同花顺自动化交易 — 实盘部署运维与监控体系</h1>
+<blockquote>
+<p>2026-05-17 | proactive-learn 深度研究 | Topic: ths-auto-trader<br />
+基于 ths-auto-trader 项目代码（39 个 Python 模块）+ 行业实践整理<br />
+知识缺口填补：已有笔记覆盖架构设计、easytrader、QMT/PTrade、止损策略，<br />
+本篇聚焦 <strong>实盘部署、运维监控、故障恢复、合规风控</strong> 四大缺口<br />
+字数: ~3500 | 难度: L4（实战级）</p>
+</blockquote>
+<hr />
+<h2 id="5">一、核心发现（5 个关键发现）</h2>
+<h3 id="1linux-3">发现 1：Linux 部署存在 3 个致命依赖，不解决无法实盘运行</h3>
+<p>项目在 Jetson Orin (aarch64/Linux) 上运行，通过 xdotool 控制 THS Linux 客户端。但实盘部署有 3 个硬性依赖：</p>
+<table>
+<thead>
+<tr>
+<th>依赖</th>
+<th>问题</th>
+<th>解决方案</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>X11 显示服务器</strong></td>
+<td>xdotool 需要活跃 X session，无头模式不可用</td>
+<td>Xvfb 虚拟帧缓冲 + VNC 远程诊断</td>
+<td>P0</td>
+</tr>
+<tr>
+<td><strong>THS 客户端存活</strong></td>
+<td>客户端崩溃/更新后坐标失效</td>
+<td>进程守护 + 健康检查 + 自动重启脚本</td>
+<td>P0</td>
+</tr>
+<tr>
+<td><strong>窗口焦点稳定性</strong></td>
+<td>其他窗口抢占焦点导致误操作</td>
+<td>专用虚拟桌面（Xvfb :99）+ 窗口管理器锁定</td>
+<td>P1</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Xvfb 部署配置</strong>：</p>
+<pre><code class="language-bash"># 1. 安装虚拟帧缓冲
+sudo apt install xvfb x11vnc wmctrl
+
+# 2. 创建专用 DISPLAY
+Xvfb :99 -screen 0 1920x1080x24 &amp;
+export DISPLAY=:99
+
+# 3. 启动窗口管理器（确保窗口可定位）
+fluxbox &amp;
+
+# 4. 启动 THS 客户端
+/opt/apps/cn.com.10jqka/files/HevoNext.B2CApp &amp;
+
+# 5. 等待客户端初始化（CEF 渲染需要 5-15 秒）
+sleep 15
+
+# 6. 校准窗口位置
+wmctrl -r &quot;同花顺&quot; -e 0,0,0,1920,1080
+
+# 7. VNC 远程诊断（可选）
+x11vnc -display :99 -forever -passwd YOUR_VNC_PASS &amp;
+</code></pre>
+<p><strong>systemd 服务单元</strong>：</p>
+<pre><code class="language-ini"># /etc/systemd/system/ths-auto-trader.service
+[Unit]
+Description=THS Auto Trader
+After=network.target display-manager.service
+Wants=xvfb.service
+
+[Service]
+Type=simple
+User=jc
+Environment=DISPLAY=:99
+WorkingDirectory=/home/jc/uclaw/project/ths-auto-trader
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/jc/.venv/bin/python -m ths_auto_trader.cli run --live
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+# 安全限制
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/jc/uclaw/project/ths-auto-trader/data
+
+[Install]
+WantedBy=multi-user.target
+</code></pre>
+<h3 id="2-3">发现 2：项目缺少实时健康监控层，需要 3 级检测机制</h3>
+<p>当前代码有 <code>trading_engine.py</code>（256 行）管理策略→风控→执行闭环，但<strong>没有独立的健康监控进程</strong>。实盘场景必须实现以下 3 级检测：</p>
+<pre><code>Level 1: 进程级（每 10 秒）
+├── THS 客户端进程是否存活？
+├── Xvfb 是否运行？
+├── trading_engine 主循环是否卡死（heartbeat）？
+└── 磁盘空间是否充足（日志膨胀）？
+
+Level 2: 业务级（每 30 秒）
+├── 行情数据是否正常推送？（data_source heartbeat）
+├── 最后一次成功委托距今多久？
+├── 风控熔断器状态是否正常？
+└── 账户余额/持仓是否与券商一致？（定期对账）
+
+Level 3: 市场级（每 5 分钟）
+├── 大盘涨跌异常检测（日跌 &gt; 5% 触发全局暂停）
+├── 流动性检查（目标标的是否停牌/涨跌停）
+├── 波动率突变检测（VIX 类指标）
+└── 交易日历检查（节假日/特殊休市）
+</code></pre>
+<p><strong>健康监控代码框架</strong>：</p>
+<pre><code class="language-python">&quot;&quot;&quot;health_monitor.py — 独立健康监控进程&quot;&quot;&quot;
+import subprocess, time, logging, requests
+from datetime import datetime, timedelta
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+class HealthMonitor:
+    CHECKS = {
+        &quot;ths_process&quot;: {&quot;interval&quot;: 10, &quot;critical&quot;: True},
+        &quot;xvfb&quot;: {&quot;interval&quot;: 10, &quot;critical&quot;: True},
+        &quot;engine_heartbeat&quot;: {&quot;interval&quot;: 30, &quot;critical&quot;: True},
+        &quot;market_data&quot;: {&quot;interval&quot;: 30, &quot;critical&quot;: False},
+        &quot;account_sync&quot;: {&quot;interval&quot;: 300, &quot;critical&quot;: False},
+        &quot;disk_space&quot;: {&quot;interval&quot;: 60, &quot;critical&quot;: False},
+    }
+
+    def check_ths_process(self) -&gt; bool:
+        &quot;&quot;&quot;检查 THS 客户端进程&quot;&quot;&quot;
+        result = subprocess.run(
+            [&quot;pgrep&quot;, &quot;-f&quot;, &quot;HevoNext.B2CApp&quot;],
+            capture_output=True, text=True
+        )
+        if result.returncode != 0:
+            logger.critical(&quot;THS 客户端进程不存在！&quot;)
+            self._restart_ths()
+            return False
+        return True
+
+    def check_engine_heartbeat(self) -&gt; bool:
+        &quot;&quot;&quot;检查交易引擎心跳（通过文件时间戳）&quot;&quot;&quot;
+        hb_file = Path(&quot;data/.heartbeat&quot;)
+        if not hb_file.exists():
+            return False
+        elapsed = time.time() - hb_file.stat().st_mtime
+        if elapsed &gt; 60:  # 1 分钟无心跳
+            logger.critical(f&quot;引擎心跳丢失！已 {elapsed:.0f} 秒&quot;)
+            return False
+        return True
+
+    def check_disk_space(self) -&gt; bool:
+        &quot;&quot;&quot;检查磁盘空间&quot;&quot;&quot;
+        stat = Path(&quot;/&quot;).stat()
+        free_gb = stat.f_bsize * stat.f_bavail / (1024**3)
+        if free_gb &lt; 2.0:
+            logger.warning(f&quot;磁盘空间不足: {free_gb:.1f}GB&quot;)
+            return False
+        return True
+
+    def run_forever(self):
+        &quot;&quot;&quot;主监控循环&quot;&quot;&quot;
+        last_check = {k: 0 for k in self.CHECKS}
+        while True:
+            now = time.time()
+            for name, cfg in self.CHECKS.items():
+                if now - last_check[name] &gt;= cfg[&quot;interval&quot;]:
+                    check_fn = getattr(self, f&quot;check_{name}&quot;, None)
+                    if check_fn:
+                        try:
+                            ok = check_fn()
+                            if not ok and cfg[&quot;critical&quot;]:
+                                self._send_alert(name)
+                        except Exception as e:
+                            logger.error(f&quot;检查 {name} 异常: {e}&quot;)
+                    last_check[name] = now
+            time.sleep(5)
+
+    def _restart_ths(self):
+        &quot;&quot;&quot;自动重启 THS 客户端&quot;&quot;&quot;
+        logger.warning(&quot;尝试自动重启 THS 客户端...&quot;)
+        subprocess.Popen(
+            [&quot;DISPLAY=:99&quot;, &quot;/opt/apps/cn.com.10jqka/files/HevoNext.B2CApp&quot;],
+            shell=True
+        )
+        time.sleep(15)  # 等待 CEF 渲染初始化
+
+    def _send_alert(self, check_name: str):
+        &quot;&quot;&quot;发送告警通知&quot;&quot;&quot;
+        # 复用项目 Notifier 组件
+        from ths_auto_trader.notification import Notification, notifier
+        notifier.send_sync(Notification(
+            title=&quot;⚠️ 系统告警&quot;,
+            body=f&quot;健康检查失败: {check_name}&quot;,
+            level=&quot;error&quot;,
+        ))
+</code></pre>
+<h3 id="3gui-7">发现 3：GUI 自动化下单的 7 类故障需要分级容错策略</h3>
+<p>从 <code>xdotool_broker.py</code> 分析，GUI 自动化面临 7 类故障，需要不同的容错策略：</p>
+<table>
+<thead>
+<tr>
+<th>故障类型</th>
+<th>发生概率</th>
+<th>检测方法</th>
+<th>容错策略</th>
+<th>恢复时间</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>窗口焦点丢失</strong></td>
+<td>高 (10%)</td>
+<td><code>xdotool getactivewindow</code> 对比</td>
+<td>重试 3 次 + wmctrl 强制聚焦</td>
+<td>2-5s</td>
+</tr>
+<tr>
+<td><strong>坐标偏移</strong></td>
+<td>中 (5%)</td>
+<td>截图 + OCR 验证 vs 预期</td>
+<td>重校准 + 固定窗口位置</td>
+<td>10-30s</td>
+</tr>
+<tr>
+<td><strong>弹窗阻断</strong></td>
+<td>低 (3%)</td>
+<td>截图检测异常 UI 元素</td>
+<td>自动关闭已知弹窗 + 告警</td>
+<td>5-15s</td>
+</tr>
+<tr>
+<td><strong>网络断连</strong></td>
+<td>低 (2%)</td>
+<td>心跳检测 + socket 状态</td>
+<td>指数退避重连 + 暂停交易</td>
+<td>30-120s</td>
+</tr>
+<tr>
+<td><strong>THS 客户端崩溃</strong></td>
+<td>极低 (1%)</td>
+<td>进程检测</td>
+<td>自动重启 + 重新登录</td>
+<td>30-60s</td>
+</tr>
+<tr>
+<td><strong>验证码弹窗</strong></td>
+<td>罕见 (0.5%)</td>
+<td>截图 OCR</td>
+<td>人工介入 + 暂停交易</td>
+<td>需人工</td>
+</tr>
+<tr>
+<td><strong>X11 服务器崩溃</strong></td>
+<td>极罕见 (0.1%)</td>
+<td>DISPLAY 检测</td>
+<td>重启 Xvfb + 全链路重建</td>
+<td>60-120s</td>
+</tr>
+</tbody>
+</table>
+<p><strong>容错核心模式 — 重试 + 降级 + 暂停</strong>：</p>
+<pre><code class="language-python"># 在 xdotool_broker.py 中应增加的容错装饰器
+import functools, time, logging
+
+def with_retry(max_retries=3, backoff=2.0, recoverable_errors=None):
+    &quot;&quot;&quot;GUI 操作容错装饰器&quot;&quot;&quot;
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_error = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_error = e
+                    error_type = type(e).__name__
+                    # 不可恢复错误直接抛出
+                    if recoverable_errors and error_type not in recoverable_errors:
+                        raise
+                    wait = backoff * (2 ** attempt)
+                    logger.warning(
+                        f&quot;[{func.__name__}] 第 {attempt+1} 次失败: {e}，&quot;
+                        f&quot;等待 {wait:.1f}s 重试&quot;
+                    )
+                    # 尝试恢复操作
+                    self = args[0]
+                    self._ensure_focus()  # 重新获取焦点
+                    self._dismiss_popups()  # 关闭弹窗
+                    time.sleep(wait)
+            raise last_error  # 所有重试失败
+        return wrapper
+    return decorator
+</code></pre>
+<h3 id="4a-5">发现 4：A股程序化交易合规红线 — 5 条不可逾越的监管要求</h3>
+<p>2024-2025 年证监会加强了对程序化交易的监管，以下红线必须在系统设计层面遵守：</p>
+<table>
+<thead>
+<tr>
+<th>红线</th>
+<th>监管要求</th>
+<th>系统实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>报备义务</strong></td>
+<td>程序化交易投资者需向券商报备</td>
+<td>首次使用前完成报备流程</td>
+</tr>
+<tr>
+<td><strong>撤单率限制</strong></td>
+<td>撤单率不得超过 50%</td>
+<td><code>risk_manager.py</code> 增加 <code>cancel_rate</code> 检查</td>
+</tr>
+<tr>
+<td><strong>高频交易认定</strong></td>
+<td>24 万笔/天或 2 万笔/小时</td>
+<td>每日交易计数器 + 软限制告警</td>
+</tr>
+<tr>
+<td><strong>异常交易监控</strong></td>
+<td>不得影响或操纵市场</td>
+<td>单标的日交易次数限制</td>
+</tr>
+<tr>
+<td><strong>瞬间大幅波动</strong></td>
+<td>不得在开盘/收盘集合竞价期间大量报撤</td>
+<td>时段过滤（9:25-9:30 / 14:57-15:00 禁止交易）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>合规时段过滤代码</strong>：</p>
+<pre><code class="language-python"># 在 trading_engine.py 中应增加
+from datetime import time as dt_time
+
+FORBIDDEN_PERIODS = [
+    (dt_time(9, 25), dt_time(9, 30)),   # 开盘集合竞价
+    (dt_time(11, 28), dt_time(13, 1)),   # 午休前后
+    (dt_time(14, 57), dt_time(15, 0)),   # 收盘集合竞价
+]
+
+def is_trading_allowed(now_time) -&gt; bool:
+    &quot;&quot;&quot;检查当前时间是否允许交易&quot;&quot;&quot;
+    for start, end in FORBIDDEN_PERIODS:
+        if start &lt;= now_time &lt;= end:
+            return False
+    return True
+</code></pre>
+<h3 id="5-3">发现 5：项目数据对账机制缺失，需要 3 层一致性校验</h3>
+<p>当前 <code>data_source.py</code> 使用 akshare（主）+ tushare（备），<code>storage/database.py</code> 用 SQLite 记录交易，但<strong>缺少系统持仓与券商实际持仓的对账机制</strong>。这是实盘最大的隐性风险：</p>
+<pre><code>对账层次：
+
+Layer 1: 信号一致性
+├── 系统记录的买入信号 ↔ 实际成交记录
+├── 检测频率：每笔交易后
+└── 不一致处理：暂停交易 + 告警
+
+Layer 2: 持仓一致性
+├── 系统计算的持仓 ↔ 券商实际持仓
+├── 检测频率：每日收盘后
+└── 不一致处理：以券商为准 + 记录差异日志
+
+Layer 3: 资金一致性
+├── 系统记录的可用资金 ↔ 券商实际可用资金
+├── 检测频率：每日开盘前 + 收盘后
+└── 差异 &gt; 0.5% → 暂停交易 + 人工确认
+</code></pre>
+<p><strong>对账实现框架</strong>：</p>
+<pre><code class="language-python">class AccountReconciler:
+    &quot;&quot;&quot;账户对账器 — 系统状态 vs 券商实际状态&quot;&quot;&quot;
+
+    def daily_reconcile(self, system_state: Account, broker_state: dict):
+        &quot;&quot;&quot;每日对账&quot;&quot;&quot;
+        mismatches = []
+
+        # 持仓对账
+        for code, sys_pos in system_state.positions.items():
+            broker_qty = broker_state.get(code, {}).get(&quot;quantity&quot;, 0)
+            if sys_pos.quantity != broker_qty:
+                mismatches.append({
+                    &quot;type&quot;: &quot;position_mismatch&quot;,
+                    &quot;code&quot;: code,
+                    &quot;system&quot;: sys_pos.quantity,
+                    &quot;broker&quot;: broker_qty,
+                    &quot;diff&quot;: sys_pos.quantity - broker_qty,
+                })
+
+        # 资金对账
+        cash_diff = abs(system_state.available_cash - broker_state[&quot;available_cash&quot;])
+        cash_pct = cash_diff / max(system_state.total_assets, 1)
+        if cash_pct &gt; 0.005:  # 0.5% 阈值
+            mismatches.append({
+                &quot;type&quot;: &quot;cash_mismatch&quot;,
+                &quot;system&quot;: system_state.available_cash,
+                &quot;broker&quot;: broker_state[&quot;available_cash&quot;],
+                &quot;diff_pct&quot;: f&quot;{cash_pct:.2%}&quot;,
+            })
+
+        if mismatches:
+            self._alert_mismatches(mismatches)
+            # 严重不一致 → 暂停交易
+            if any(m[&quot;type&quot;] == &quot;position_mismatch&quot; and abs(m[&quot;diff&quot;]) &gt; 100
+                   for m in mismatches):
+                self._suspend_trading()
+
+        return mismatches
+</code></pre>
+<hr />
+<h2 id="_2">二、完整运维架构图</h2>
+<pre><code>┌──────────────────────────────────────────────────────────────┐
+│                    运维监控层                                   │
+│  HealthMonitor ─── AlertManager ─── Feishu/WeChat 通知        │
+│  (独立进程)         (告警聚合)          (推送通道)              │
+├──────────────────────────────────────────────────────────────┤
+│                    交易引擎层                                   │
+│  TradingEngine ─── RiskManager ─── Broker ─── 对账器          │
+│  (主循环)           (五层风控)       (xdotool)   (Reconciler) │
+├──────────────────────────────────────────────────────────────┤
+│                    基础设施层                                   │
+│  Xvfb :99 ─── THS Client ─── akshare/tushare ─── SQLite      │
+│  (虚拟显示)    (交易终端)       (数据源)            (存储)     │
+├──────────────────────────────────────────────────────────────┤
+│                    系统服务层                                   │
+│  systemd: ths-auto-trader.service                             │
+│  logrotate: /etc/logrotate.d/ths-auto-trader                  │
+│  crontab: 每日 08:30 预检 + 15:05 收盘对账                    │
+└──────────────────────────────────────────────────────────────┘
+</code></pre>
+<hr />
+<h2 id="_3">三、实践启发</h2>
+<h3 id="31">3.1 部署清单（实盘前必检）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>检查项</th>
+<th>验证方法</th>
+<th>不通过处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Xvfb 运行正常</td>
+<td><code>xdpyinfo -display :99</code></td>
+<td>重启 Xvfb</td>
+</tr>
+<tr>
+<td>2</td>
+<td>THS 客户端已登录</td>
+<td>截图 OCR 检查登录状态</td>
+<td>人工登录</td>
+</tr>
+<tr>
+<td>3</td>
+<td>行情数据可达</td>
+<td><code>curl -s "https://akshare-api-test"</code></td>
+<td>检查网络</td>
+</tr>
+<tr>
+<td>4</td>
+<td>通知通道可用</td>
+<td>发送测试消息</td>
+<td>检查 Webhook</td>
+</tr>
+<tr>
+<td>5</td>
+<td>磁盘空间 &gt; 5GB</td>
+<td><code>df -h /home/jc</code></td>
+<td>清理日志</td>
+</tr>
+<tr>
+<td>6</td>
+<td>坐标校准确</td>
+<td>截图 + OCR 验证下单界面</td>
+<td>重新校准</td>
+</tr>
+<tr>
+<td>7</td>
+<td>时段过滤生效</td>
+<td>模拟 9:25 的交易请求被拒绝</td>
+<td>检查 config</td>
+</tr>
+<tr>
+<td>8</td>
+<td>风控参数合理</td>
+<td>模拟超额委托被拒绝</td>
+<td>检查 risk.yaml</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32">3.2 日志与审计</h3>
+<pre><code class="language-yaml"># 推荐的日志轮转配置
+# /etc/logrotate.d/ths-auto-trader
+/home/jc/uclaw/project/ths-auto-trader/data/logs/*.log {
+    daily
+    rotate 90           # 保留 90 天（合规要求）
+    compress
+    delaycompress
+    missingok
+    notifempty
+    dateext
+    dateformat -%Y%m%d
+}
+</code></pre>
+<h3 id="33">3.3 灾难恢复</h3>
+<table>
+<thead>
+<tr>
+<th>故障场景</th>
+<th>恢复 SOP</th>
+<th>RTO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>引擎进程崩溃</td>
+<td>systemd 自动重启</td>
+<td>30s</td>
+</tr>
+<tr>
+<td>THS 客户端崩溃</td>
+<td>HealthMonitor 检测 → 自动重启 → 重新校准</td>
+<td>60s</td>
+</tr>
+<tr>
+<td>X11 崩溃</td>
+<td>重启 Xvfb → 重启 THS → 重启引擎</td>
+<td>120s</td>
+</tr>
+<tr>
+<td>整机重启</td>
+<td>systemd 依赖链自动拉起</td>
+<td>5min</td>
+</tr>
+<tr>
+<td>数据损坏</td>
+<td>SQLite 备份恢复（每日自动备份）</td>
+<td>10min</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">四、知识缺口与后续探索方向</h2>
+<table>
+<thead>
+<tr>
+<th>缺口</th>
+<th>重要度</th>
+<th>探索建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>THS Linux 客户端实际坐标校准流程</td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>需在实机实测，记录校准 SOP</td>
+</tr>
+<tr>
+<td>akshare 在 aarch64 上的稳定性</td>
+<td>⭐⭐⭐⭐</td>
+<td>Jetson 环境跑 7 天压测</td>
+</tr>
+<tr>
+<td>网页版同花顺 Playwright 自动化</td>
+<td>⭐⭐⭐⭐</td>
+<td>可能比 xdotool 更稳定</td>
+</tr>
+<tr>
+<td>easytrader 在 Wine 下的兼容性</td>
+<td>⭐⭐⭐</td>
+<td>备选方案评估</td>
+</tr>
+<tr>
+<td>THS 客户端更新后自动适配</td>
+<td>⭐⭐⭐⭐</td>
+<td>图像识别自动校准坐标</td>
+</tr>
+<tr>
+<td>合规报备流程实操</td>
+<td>⭐⭐⭐⭐⭐</td>
+<td>向券商咨询具体流程</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="ths-auto-trader">五、对 ths-auto-trader 项目的代码建议</h2>
+<p>基于本次研究，建议对项目代码做以下补充：</p>
+<ol>
+<li><strong>新增 <code>health_monitor.py</code></strong> — 独立监控进程（上面已给出框架）</li>
+<li><strong>新增 <code>reconciler.py</code></strong> — 对账器模块（在 execution/ 下）</li>
+<li><strong><code>xdotool_broker.py</code> 增加 <code>with_retry</code> 装饰器</strong> — 7 类故障容错</li>
+<li><strong><code>trading_engine.py</code> 增加时段过滤</strong> — 合规要求</li>
+<li><strong><code>risk_manager.py</code> 增加撤单率检查</strong> — 监管红线</li>
+<li><strong>新增 <code>deploy/</code> 目录</strong> — 含 systemd unit、logrotate、校准脚本</li>
+</ol>
+<hr />
+<h2 id="_5">六、进化评估</h2>
+<table>
+<thead>
+<tr>
+<th>内容</th>
+<th>评估</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GUI 自动化容错模式（重试+降级+暂停）</td>
+<td>可复用，≥3 次场景适用</td>
+<td>✅ 建议创建 <code>gui-automation-resilience</code> skill</td>
+</tr>
+<tr>
+<td>A股合规时段过滤规则</td>
+<td>可复用，所有 A 股量化项目都需要</td>
+<td>✅ 写入 memory</td>
+</tr>
+<tr>
+<td>systemd + Xvfb 部署配置</td>
+<td>可复用，所有 Linux GUI 自动化场景</td>
+<td>✅ 写入 memory</td>
+</tr>
+<tr>
+<td>健康监控 3 级检测框架</td>
+<td>通用模式</td>
+<td>✅ 可整合到现有 monitoring 相关 skill</td>
+</tr>
+<tr>
+<td>对账器框架</td>
+<td>项目特有</td>
+<td>仅存笔记</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-06-wencai-stock-picker-notes.md">wencai-stock-picker-notes</a></li>
+<li><a href="../2026-04-10-OpenClaw-4-things-persistent-tasks.md">OpenClaw-4-things-persistent-tasks</a></li>
+<li><a href="../2026-04-11-stock-trading-discipline-washout.md">stock-trading-discipline-washout</a></li>
+<li><a href="../2026-04-24-通达信tdxquant量化模拟交易封装.md">通达信tdxquant量化模拟交易封装</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-05-08-MACD-KDJ共振策略.md">MACD-KDJ共振策略</a></li>
+<li><a href="../2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="../2026-05-11-RSI布林带组合策略.md">RSI布林带组合策略</a></li>
+<li><a href="../2026-05-11-板块轮动资金流向分析.md">板块轮动资金流向分析</a></li>
+<li><a href="../2026-05-18-板块轮动概念轮动.md">板块轮动概念轮动</a></li>
+<li><a href="2026-05-06-rsi-bollinger-strategy.md">rsi-bollinger-strategy</a></li>
+<li><a href="2026-05-06-板块轮动与北向资金流向.md">板块轮动与北向资金流向</a></li>
+<li><a href="2026-05-09-技术指标组合策略-多指标确认.md">技术指标组合策略-多指标确认</a></li>
+<li><a href="2026-05-17-动态止损策略对比.md">动态止损策略对比</a></li>
+<li><a href="2026-05-17-北向资金主力资金流向指标有效性验证-深度研究.md">北向资金主力资金流向指标有效性验证-深度研究</a></li>
+<li><a href="2026-05-17-北向资金主力资金流向指标有效性验证.md">北向资金主力资金流向指标有效性验证</a></li>
+<li><a href="2026-05-17-实盘模拟vs真实交易技术差异.md">实盘模拟vs真实交易技术差异</a></li>
+<li><a href="2026-05-18-ths-auto-trader-2025-2026-tech-ecosystem-update.md">ths-auto-trader-2025-2026-tech-ecosystem-update</a></li>
+<li><a href="2026-05-19-VLA-AD视觉语言动作策略蒸馏.md">VLA-AD视觉语言动作策略蒸馏</a></li>
+<li><a href="2026-05-19-ths-auto-trader-api-era-ecosystem.md">ths-auto-trader-api-era-ecosystem</a></li>
+<li><a href="2026-05-19-板块轮动-北向资金.md">板块轮动-北向资金</a></li>
+<li><a href="2026-05-19-板块轮动-概念轮动.md">板块轮动-概念轮动</a></li>
+<li><a href="easytrader-deep-dive-2026-05-17.md">easytrader-deep-dive-2026-05-17</a></li>
+<li><a href="ths-auto-trader-2025-2026-ecosystem-update.md">ths-auto-trader-2025-2026-ecosystem-update</a></li>
+<li><a href="ths-auto-trader-2026.md">ths-auto-trader-2026</a></li>
+<li><a href="ths-auto-trader-20260517.md">ths-auto-trader-20260517</a></li>
+<li><a href="ths-auto-trader-architecture-deep-dive-20260517.md">ths-auto-trader-architecture-deep-dive-20260517</a></li>
+<li><a href="ths-auto-trader-deep-dive.md">ths-auto-trader-deep-dive</a></li>
+<li><a href="ths-auto-trader-deep-learn.md">ths-auto-trader-deep-learn</a></li>
+<li><a href="ths-auto-trader-ecosystem-update-20260518.md">ths-auto-trader-ecosystem-update-20260518</a></li>
+<li><a href="ths-auto-trader-qmt-xtquant-tick-strategy-20260518.md">ths-auto-trader-qmt-xtquant-tick-strategy-20260518</a></li>
+<li><a href="ths-auto-trader-update-20260519.md">ths-auto-trader-update-20260519</a></li>
+<li><a href="ths-jqktrader-ecosystem-update-20260518.md">ths-jqktrader-ecosystem-update-20260518</a></li>
+<li><a href="../stock-analysis-system.md">stock-analysis-system</a></li>
+<li><a href="../tdx-quant-trader.md">tdx-quant-trader</a></li>
+</ul>
+</body>
+</html>

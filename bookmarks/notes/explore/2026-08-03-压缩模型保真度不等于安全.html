@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>压缩模型保真度不等于安全</title>
+
+<meta property="og:title" content="压缩模型保真度不等于安全" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="fidelity-is-not-safety-llm-agent">Fidelity Is Not Safety：压缩 LLM 通过所有质量检查却在 Agent 执行中编造步骤</h1>
+<blockquote>
+<p>论文笔记 | 2026-08-03 | arXiv:2607.28196 | 领域: cs.CL / LLM 压缩安全</p>
+</blockquote>
+<h2 id="_1">元数据</h2>
+<ul>
+<li><strong>标题</strong>: Fidelity Is Not Safety: Gently-Compressed LLMs Pass Every Data-Free Quality Guard Yet Invent Procedure Steps in Agentic Execution</li>
+<li><strong>作者</strong>: I. Kennedy, T. Kennedy</li>
+<li><strong>日期</strong>: 2026-07-30（提交）</li>
+<li><strong>arXiv ID</strong>: 2607.28196</li>
+<li><strong>领域</strong>: Computation and Language (cs.CL)</li>
+<li><strong>DOI</strong>: 10.48550/arXiv.2607.28196</li>
+<li><strong>链接</strong>: https://arxiv.org/abs/2607.28196</li>
+</ul>
+<hr />
+<h2 id="1">1. 核心问题与研究动机</h2>
+<p><strong>一句话</strong>: 团队用 perplexity + MMLU + 数据免费保真度探针（CKA）这套标准"质量门禁"来决定压缩后的 LLM 是否可以部署，但这些门禁完全检测不到一个致命的 Agent 行为失败——模型在执行标准操作程序（SOP）时会<strong>编造从未在指令中出现的步骤</strong>。</p>
+<p><strong>现实场景</strong>: 压缩（量化、低秩分解、剪枝）是 LLM 落地的必经之路。一个团队的标准验收流程是：<br />
+- Perplexity 在源模型的 1.15× 以内<br />
+- MMLU 等下游任务精度在置信区间内<br />
+- 数据免费的表示保真度信号（如 CKA）通过</p>
+<p><strong>本文发现的盲区</strong>: 一个通过全部三项检查的压缩构建，在被驱动执行 SOP 时，会发出不存在于任何指令中的步骤——它"虚构"了程序。这不是精度下降，而是一种全新的行为失败模式。</p>
+<p><strong>Goodhart 定律的直接实例</strong>: 一旦代理指标（perplexity/MMLU/fidelity）成为验收目标，构建会满足代理指标但仍然在真实目标（忠实程序执行）上失败。</p>
+<hr />
+<h2 id="2-setup">2. 实验设计（Setup）</h2>
+<h3 id="agent-canary">Agent 金丝雀（Canary）</h3>
+<p>构造合成 SOP：10 个有序步骤 + 1 个条件第 11 步，将目标 SOP 和干扰 SOP 放入上下文，要求模型枚举精确的有序步骤。每个查询评分：<br />
+- <strong>step recall</strong>: 目标自身步骤的复现比例<br />
+- <strong>branch correctness</strong>: 条件分支是否正确<br />
+- <strong>cross-procedure invention（invented_x）</strong>: 决定性指标——从全局 SOP 词汇表中提取的、不在目标 SOP 中且非其自身条件的步骤字符串数量</p>
+<p>预注册：24 SOPs × 3 seeds = 144 paired events/arm</p>
+<h3 id="_2">压缩算子</h3>
+<p>在<strong>匹配 perplexity 剂量</strong>下对比：<br />
+- <strong>相干低秩</strong>（coherent low-rank）: per-tensor SVD 截断<br />
+- <strong>不相干剪枝</strong>（incoherent magnitude pruning）: 均匀、未重缩放<br />
+- 量化作为剂量控制</p>
+<h3 id="_3">保真度门禁</h3>
+<ul>
+<li>WikiText-2 perplexity（40×1024 窗口）</li>
+<li>MMLU 0-shot（513 题，57 学科）</li>
+<li>数据免费输出保真度探针（CKA 或 compressed-vs-source 激活余弦）</li>
+</ul>
+<p>"在域内"（in-regime）= ppl ≤ 1.15× baseline</p>
+<hr />
+<h2 id="3">3. 核心发现：盲区与解离</h2>
+<h3 id="_4">发现一：盲区——压缩构建在域内却编造步骤</h3>
+<p>跨三种架构的 Table 1 数据：</p>
+<ul>
+<li><strong>Qwen3-8B</strong>: in-regime SVD (ppl 1.17×) 编造 +0.208 步/查询 [0.042, 0.375]，damage-matched prune = 0.000 [0, 0]</li>
+<li><strong>Mistral-7B</strong>: in-regime SVD (ppl 1.069×) 编造 +1.729 步/查询 [1.076, 2.424]（3 个 seed 分别 2.06/1.90/1.85），damage-matched prune = -0.146 [-0.375, +0.035]</li>
+<li><strong>Llama-3.1-8B</strong>: in-regime SVD (ppl 1.089×) = +0.056 [0, 0.167]（Llama 的谱空间小，SVD 在到达编造阈值前就崩塌了 perplexity）；dose SVD (ppl 1.29×) = +1.285 [0.743, 1.882]，damage-matched prune = +0.069 [0.021, 0.125]，差距 18×</li>
+</ul>
+<p><strong>关键结论</strong>: 在匹配 perplexity 下，<strong>相干算子（SVD）失败，不相干算子（剪枝）不失败</strong>。这种算子特异性在三种架构上均成立。</p>
+<h3 id="_5">发现二：解离——同一权重对立判决</h3>
+<p>最强证据在单臂内部：Qwen3-8B 的 probe-allocated b98 SVD 构建——<br />
+- <strong>CI 赢得</strong>配对输出保真度测试（rand-probe NLL [0.024, 0.036] 和 [0.062, 0.076]）<br />
+- <strong>CI 失败</strong>金丝雀（+0.643 [0.171, 1.229]）</p>
+<p><strong>同一组张量上，保真度通过且行为破碎同时成立。</strong> 这不是调参问题，而是构造性证明：验证保真度的信号在这里无法验证 Agent 安全。</p>
+<h3 id="scope-boundary">发现三：谱条件性（Scope Boundary）</h3>
+<p>盲区（坏行为在 perplexity guard 内）需要模型允许足够的域内低秩截断来达到编造阈值：<br />
+- Qwen3-8B (1.17×) 和 Mistral-7B (1.069×) 有谱余量 → 暴露盲区<br />
+- Llama-3.1-8B 谱空间小 → SVD 在编造阈值前就崩塌 perplexity → perplexity guard "意外地"捕获了有毒 SVD</p>
+<p>算子机制是架构通用的，但 perplexity guard 的规避取决于域内谱余量。</p>
+<hr />
+<h2 id="4">4. 机制：相干 × 速率，而非损伤</h2>
+<p><strong>核心洞察</strong>: 决定编造行为的不是误差的绝对幅度（damage），而是<strong>误差的相干性（coherence）× 速率（rate）</strong>。</p>
+<ul>
+<li>在匹配 perplexity 下：相干算子（SVD）失败，不相干算子（damage-matched 剪枝）通过</li>
+<li>量化剂量控制：携带比失败 SVD 更多原始 perplexity 损伤的量化仍然通过；但量化被推到失败 SVD 的速率（1.05×）时也开始失败（Δ+0.10 [0.029, 0.20], n=70）</li>
+<li>编造启动很早，在 2% perplexity 剂量内</li>
+<li>效应是分布式的而非局部化的</li>
+<li>与 MMLU <strong>双解离</strong>: 量化可以 CI-cleanly 降级 MMLU 并通过金丝雀，而 SVD 恰好相反</li>
+</ul>
+<p><strong>为什么相干误差更危险</strong>: 低秩截断移除的是系统性的、结构化的信息（主奇异方向），这种结构化损失扭曲了模型的程序忠实性而不影响 perplexity。剪枝移除的是分散的、随机的小权重，对整体行为影响更均匀。</p>
+<hr />
+<h2 id="5">5. 数据免费检测器</h2>
+<h3 id="_6">两轴检测公式</h3>
+<p>对压缩误差 ΔW = W_base − W_mod，在线性张量上聚合（能量加权）：</p>
+<p><strong>coherent_fraction</strong>（误差是否低秩/结构化）:<br />
+- k=8 前奇异值能量 / 总 Frobenius 能量<br />
+- = Σ_t σ²_{1:k}(ΔW_t) / Σ_t ‖ΔW_t‖²_F</p>
+<p><strong>error_rate</strong>（剂量是否足够大）:<br />
+- = Σ_t ‖ΔW_t‖²_F / Σ_t ‖W_t‖²_F</p>
+<p>两个统计量<strong>都不需要数据</strong>: 前者用随机化子空间迭代获取 top 奇异值；对 SVD 构建，ΔW 是丢弃的奇异尾部。</p>
+<h3 id="_7">门禁规则</h3>
+<p><strong>coherent_fraction &gt; 0.007 ∧ error_rate &gt; 0.01</strong>（两种架构上相同的固定阈值）</p>
+<p>单个统计量不够：<br />
+- coherent_fraction 单独会标记通过的温和低秩构建<br />
+- error_rate 单独会标记通过的重量级剪枝<br />
+- 它们的乘积让大速率掩盖低相干<br />
+- <strong>它们的合取（conjunction）才有效</strong></p>
+<h3 id="table-2-vs">Table 2: 检测器 vs 金丝雀标签</h3>
+<ul>
+<li>Mistral in-regime SVD: coh=0.0080, rate=1.59e-2 → FAIL/FAIL ✓</li>
+<li>Mistral dose SVD: coh=0.0079, rate=3.10e-2 → FAIL/FAIL ✓</li>
+<li>Mistral prune: coh=0.0054, rate=3.19e-2 → pass/PASS ✓</li>
+<li>Llama in-regime SVD: coh=0.0090, rate=6.50e-3 → pass/PASS ✓（rate 门禁正确放行）</li>
+<li>Llama dose SVD: coh=0.0090, rate=1.21e-2 → FAIL/FAIL ✓</li>
+<li>Llama prune: coh=0.0060, rate=7.26e-3 → pass/PASS ✓</li>
+</ul>
+<p><strong>6/6 正确分类</strong>，固定阈值跨架构。9×9 密集扫描确认边界真实而非三剂量产物。</p>
+<h3 id="_8">检测器边界</h3>
+<ul>
+<li>最极端剪枝（Llama density 0.50，移除一半权重）的 coherent_fraction 刚过门禁——标记为未验证预测</li>
+<li>阈值仅拟合 SVD 和剪枝算子族，7-8B dense 规模</li>
+<li>未测试 MoE 架构（但一个先前的低比特专家 MoE 构建通过 QA 却失败金丝雀，与本文一致）</li>
+</ul>
+<hr />
+<h2 id="6">6. 创新点分析</h2>
+<ol>
+<li>
+<p><strong>首次定义"压缩-解离"失败模式</strong>: 不是"精度下降导致偶尔出错"，而是"保真度认证通过但程序忠实性系统性崩溃"。这是一种全新的失败分类法。</p>
+</li>
+<li>
+<p><strong>算子特异性 vs 损伤幅度的范式转换</strong>: 传统压缩评估只看"压缩了多少"（damage），本文证明"如何压缩"（operator coherence）才是决定行为安全的关键。SVD（结构化）和剪枝（随机）在相同 perplexity 下行为表现截然不同。</p>
+</li>
+<li>
+<p><strong>构造性解离证明</strong>: 不是统计趋势，而是同一组权重同时通过保真度测试、失败金丝雀——这是逻辑上的不可能（如果保真度=安全），用实验直接否定。</p>
+</li>
+<li>
+<p><strong>可部署的数据免费检测器</strong>: 不是仅指出问题，而是提供固定阈值的两轴门禁规则，跨架构通用，不需要标注数据。</p>
+</li>
+<li>
+<p><strong>Goodhart 定律的 LLM 压缩实例化</strong>: 将经典博弈论概念（指标优化不等于目标优化）落地到 LLM 部署质量保证体系中。</p>
+</li>
+</ol>
+<hr />
+<h2 id="7">7. 局限性与未来方向</h2>
+<h3 id="_9">论文自述局限</h3>
+<ul>
+<li>仅测试三种 7-8B dense decoder LM（Qwen3-8B, Mistral-7B, Llama-3.1-8B）</li>
+<li>金丝雀是合成 SOP，base-model prompted（非 instruction-tuned），绝对编造率是仪器特定的</li>
+<li>对比结果（SVD vs matched prune）承载结论，而非跨模型绝对水平</li>
+<li>perplexity guard 规避是谱条件的，取决于域内低秩余量</li>
+<li>检测器阈值仅适用于 SVD/pruning 算子族，7-8B dense 规模</li>
+<li>未测试 MoE（但旁证一致）</li>
+<li>仅证明 guard stack 错过了这一失败模式，未声称该失败穷尽了 Agent 行为</li>
+</ul>
+<h3 id="_10">延伸局限分析</h3>
+<ul>
+<li><strong>instruction-tuned/chat 模型未测</strong>: 论文用的是 base model + chat template fallback，真实的对话模型（经 RLHF/DPO）是否有相同盲区未知。经对话对齐的模型可能因指令遵循训练而部分抑制编造，但也可能因分布偏移而更脆弱。</li>
+<li><strong>真实世界 SOP 未测</strong>: 合成 SOP 结构简单（10 步 + 1 条件），真实生产 SOP（如 DevOps 部署流程、金融交易流程）更复杂，编造风险可能更高。</li>
+<li><strong>多模态压缩未测</strong>: 论文提到 CKA 探针对 text/image/video diffusion/audio 都适用，但 Agent 行为盲区在多模态场景的表现未知。</li>
+<li><strong>量化-蒸馏-剪枝组合未测</strong>: 生产中常组合多种压缩，叠加效应可能非线性。</li>
+</ul>
+<hr />
+<h2 id="8-hermes-agent-jetson-orin">8. 借鉴点（关联 Hermes Agent / Jetson Orin / 量化交易）</h2>
+<h3 id="p0-hermes-agent">🔨 P0 — Hermes 量化模型部署前 Agent 行为检测器</h3>
+<p><strong>直接移植</strong>。论文提供了完整的数据免费两轴检测器（coherent_fraction + error_rate），可在 Hermes 部署任何量化/压缩模型到 Jetson 前运行。</p>
+<p>具体实现：<br />
+- 对 W_base − W_mod 计算 coherent_fraction（top-8 奇异值能量比）和 error_rate（Frobenius 能量比）<br />
+- 门禁: coherent_fraction &gt; 0.007 ∧ error_rate &gt; 0.01 → 标记为 Agent 不安全<br />
+- 可整合到现有的 <code>model-adapter</code> 或 <code>gguf-quantization</code> skill 中作为 pre-flight check<br />
+- 预计工作量：1 个 Python 脚本 + 整合到部署流程（2-4 小时）</p>
+<h3 id="p0-hermes-sop">🔨 P0 — Hermes SOP 忠实性金丝雀</h3>
+<p><strong>可移植</strong>。论文的合成 SOP 金丝雀（10 步 + 条件第 11 步）可以直接构造为 Hermes 的 Agent 行为回归测试：<br />
+- 构造 5-10 个覆盖常见 Hermes 工作流（邮件发送/笔记创建/飞书消息）的合成 SOP<br />
+- 每次模型切换或压缩后运行，检测 cross-procedure invention<br />
+- 这填补了当前 Hermes 模型切换后仅靠"手动试用"验证的空白<br />
+- 关联 <code>model-switch</code> skill 和 <code>verification-gate</code> skill</p>
+<h3 id="p1-jetson">⚠️ P1 — Jetson 量化策略重评估</h3>
+<p><strong>需工程改造</strong>。当前 Jetson Orin 上的量化方案（GGUF Q4/Q8）主要用 perplexity 和主观体感验证。本文揭示：<br />
+- 如果量化引入了<strong>相干低秩误差</strong>（某些结构化量化方案可能如此），即使 perplexity 变化小也可能有 Agent 行为风险<br />
+- 应额外检查量化误差的结构化程度<br />
+- 可能需要优先使用"不相干"量化方案（如 round-to-nearest）而非结构化量化</p>
+<h3 id="p1-agent">⚠️ P1 — 量化交易 Agent 编造步骤风险</h3>
+<p><strong>需验证</strong>。量化交易 Agent 执行 SOP（信号检测→下单→风控→对冲）时，如果底层模型被压缩：<br />
+- 编造一个不存在的步骤（如"检查隔夜持仓保证金"）可能导致错误操作<br />
+- 应为交易 Agent 增加 step-instruction 对齐检查：每个工具调用的参数必须可追溯到 SOP 定义<br />
+- 关联 <code>a-stock-quant-system</code> 和 <code>requesting-code-review</code> 中的 verification gate</p>
+<h3 id="p2">❌ P2 — 检测器阈值校准</h3>
+<p><strong>暂不适用</strong>。论文的固定阈值（0.007/0.01）仅校准于 7-8B dense 模型。Hermes 使用更大的模型（如 GLM-5.2），阈值可能不同。需在目标模型上重跑金丝雀校准，但论文提供了方法论框架。</p>
+<hr />
+<h2 id="_11">关联论文</h2>
+<ul>
+<li><strong>2607.27275</strong> (Flat Score, Amplified Failures) — 同期论文，研究 4-bit 量化在 τ²-bench Agent 上的误差预算掩盖效应，与本文互补（量化视角 vs 低秩视角）</li>
+<li><strong>2607.08032</strong> (Memory Compaction Rate-Distortion) — 记忆压缩的率失真框架，可参考其可逆/不可逆压缩分类来理解本文的"相干/不相干"算子分类</li>
+<li><strong>2607.14275</strong> (Context-Engineering Quality) — 七维上下文质量评分，本文的 Agent 行为检测可作为第八维（"模型压缩质量"）</li>
+<li><strong>2607.18316</strong> (Binding Drift) — 多步 Agent 实体绑定漂移，与本文的"编造步骤"是不同层面的 Agent 失败，可联合构建 Hermes Agent 安全评估体系</li>
+</ul>
+<hr />
+<h2 id="_12">内容整理</h2>
+<p>本文的核心论点链条可以浓缩为一条逻辑线：</p>
+<p>标准压缩验收门禁（ppl + MMLU + CKA）→ 检测不到 Agent 行为失败 → 相干低秩误差是元凶 → 误差相干性 × 速率决定编造行为，而非损伤幅度 → 两轴数据免费检测器（coherent_fraction &gt; 0.007 ∧ error_rate &gt; 0.01）可预判 → 压缩验收和 Agent 部署必须是两道独立门禁。</p>
+<p>关键概念定义：<br />
+- <strong>invented_x（编造步骤数）</strong>: 模型从全局 SOP 词汇表中输出的不属于目标 SOP 且非其条件分支的步骤字符串数量，是本文的核心评估指标<br />
+- <strong>相干误差（coherent error）</strong>: 低秩截断产生的结构化误差（如 SVD 丢弃主奇异方向），扭曲程序忠实性但不影响 perplexity<br />
+- <strong>不相干误差（incoherent error）</strong>: 随机分散的误差（如均匀剪枝小权重），对整体行为影响均匀<br />
+- <strong>解离（dissociation）</strong>: 同一组模型权重同时通过保真度测试、失败金丝雀测试的逻辑矛盾</p>
+<h2 id="_13">查询拓展</h2>
+<p>值得深入探索的方向：<br />
+- instruction-tuned/chat 模型是否也有相同盲区？论文用的是 base model + chat template，真实的对话模型经 RLHF/DPO 后指令遵循更强，但分布偏移也可能放大风险<br />
+- MoE 架构的检测器阈值校准：论文提到低比特专家 MoE 通过 QA 却失败金丝雀的旁证，但未系统测试<br />
+- 量化+蒸馏+剪枝组合压缩的叠加效应：生产中常组合多种压缩，相干/不相干误差的混合是否产生非线性风险<br />
+- 多模态 Agent 场景：视觉-语言模型在压缩后的工具调用忠实性如何退化<br />
+- 与 Binding Drift（2607.18316）联合构建 Agent 安全评估体系：编造步骤（本文）vs 实体绑定漂移（Binding Drift）是不同层面的失败</p>
+<h2 id="_14">归纳总结</h2>
+<p>这篇论文对 AI 工程实践的最大启示是：<strong>"看起来没问题"不等于"执行没问题"</strong>。</p>
+<p>传统压缩评估回答的是"模型还聪明吗"（perplexity/MMLU），但 Agent 部署需要回答的是"模型还可靠吗"（忠实执行指令不编造）。这是两个正交的维度——一个模型可以同时是"足够聪明的"和"不可靠的"。</p>
+<p>论文的检测器虽然简洁（两个阈值、零数据需求），但揭示了一个更深层的原则：<strong>压缩方法的选择（结构化 vs 随机）比压缩的力度更重要</strong>。对 Agent 场景，应优先选择产生不相干误差的压缩方案（如均匀剪枝/round-to-nearest 量化），避免产生相干低秩误差的方案（如 SVD 截断/结构化量化），即使后者在 perplexity 上表现更优。</p>
+<p>对 Hermes Agent 而言，这意味着在 Jetson 上部署量化模型时，不仅需要 perplexity 门禁，还需要 Agent 行为金丝雀门禁——尤其是在执行多步工具调用 SOP 的场景下。</p>
+<h2 id="_15">数据来源声明</h2>
+<ul>
+<li>论文正文：arXiv HTML 全文（121KB，8 个 section 完整提取）</li>
+<li>Table 1/2 数据：从 S3 和 S5 章节正文提取</li>
+<li>作者信息：abs 页 citation_author meta（仅 I. Kennedy, T. Kennedy）</li>
+<li>论文无 comments 字段（页数/图表数未标注），无 GitHub 代码链接</li>
+</ul>
+<h2 id="_16">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-03-本地模型部署-BitNet-b1.58.md">2026-08-03-本地模型部署-BitNet-b1.58</a> — 原生三值量化，质量无损的另一条路径</li>
+<li><a href="./2026-07-28-LLM推理优化2026-三路线交叉综合-增量蒸馏.md">2026-07-28-LLM推理优化2026-三路线交叉综合-增量蒸馏</a> — 压缩/量化/蒸馏全景对比</li>
+<li><a href="./2026-07-25-Agent记忆两极-选择性持久化vs率失真压缩.md">2026-07-25-Agent记忆两极-选择性持久化vs率失真压缩</a> — 压缩与保真度的信息论视角</li>
+</ul>
+</body>
+</html>

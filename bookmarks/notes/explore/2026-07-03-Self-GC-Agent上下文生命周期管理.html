@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Self-GC-Agent上下文生命周期管理</title>
+
+<meta property="og:title" content="Self-GC-Agent上下文生命周期管理" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="self-gc-llm-agent">Self-GC：长周期 LLM Agent 的自主上下文生命周期管理</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2607.00692<br />
+<strong>作者</strong>：Xubin Hao, Hongjin Meng, Xin Yin, Jiawei Zhu, Chenpeng Cao<br />
+<strong>记录日期</strong>：2026-07-03</p>
+</blockquote>
+<p><strong>标签</strong>：#LLM-Agent #上下文管理 #运行时优化 #garbage-collection #生产部署</p>
+<hr />
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11">1.1 核心问题</h3>
+<p>长周期 LLM Agent 会积累大量结构化运行时数据——工具调用结果、文件内容、执行计划、用户约束。当前上下文管理面临一个尖锐的权衡困境：</p>
+<ul>
+<li><strong>基于位置/类型的启发式裁剪</strong>（如 oldest-turn-fold、tool-prune）：成本低，但对未来依赖完全盲目。一条旧的工具输出可能持有后续步骤唯一需要的 URL、文件路径或表格值</li>
+<li><strong>接近上下文上限时的最终摘要</strong>：保留了叙事状态，但把精确证据压缩成了散文，无法再被定位、审计或恢复</li>
+</ul>
+<blockquote>
+<p><strong>关键洞察</strong>：Agent 上下文不是被动的 token 缓冲区，而是具有不同生命周期需求的运行时对象集合。有些对象已过时可删除，有些重复但需保留结构提示，还有些庞大但必须完全可恢复。</p>
+</blockquote>
+<h3 id="12-self-gc">1.2 Self-GC 框架</h3>
+<p>Self-GC 的名称刻意呼应"垃圾回收"（Garbage Collection）——系统不仅回收无用 token，而是治理 Agent 上下文对象的生命周期。</p>
+<p><strong>Harness 可移植接口</strong>：只需在 Agent harness 与模型输入构建之间插入一个上下文引擎钩子，不需要重写整个 Agent。Harness 需要暴露的能力：<br />
+- 识别对话轮次和工具跨度边界<br />
+- 分配稳定对象标识符<br />
+- 在每次模型调用前投影活跃视图<br />
+- 完整 transcript 始终保留在活跃视图之外供审计和恢复</p>
+<p><strong>索引上下文对象</strong>：<br />
+- <code>conversation:user:k</code> — 用户请求及其后续执行跨度<br />
+- <code>function:tool:n</code> — 可独立编辑的工具级跨度<br />
+- 助手轮次不是一等 GC 目标（它们通常包含连接性文本和工具调用信封），在相邻对象变化时由 harness 保留或标准化<br />
+- 对象 ID 由会话级单调分配器分配</p>
+<p><strong>三种生命周期动作</strong>（每个对象接收一个动作）：</p>
+<blockquote>
+<p><strong>Fold（折叠）</strong>：将精确 payload 移到 sidecar 存储，在活跃视图中留下紧凑恢复指针。适用于生成的报告体等大体积内容——后续轮次可能需要精确引用或修订</p>
+<p><strong>Mask（遮蔽）</strong>：保留对象结构边界提示，同时省略重复或低信号的中间内容。适用于重复的浏览器快照</p>
+<p><strong>Prune（修剪）</strong>：从活跃视图移除过时内容，不保证可恢复。适用于失败命令日志</p>
+</blockquote>
+<p><strong>反思式规划、预演与提交</strong>：<br />
+- 当 token 压力、轮次边界或策略触发治理轮次时，Self-GC 分叉当前上下文前缀，附加 planner-only 指令<br />
+- Planner 看到索引对象，输出基于现有标识符的结构化计划<br />
+- Planner prompt 被写为对象-动作契约而非摘要 prompt——依次处理排除优先级、未来依赖、粒度、动作语义和合理性检查<br />
+- Harness 本地预演计划：解析目标、丢弃无效编辑、标准化重叠动作、生成投影活跃视图、估算 token 节省<br />
+- 计划在安全轮次边界提交：合并视图、修复父系血统到最近的存活祖先、持久化 sidecar、标准化 provider 消息<br />
+- <strong>被拒绝的计划永远不会影响主 Agent 循环</strong>——模型提供语义判断，harness 执行协议有效性、可恢复性和提交纪律</p>
+<p><strong>可恢复性与缓存感知提交</strong>：<br />
+- Fold 元数据作为控制平面提醒附加到相关用户消息，不是助手生成的散文<br />
+- 提交收益公式：<code>CommitBenefit ≈ N_future × (C - C') - L_cache_break - L_GC</code><br />
+  - 在 token 节省、缓存失效惩罚和 GC 开销之间权衡</p>
+<h3 id="13">1.3 实验设计</h3>
+<p><strong>数据集构建</strong>：<br />
+- 原始 trace 行数：15,141<br />
+- 触发压缩的 trace：9,075<br />
+- Production Suite 会话数：332（覆盖办公、浏览器、shell、web-fetch 工作流）<br />
+- Hard Set 会话数：33（最高工具压力案例，偏向浏览器/shell/web-fetch）</p>
+<p><strong>在线分流规则</strong>（生产监控）：<br />
+- Self-GC 组：账号 email 首字母 ≥ o<br />
+- 对照组：账号 email 首字母 &lt; o<br />
+- 覆盖 context-gc（交互式聊天清理）和 skill-gc（长期技能状态修剪）</p>
+<p><strong>评估指标</strong>：<br />
+- <strong>Pruning Rate（修剪率）</strong>：活跃视图中被移除的 prefix token 比例<br />
+- <strong>No-impact Rate（无影响率）</strong>：保留上下文是否仍支持真实的未来续写——用 GPT-5.5 judge 检查精确 URL、路径、行值、任务标识符、可编辑体和源支持证据是否仍可用<br />
+- <strong>Online Input Tokens（在线输入 token）</strong>：生产流量下主 Agent 模型的平均输入 token</p>
+<p><strong>Planner 配置</strong>：<br />
+- 默认 planner：Qwen3.6-Plus<br />
+- 备选 planner：Qwen3.7-Max、GLM-5.1<br />
+- 离线 judge：GPT-5.5<br />
+- 压缩阈值：30%<br />
+- 最后轮次保留：强制</p>
+<h3 id="14">1.4 关键实验结果</h3>
+<p><strong>Hard Set（33 个高难度会话）</strong>：</p>
+<ul>
+<li>Self-GC：修剪率 43.95%，无影响率 84.85% [69.08, 93.35]</li>
+<li>Oldest-turn：修剪率 63.45%，无影响率 66.67% [49.61, 80.25]</li>
+<li>Tool-prune：修剪率 67.93%，无影响率 69.70% [52.66, 82.62]</li>
+<li>Tool-mask+prune：修剪率 61.90%，无影响率 54.55% [37.99, 70.16]</li>
+<li>Hybrid：修剪率 69.87%，无影响率 57.58% [40.81, 72.76]</li>
+</ul>
+<blockquote>
+<p><strong>解读</strong>：Self-GC 牺牲了部分修剪率（43.95% vs 基线 61-70%），但无影响率从基线的 54-70% 跃升到 84.85%——在关键任务中大幅减少了上下文裁剪导致的任务中断</p>
+</blockquote>
+<p><strong>Production Suite（332 个生产会话）</strong>：</p>
+<ul>
+<li>Self-GC (Qwen3.6)：修剪率 31.51%，无影响率 92.77% [89.47, 95.09]</li>
+<li>Self-GC (Qwen3.7)：修剪率 33.98%，无影响率 94.58% [91.59, 96.54]</li>
+<li>Self-GC (GLM-5.1)：修剪率 31.04%，无影响率 91.27% [87.74, 93.85]</li>
+<li>Oldest-turn：修剪率 40.19%，无影响率 87.46% [83.46, 90.60]</li>
+<li>Tool-prune：修剪率 47.76%，无影响率 77.71% [72.93, 81.86]</li>
+</ul>
+<blockquote>
+<p><strong>解读</strong>：在更大规模的生产数据上，Self-GC 的优势更稳定——三个 planner backbone 都达到了 91-95% 的无影响率，而最强基线只有 87.46%</p>
+</blockquote>
+<p><strong>在线生产效果</strong>：<br />
+- 白天平均输入 token 降低 10-15%<br />
+- 峰值降低接近 20%<br />
+- 这是运营监控数据，非完全随机化质量实验</p>
+<h3 id="15">1.5 失败模式分析</h3>
+<p>论文定义了五类固定启发式方法无法区分的依赖丢失模式：</p>
+<ul>
+<li><strong>证据细节丢失</strong>：精确行值、SQL 过滤器、图表选择器、堆栈帧——未来轮次能继续叙事但无法复现或审计具体结果</li>
+<li><strong>定位器/句柄丢失</strong>：文件路径、文档 ID、回调 URL、恢复路径——Agent 知道产物存在但无法重新打开或交付</li>
+<li><strong>行为契约丢失</strong>：用户修正（如"不要替换表头"）、schema 规则、策略约束——后续编辑偏离请求规则</li>
+<li><strong>逐字源丢失</strong>：原始措辞、引述、字段标签——摘要语义合理但无法回答恢复或精确复制请求</li>
+<li><strong>活跃状态丢失</strong>：当前阻塞、修正后的重跑结果、最新成功交接——未来轮次缺乏当前进展状态</li>
+</ul>
+<blockquote>
+<p><strong>关键发现：工作负载不对称</strong>。工具修剪在 BI 密集型会话中有竞争力（很多 dump 可重新查询），而按时间折叠在文档/代码密集型会话中更强（短工具输出常含唯一标识符）。Agent 从同一个位置/类型策略无法区分这些情况——这正是 Self-GC 的对象级规划优势所在</p>
+</blockquote>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-context-window">2.1 Context Window 压缩技术谱系</h3>
+<p>当前 LLM Agent 上下文管理主要有三条技术路线：<br />
+- <strong>位置启发式</strong>：按消息年龄/长度/类型裁剪（如 Claude Code 的 tool result masking、Cursor 的 conversation truncation）。简单但不感知语义依赖<br />
+- <strong>LLM 摘要</strong>：接近上下文上限时让模型生成摘要（如 MemGPT、ConversationSummaryBufferMemory）。保留叙事但丢失精确证据<br />
+- <strong>结构化对象管理</strong>：Self-GC 提出的新范式——将上下文建模为有生命周期的索引对象</p>
+<h3 id="22-garbage-collection">2.2 Garbage Collection 比喻的深层含义</h3>
+<p>Self-GC 不是简单借用 GC 术语，而是真正映射了 GC 的核心机制：<br />
+- <strong>可达性分析</strong> → planner 判断对象是否为未来依赖（类似 GC root tracing）<br />
+- <strong>标记-清理</strong> → fold/mask/prune 三种回收策略（类似 GC 的不同回收算法）<br />
+- <strong>安全点</strong> → 安全轮次边界提交（类似 GC safe point）<br />
+- <strong>分代回收</strong> → 不同类型对象（user turn vs tool span）的差异化生命周期策略</p>
+<h3 id="23-sidecar">2.3 Sidecar 模式</h3>
+<p>Sidecar（边车）来自微服务架构——主服务旁挂载辅助容器。Self-GC 中 sidecar 指：被 fold 的对象精确 payload 不在活跃上下文中，但存储在可寻址的旁路存储中，通过恢复指针可在需要时取回。这与 Hermes 的 <code>context-compressor</code> skill 中"大工具输出存储为文件，仅保留摘要预览"的模式高度一致。</p>
+<h3 id="24-agentdiet-agentfold-longcodezip">2.4 AgentDiet / AgentFold / LongCodeZip</h3>
+<p>论文提到的同类方法（截至发表时未公开比较）：<br />
+- <strong>AgentDiet</strong>：可能是一种 Agent 上下文"节食"方案<br />
+- <strong>AgentFold</strong>：折叠式上下文压缩<br />
+- <strong>LongCodeZip</strong>：长上下文代码压缩</p>
+<p>这些方法可能也在探索对象级管理，但 Self-GC 的差异化在于 harness 可移植性和 sidecar 可恢复性。</p>
+<h3 id="25-deepseek-v32">2.5 DeepSeek-V3.2 的上下文管理策略</h3>
+<p>论文引用 DeepSeek-V3.2 报告的 Search Agent 策略：Summary、Discard-75%、Discard-all——当 rollout token 使用超过上下文窗口大比例时触发。这些被 Self-GC 视为工业策略参考而非直接实验基线。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 核心范式转变</h3>
+<pre><code>传统范式: 上下文 = 线性 token 缓冲区 → 按位置/类型裁剪
+Self-GC:  上下文 = 索引对象集合     → 按生命周期治理
+
+关键区别: 从 &quot;这个 token 够不够老可以删？&quot; 
+         到 &quot;这个对象对后续步骤还有依赖吗？&quot;
+</code></pre>
+<h3 id="32">3.2 三层架构模型</h3>
+<pre><code>┌─────────────────────────────────────────┐
+│         Agent Harness (可移植)           │
+│  ┌─────────────────────────────────┐    │
+│  │   索引上下文对象层               │    │
+│  │  conversation:user:k            │    │
+│  │  function:tool:n                │    │
+│  │  ↕ 稳定标识符 + 生命周期状态     │    │
+│  └─────────────────────────────────┘    │
+│  ┌─────────────────────────────────┐    │
+│  │   Side-channel Planner (旁路)    │    │
+│  │  输入: 分叉的上下文前缀           │    │
+│  │  输出: 对象-动作契约 (非摘要)     │    │
+│  └─────────────────────────────────┘    │
+│  ┌─────────────────────────────────┐    │
+│  │   Rehearsal + Commit (安全提交)  │    │
+│  │  本地预演 → 验证 → 安全点提交     │    │
+│  │  Sidecar 持久化 + 缓存感知       │    │
+│  └─────────────────────────────────┘    │
+│  ┌─────────────────────────────────┐    │
+│  │   活跃视图 (Active View)         │    │
+│  │  ← 投影后的紧凑上下文            │    │
+│  │  完整 transcript 始终在外部保留   │    │
+│  └─────────────────────────────────┘    │
+└─────────────────────────────────────────┘
+</code></pre>
+<h3 id="33-planner">3.3 Planner 契约设计的五步决策规则</h3>
+<p>Planner prompt 不是自由摘要，而是结构化的对象-动作契约，按以下顺序决策：</p>
+<ol>
+<li><strong>排除优先级</strong>：什么必须保留（精确标识符、路径、URL、行值、查询字段、产物体、源支持证据）</li>
+<li><strong>未来依赖判断</strong>：哪些 live handles、job IDs、回调 URL、文件路径是必需保留锚点</li>
+<li><strong>行为契约检查</strong>：指令、策略、schema、任务契约读取——永不 GC 用户修正</li>
+<li><strong>动作粒度选择</strong>：工具级 fold 优于整轮 fold；仅 prune 废弃搜索/失败尝试</li>
+<li><strong>合理性检查</strong>：大量稳定体优先 fold 而非 mask（可能需幂等恢复）</li>
+</ol>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：上下文管理将从"文本压缩"升级为"运行时对象生命周期控制"</h3>
+<p>依据：Self-GC 的生产数据显示，对象级管理的无影响率（91-95%）显著优于启发式（77-87%），且在线 A/B 确认 10-15% 的真实 token 节省。这表明工业界正在从"事后文本清理"转向"前置生命周期控制"。</p>
+<h3 id="2side-channel-planner-agent">趋势2：Side-channel Planner 成为 Agent 架构的标准组件</h3>
+<p>依据：Self-GC 的 planner 与主 Agent 完全解耦——它分叉上下文前缀，输出结构化动作计划，harness 负责验证和提交。这种"主 Agent + 旁路 planner"的双通道架构，与 Anthropic 的 Claude Code context window 管理、OpenAI 的 Codex memory 系统在设计哲学上趋同。</p>
+<h3 id="3">趋势3：可恢复性将成为上下文管理的硬约束</h3>
+<p>依据：Fold 动作的核心创新不是"移走大对象"，而是"移走后可精确恢复"。这直接解决了摘要方法的致命弱点——信息丢失不可逆。随着 Agent 任务复杂度增加，可恢复性（而非最大压缩率）将成为评价上下文管理系统的首要指标。</p>
+<h3 id="4">趋势4：生产验证将成为上下文管理论文的新标准</h3>
+<p>依据：Self-GC 不止做离线评估，还报告了在线账号级分流的实际 token 节省。DeepSeek-V3.2 也报告了类似的 Search Agent 策略。这意味着纯 benchmark 的上下文管理论文将越来越难发表——工业级生产验证正在成为门槛。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-hermes-agent-context-compressor-skill">5.1 与 Hermes Agent context-compressor skill 的关联</h3>
+<p>Hermes 的 <code>context-compressor</code> skill 当前实现的是 Self-GC 论文中的"策略 B"——"渐进式上下文压缩，大工具输出存储为文件，仅保留摘要预览在上下文中"。这对应 Self-GC 的 Fold 动作的部分功能。</p>
+<p>Self-GC 的增量价值在于：<br />
+- <strong>索引化</strong>：Hermes 当前按文本块压缩，Self-GC 按对象 ID（<code>function:tool:n</code>）管理——可精确定位和恢复<br />
+- <strong>三分法</strong>：Hermes 只有"压缩 or 保留"二元选择，Self-GC 有 Fold/Mask/Prune 三种策略<br />
+- <strong>Planner 契约</strong>：Hermes 的压缩策略是固定规则，Self-GC 用 LLM planner 按未来依赖动态决策</p>
+<h3 id="52-context-engineering-patterns-skill">5.2 与 context-engineering-patterns skill 的关联</h3>
+<p>Hermes 的 <code>context-engineering-patterns</code> skill 提到了四大支柱：静态/动态分离、对话历史管理、预算化检索、工具输出修剪。Self-GC 的框架直接实现了这四大支柱：<br />
+- 静态/动态分离 → 索引对象层（稳定 ID）vs 活跃视图（动态投影）<br />
+- 对话历史管理 → 三种生命周期动作 + sidecar 恢复<br />
+- 预算化检索 → 30% 压缩阈值 + cache-aware commit<br />
+- 工具输出修剪 → <code>function:tool:n</code> 对象的 Fold/Mask/Prune</p>
+<h3 id="53-evolver-agent-reflection">5.3 与 evolver / agent-reflection 的关联</h3>
+<p>Self-GC 的 side-channel planner 本质上是一种"微型反思"——它不参与任务执行，而是审视当前上下文、判断哪些信息对后续有价值。这与 Hermes 的 <code>agent-reflection</code> skill（双轨反思机制）在设计哲学上一致：都是分离"执行"与"反思"两个通道。</p>
+<hr />
+<h2 id="_6">六、借鉴点与可落实评估</h2>
+<h3 id="p0">P0：对象级上下文索引（可立即实施）</h3>
+<p><strong>现状</strong>：Hermes 的 tool result 和对话轮次没有稳定标识符，压缩时只能按文本块操作。<br />
+<strong>借鉴方案</strong>：在 Hermes 的 message 构建流程中，为每个 user turn 和 tool result 分配稳定 ID（如 <code>conv:user:3</code>、<code>tool:search:7</code>），写入 message metadata。压缩策略基于 ID 而非文本位置。<br />
+<strong>工作量</strong>：1-2 天（修改 message 构建 + 压缩逻辑）<br />
+<strong>收益</strong>：高——使上下文压缩可追溯、可恢复</p>
+<h3 id="p1fold-sidecar">P1：Fold 动作 + Sidecar 文件恢复（可部分实施）</h3>
+<p><strong>现状</strong>：<code>context-compressor</code> skill 已实现"大工具输出存文件"，但恢复机制不完善——存了之后取回的路径不可寻址。<br />
+<strong>借鉴方案</strong>：参考 Self-GC 的 sidecar 模式，为每个被折叠的工具输出生成恢复指针（文件路径 + 对象 ID + 内容摘要），在上下文中保留紧凑指针。<br />
+<strong>工作量</strong>：3-5 天<br />
+<strong>收益</strong>：中高——解决"压缩后信息不可恢复"的核心痛点</p>
+<h3 id="p1planner-prompt">P1：Planner 契约式压缩 prompt（可直接移植）</h3>
+<p><strong>现状</strong>：Hermes 的上下文压缩用固定规则或简单的"总结这段对话"prompt。<br />
+<strong>借鉴方案</strong>：将 Self-GC 的 planner prompt 设计为结构化契约——按排除优先级、未来依赖、行为契约、动作粒度、合理性检查五步决策，输出 JSON 格式的 <code>{object_id: action}</code> 映射。<br />
+<strong>工作量</strong>：1 天（设计 prompt 模板）<br />
+<strong>收益</strong>：高——直接提升压缩质量，减少任务中断</p>
+<h3 id="p2">P2：缓存感知提交策略（需工程改造）</h3>
+<p><strong>现状</strong>：Hermes 不考虑 KV cache 局部性，每次压缩都可能破坏前缀缓存。<br />
+<strong>借鉴方案</strong>：参考 Self-GC 的 <code>CommitBenefit</code> 公式，在 token 节省收益 &gt; 缓存失效惩罚 + GC 开销时才提交压缩。<br />
+<strong>障碍</strong>：需要 provider 暴露 cache 命中信息（目前部分 provider 不支持）<br />
+<strong>工作量</strong>：1-2 周<br />
+<strong>收益</strong>：中——主要影响延迟敏感场景</p>
+<h3 id="p3">P3：安全轮次边界提交（暂不适用）</h3>
+<p><strong>现状</strong>：Hermes 在任意时机触发压缩。<br />
+<strong>借鉴方案</strong>：只在用户轮次边界提交压缩结果，避免在工具调用中途修改上下文。<br />
+<strong>原因</strong>：Hermes 的工具调用模式（function calling）不像论文中的交互式 Agent 那样有明确的轮次边界——很多任务是单轮多工具调用。<br />
+<strong>工作量</strong>：需重新评估 Hermes 的会话模型</p>
+<hr />
+<h2 id="_7">七、金句摘录</h2>
+<blockquote>
+<p>「Heuristics are cheap but blind to future dependencies; summaries preserve narrative state but often hide exact evidence, locators, and editable artifacts.」— 启发式廉价但对未来盲目；摘要保留叙事但隐藏精确证据</p>
+<p>「Whether an edit is safe or harmful is therefore not decided by chronological position alone, but by whether an object will serve as a future dependency.」— 编辑是否安全不由时间顺序决定，而由对象是否是未来依赖决定</p>
+<p>「Context management as runtime lifecycle control over indexed, recoverable objects rather than post hoc text cleanup.」— 上下文管理是对索引化可恢复对象的运行时生命周期控制，而非事后文本清理</p>
+</blockquote>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-03-Agent记忆系统2026-四模块框架与MAGMA多图架构.md">Agent 记忆系统 2026 四模块框架</a> — 记忆维护模块的理论框架</li>
+<li><a href="./2026-07-05-Agent自进化-经验内化参数-EvoSC-MemSkill.md">Agent 自进化：经验蒸馏进参数</a> — 经验内化减少上下文负担</li>
+<li><a href="./2026-07-09-LLM-Agent失败模式综合分类法.md">LLM Agent 失败模式分类法</a> — 上下文管理失效的失败模式</li>
+<li><a href="./2026-07-11-ToolMakingSelfEvolving.md">Tool-Making 自进化 Agent</a> — 低延迟系统中的上下文策略</li>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara KV Cache 压缩</a> — 推理层 KV Cache 压缩（交叉：上下文优化）</li>
+</ul>
+</body>
+</html>

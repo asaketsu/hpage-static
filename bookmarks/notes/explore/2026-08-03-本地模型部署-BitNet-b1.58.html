@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-BitNet-b1.58</title>
+
+<meta property="og:title" content="本地模型部署-BitNet-b1.58" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="bitnet-b158-1-bit-llm">BitNet b1.58 — 1-bit LLM 本地部署深度学习</h1>
+<blockquote>
+<p>学习时间：2026-08-03 | 来源：sniff-auto 队列<br />
+原始论文：arXiv:2402.17764（基础理论）| arXiv:2504.12285（2B4T 技术报告）<br />
+代码库：github.com/microsoft/BitNet（⭐39.8k）MIT 协议</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、摘要</h2>
+<p>BitNet b1.58 是微软研究院提出的<strong>原生训练 1-bit 大语言模型</strong>范式，将模型权重压缩为三值 {-1, 0, +1}（理论上 log₂3 ≈ 1.58 bit），配合 8-bit 激活值（W1.58A8 架构）。2025 年 4 月发布的首个官方模型 <code>BitNet-b1.58-2B-4T</code>（2.4B 参数，4T tokens 训练）证明：原生 1-bit 模型在性能上可媲美同等规模的全精度模型，同时在内存、能耗和延迟上有数量级优势。配套推理框架 <code>bitnet.cpp</code> 可在纯 CPU 上实现 5-7 tokens/s 的 100B 级模型推理。</p>
+<hr />
+<h2 id="_2">二、关键发现</h2>
+<h3 id="21">2.1 核心架构创新</h3>
+<ol>
+<li><strong>BitLinear 替代 Linear</strong>：标准 <code>torch.nn.Linear</code> 被替换为 <code>BitLinear</code>，权重在前向传播时量化为三值</li>
+<li><strong>absmean 权重量化</strong>：<code>W_quantized = round(W / mean(|W|))</code>，将权重映射到 {-1, 0, +1}</li>
+<li><strong>absmax 激活量化</strong>：激活值按 per-token absmax 策略量化到 8-bit 整数</li>
+<li><strong>subln 归一化</strong>：增强量化训练稳定性</li>
+<li><strong>ReLU² 激活函数</strong>：FFN 子层使用 ReLU 的平方替代 SwiGLU，提升稀疏性</li>
+<li><strong>RoPE 位置编码</strong> + 无 bias 设计（对齐 LLaMA 风格）</li>
+<li><strong>LLaMA 3 Tokenizer</strong>：128,256 词表，byte-level BPE</li>
+</ol>
+<h3 id="22">2.2 训练三阶段</h3>
+<ul>
+<li><strong>预训练</strong>：4T tokens，两阶段学习率（高LR余弦衰减 → cooldown低LR精修）；数据涵盖 DCLM、FineWeb-EDU、合成数学数据</li>
+<li><strong>SFT</strong>：WildChat、LMSYS-Chat-1M、WizardLM Evol-Instruct 等；<strong>关键发现：1-bit 模型需要比全精度模型更大的学习率和更多训练轮次</strong>；loss 用 sum 而非 mean</li>
+<li><strong>DPO</strong>：2 epochs，lr=2e-7，beta=0.1，集成 Liger Kernel；UltraFeedback + MagPie 数据</li>
+</ul>
+<h3 id="23-2b4t-vs">2.3 性能基准（2B4T vs 同级别全精度模型）</h3>
+<p>关键效率指标（2B4T 对比组）：</p>
+<ul>
+<li>内存占用：0.4GB（非embedding），Qwen2.5-1.5B 为 2.6GB，MiniCPM-2B 为 4.8GB</li>
+<li>CPU 延迟：29ms/token，Qwen2.5-1.5B 为 65ms，MiniCPM-2B 为 124ms</li>
+<li>能耗：0.028J/token，Qwen2.5 为 0.347J（降低 12 倍）</li>
+</ul>
+<p>基准测试平均分：</p>
+<ul>
+<li>BitNet b1.58 2B：54.19</li>
+<li>Qwen2.5 1.5B（全精度）：55.23</li>
+<li>LLaMA 3.2 1B：44.90</li>
+<li>对比 INT4 PTQ 版本：BitNet(55.01) &gt; Qwen2.5-GPTQ-int4(52.15) &gt; Qwen2.5-AWQ-int4(51.17)</li>
+</ul>
+<p><strong>结论：原生 1-bit 训练 &gt; 全精度 INT4 后量化。</strong> BitNet b1.58 是所有 1-bit 开源模型中综合性能最强的。</p>
+<h3 id="24-bitnetcpp">2.4 bitnet.cpp 推理框架</h3>
+<ul>
+<li>基于 llama.cpp 改造，MIT 协议</li>
+<li><strong>CPU 加速</strong>：x86 上 2.37x-6.17x，ARM 上 1.37x-5.07x</li>
+<li><strong>能耗降低</strong>：x86 上 71.9%-82.2%，ARM 上 55.4%-70.0%</li>
+<li><strong>极致案例</strong>：单 CPU 跑 100B 模型达 5-7 tokens/s（人类阅读速度）</li>
+<li><strong>GPU 支持</strong>：2025年5月发布官方 CUDA kernel，采用 pack-store-load-unpack-compute 策略，4个三值权重打包进 1 个 int8</li>
+<li><strong>2026年1月优化</strong>：并行 kernel + 可配置 tiling，额外 1.15x-2.1x 加速</li>
+<li>依赖：python&gt;=3.10, cmake&gt;=3.22, clang&gt;=18</li>
+</ul>
+<h3 id="25-2026">2.5 生态扩展（2026年最新）</h3>
+<ul>
+<li><strong>VibeASR.cpp</strong>（2026-07）：1-bit 量化实时多语言 ASR，RTF&lt;1</li>
+<li><strong>BitNet-embedding-0.6B/270M</strong>（2026-07）：首个 1-bit embedding 模型，1.42x-2.28x 加速</li>
+<li>NPU 支持列为 roadmap</li>
+</ul>
+<h3 id="26">2.6 支持模型清单</h3>
+<p>官方模型：BitNet-b1.58-2B-4T（2.4B）<br />
+社区模型：bitnet_b1_58-large(0.7B)、bitnet_b1_58-3B(3.3B)、Llama3-8B-1.58(8B)、Falcon3 系列(1B-10B)</p>
+<hr />
+<h2 id="_3">三、对工作的价值</h2>
+<h3 id="31-jetson-orin-nano">3.1 对 Jetson Orin Nano 边缘部署的意义</h3>
+<p>Jetson Orin Nano Super（67 TOPS）当前主要跑 Ollama + 小模型（如 Qwen-1.5B/Q4），BitNet b1.58 提供了新的可能性：</p>
+<ul>
+<li><strong>内存大幅降低</strong>：0.4GB vs 2.6GB，释放内存给其他服务</li>
+<li><strong>ARM 优化 kernel</strong>：bitnet.cpp 原生支持 ARM NEON，Jetson 的 Cortex-A78AE 可受益</li>
+<li><strong>多模型并行</strong>：低内存占用意味着可以同时部署多个专用小模型</li>
+</ul>
+<h3 id="32">3.2 对量化策略选型的启示</h3>
+<ul>
+<li>当前的 Q4_K_M（4-bit）后量化是主流，但 BitNet 证明了<strong>原生低位训练</strong>的优越性</li>
+<li>对比数据清晰：原生 1.58-bit &gt; PTQ INT4，尤其在指令遵循(IFEval)和数学(GSM8K)上</li>
+<li>这对高要求的量化因子计算、结构化输出场景有参考价值</li>
+</ul>
+<h3 id="33">3.3 局限性</h3>
+<ul>
+<li>模型规模仅到 2B（官方），大模型场景仍需传统方案</li>
+<li>需要专用 bitnet.cpp，不能直接用 llama.cpp/Ollama</li>
+<li>GPU 加速尚未完全发挥（当前GPU架构非为此优化）</li>
+<li>非生产就绪（无 function calling、工具调用支持有限）</li>
+</ul>
+<hr />
+<h2 id="_4">四、行动建议</h2>
+<ol>
+<li><strong>短期（本周）</strong>：在 Jetson 上编译 bitnet.cpp，测试 BitNet-b1.58-2B-4T 的实际 ARM 性能（TPOT、内存占用），与 Ollama Q4 方案对比</li>
+<li><strong>中期</strong>：评估用 BitNet-embedding-270M 替换当前 RAG 向量模型（如需），对比推理速度和质量</li>
+<li><strong>长期跟踪</strong>：关注 NPU kernel 发布和 Falcon3 系列 1.58-bit 模型的实际部署表现</li>
+</ol>
+<hr />
+<h2 id="_5">五、参考链接</h2>
+<ul>
+<li>GitHub: https://github.com/microsoft/BitNet</li>
+<li>模型: https://huggingface.co/microsoft/BitNet-b1.58-2B-4T</li>
+<li>技术报告: arXiv:2504.12285</li>
+<li>基础论文: arXiv:2402.17764</li>
+<li>bitnet.cpp 报告: arXiv:2410.16144</li>
+<li>在线 Demo: https://aka.ms/bitnet-demo</li>
+</ul>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-03-本地模型部署-MLA多头潜在注意力.md">本地模型部署-MLA多头潜在注意力</a> — MLA 架构，低比特部署的注意力优化搭档</li>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KVCache量化压缩-TurboQuant-RotorQuant</a> — KV Cache 量化，权重量化之外的第二战场</li>
+<li><a href="./2026-08-01-本地模型部署-消费级GPU推理.md">本地模型部署-消费级GPU推理</a> — 消费级 GPU 推理全景，BitNet 是 CPU 推理路线</li>
+<li><a href="../../../explore/2026-07-29-llm-quantization-selection-decision-tree.md">llm-quantization-selection-decision-tree</a> — 量化方案选型决策树（explore 目录）</li>
+</ul>
+</body>
+</html>

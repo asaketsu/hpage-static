@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-Gemma4-31B大模型本跑</title>
+
+<meta property="og:title" content="本地模型部署-Gemma4-31B大模型本跑" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="gemma-4-31b">本地模型部署：Gemma 4 31B 大模型本地跑</h1>
+<blockquote>
+<p>日期：2026-07-27 | 类型：auto-explore | 来源：Unsloth 官方文档 + Reddit r/LocalLLaMA KL散度基准 + HuggingFace API</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>Google DeepMind 发布 Gemma 4 开源模型家族（Apache-2.0），旗舰 <strong>31B Dense</strong> 模型支持 256K 上下文、多模态（文本+图像）、混合思考模式。本地部署推荐 <strong>Q4_K_M GGUF 量化</strong>（~18GB），可通过 llama.cpp / Ollama / Unsloth Studio 运行。关键发现：Gemma 4 31B 的量化误差特性异常——即使 Q8_0 在长文档上 KL 散度也达 0.45，远高于其他模型，源于滑窗注意力架构。对于 16GB 统一内存设备（如 Jetson Orin Nano），推荐改用 26B-A4B MoE（4B active）或 12B 版本。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1-ram-vram">1. 模型家族与硬件需求（总内存 = RAM + VRAM）</h3>
+<table>
+<thead>
+<tr>
+<th>变体</th>
+<th>架构</th>
+<th>上下文</th>
+<th>4-bit</th>
+<th>8-bit</th>
+<th>FP16</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>E2B</td>
+<td>Dense + PLE</td>
+<td>128K</td>
+<td>4GB</td>
+<td>5-8GB</td>
+<td>10GB</td>
+</tr>
+<tr>
+<td>E4B</td>
+<td>Dense + PLE</td>
+<td>128K</td>
+<td>5.5-6GB</td>
+<td>9-12GB</td>
+<td>16GB</td>
+</tr>
+<tr>
+<td>12B Unified</td>
+<td>Dense（多模态）</td>
+<td>256K</td>
+<td>7-8GB</td>
+<td>13-14GB</td>
+<td>25GB</td>
+</tr>
+<tr>
+<td>26B-A4B</td>
+<td>MoE（4B active）</td>
+<td>256K</td>
+<td>16-18GB</td>
+<td>28-30GB</td>
+<td>52GB</td>
+</tr>
+<tr>
+<td><strong>31B</strong></td>
+<td><strong>Dense</strong></td>
+<td><strong>256K</strong></td>
+<td><strong>17-20GB</strong></td>
+<td><strong>34-38GB</strong></td>
+<td><strong>62GB</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>31B 是目前最强 Gemma 4 模型，质量最高但推理较慢</li>
+<li>26B-A4B MoE 是速度/质量最佳平衡点（仅 4B 激活参数，比 31B 快）</li>
+<li><strong>QAT 变体</strong>可将内存降低约 3 倍（质量保持）</li>
+<li><strong>MTP（Multi-Token Prediction）</strong>实现 1.4-2.2x 更快推理，无精度损失</li>
+</ul>
+<h3 id="2-gguf">2. 量化等级选择（GGUF）</h3>
+<ul>
+<li><strong>Q4_K_M</strong> — 大多数用户最佳选择，日常编码/写作/Q&amp;A 与 FP16 差异极小</li>
+<li><strong>Q5_K_M</strong> — 有额外显存且需要更好复杂推理质量时选择</li>
+<li><strong>Q8_0</strong> — 近原始质量，但相对 Q5 提升边际</li>
+<li><strong>IQ4_XS</strong> — 最小可用格式，测试或差 1-2GB 显存时用</li>
+<li><strong>避免 Q3/Q2</strong> — 质量下降过陡</li>
+</ul>
+<h3 id="3-reddit-kl">3. ⚠️ 关键架构陷阱：量化误差累积（Reddit KL散度基准）</h3>
+<p>oobabooga4 对 Gemma 4 31B 各量化等级做了 KL 散度排名测试，发现<strong>异常结果</strong>：</p>
+<ul>
+<li>即使 <strong>Q8_0</strong> 在长文档上 KL 也达 <strong>0.45</strong>，非拉丁文字达 <strong>0.24</strong></li>
+<li>Q8_0 → Q5_K_S 各类别 KL 约翻倍，科学和工具使用保持最低（0.07/0.08）</li>
+<li>对比其他模型 Q4_K_M 通常 KL &lt; 0.1，Gemma 4 31B Q4_K_M KL 高达 ~0.5</li>
+</ul>
+<p><strong>根因</strong>：Gemma 4 部分层使用<strong>滑窗注意力（sliding window attention）</strong>，且最后几层复用同一 KV cache，导致低精度下误差沿上下文长度累积。</p>
+<p><strong>启示</strong>：<br />
+- 传统「Q8 = 几乎无损」假设对 Gemma 4 31B <strong>不成立</strong><br />
+- 中文/非英文场景量化损失更大（imatrix 偏向英文+短上下文）<br />
+- 对质量敏感的任务，建议至少 Q6_K 或考虑 26B-A4B 的更高量化等级</p>
+<h3 id="4-thinking">4. Thinking 模式控制</h3>
+<ul>
+<li>启用：在 system prompt 开头加 <code>&lt;|think|&gt;</code> token</li>
+<li>禁用：<code>--chat-template-kwargs '{"enable_thinking":false}'</code>（用 llama-server 而非 llama-cli）</li>
+<li>多轮对话铁律：<strong>只保留最终可见答案进历史</strong>，不把 thought blocks 喂回下一轮</li>
+<li>推理参数：temperature=1.0, top_p=0.95, top_k=64（Google 默认）</li>
+</ul>
+<h3 id="5">5. 三种运行方式</h3>
+<p><strong>llama.cpp（最直接，OpenAI 兼容 API）：</strong></p>
+<pre><code class="language-bash">./build/bin/llama-server \
+  -m ./models/gemma-4-31b-it-Q4_K_M.gguf \
+  -ngl 999 -c 8192 \
+  --host 0.0.0.0 --port 8080
+</code></pre>
+<p><strong>Ollama（最简单）：</strong></p>
+<pre><code class="language-bash">ollama run gemma4:31b
+# 或自定义 GGUF → Modelfile → ollama create
+</code></pre>
+<p><strong>Unsloth Studio（GUI，支持微调）：</strong><br />
+- MacOS/Windows/Linux 统一 Web UI<br />
+- 自愈工具调用 + Web 搜索 + 代码执行<br />
+- 2x 更快微调，70% 更省显存</p>
+<h2 id="_3">对工作的价值</h2>
+<ol>
+<li><strong>Jetson Orin Nano（16GB 统一内存）适配性评估</strong>：</li>
+<li>31B 4-bit 需 17-20GB → <strong>超出</strong>，partial RAM/disk offload 可跑但很慢</li>
+<li><strong>推荐 26B-A4B MoE Q4_K_M</strong>（16-18GB，4B active，速度更快）</li>
+<li>
+<p>或 <strong>12B Unified Q4_K_M</strong>（7-8GB，含多模态，最轻松）</p>
+</li>
+<li>
+<p><strong>替代云端 API</strong>：31B 本地跑通后可替代部分 GLM-5.1/DeepSeek 调用，零成本、隐私安全、无限速</p>
+</li>
+<li>
+<p><strong>量化选型决策</strong>：鉴于 Gemma 4 滑窗注意力导致的误差累积，<strong>中文/长上下文任务应选 Q6_K 以上</strong>，不要盲信「Q4 够用」通用建议</p>
+</li>
+<li>
+<p><strong>多模态能力</strong>：12B/26B-A4B/31B 均支持图像输入，可用于本地视觉问答、文档理解，配合现有 F5-TTS/Whisper 可构建全本地多模态管道</p>
+</li>
+</ol>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li><strong>立即</strong>：下载 <code>unsloth/gemma-4-26B-A4B-it-qat-GGUF</code>（QAT 变体，内存更低）到 Jetson 测试</li>
+<li><strong>短期</strong>：用 llama.cpp + OpenAI 兼容 API 接入 Hermes fallback 链，作为本地备选模型</li>
+<li><strong>验证</strong>：对比 26B-A4B 与 31B 在中文长文本任务上的实际质量（注意量化等级 ≥ Q6_K）</li>
+<li><strong>探索</strong>：Unsloth Studio GUI 部署，降低命令行门槛，支持后续微调</li>
+<li><strong>注意</strong>：Gemma 4 需 HF 账号同意许可（gated model），先 <code>huggingface-cli login</code> 再下载</li>
+</ol>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li>[[2026-07-26-本地模型部署-本地视频索引]] — 本地视频索引/检索的模型选型</li>
+<li>[[2026-07-22-本地模型部署-ROI决策框架]] — 本地部署 ROI 评估框架</li>
+<li>[[2026-07-21-EAGLE3-P-EAGLE推测解码2026生产实践]] — 推测解码加速，与 Gemma 4 MTP 互补</li>
+<li>[[2026-07-25-推测解码2026中期-从单请求到高并发调度]] — 推理加速全景</li>
+<li>[[2026-07-14-FreqDepthKV-VeriCache-KVCache压缩新范式]] — KV cache 压缩（Gemma 4 滑窗注意力复用 KV，与此相关）</li>
+</ul>
+<h2 id="_6">参考来源</h2>
+<ul>
+<li>Unsloth 官方部署指南：https://unsloth.ai/docs/models/gemma-4</li>
+<li>GGUF 量化选择指南：https://gemma4-ai.com/blog/gemma4-gguf-guide</li>
+<li>Reddit KL散度基准讨论：https://www.reddit.com/r/LocalLLaMA/comments/1seua77/</li>
+<li>HuggingFace 模型页：https://huggingface.co/unsloth/gemma-4-31B-it-GGUF</li>
+<li>Ollama Docker 部署：https://embrient.com/2026/07/17/deploy-gemma-4-31b-it-nvfp4-locally-via-ollama-2-quantized-gguf/</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent并行工具调用与投机执行架构</title>
+
+<meta property="og:title" content="Agent并行工具调用与投机执行架构" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-react-37">Agent 并行工具调用与投机执行 — 从 ReAct 串行到 3.7× 加速的架构跃迁</h1>
+<blockquote>
+<p><strong>出处</strong>: arXiv 2312.04511 (LLMCompiler, ICML 2024) / 2603.18897 (PASTE, 2026-03) / 2604.16469 (B-PASTE, 2026-04) / SimpleTool (2026-03) / Speculative Actions (2025-10, MIT+Cornell)<br />
+<strong>日期</strong>: 2026-07-27<br />
+<strong>标签</strong>: #AI-Agent #并行执行 #投机执行 #工具调用 #延迟优化 #LLMCompiler #PASTE #SimpleTool</p>
+</blockquote>
+<hr />
+<h2 id="react">一、核心问题：串行 ReAct 循环的延迟税</h2>
+<p>主流 Agent 架构（ReAct 式循环）本质是「思考→调用工具→等待→再思考」的串行管线。<strong>工具执行占 Agent 总请求时间的 35-61%</strong>，多步任务延迟线性叠加，5-15 次工具调用可轻易达到数十秒甚至分钟级。</p>
+<p>延迟敏感场景更严重：<br />
+- 语音 Agent 需亚秒级响应<br />
+- 具身 AI 需 10+ Hz 控制频率<br />
+- 企业客服用户等待 15-30 秒即体验崩塌</p>
+<p><strong>根本矛盾</strong>：模型推理已经足够快，瓶颈在「管线工程」——调用编排、等待、序列化。</p>
+<hr />
+<h2 id="_1">二、三层加速技术栈</h2>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>技术</th>
+<th>优化目标</th>
+<th>延迟收益</th>
+<th>成熟度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>层 1：单步并行</strong></td>
+<td>Parallel Tool Calling / LLMCompiler</td>
+<td>单轮内独立工具并发</td>
+<td>1.5-3.7×</td>
+<td>生产就绪</td>
+</tr>
+<tr>
+<td><strong>层 2：跨步投机</strong></td>
+<td>Speculative Actions / PASTE / B-PASTE</td>
+<td>预测下一步工具并预执行</td>
+<td>1.4-2×</td>
+<td>研究到早期生产</td>
+</tr>
+<tr>
+<td><strong>层 3：token 级</strong></td>
+<td>SimpleTool</td>
+<td>压缩函数调用生成</td>
+<td>3-6×（单步内）</td>
+<td>需微调</td>
+</tr>
+</tbody>
+</table>
+<p>三层可组合叠加，聚合效果可将 30 秒任务压缩到 5-8 秒。</p>
+<h3 id="21-parallel-tool-calling">2.1 Parallel Tool Calling — 低垂果实</h3>
+<p><strong>原理</strong>：当 Agent 需要多个互相独立的信息时，一次性并发获取。三个 300ms 的串行 API 变成一个 300ms 的并行调用——3× 加速。</p>
+<p><strong>关键约束</strong>：依赖分析。只有真正无依赖（无共享状态突变、无顺序要求、无数据依赖）的操作才能安全并行。大多数框架采用保守策略：模型显式声明独立调用，编排器只并行化这些。</p>
+<h3 id="22-llmcompilerarxiv-231204511-icml-2024">2.2 LLMCompiler（arXiv 2312.04511, ICML 2024）</h3>
+<p>借鉴经典编译器原理，三阶段架构：</p>
+<pre><code>问题输入 → [Planner] 分解+识别依赖 → [Task Fetching Unit] 准备输入 → [Executor] 并发执行
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>ReAct 基线</th>
+<th>LLMCompiler</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>延迟</td>
+<td>1×</td>
+<td>最高 3.7× 加速</td>
+<td>3.7×</td>
+</tr>
+<tr>
+<td>成本</td>
+<td>1×</td>
+<td>最高 6.7× 节省</td>
+<td>6.7×</td>
+</tr>
+<tr>
+<td>准确率</td>
+<td>基线</td>
+<td>+~9%</td>
+<td>9%</td>
+</tr>
+</tbody>
+</table>
+<p>成本节省来自更少的 LLM 推理轮次——3 次工具调用一轮解决而非三轮。</p>
+<h3 id="23-speculative-actionsmitcornell-2025-10">2.3 Speculative Actions（MIT+Cornell, 2025-10）</h3>
+<p><strong>灵感</strong>：直接借鉴 CPU 架构的投机执行。处理器预测分支并提前处理；如果预测正确，工作已完成；如果错误，丢弃重来。</p>
+<p><strong>Agent 版本</strong>：用一个更小的「草稿模型」预测主模型可能的下一步动作，在主模型还在思考时就预执行。</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>下一步动作预测准确率</td>
+<td>最高 55%</td>
+</tr>
+<tr>
+<td>安全性</td>
+<td><strong>无损</strong>（预测错误即丢弃，回退串行）</td>
+</tr>
+<tr>
+<td>适用环境</td>
+<td>游戏、电商、网页搜索</td>
+</tr>
+</tbody>
+</table>
+<p><strong>增强方向</strong>：更强的草稿模型、top-K 多分支预测、多步推测（预测未来 2-3 步）、置信度感知投机。</p>
+<h3 id="24-pastearxiv-260318897-sjtumsr-2026-03">2.4 PASTE（arXiv 2603.18897, SJTU+MSR, 2026-03）⭐ 重点</h3>
+<p><strong>核心洞察</strong>：Agent 工具调用序列<strong>不是随机的</strong>，而是遵循重复模式。查看用户 profile 的 Agent 几乎总会接着检查权限；读文件的编码 Agent 通常接下来会编辑它。</p>
+<p><strong>架构</strong>：从执行 trace 中挖掘模式，构建「模式元组库」：上下文 + 预测工具 + 参数推导函数 + 经验成功率。</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>任务完成时间平均降低</td>
+<td><strong>43.5-48.5%</strong></td>
+</tr>
+<tr>
+<td>工具执行吞吐量提升</td>
+<td>1.8×</td>
+</tr>
+<tr>
+<td>p95/p99 尾延迟降低</td>
+<td>48.6% / 61.9%</td>
+</tr>
+<tr>
+<td>预测命中率</td>
+<td>93.8%</td>
+</tr>
+<tr>
+<td>top-1 精确预测率</td>
+<td>27.8%（精确预测哪个工具+什么参数）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>生产级设计亮点</strong>：<br />
+- <strong>中间件模式</strong>：Agent 和工具后端之间，无需修改 Agent 逻辑<br />
+- TypeScript 8000 行（Gemini-CLI）+ Python 4000 行（Qwen-DeepResearch/Virtual-Lab）<br />
+- 资源开销极低：每秒延迟降低仅需 0.02 core-s CPU、2.6MB 内存、0.9MB 网络<br />
+- 可作为 sidecar 容器运行</p>
+<p><strong>安全策略</strong>：策略定义投机资格——完全可投机 / dry-run 合格 / 禁止投机。实测在 20000+ 次投机执行中检测并阻止了 602 次潜在副作用操作，最终输出零偏差。</p>
+<h3 id="25-b-pastearxiv-260416469-2026-04">2.5 B-PASTE（arXiv 2604.16469, 2026-04）— 边缘部署优化</h3>
+<p><strong>改进</strong>：从单工具投机提升到<strong>有界分支假设（beam）投机</strong>。</p>
+<ul>
+<li>维护有界的未来执行子图 beam</li>
+<li>按<strong>预期关键路径缩短量</strong>排序（而非原始执行概率）</li>
+<li>显式建模 co-run 干扰、下游解锁价值、状态安全约束</li>
+<li><strong>边缘部署</strong>：Thor-class 边缘环境测试达 1.4× 端到端加速</li>
+</ul>
+<p><strong>核心价值</strong>：资源受限场景（边缘/端侧）下投机执行不能抢夺延迟关键路径的权威执行资源。B-PASTE 在低争用下才利用安全并行，高争用时优先保证快路径。</p>
+<h3 id="26-simpletool2026-03-token">2.6 SimpleTool（2026-03）— Token 级压缩</h3>
+<p><strong>洞察</strong>：结构化函数调用输出含大量低熵冗余——JSON 分隔符、参数名、格式 token——高度可预测。</p>
+<p><strong>方法</strong>：引入特殊 token 压缩这些序列 4-6×，同时<strong>并行生成函数名和参数</strong>（二者因果依赖弱——知道调用 search_database 对查询字符串帮助不大）。</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>端到端加速</td>
+<td>3-6×（最高 9.6×）</td>
+</tr>
+<tr>
+<td>并行化开销</td>
+<td>仅 8.2%</td>
+</tr>
+<tr>
+<td>4B 模型 P50 延迟</td>
+<td>61.2ms（消费级 GPU + 量化）</td>
+</tr>
+<tr>
+<td>可达控制频率</td>
+<td>16 Hz（具身 AI 实时级）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">三、组合效应</h2>
+<p>一个 6 次工具调用的任务（其中 3 次为独立对）：</p>
+<pre><code>基线串行:   6 次串行 + 6 步 LLM 推理
++ 并行工具:  4 次有效调用（独立对合并）+ 4 步 LLM  → ~1.5× 加速
++ 投机执行:  2-3 次投机命中省掉完整往返           → 再叠加 1.5-2×
++ SimpleTool: 每步函数生成 3-6× 更快            → 再叠加 3-6×
+</code></pre>
+<p><strong>聚合效果</strong>：30 秒 → 5-8 秒。对语音/具身 Agent，意味着从不可用到生产就绪。</p>
+<hr />
+<h2 id="_3">四、实践权衡</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>风险/成本</th>
+<th>缓解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>计算成本</strong></td>
+<td>投机执行以算力换延迟，错误预测浪费 CPU/API</td>
+<td>PASTE 开销极低（sidecar），高价值交互值得，批处理不值得</td>
+</tr>
+<tr>
+<td><strong>正确性保证</strong></td>
+<td>并行需严格依赖分析，错误分类导致竞态/错误结果</td>
+<td>保守策略+自动依赖图（LLMCompiler）</td>
+</tr>
+<tr>
+<td><strong>可观测性</strong></td>
+<td>投机执行使调试复杂化——结果来自预计算还是标准执行？</td>
+<td>需追踪投机状态的分布式 tracing</td>
+</tr>
+<tr>
+<td><strong>框架成熟度</strong></td>
+<td>并行调用已成主流；投机执行仍处研究→早期生产；SimpleTool 需模型微调</td>
+<td>按场景选择</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">五、未来趋势</h2>
+<ol>
+<li><strong>模型原生投机</strong>：未来 API 可能支持「投机工具提示」——模型元数据暗示下一步可能动作，编排层据此预执行</li>
+<li><strong>多 Agent 跨 Agent 预取</strong>：一个 Agent 预测另一个 Agent 的需求，实现跨 Agent 数据预取</li>
+<li><strong>硬件感知调度</strong>：投机策略与 GPU/TPU 调度紧密集成，进一步优化</li>
+<li><strong>性能前沿转移</strong>：从模型能力转向系统工程，管线优化成为核心竞争力</li>
+</ol>
+<hr />
+<h2 id="hermes-agent">六、对 Hermes Agent 的实践启发</h2>
+<table>
+<thead>
+<tr>
+<th>启发</th>
+<th>具体应用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>并行工具调用已在 Hermes 中使用</strong></td>
+<td>system prompt 鼓励 batch 独立 tool call，但可进一步审计哪些调用可并行而未并行</td>
+</tr>
+<tr>
+<td><strong>PASTE 模式库思路可移植</strong></td>
+<td>分析 Hermes 历史工具调用 trace，挖掘重复模式（如 read_file → patch → read_file → terminal），构建轻量投机层</td>
+</tr>
+<tr>
+<td><strong>B-PASTE 边缘思路适用 Jetson</strong></td>
+<td>Jetson Orin 资源受限，B-PASTE 的资源感知投机调度直接适用本地推理场景</td>
+</tr>
+<tr>
+<td><strong>SimpleTool token 级压缩</strong></td>
+<td>若未来微调本地模型，可在 function calling 输出格式上应用类似压缩</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<blockquote>
+<p><strong>来源</strong>：<br />
+- LLMCompiler: arXiv 2312.04511 (ICML 2024, UC Berkeley SqueezeAI Lab)<br />
+- PASTE: arXiv 2603.18897 (SJTU + Microsoft Research, 2026-03)<br />
+- B-PASTE: arXiv 2604.16469 (2026-04)<br />
+- SimpleTool: Shi et al., 2026-03<br />
+- Speculative Actions: Ye et al., MIT + Cornell, 2025-10<br />
+- Zylos Research 综述: https://zylos.ai/research/2026-04-08-speculative-execution-parallel-tool-calling-ai-agents/</p>
+</blockquote>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-28-AI-Agent记忆系统2026-从对话缓冲到制度化知识.md">AI Agent 记忆系统 2026 从对话缓冲到制度化知识</a> — 记忆检索三路并行</li>
+<li><a href="./2026-07-28-推理时计算扩展-从Best-of-N到Compute-Optimal自适应分配.md">推理时计算扩展 Best-of-N 到 Compute-Optimal</a> — 推理路径并行加速</li>
+<li><a href="./2026-07-31-Agent-Harness-Engineering知识体系总纲.md">Agent Harness Engineering 知识体系总纲</a> — Harness 内执行优化层</li>
+<li><a href="./2026-07-31-AI-Agent从玩具走向企业级生产系统.md">AI Agent 从玩具走向企业级生产系统</a> — 生产级延迟优化实践</li>
+</ul>
+</body>
+</html>

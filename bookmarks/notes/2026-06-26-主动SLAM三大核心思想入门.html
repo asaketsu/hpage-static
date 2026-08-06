@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>主动SLAM三大核心思想入门</title>
+
+<meta property="og:title" content="主动SLAM三大核心思想入门" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="slam">主动SLAM入门：三大核心思想，一篇搞懂</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号「SLAM与AI智能体」（作者：slam之心）<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/2Ca9iyiqoFaidNhRk7mU5A<br />
+<strong>记录日期</strong>：2026-06-26</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、文章概要</h2>
+<p>传统SLAM的机器人是"瞎走"——沿固定路线或随机乱逛，误差累积、重复探索。<strong>主动SLAM（Active SLAM）</strong> 让机器人不再被动"记路"，而是同时扮演"建图者"和"自己的导航员"，主动决定下一步去哪、看哪。文章通过三篇开山论文，梳理了主动SLAM的<strong>三大核心思想</strong>。</p>
+<hr />
+<h2 id="_2">二、内容详细整理</h2>
+<h3 id="21-slam">2.1 核心问题：被动SLAM的瓶颈</h3>
+<table>
+<thead>
+<tr>
+<th>被动SLAM问题</th>
+<th>原因</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>路径固定/随机</td>
+<td>无法针对当前不确定性调整</td>
+<td>误差越积越大</td>
+</tr>
+<tr>
+<td>重复探索</td>
+<td>同一区域反复建图</td>
+<td>信息浪费</td>
+</tr>
+<tr>
+<td>无目标性</td>
+<td>走到哪看到哪</td>
+<td>效率极低</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>核心矛盾：机器人被动接收数据 → 无法优化"观测的信息价值"</p>
+</blockquote>
+<h3 id="22-davison-2002">2.2 基石一：主动感知（Davison 2002）</h3>
+<p><strong>论文</strong>：<em>Simultaneous Localization and Map-Building using Active Vision</em> (PAMI 2002)</p>
+<p><strong>核心贡献</strong>：首次将"主动感知"引入SLAM——机器人应主动选择最具信息量的观测。</p>
+<p><strong>信息论准则——"预测不确定性最大"</strong>：</p>
+<pre><code>每个特征的不确定性 → 用预测方差 Vs 衡量
+  ├─ Vs 小（已看准的特征）→ 再看信息量少 → 浪费
+  └─ Vs 大（不确定的特征）→ 看一眼信息增益最大 → 优先选择
+</code></pre>
+<p><strong>直觉理解</strong>：<br />
+- 门的位置你早看准了（范围0.1m）→ 再看也不学新东西<br />
+- 桌子位置你不确定（范围0.5m）→ 看一眼就能大幅压缩不确定性</p>
+<p><strong>Davison 的机器人"大脑"</strong>：<br />
+1. 卡尔曼滤波器维护所有特征的最佳猜测 + 不确定度<br />
+2. 每走一步，对每个可见特征预测"如果测量它，图像坐标范围多大？"<br />
+3. 选择<strong>范围最大</strong>（最猜不准）的特征去观测</p>
+<h3 id="23-2006">2.3 基石二：不确定性最小化目标（牛津团队 2006）</h3>
+<p><strong>论文</strong>：<em>Active Control for Single Camera SLAM</em> (ICRA 2006)</p>
+<p><strong>核心贡献</strong>：将主动控制形式化为<strong>最小化系统状态协方差矩阵</strong>。</p>
+<p><strong>关键概念——"迷糊程度测量仪"</strong>：</p>
+<pre><code>不确定性椭球（协方差矩阵的可视化）
+  ├─ 椭球小 → 你很确定（不迷糊）
+  └─ 椭球大 → 你很迷糊
+
+行列式 = 椭球的&quot;体积&quot;
+  ├─ det(Σ) 小 → 迷糊程度低
+  └─ det(Σ) 大 → 迷糊程度高
+
+主动决策 = 对每个候选动作预测做完后椭球体积 → 选最小体积的动作
+</code></pre>
+<p><strong>信息论度量实操流程</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>操作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. 候选生成</td>
+<td>列出所有可选动作（前进/后退/左转/右转/看某个方向）</td>
+</tr>
+<tr>
+<td>2. 预测</td>
+<td>对每个动作，预测执行后系统的协方差矩阵</td>
+</tr>
+<tr>
+<td>3. 评估</td>
+<td>计算每个预测协方差的行列式 det(Σ)（或迹 tr(Σ)、A-optimality）</td>
+</tr>
+<tr>
+<td>4. 选择</td>
+<td>执行让 det(Σ) 最小的动作</td>
+</tr>
+</tbody>
+</table>
+<p><strong>常用信息论度量对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>度量</th>
+<th>数学形式</th>
+<th>几何含义</th>
+<th>优劣</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>D-optimality</td>
+<td>det(Σ)</td>
+<td>椭球体积</td>
+<td>最常用，但计算成本高</td>
+</tr>
+<tr>
+<td>A-optimality</td>
+<td>tr(Σ)</td>
+<td>椭球平均半径</td>
+<td>计算简单，但对异常值敏感</td>
+</tr>
+<tr>
+<td>E-optimality</td>
+<td>λ_max(Σ)</td>
+<td>椭球最大轴长</td>
+<td>关注最差方向，保守</td>
+</tr>
+</tbody>
+</table>
+<h3 id="24-mpcleung-2006">2.4 基石三：MPC滚动时域规划（Leung 2006）</h3>
+<p><strong>论文</strong>：<em>Active SLAM using Model Predictive Control</em> (IROS 2006)</p>
+<p><strong>核心问题</strong>：理论有了，但实时系统中怎么落地？未来地图未知，无法做全局规划。</p>
+<p><strong>解决方案——模型预测控制（MPC）</strong>：</p>
+<pre><code>每个时刻:
+  1. 基于当前估计，预测未来 N 步的轨迹和收益
+  2. 在 N 步时域内搜索最优动作序列（信息增益 - 移动代价）
+  3. 只执行序列的第一步
+  4. 获取新观测 → 更新估计 → 重新规划 → 循环
+</code></pre>
+<p><strong>MPC vs 贪心策略</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>MPC滚动时域</th>
+<th>贪心策略（一步 lookahead）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>预测范围</td>
+<td>未来N步</td>
+<td>仅下一步</td>
+</tr>
+<tr>
+<td>规划质量</td>
+<td>好（考虑长期收益）</td>
+<td>可能短视</td>
+</tr>
+<tr>
+<td>计算成本</td>
+<td>高（需搜索）</td>
+<td>低</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>实时性要求不极端</td>
+<td>算力受限</td>
+</tr>
+</tbody>
+</table>
+<h3 id="25">2.5 三大基石总结</h3>
+<table>
+<thead>
+<tr>
+<th>基石</th>
+<th>论文</th>
+<th>核心思想</th>
+<th>普遍接受度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① 主动感知</td>
+<td>Davison PAMI 2002</td>
+<td>主动选择信息量最大的观测</td>
+<td>✅ 全部认同</td>
+</tr>
+<tr>
+<td>② 不确定性最小化</td>
+<td>Oxford ICRA 2006</td>
+<td>以协方差最小化为控制目标</td>
+<td>✅ 全部认同（信息论/Fisher/RL奖励本质上都在做这事）</td>
+</tr>
+<tr>
+<td>③ MPC滚动规划</td>
+<td>Leung IROS 2006</td>
+<td>边执行边重规划的最优轨迹</td>
+<td>⚠️ 大部分遵循（部分用贪心替代MPC）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">三、查询拓展</h2>
+<h3 id="31-slam">3.1 主动SLAM的理论谱系</h3>
+<p>文章聚焦2002-2006的三篇开山论文，完整谱系如下：</p>
+<pre><code>主动SLAM 理论演进
+  │
+  ├─ 2002 Davison: 主动感知 + 信息论特征选择
+  ├─ 2005 Makaracious: 基于效用的探索策略
+  ├─ 2006 Oxford: 不确定性最小化（信息论度量统一框架）
+  ├─ 2006 Leung: MPC滚动时域实现
+  ├─ 2012 Carlone: 主动SLAM的可达性分析
+  ├─ 2015 Kretzschmar: 基于强化学习的主动探索
+  ├─ 2018 Chen: 深度强化学习 + 主动SLAM
+  └─ 2020+ : Neural Active SLAM（神经网络学习探索策略）
+</code></pre>
+<h3 id="32-slam">3.2 信息论在SLAM中的完整工具箱</h3>
+<p>文章提到行列式（D-optimality），扩展完整的实验设计理论工具箱：</p>
+<table>
+<thead>
+<tr>
+<th>度量</th>
+<th>公式</th>
+<th>SLAM中的含义</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Shannon熵</td>
+<td>H(X) = -Σp log p</td>
+<td>地图后验分布的不确定性</td>
+<td>概率栅格地图</td>
+</tr>
+<tr>
+<td>Fisher信息矩阵</td>
+<td>F = E[∂²logL/∂θ²]</td>
+<td>参数估计的理论精度上限</td>
+<td>连续状态SLAM</td>
+</tr>
+<tr>
+<td>KL散度</td>
+<td>D_KL(P‖Q)</td>
+<td>观测前后分布的差异</td>
+<td>贝叶斯滤波评估</td>
+</tr>
+<tr>
+<td>D-optimality</td>
+<td>log det(F)</td>
+<td>信息椭球体积（越大越好）</td>
+<td>路径规划目标</td>
+</tr>
+<tr>
+<td>A-optimality</td>
+<td>tr(F⁻¹)</td>
+<td>参数平均方差</td>
+<td>快速评估</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-slam">3.3 主动SLAM与其他探索策略的关系</h3>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>原理</th>
+<th>与主动SLAM关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>边界探索（Frontier-based）</td>
+<td>朝已知/未知边界走</td>
+<td>启发式，不显式优化不确定性</td>
+</tr>
+<tr>
+<td>信息探索（Information-based）</td>
+<td>直接最大化信息增益</td>
+<td>主动SLAM的子集</td>
+</tr>
+<tr>
+<td>随机探索</td>
+<td>随机游走</td>
+<td>基线，不做优化</td>
+</tr>
+<tr>
+<td>强化学习探索</td>
+<td>学习探索策略</td>
+<td>主动SLAM的学习方法</td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-slam">3.4 现代发展：深度学习 + 主动SLAM</h3>
+<p>2018年后，主动SLAM的研究重心从"手工设计目标函数"转向"学习探索策略"：</p>
+<ul>
+<li><strong>端到端RL</strong>：输入当前观测+地图状态 → 网络输出探索动作</li>
+<li><strong>Meta-learning</strong>：快速适应新环境的探索策略</li>
+<li><strong>Curiosity-driven</strong>：用"预测误差"作为内在奖励驱动探索</li>
+<li><strong>Neural SLAM</strong>：用神经辐射场/3DGS表示地图 + 学习主动观测策略</li>
+</ul>
+<hr />
+<h2 id="_4">四、归纳总结</h2>
+<h3 id="41-slam-">4.1 主动SLAM的本质：感知-控制耦合</h3>
+<p>传统SLAM将感知和控制解耦：</p>
+<pre><code>感知层: 观测 → 估计 → 建图（被动接收）
+控制层: 规划 → 执行 → 移动（与感知无关）
+</code></pre>
+<p>主动SLAM打破解耦：</p>
+<pre><code>感知 ↔ 控制 紧耦合
+  ├─ 感知结果 → 驱动控制决策（去哪能最大降低不确定性）
+  └─ 控制动作 → 改变感知质量（主动调整视角/位置）
+</code></pre>
+<p><strong>本质</strong>：主动SLAM是<strong>感知-控制联合优化</strong>问题，不是单纯建图也不是单纯导航。</p>
+<h3 id="42">4.2 三层决策架构</h3>
+<pre><code>┌─────────────────────────────────┐
+│  Layer 3: 战略层（去哪片区域）    │ ← 全局探索 vs 局部精化
+├─────────────────────────────────┤
+│  Layer 2: 战术层（走哪条路径）    │ ← MPC滚动时域规划
+├─────────────────────────────────┤
+│  Layer 1: 感知层（看哪个特征）    │ ← 信息论特征选择
+└─────────────────────────────────┘
+</code></pre>
+<h3 id="43-slam-vs-slam">4.3 主动SLAM vs 被动SLAM 完整对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>被动SLAM</th>
+<th>主动SLAM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>路径来源</td>
+<td>预设/随机/外部规划</td>
+<td><strong>自主决策</strong></td>
+</tr>
+<tr>
+<td>观测选择</td>
+<td>看到什么算什么</td>
+<td><strong>主动选信息量最大的</strong></td>
+</tr>
+<tr>
+<td>目标函数</td>
+<td>无（建图是副产品）</td>
+<td><strong>不确定性最小化</strong></td>
+</tr>
+<tr>
+<td>计算开销</td>
+<td>低</td>
+<td>高（需预测+优化）</td>
+</tr>
+<tr>
+<td>收敛速度</td>
+<td>慢</td>
+<td>快</td>
+</tr>
+<tr>
+<td>地图质量</td>
+<td>取决于运气</td>
+<td><strong>可优化可保证</strong></td>
+</tr>
+<tr>
+<td>理论基础</td>
+<td>几何约束</td>
+<td><strong>信息论 + 控制论</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">五、趋势判断</h2>
+<h3 id="51-slam">5.1 主动SLAM正从"学术研究"走向"工程落地"</h3>
+<p>2002-2015年的主动SLAM主要停留在仿真和实验室。但随着以下条件成熟，正进入工程落地阶段：<br />
+- <strong>算力提升</strong>：Jetson Orin 等边缘GPU能实时运行MPC+SLAM<br />
+- <strong>传感器降价</strong>：200+线激光雷达（上篇笔记主题）提供丰富特征供主动选择<br />
+- <strong>算法成熟</strong>：FAST-LIO2 + 在线信息增益评估已可在边缘端实时运行</p>
+<h3 id="52">5.2 深度强化学习将取代手工信息论度量</h3>
+<p>传统主动SLAM需要手动设计 D-optimality 等度量函数，这些函数在复杂环境中不一定最优。趋势：<br />
+- 用 <strong>RL Agent 学习探索策略</strong>，不需要手工设计目标函数<br />
+- 用 <strong>Transformer 处理历史观测序列</strong>，替代传统MPC时域<br />
+- 预测：2027年后主流主动SLAM将是 RL-driven，手工度量退为baseline</p>
+<h3 id="53-slamactive-perception">5.3 主动SLAM与主动感知（Active Perception）正在融合</h3>
+<p>主动SLAM（建图导向）和主动感知（识别/理解导向）正在统一：<br />
+- <strong>主动3D重建</strong>：主动选择最佳视角补全3DGS/NeRF<br />
+- <strong>主动目标搜索</strong>：主动导航到未知区域搜索特定目标<br />
+- <strong>主动检查</strong>：工业巡检中主动规划检测路径</p>
+<h3 id="54-slam">5.4 多机器人主动SLAM是下一个爆发点</h3>
+<p>单机器人主动SLAM理论已基本成熟，多机器人协作主动SLAM仍是开放问题：<br />
+- <strong>任务分配</strong>：哪个机器人去探索哪个区域<br />
+- <strong>信息共享</strong>：地图融合时的不确定性传播<br />
+- <strong>通信约束</strong>：带宽有限下的分布式决策</p>
+<hr />
+<h2 id="_6">六、关联分析</h2>
+<h3 id="61">6.1 与前三篇笔记的完整认知链</h3>
+<p>本系列四篇笔记构成了一条从传感器到算法到范式的完整认知链：</p>
+<pre><code>① 西门子工业AI（宏观范式）
+   Physical AI = AI直接控制物理世界
+   数字孪生 = 虚拟验证
+
+② 200线激光雷达SLAM（传感器层）
+   高线束 = 丰富特征供主动选择的前提
+   但算力/时序/故障是瓶颈
+
+③ 无图智驾不用SLAM（算法路线之争）
+   SLAM在城市动态环境失败 → BEV+Occ替代
+
+④ 主动SLAM三大核心思想（本篇 · 理论层）
+   机器人不再被动建图 → 主动决策最大化信息增益
+</code></pre>
+<p><strong>关键交叉</strong>：②中的高线束雷达为④的主动特征选择提供了更丰富的候选池——线束越高，可选观测越多，主动选择的价值越大。但②也指出算力是瓶颈，而④的MPC预测本身就需要大量算力。<strong>两者形成"特征丰富度 vs 算力承载力"的张力</strong>。</p>
+<h3 id="62-slam-pomdp">6.2 主动SLAM 与 POMDP 的深层联系</h3>
+<p>主动SLAM的本质是一个 <strong>POMDP</strong>（部分可观测马尔可夫决策过程）：</p>
+<table>
+<thead>
+<tr>
+<th>POMDP要素</th>
+<th>主动SLAM对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态 S</td>
+<td>机器人位姿 + 地图</td>
+</tr>
+<tr>
+<td>观测 O</td>
+<td>传感器读数</td>
+</tr>
+<tr>
+<td>动作 A</td>
+<td>移动 + 观测选择</td>
+</tr>
+<tr>
+<td>转移 T</td>
+<td>运动模型 + 观测模型</td>
+</tr>
+<tr>
+<td>奖励 R</td>
+<td>-det(Σ)（不确定性减小量）</td>
+</tr>
+</tbody>
+</table>
+<p>这意味着主动SLAM的所有RL解法（Value Iteration、Policy Gradient、Actor-Critic）都可直接应用。</p>
+<h3 id="63">6.3 与用户机器人项目的关联</h3>
+<table>
+<thead>
+<tr>
+<th>主动SLAM概念</th>
+<th>用户项目映射</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MPC滚动规划</td>
+<td>双轮腿式机器人的步态规划（实时调整下一步）</td>
+</tr>
+<tr>
+<td>信息论特征选择</td>
+<td>机器人巡检时"先看不确定区域"的导航策略</td>
+</tr>
+<tr>
+<td>不确定性椭球</td>
+<td>平衡小车控制中的状态协方差 → 可用于评估平衡稳定性</td>
+</tr>
+<tr>
+<td>POMDP建模</td>
+<td>ESP32平衡小车的倾角估计本身就是一个POMDP（传感器噪声+控制延迟）</td>
+</tr>
+<tr>
+<td>多机器人主动SLAM</td>
+<td>如果有多台Hermes（jbot/ubot/abot），协作探索映射</td>
+</tr>
+</tbody>
+</table>
+<h3 id="64-hermes-agent">6.4 对Hermes Agent系统的启发</h3>
+<p>主动SLAM的思想可以直接迁移到AI Agent设计：<br />
+- <strong>主动信息获取</strong>：Agent不应被动等用户提问，应主动决定"该查什么知识/该做什么工具调用"<br />
+- <strong>不确定性最小化</strong>：Agent在做决策前应评估"我对这个任务的理解有多不确定"，并主动补全信息<br />
+- <strong>MPC滚动规划</strong>：复杂任务的Agent应"边执行边重规划"，而非一次性生成完整计划</p>
+<p>这与记忆中的「Proactive Agent / 主动智能体」趋势一致。</p>
+<hr />
+<h2 id="_7">七、金句摘录</h2>
+<ol>
+<li><strong>「主动选择观测是提升SLAM性能的本质手段」</strong> — 主动SLAM第一原理</li>
+<li><strong>「不确定性是驱动主动决策的'货币'」</strong> — 牛津团队对目标的精确概括</li>
+<li><strong>「行列式就是'迷糊程度'的数学标尺——迷糊程度越低，行列式越小」</strong> — 信息论度量的直觉解释</li>
+<li><strong>「边执行边重规划——实现了探索与优化的统一」</strong> — MPC的核心价值</li>
+<li><strong>「机器人不再只是被动地记路，而是同时扮演建图者和自己的导航员」</strong> — 主动SLAM的形象定义</li>
+</ol>
+<hr />
+<h2 id="_8">八、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>具体行动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主动SLAM理论已成熟可落地</td>
+<td>机器人项目可从被动SLAM升级到主动探索模式</td>
+</tr>
+<tr>
+<td>信息论度量可简化实现</td>
+<td>在Jetson上先用D-optimality（log det F）做简单主动特征选择</td>
+</tr>
+<tr>
+<td>RL是未来方向但非必需</td>
+<td>当前阶段手工度量+MPC已足够，RL方案留作后续研究</td>
+</tr>
+<tr>
+<td>多机器人协作是蓝海</td>
+<td>如果有多台机器人，协作主动SLAM是差异化优势</td>
+</tr>
+<tr>
+<td>主动思想可迁移到Agent</td>
+<td>Hermes Agent应增加"主动信息获取"策略（主动调用工具补全知识）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="./2026-06-26-无图智驾为何不用SLAM建立局部语义地图.md">2026-06-26-无图智驾为何不用SLAM建立局部语义地图</a></li>
+<li><a href="./2026-06-26-200线以上激光雷达SLAM踩坑指南.md">2026-06-26-200线以上激光雷达SLAM踩坑指南</a></li>
+<li><a href="./2026-06-26-西门子CEO物理AI工业AI革命-VivaTech2026.md">2026-06-26-西门子CEO物理AI工业AI革命-VivaTech2026</a></li>
+</ul>
+</body>
+</html>

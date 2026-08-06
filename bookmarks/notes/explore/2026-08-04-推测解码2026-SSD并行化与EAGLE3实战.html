@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>推测解码2026-SSD并行化与EAGLE3实战</title>
+
+<meta property="og:title" content="推测解码2026-SSD并行化与EAGLE3实战" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="speculative-speculative-decoding">Speculative Speculative Decoding — 推测解码的并行化突破</h1>
+<blockquote>
+<p>学习时间：2026-08-04 | 来源：夜间自学习<br />
+核心论文：arXiv:2603.03251 (SSD / Saguaro, Stanford + Together AI)<br />
+关键实践：BentoML EAGLE-3 训练指南 | Red Hat vLLM 部署</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11">1.1 核心问题与研究动机</h3>
+<p>LLM 自回归解码的固有瓶颈：每个 token 需完整前向传播，GPU 在串行生成中大量闲置。推测解码通过"小模型草拟→大模型并行验证"解决此问题，已实现 2-4× 无损加速。但推测解码本身存在顺序依赖——验证必须完成才能开始下一轮推测。SSD（Speculative Speculative Decoding）旨在消除这一依赖。</p>
+<h3 id="12">1.2 方法论：推测解码基础</h3>
+<p><strong>核心机制（Draft-then-Verify）：</strong><br />
+1. Draft 模型（1B 级）基于当前 context 草拟 k 个 token<br />
+2. Target 模型（70B 级）单次前向传播并行验证所有 k 个 token<br />
+3. 从首个拒绝点截断，Target 采样"bonus token"<br />
+4. 循环</p>
+<p><strong>关键定理（Leviathan 2023）</strong>：acceptance rate α = Σ min{p_target(x), p_draft(x)} = 1 - ½‖p_target - p_draft‖₁</p>
+<p><strong>无损保证</strong>：输出分布严格等于 target 模型分布，不像量化有精度损失。</p>
+<h3 id="13-acceptance-rate">1.3 Acceptance Rate — 速度提升的决定因素</h3>
+<p>BentoML 模拟实验关键数据：</p>
+<table>
+<thead>
+<tr>
+<th>Acceptance Rate</th>
+<th>Speculative Tokens (K)</th>
+<th>速度提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0.95</td>
+<td>5</td>
+<td>~3.5×</td>
+</tr>
+<tr>
+<td>0.80</td>
+<td>4</td>
+<td>~2.0×</td>
+</tr>
+<tr>
+<td>0.60</td>
+<td>3</td>
+<td>~1.3×</td>
+</tr>
+<tr>
+<td>&lt;0.50</td>
+<td>任意</td>
+<td>可能负优化</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实际世界 vs 理论</strong>：BentoML 用 vLLM + SGLang 测试 EAGLE-3 发现实际 acceptance rate 约 0.6-0.8（而非近 1.0），实际加速约 2×。</p>
+<h3 id="14-ssd">1.4 SSD — 并行化推测解码本身</h3>
+<p>标准推测解码的瓶颈：<strong>验证必须完成才能开始下一轮推测</strong>。</p>
+<p>SSD 的创新：验证进行时，Draft 模型在<strong>独立硬件</strong>上预测验证结果（"多少 token 被接受 + bonus token 是什么"），并为所有可能结果预准备推测。</p>
+<p><strong>三大挑战与 Saguaro 的解决：</strong></p>
+<table>
+<thead>
+<tr>
+<th>挑战</th>
+<th>Saguaro 方案</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>预测验证结果</strong></td>
+<td>用 draft logits 的 top-k 预测 bonus token</td>
+<td>90% 准确率</td>
+</tr>
+<tr>
+<td><strong>Acceptance vs 预测精度的矛盾</strong></td>
+<td>专用采样算法平衡两者</td>
+<td>理论保证有加速</td>
+</tr>
+<tr>
+<td><strong>预测失败的回退</strong></td>
+<td>大 batch 用 neural backup；小 batch 用 fast backup</td>
+<td>大 batch 仍超 SD 20%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>性能：</strong> 平均比最强 SD 基线快 <strong>30%</strong>，最高比自回归快 <strong>5×</strong>，严格改善 throughput-latency Pareto 前沿。</p>
+<h3 id="15-eagle-3-draft">1.5 EAGLE-3 — 当前最佳 Draft 模型架构</h3>
+<p>EAGLE 系列（当前 EAGLE-3）的改进：<br />
+- 复用 Target 模型 top-layer features（LM head 之前的特征）<br />
+- 训练 Draft 模型预测下一个 feature，再用 Target 的 LM head 得到 draft token<br />
+- 利用 Target 的丰富信息，显著优于原始 spec sampling</p>
+<p><strong>BentoML 训练 EAGLE-3 Draft 模型流程：</strong><br />
+1. 数据准备：UltraChat-200k + ShareGPT 混合<br />
+2. 训练：gradient_accumulation_steps=8，10 epochs<br />
+3. 部署：vLLM <code>--speculative-config '{"method": "eagle3", "model": "path", "num_speculative_tokens": 5}'</code><br />
+4. 基准测试：<code>vllm bench serve --dataset-name sharegpt</code></p>
+<h3 id="16">1.6 适用场景与局限</h3>
+<p><strong>✅ 最佳场景：</strong><br />
+- 低并发交互式服务（小 batch，GPU 有空闲算力）<br />
+- 代码生成、结构化输出、可预测文本<br />
+- 50-80% acceptance rate 的可预测任务</p>
+<p><strong>❌ 不适用场景：</strong><br />
+- 高并发离线批处理（GPU 满载，无空闲空间容纳 Draft 模型）<br />
+- 高创意输出（诗歌、小说、营销文案，token 选择不可预测）<br />
+- Draft/Target 训练数据不对齐（acceptance rate 崩塌）</p>
+<h3 id="17-2026">1.7 2026 推测解码生态全览</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>核心创新</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Vanilla SD</strong></td>
+<td>Draft → Verify 基础范式</td>
+<td>已标准化</td>
+</tr>
+<tr>
+<td><strong>EAGLE-3</strong></td>
+<td>Feature-level drafting + LM head 复用</td>
+<td>当前最佳实践</td>
+</tr>
+<tr>
+<td><strong>Medusa</strong></td>
+<td>多头并行草拟</td>
+<td>已部署</td>
+</tr>
+<tr>
+<td><strong>SSD/Saguaro</strong></td>
+<td>推测验证并行化（异步）</td>
+<td>最新研究</td>
+</tr>
+<tr>
+<td><strong>LayerSkip</strong></td>
+<td>层级早期退出 + 自推测</td>
+<td>探索中</td>
+</tr>
+<tr>
+<td><strong>MTP</strong></td>
+<td>Multi-Token Prediction</td>
+<td>探索中</td>
+</tr>
+<tr>
+<td><strong>Tree-based SD</strong></td>
+<td>树状 token 候选扩大接受数</td>
+<td>可与 SSD 组合</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Red Hat 生产实践</strong>：Qwen3.5-9B 无推测解码 145 tok/s → 加 EAGLE-3 推测解码 424 tok/s（<strong>2.9× 提升</strong>）。Red Hat AI 已发布 Gemma/Qwen/Llama/Mistral 的预训练 speculator 模型。</p>
+<hr />
+<h3 id="18-ssd">1.8 技术细节：SSD 异步架构与数学</h3>
+<p><strong>SSD 异步架构：</strong> Target GPU 执行验证 Round T 时，Draft GPU 在独立硬件上预测 Round T 的验证结果（多少 token 被接受+bonus token 是什么），并为 Round T+1 预准备推测。预测命中则零 Draft 延迟返回，未命中则回退到同步推测。</p>
+<p><strong>Acceptance Rate 数学：</strong> 每轮生成的期望 token 数 E[generated] = (1 - α^(K+1)) / (1 - α)。当 α=0.8, K=5 时 E ≈ 4.7 tokens/round，即 4.7× 串行效率。</p>
+<p><strong>vLLM 推测解码配置：</strong></p>
+<pre><code class="language-python">from vllm import LLM, SamplingParams
+llm = LLM(
+    model=&quot;meta-llama/Llama-3.3-70B-Instruct&quot;,
+    speculative_model=&quot;yuhuili/EAGLE3-LLaMA3.3-Instruct-70B&quot;,
+    num_speculative_tokens=5,
+    use_v2_block_manager=True,  # 推测解码必需
+    gpu_memory_utilization=0.9,
+)
+outputs = llm.generate([&quot;Your prompt&quot;], SamplingParams(temperature=0.7, top_p=0.95))
+</code></pre>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-speculative-execution-cpu">2.1 Speculative Execution 的 CPU 前身</h3>
+<p>推测解码灵感来自 CPU 的 speculative execution（分支预测）：CPU 在条件分支结果确定前推测执行一条路径，预测命中则零延迟，未命中则回滚。推测解码将此思想迁移到 LLM token 生成——Draft 模型就是"分支预测器"，Target 模型就是"实际执行单元"。关键区别：LLM 推测解码是无损的（通过 residual distribution 修正），而 CPU 推测执行需要 flush pipeline。</p>
+<h3 id="22-lossless">2.2 Lossless 保证的数学原理</h3>
+<p>推测解码的"无损"来自 speculative sampling 的数学保证：接受的 token 按 min{1, p_target(x)/p_draft(x)} 概率接受，拒绝时从 residual distribution r(·) ∝ max(p_target(·) - p_draft(·), 0) 采样 bonus token。这保证了最终输出的分布严格等于 p_target。这是与量化（有损）的根本区别——输出质量不变，只有速度变化。</p>
+<h3 id="23-eagle">2.3 EAGLE 系列的演进逻辑</h3>
+<p>EAGLE 的核心创新是"在 feature 层面而非 token 层面做推测"：传统 SD 用小模型直接预测 token，EAGLE 让小模型预测 Target 的 hidden feature，再通过 Target 的 LM head 得到 token。这意味着 Draft 模型可以复用 Target 的全部输出空间知识，大幅提高 acceptance rate。EAGLE-3 进一步优化了训练策略和长序列条件化能力。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-p0p1p2p3">3.1 借鉴点评估（P0/P1/P2/P3）</h3>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>借鉴点</th>
+<th>落地方案</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P1</strong></td>
+<td>vLLM + EAGLE-3 生产部署</td>
+<td>未来部署 vLLM 服务时，EAGLE-3 推测解码是必选项——Red Hat 实测 2.9× 提速</td>
+<td>Red Hat 实践</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>Red Hat 预训练 speculator 模型</td>
+<td>直接下载 Gemma/Qwen/Llama/Mistral 的 speculator，无需自训练</td>
+<td>HF RedHatAI</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>Acceptance rate 监控</td>
+<td>部署后持续监控 acceptance rate，低于 0.6 时关闭推测解码避免负优化</td>
+<td>BentoML 理论</td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td>SSD 双硬件架构</td>
+<td>当前 Jetson 单 GPU 无法实现异步 SSD，但可作为未来多 GPU 方案参考</td>
+<td>SSD 论文</td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td>自训练 Draft 模型</td>
+<td>针对特定领域（如量化因子文本）训练专用 EAGLE-3 Draft，提升 acceptance</td>
+<td>BentoML 实践</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41-2026-2027">4.1 推测解码将成为 2026-2027 推理基础设施标配</h3>
+<p>vLLM 已原生支持 EAGLE-3，Red Hat AI 发布主流模型的预训练 speculator，BentoML 提供训练 pipeline。技术成熟度和工具链完善度已到生产级。预计 2027 年所有主流推理引擎默认开启推测解码。</p>
+<h3 id="42-ssd">4.2 异步并行化（SSD 类）是下一个突破点</h3>
+<p>SSD 证明推测解码本身的顺序依赖可以被消除，30% 额外加速。随着多 GPU/多节点部署普及，异步推测解码将成为高并发场景的关键优化。但需要独立 Draft 硬件——云计算厂商的推理实例需要重新设计 GPU 分配策略。</p>
+<h3 id="43-agent">4.3 Agent 工具调用场景天然适配推测解码</h3>
+<p>Agent 的工具调用输出高度结构化（JSON、代码、参数列表），是推测解码的理想场景——acceptance rate 预计 70-85%。未来 Agent 框架可能内置推测解码自动调优，根据输出类型动态切换。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51">5.1 关联笔记与论文</h3>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+<th>核心交叉点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>推测解码2026中期（2026-07-25 笔记）</td>
+<td>直接前序</td>
+<td>本篇是其后续，补充了 SSD 并行化突破</td>
+</tr>
+<tr>
+<td>EAGLE3-P EAGLE推测解码实践（2026-07-21 笔记）</td>
+<td>技术关联</td>
+<td>EAGLE-3 生产实践细节互补</td>
+</tr>
+<tr>
+<td>本地模型部署-消费级GPU推理（多篇笔记）</td>
+<td>应用场景</td>
+<td>推测解码是消费级 GPU 推理加速的核心手段</td>
+</tr>
+<tr>
+<td>BitNet b1.58（2026-08-03 笔记）</td>
+<td>互补加速</td>
+<td>1-bit 量化降低 Draft 模型成本，与推测解码可叠加</td>
+</tr>
+<tr>
+<td>KVarN KV-Cache 量化（2026-08-01 笔记）</td>
+<td>正交优化</td>
+<td>KV-Cache 量化与推测解码是不同维度的优化，可组合</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">参考资料</h2>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>链接</th>
+<th>类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSD/Saguaro 论文</td>
+<td>arxiv.org/abs/2603.03251</td>
+<td>论文</td>
+</tr>
+<tr>
+<td>BentoML EAGLE-3 指南</td>
+<td>bentoml.com/blog/3x-faster-llm-inference-with-speculative-decoding</td>
+<td>实践</td>
+</tr>
+<tr>
+<td>Red Hat vLLM 部署</td>
+<td>developers.redhat.com/articles/2026/06/12/...</td>
+<td>生产</td>
+</tr>
+<tr>
+<td>EAGLE-3 GitHub</td>
+<td>github.com/SafeAILab/EAGLE</td>
+<td>开源</td>
+</tr>
+<tr>
+<td>vLLM Speculators</td>
+<td>github.com/vllm-project/speculators</td>
+<td>工具</td>
+</tr>
+<tr>
+<td>Red Hat AI HF 模型</td>
+<td>huggingface.co/RedHatAI/models?search=eagle</td>
+<td>预训练模型</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-08-SPORK自推测分叉.md">SPORK自推测分叉</a> — 自推测解码的早期范式，SSD 的前置理论</li>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KVCache量化压缩-TurboQuant-RotorQuant</a> — 推测解码与 KV Cache 压缩的协同优化</li>
+<li><a href="./2026-07-14-本地模型部署-vLLMV1-APC.md">本地模型部署-vLLMV1-APC</a> — vLLM 推测解码生产部署实战</li>
+<li><a href="./2026-07-03-GLM-5.2架构深度解析-IndexShare长上下文.md">GLM-5.2架构深度解析-IndexShare长上下文</a> — 长上下文与推测解码的架构交叉点</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llm-inference-opt-2026-05-20-supplement</title>
+
+<meta property="og:title" content="llm-inference-opt-2026-05-20-supplement" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-2026-05-20">LLM 推理优化补充笔记（2026-05-20）</h1>
+<blockquote>
+<p>探索日期：2026-05-20<br />
+主题：知识蒸馏新范式 + 量化选型矩阵更新 + RadixAttention 深度分析<br />
+来源：ICML 2025 DA-KD, NeurIPS 2024 Compact LM, vrlatech.com 量化对比, SGLang RadixAttention 文档</p>
+</blockquote>
+<hr />
+<h2 id="_1">核心发现</h2>
+<h3 id="1-2025-2026">发现 1：知识蒸馏 2025-2026 三大范式升级</h3>
+<p>知识蒸馏已从简单的 logit 匹配演进为三大互补方向：</p>
+<h4 id="11-da-kdicml-2025">1.1 难度感知蒸馏 DA-KD（ICML 2025）</h4>
+<ul>
+<li><strong>核心思想</strong>：不同样本难度差异大，简单样本的蒸馏是不必要的浪费</li>
+<li><strong>方法</strong>：动态调整蒸馏数据集，根据样本难度筛选 — 简单样本跳过，困难样本集中训练</li>
+<li><strong>优化改进</strong>：针对困难样本集中时优化不稳定的问题，设计了新的 KD loss</li>
+<li><strong>收益</strong>：训练成本显著降低，同等计算资源下蒸馏质量提升</li>
+<li><strong>实践启发</strong>：做蒸馏数据集时，不要均匀采样，按样本难度加权采样</li>
+</ul>
+<h4 id="12-dd">1.2 数据集蒸馏 DD</h4>
+<ul>
+<li><strong>核心思想</strong>：不蒸馏模型，蒸馏数据集 — 从教师模型合成紧凑高信息量的数据集</li>
+<li><strong>技术路径</strong>：</li>
+<li>优化梯度匹配（gradient matching）</li>
+<li>潜空间正则化（latent space regularization）</li>
+<li>生成式合成（generative synthesis）</li>
+<li><strong>与 KD 的关系</strong>：DD 是 KD 的互补技术 — DD 产生高质量小数据集，KD 在其上训练学生模型</li>
+<li><strong>关键洞察</strong>：对 LLM 而言，DD 的价值在于能将教师模型的复杂知识压缩到少量精炼样本中，降低蒸馏的推理成本</li>
+</ul>
+<h4 id="13">1.3 多教师 + 跨模态蒸馏</h4>
+<ul>
+<li><strong>多教师蒸馏</strong>：从多个专家模型（不同领域/能力）向单一学生模型迁移知识</li>
+<li><strong>跨模态蒸馏</strong>：从多模态教师（如 GPT-4V）向轻量单模态学生迁移高维理解能力</li>
+<li><strong>2025 趋势</strong>：开放权重模型（LLaMA 3、Mistral）使得大规模蒸馏成为可能，蒸馏从"效率技巧"变为"知识转移协议"</li>
+</ul>
+<p><strong>蒸馏 vs 量化 vs 剪枝 选型指南：</strong></p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>首选技术</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>需要保持模型大小不变</td>
+<td>量化（FP8/INT4）</td>
+<td>零训练成本，即插即用</td>
+</tr>
+<tr>
+<td>需要大幅缩小模型</td>
+<td>蒸馏</td>
+<td>产生更小的新模型</td>
+</tr>
+<tr>
+<td>特定领域任务优化</td>
+<td>任务蒸馏</td>
+<td>保留领域能力，丢弃无关知识</td>
+</tr>
+<tr>
+<td>边缘部署</td>
+<td>蒸馏 + 量化</td>
+<td>先蒸馏到小模型，再量化</td>
+</tr>
+<tr>
+<td>需要自定义模型大小</td>
+<td>剪枝 + 蒸馏</td>
+<td>结构化剪枝再蒸馏恢复精度</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22026">发现 2：2026 量化方案精确选型矩阵</h3>
+<p>基于最新基准测试的精确推荐：</p>
+<table>
+<thead>
+<tr>
+<th>精度等级</th>
+<th>显存占用（7B 模型）</th>
+<th>质量保持</th>
+<th>速度</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF16</td>
+<td>14 GB</td>
+<td>100%</td>
+<td>基准</td>
+<td>训练、全精度验证</td>
+</tr>
+<tr>
+<td>FP8</td>
+<td>7 GB</td>
+<td>~99.8%</td>
+<td>1.5x</td>
+<td>H100+ 推理首选</td>
+</tr>
+<tr>
+<td>INT8 (Q8_0)</td>
+<td>8.5 GB</td>
+<td>~99.5%</td>
+<td>1.5x</td>
+<td>最大质量保持</td>
+</tr>
+<tr>
+<td>6-bit (Q6_K)</td>
+<td>6.7 GB</td>
+<td>~98%</td>
+<td>2x</td>
+<td><strong>非英文最佳平衡</strong></td>
+</tr>
+<tr>
+<td>4-bit (Q4_K_M)</td>
+<td>4.7 GB</td>
+<td>~95%</td>
+<td>2.5x</td>
+<td>VRAM 受限首选</td>
+</tr>
+<tr>
+<td>2-bit (IQ2_M)</td>
+<td>2.5 GB</td>
+<td>~85%</td>
+<td>3x</td>
+<td>极端压缩</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键决策规则：</strong></p>
+<ol>
+<li><strong>FP8 是 2026 年的实用甜点</strong>：质量和 BF16 几乎无差别，显存减半。H100/RTX 5090 原生支持</li>
+<li><strong>Q6_K 是非英文语言的安全选择</strong>：4-bit 量化非英文质量掉到 90-95%，Q6_K 保持 98-99%。多花 2GB VRAM 换全语言质量</li>
+<li><strong>GPTQ-Int4 是 multi-LoRA 唯一选择</strong>：唯一支持 LoRA adapter 的 4-bit 格式，vLLM 原生兼容</li>
+<li><strong>AWQ vs GPTQ</strong>：AWQ 在多数基准上质量略高，GPTQ 工具链更成熟、预量化模型更多</li>
+<li><strong>GGUF 优势</strong>：CPU + GPU 混合推理、Apple M 系列原生支持、llama.cpp 生态</li>
+</ol>
+<p><strong>70B 模型量化后显存需求对照：</strong></p>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>显存</th>
+<th>可运行硬件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF16</td>
+<td>140 GB</td>
+<td>2x H100 80GB</td>
+</tr>
+<tr>
+<td>FP8</td>
+<td>70 GB</td>
+<td>1x H100 80GB</td>
+</tr>
+<tr>
+<td>INT4 AWQ/GPTQ</td>
+<td>35-40 GB</td>
+<td>1x RTX PRO 6000 96GB / 2x A6000</td>
+</tr>
+<tr>
+<td>INT4 GGUF (Q4_K_M)</td>
+<td>~40 GB</td>
+<td>同上 + CPU offload</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3sglang-radixattention">发现 3：SGLang RadixAttention 深度机制分析</h3>
+<p>RadixAttention 是 SGLang 相对 vLLM 的核心差异化优势：</p>
+<h4 id="token-level-radix-tree-vs-block-level-hashing">机制：Token-Level Radix Tree vs Block-Level Hashing</h4>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>SGLang RadixAttention</th>
+<th>vLLM Automatic Prefix Caching</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据结构</td>
+<td><strong>Radix Tree</strong>（前缀树）</td>
+<td><strong>Block-level Hash Table</strong></td>
+</tr>
+<tr>
+<td>匹配粒度</td>
+<td>Token 级别精确匹配</td>
+<td>Block 级别（默认 16 token 块）</td>
+</tr>
+<tr>
+<td>缓存复用</td>
+<td>共享前缀自动复用（含生成结果）</td>
+<td>仅共享前缀复用</td>
+</tr>
+<tr>
+<td>树操作</td>
+<td>动态插入/删除/合并</td>
+<td>Hash 查找 + LRU 淘汰</td>
+</tr>
+<tr>
+<td>内存效率</td>
+<td>前缀重叠零额外开销</td>
+<td>Block 对齐可能有 padding 浪费</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_2">实测收益</h4>
+<ul>
+<li><strong>多轮对话场景</strong>：系统 prompt + 工具定义固定时，cache hit rate 达 <strong>75-95%</strong></li>
+<li><strong>Agent swarm</strong>：多 Agent 共享相同 prompt 模板时效果最显著</li>
+<li><strong>TTFT 降低</strong>：prefix 重叠 60%+ 时 TTFT 显著下降</li>
+<li><strong>整体吞吐</strong>：相比 vLLM 在多轮场景约 <strong>10% boost</strong></li>
+</ul>
+<h4 id="sglang-radixattention">何时选 SGLang（基于 RadixAttention）</h4>
+<pre><code>if (multi_turn_conversation || agent_swarm) &amp;&amp; shared_prefix_ratio &gt; 0.5:
+    choose SGLang  # RadixAttention 收益最大化
+elif single_turn_batch_inference:
+    choose vLLM or TensorRT-LLM  # 批处理吞吐更优
+elif nvidia_hardware &amp;&amp; max_throughput_critical:
+    choose TensorRT-LLM  # Kernel fusion 最深
+</code></pre>
+<hr />
+<h2 id="_3">技术细节与代码示例</h2>
+<h3 id="huggingface-trl">知识蒸馏实践模板（HuggingFace TRL）</h3>
+<pre><code class="language-python">from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import SFTTrainer, SFTConfig
+
+# 教师模型生成蒸馏数据
+teacher = AutoModelForCausalLM.from_pretrained(&quot;meta-llama/Llama-3.1-70B&quot;)
+tokenizer = AutoTokenizer.from_pretrained(&quot;meta-llama/Llama-3.1-70B&quot;)
+
+# 用教师模型批量生成高质量训练数据
+def generate_distill_data(prompts, teacher, tokenizer, temperature=0.7):
+    &quot;&quot;&quot;用教师模型为每个 prompt 生成高质量回答&quot;&quot;&quot;
+    results = []
+    for prompt in prompts:
+        inputs = tokenizer(prompt, return_tensors=&quot;pt&quot;).to(teacher.device)
+        outputs = teacher.generate(**inputs, max_new_tokens=512, temperature=temperature)
+        response = tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
+        results.append({&quot;prompt&quot;: prompt, &quot;response&quot;: response})
+    return results
+
+# 学生模型训练（在教师生成的数据上 SFT）
+student = AutoModelForCausalLM.from_pretrained(&quot;meta-llama/Llama-3.1-8B&quot;)
+
+trainer = SFTTrainer(
+    model=student,
+    train_dataset=distill_dataset,  # 教师生成的数据
+    args=SFTConfig(
+        max_seq_length=2048,
+        per_device_train_batch_size=4,
+        gradient_accumulation_steps=8,
+        learning_rate=2e-5,
+        num_train_epochs=3,
+    ),
+)
+trainer.train()
+</code></pre>
+<h3 id="vllm">vLLM 量化 + 推测解码完整配置</h3>
+<pre><code class="language-python">from vllm import LLM, SamplingParams
+
+# 量化 + EAGLE-3 推测解码
+llm = LLM(
+    model=&quot;meta-llama/Meta-Llama-3.1-8B-Instruct-AWQ&quot;,
+    quantization=&quot;awq&quot;,
+    gpu_memory_utilization=0.9,
+    max_model_len=8192,
+    speculative_config={
+        &quot;method&quot;: &quot;eagle3&quot;,
+        &quot;model&quot;: &quot;yuhuili/EAGLE3-LLaMA3.1-Instruct-8B&quot;,
+        &quot;num_speculative_tokens&quot;: 3,
+    },
+)
+
+# 基准测试
+sampling_params = SamplingParams(temperature=0, max_tokens=256)
+outputs = llm.generate([&quot;Explain KV caching in one paragraph.&quot;], sampling_params)
+</code></pre>
+<h3 id="sglang-radixattention_1">SGLang 多轮对话 RadixAttention 配置</h3>
+<pre><code class="language-python">import sglang as sgl
+
+# SGLang server 启动（自动启用 RadixAttention）
+# python -m sglang.launch_server \
+#   --model-path meta-llama/Meta-Llama-3.1-8B-Instruct \
+#   --mem-fraction-static 0.85 \
+#   --enable-prefix-caching  # RadixAttention 默认开启
+
+# 多轮对话自动复用 KV Cache
+@sgl.function
+def multi_turn_chat(s, system_prompt, user_messages):
+    s += sgl.system(system_prompt)  # 第一轮后缓存
+    for msg in user_messages:
+        s += sgl.user(msg)
+        s += sgl.assistant(sgl.gen(&quot;response&quot;, max_tokens=256))
+</code></pre>
+<hr />
+<h2 id="_4">实践启发</h2>
+<ol>
+<li><strong>蒸馏 ROI 分析</strong>：如果需要部署 10+ 个领域专用模型，蒸馏 ROI 极高（一次蒸馏永久收益）。如果只有 1-2 个模型，直接量化更划算</li>
+<li><strong>量化选型的"非英文陷阱"</strong>：很多基准测试只报告英文质量保持率，非英文在 4-bit 下质量掉 5-10%。面向中文用户必须考虑 Q6_K 或 FP8</li>
+<li><strong>RadixAttention 是 Agent 架构的关键基础设施</strong>：Agent 系统通常有固定 system prompt + 工具定义（占 60-80% token），RadixAttention 使多 Agent 共享推理成为可能</li>
+<li><strong>三层优化叠加效果</strong>：量化(2x 内存) + PagedAttention(3x 吞吐) + 投机解码(2x 延迟) = 不是 12x 而是 ~5-6x（存在效率天花板），但已足够将推理成本降低一个数量级</li>
+</ol>
+<hr />
+<h2 id="_5">知识缺口</h2>
+<ol>
+<li><strong>蒸馏 + 量化叠加效应</strong>：先蒸馏到小模型再量化，精度损失的累积规律</li>
+<li><strong>RadixAttention 在 RAG 长文档场景的表现</strong>：当 prefix 不是固定系统 prompt 而是检索到的长文档时</li>
+<li><strong>GGUF 在 Jetson Orin 上的最优量化配置</strong>：ARM Cortex + CUDA 的混合推理性能</li>
+<li><strong>DA-KD 的开源实现</strong>：目前只有论文，是否有 TRL/DeepSpeed 集成</li>
+<li><strong>SGLang 与 vLLM 在投机解码场景的直接对比</strong>：两者都支持 EAGLE-3，性能差异几何</li>
+</ol>
+<hr />
+<h2 id="_6">参考</h2>
+<ul>
+<li>DA-KD (ICML 2025): Difficulty-Aware Knowledge Distillation for Efficient LLMs</li>
+<li>NeurIPS 2024: Compact Language Models via Pruning and Knowledge Distillation</li>
+<li>Springer Survey 2025: Knowledge distillation and dataset distillation of LLMs</li>
+<li>vrlatech.com: LLM Quantization Explained — INT4/INT8/FP8/AWQ/GPTQ (2026)</li>
+<li>Spheron Network: SGLang RadixAttention Production Guide (2026)</li>
+<li>RunPod: SGLang vs vLLM KV Cache Reuse Benchmark</li>
+<li>LMSYS: RadixAttention and SGLang (原始论文)</li>
+<li>EAGLE-3 arXiv:2503.01840 — 6.5x Speedup via Training-Time Test</li>
+</ul>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-05-Karpathy-LLM-Wiki-second-brain.md">Karpathy-LLM-Wiki-second-brain</a></li>
+<li><a href="../2026-04-18-Hermes-LLM-Wiki-学习笔记.md">Hermes-LLM-Wiki-学习笔记</a></li>
+<li><a href="../2026-04-28-LLM推理优化前沿技术2026.md">LLM推理优化前沿技术2026</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-04-30-边缘AI与On-Device-LLM前沿学习.md">边缘AI与On-Device-LLM前沿学习</a></li>
+<li><a href="../2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="../2026-05-04-LLM对齐训练范式RLHF-DPO-GRPO-DAPO.md">LLM对齐训练范式RLHF-DPO-GRPO-DAPO</a></li>
+<li><a href="../2026-05-05-开源AI模型2025-DeepSeek-Qwen新格局.md">开源AI模型2025-DeepSeek-Qwen新格局</a></li>
+<li><a href="../2026-05-07-PageIndex-无向量推理式RAG.md">PageIndex-无向量推理式RAG</a></li>
+<li><a href="../2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet.md">大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet</a></li>
+<li><a href="../2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理.md">推理加速深度解析-投机解码-KVCache-连续批处理</a></li>
+<li><a href="../2026-05-09-LLM知识蒸馏技术全景.md">LLM知识蒸馏技术全景</a></li>
+<li><a href="../2026-05-10-DeepSeek-V4-开源模型新格局.md">DeepSeek-V4-开源模型新格局</a></li>
+<li><a href="../2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="../2026-05-11-5月AI模型大战-GPT55-DeepSeekV4.md">5月AI模型大战-GPT55-DeepSeekV4</a></li>
+<li><a href="../2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="../2026-05-11-LLM冲击下PINN应用变化与发展.md">LLM冲击下PINN应用变化与发展</a></li>
+<li><a href="../2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理.md">MoE蒸馏与压缩-专家路由迁移-稀疏结构处理</a></li>
+<li><a href="../2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案.md">JAX-NVIDIA-GPU-微调Llama3.1实战方案</a></li>
+<li><a href="../2026-05-17-LoRA高效微调前沿技术全景.md">LoRA高效微调前沿技术全景</a></li>
+<li><a href="../2026-05-17-SGLang高性能LLM推理框架深度分析.md">SGLang高性能LLM推理框架深度分析</a></li>
+<li><a href="../2026-05-18-Agent元认知-LLM不确定性感知.md">Agent元认知-LLM不确定性感知</a></li>
+<li><a href="../2026-05-18-MoE模型LoRA微调最佳实践.md">MoE模型LoRA微调最佳实践</a></li>
+<li><a href="../2026-05-19-蒸馏量化RL三联流水线-后训练范式统一.md">蒸馏量化RL三联流水线-后训练范式统一</a></li>
+<li><a href="../2026-05-20-Active-Data-Selection-LLM训练动态数据选择前沿.md">Active-Data-Selection-LLM训练动态数据选择前沿</a></li>
+<li><a href="../2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化.md">MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化</a></li>
+<li><a href="../2026-05-21-llm-finetune-dataflow-dataflex-pipeline.md">llm-finetune-dataflow-dataflex-pipeline</a></li>
+<li><a href="../2026-05-21-react-agent-llm-agentic-training-research.md">react-agent-llm-agentic-training-research</a></li>
+<li><a href="../2026-05-22-If-youre-an-LLM-please-read-this-Anna-Archive-LLM伦理契约.md">If-youre-an-LLM-please-read-this-Anna-Archive-LLM伦理契约</a></li>
+<li><a href="../2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数.md">LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数</a></li>
+<li><a href="../2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型.md">Multi-Stream-LLMs-并行流解锁语言模型</a></li>
+<li><a href="../2026-05-23-Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力.md">Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力</a></li>
+<li><a href="../2026-05-23-OpenAI后训练团队Yann-Dubois深度访谈.md">OpenAI后训练团队Yann-Dubois深度访谈</a></li>
+<li><a href="../2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析.md">QLoRA在RL训练中的精度影响-量化与强化学习深度解析</a></li>
+<li><a href="../AutoSearch 自主训练任务.md">AutoSearch 自主训练任务</a></li>
+<li><a href="../ai-agent/2026-05-16-表达清晰的5个训练.md">表达清晰的5个训练</a></li>
+<li><a href="2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="2026-05-16-LLM推理优化-MoE量化加速全景.md">LLM推理优化-MoE量化加速全景</a></li>
+<li><a href="2026-05-16-LLM推理优化技术.md">LLM推理优化技术</a></li>
+<li><a href="2026-05-18-llm-inference-opt-incremental2.md">llm-inference-opt-incremental2</a></li>
+<li><a href="2026-05-18-llm-inference-opt-update.md">llm-inference-opt-update</a></li>
+<li><a href="2026-05-18-llm-self-prompt-optimization.md">llm-self-prompt-optimization</a></li>
+<li><a href="2026-05-19-MoE-稀疏激活微调工程实践.md">MoE-稀疏激活微调工程实践</a></li>
+<li><a href="2026-05-19-SGLang-vs-vLLM-推理引擎对比.md">SGLang-vs-vLLM-推理引擎对比</a></li>
+<li><a href="2026-05-20-llm_wiki分析与Skill进化.md">llm_wiki分析与Skill进化</a></li>
+<li><a href="2026-05-21-边缘AI推理优化-Jetson平台深度研究.md">边缘AI推理优化-Jetson平台深度研究</a></li>
+<li><a href="2026-05-22-llama-cpp预编译二进制与本地LLM推理.md">llama-cpp预编译二进制与本地LLM推理</a></li>
+<li><a href="2026-05-23-VPO向量策略优化多样性训练提升推理搜索.md">VPO向量策略优化多样性训练提升推理搜索</a></li>
+<li><a href="llm-inference-opt-2026-05-17.md">llm-inference-opt-2026-05-17</a></li>
+<li><a href="llm-inference-opt-deep-dive.md">llm-inference-opt-deep-dive</a></li>
+<li><a href="llm-inference-opt-incremental-20260517.md">llm-inference-opt-incremental-20260517</a></li>
+<li><a href="llm-inference-optimization-2026.md">llm-inference-optimization-2026</a></li>
+<li><a href="../llm-pid-tuner.md">llm-pid-tuner</a></li>
+<li><a href="../orphan/2026-05-05-分布式训练技术全景-FSDP-DeepSpeed-Megatron.md">分布式训练技术全景-FSDP-DeepSpeed-Megatron</a></li>
+<li><a href="../tinyedge-lora.md">tinyedge-lora</a></li>
+<li><a href="../前瞻性问题-AI垂域LLM载具设计.md">前瞻性问题-AI垂域LLM载具设计</a></li>
+</ul>
+</body>
+</html>

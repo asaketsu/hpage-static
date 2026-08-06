@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>harness-vehicle-report-04-arch-patterns</title>
+
+<meta property="og:title" content="harness-vehicle-report-04-arch-patterns" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h2 id="harness">第四章 六大 Harness 架构模式在载具设计中的适配</h2>
+<p>基于 Anthropic、OpenAI、Cursor 的实践，以及载具设计的独特需求，本章提出六种 Harness 架构模式在载具设计中的适配方案。</p>
+<h3 id="41-planner-worker-judge">4.1 Planner-Worker-Judge 三层分离</h3>
+<p><strong>来源</strong>：Cursor 多 Agent 协作实践</p>
+<p><strong>载具设计适配</strong>：</p>
+<pre><code>┌──────────────────────────────────────┐
+│  Planner Agent（总师 Agent）          │
+│  • 解析设计需求，拆解为子任务          │
+│  • 确定子任务依赖关系和执行顺序        │
+│  • 分配学科（结构/气动/动力...）       │
+│  • 全局约束管理（质量预算、进度）       │
+└──────────────┬───────────────────────┘
+               │ 派发任务
+      ┌────────┼────────┐
+      ▼        ▼        ▼
+┌──────────┐┌──────────┐┌──────────┐
+│ Worker 1 ││ Worker 2 ││ Worker N │
+│ 结构设计  ││ 气动分析  ││ 系统集成  │
+│ Agent    ││ Agent    ││ Agent    │
+└────┬─────┘└────┬─────┘└────┬─────┘
+     │           │           │
+     └───────────┼───────────┘
+                 ▼
+┌──────────────────────────────────────┐
+│  Judge Agent（评审 Agent）             │
+│  • 多学科接口协调性检查                │
+│  • 适航合规性综合评审                  │
+│  • 质量预算闭环验证                    │
+│  • 生成评审报告，建议修改              │
+└──────────────────────────────────────┘
+</code></pre>
+<p><strong>实施要点</strong>：<br />
+- Planner 掌握全局约束（质量预算、载荷分配），这是<strong>不可逾越的硬约束</strong><br />
+- Worker 之间通过 Git 锁文件实现并发隔离（借鉴 Cursor 教训——20 Agent 并行时锁机制是关键）<br />
+- Judge 的评审标准必须<strong>形式化</strong>，不能依赖 LLM 的"直觉判断"</p>
+<h3 id="42-generator-evaluator-gan-style-loop">4.2 Generator-Evaluator 对抗（GAN-Style Loop）</h3>
+<p><strong>来源</strong>：Anthropic 三篇 Harness 论文</p>
+<p><strong>载具设计适配</strong>：</p>
+<pre><code>┌─────────────────┐     ┌──────────────────────┐
+│  Generator      │     │  Evaluator           │
+│  (设计生成器)    │◄────│  (合规评审器)          │
+│                 │     │                      │
+│  • 读取设计需求  │────►│  • 检查物理可行性      │
+│  • 调用工具生成  │反馈  │  • 校验适航合规性      │
+│  • 输出设计方案  │     │  • 评估可制造性        │
+│                 │     │  • 评分 + 修改建议     │
+└─────────────────┘     └──────────────────────┘
+</code></pre>
+<p><strong>Anthropic V2 创新——Sprint Contract 在载具设计中的映射</strong>：</p>
+<p>每轮迭代前，Generator 和 Evaluator <strong>自行协商验收标准</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>迭代轮次</th>
+<th>验收标准（示例）</th>
+<th>评判依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sprint 1</td>
+<td>最大应力 &lt; 300 MPa</td>
+<td>初始估算，留裕度</td>
+</tr>
+<tr>
+<td>Sprint 2</td>
+<td>疲劳寿命 &gt; 40000 FH</td>
+<td>初步评估</td>
+</tr>
+<tr>
+<td>Sprint 3</td>
+<td>疲劳寿命 &gt; 60000 FH + Kt &lt; 2.5</td>
+<td>收紧至设计目标</td>
+</tr>
+<tr>
+<td>Sprint 4</td>
+<td>全部适航条款通过</td>
+<td>最终验收</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心发现</strong>：Agent 互相评估比自评估有效几个数量级（Anthropic 实验）。在载具设计中，这意味着"设计 Agent"和"审查 Agent"的对抗比单个 Agent 自检更可靠。</p>
+<h3 id="43-coordinator-mode-agent">4.3 Coordinator Mode（主 Agent 当工头）</h3>
+<p><strong>来源</strong>：Claude Code 的 Coordinator 架构</p>
+<p><strong>载具设计适配</strong>：</p>
+<pre><code>┌──────────────────────────────────────┐
+│  Coordinator Agent（总师/PM Agent）    │
+│  • 接收设计任务，分配给各学科 Worker    │
+│  • 管理设计基线（当前有效的设计状态）    │
+│  • 审批危险操作（材料替换、安全系数变更）│
+└──────────────┬───────────────────────┘
+               │ 通过&quot;邮箱&quot;请求/审批
+      ┌────────┼────────┐
+      ▼        ▼        ▼
+  结构Agent  气动Agent  动力Agent
+  (提交设计  (提交翼型  (提交推力
+   变更请求)  修改请求)  分配方案)
+</code></pre>
+<p><strong>"邮箱"机制在载具设计中的含义</strong>：<br />
+- 每个学科 Agent <strong>不能直接修改</strong>其他学科的设计参数<br />
+- 所有跨学科修改必须通过 Coordinator <strong>审批</strong><br />
+- Coordinator 维护一个<strong>设计冻结/释放</strong>状态机</p>
+<p><strong>现实映射</strong>：这与航空企业的<strong>工程更改控制流程（ECR/ECO）</strong>高度一致。Harness Coordinator Mode 本质上是将企业的工程管理流程自动化。</p>
+<h3 id="44-repo-as-truth">4.4 Repo-as-Truth（环境管住认知）</h3>
+<p><strong>来源</strong>：OpenAI Codex 团队——5 个月构建 100 万行代码生产系统</p>
+<p><strong>载具设计适配</strong>：</p>
+<pre><code>核心思想：不管理 Agent 行为，而是确保它感知的整个世界都是准确的
+         ──────────────────────────────────────────────
+         在载具设计中：&quot;世界&quot;= 设计数据环境
+
+┌─────────────────────────────────────────────────┐
+│              Design-Repo-as-Truth                 │
+│                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ 3D 模型库 │  │ 仿真数据库│  │ 适航知识库    │  │
+│  │ (STEP/   │  │ (结果+    │  │ (条款+判据+  │  │
+│  │  IGES)   │  │  元数据)  │  │  案例)       │  │
+│  └──────────┘  └──────────┘  └──────────────┘  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ 材料数据库│  │ 工艺知识库│  │ 项目管理基线  │  │
+│  │ (疲劳S-N │  │ (DFM规则 │  │ (需求+接口+  │  │
+│  │  曲线等) │  │  + 约束)  │  │  更改记录)   │  │
+│  └──────────┘  └──────────┘  └──────────────┘  │
+│                                                  │
+│  ↑ Agent 的所有感知都来源于这个统一的&quot;真实世界&quot;    │
+└─────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>关键原则</strong>：<br />
+1. <strong>单一数据源（Single Source of Truth）</strong>：所有 Agent 共享同一个设计数据环境<br />
+2. <strong>自动维护</strong>：CI/CD 流水线自动更新模型、仿真结果、知识库<br />
+3. <strong>可追溯性</strong>：每次设计变更都有完整的审计日志</p>
+<p><strong>OpenAI Codex 团队的核心洞察</strong>：流程管住行为，<strong>环境管住认知</strong>。如果 Agent 感知到的环境是准确的，它的行为自然更可靠。在载具设计中，这意味着<strong>投资建设高质量的设计数据环境比优化 Agent 本身更重要</strong>。</p>
+<h3 id="45-sprint-contract">4.5 Sprint Contract（冲刺合同）</h3>
+<p><strong>来源</strong>：Anthropic V2 创新</p>
+<p><strong>载具设计适配</strong>：</p>
+<p>在每个设计迭代"冲刺"开始前，Agent 自签验收合同：</p>
+<pre><code class="language-yaml">sprint_contract:
+  sprint_id: &quot;wing-root-fitting-v3&quot;
+  objective: &quot;优化机翼-机身连接接头，目标减重 8%&quot;
+
+  # Agent 自协商的验收标准
+  acceptance_criteria:
+    - criterion: &quot;最大 von Mises 应力&quot;
+      threshold: &quot;&lt; 380 MPa&quot;
+      basis: &quot;CCAR-25.305 + 1.15 安全系数&quot;
+    - criterion: &quot;疲劳寿命&quot;
+      threshold: &quot;&gt; 60000 FH&quot;
+      basis: &quot;CCAR-25.571 损伤容限要求&quot;
+    - criterion: &quot;质量&quot;
+      threshold: &quot;&lt; 12.5 kg&quot;
+      basis: &quot;质量预算分配 WBS-3.2.1&quot;
+    - criterion: &quot;可制造性&quot;
+      threshold: &quot;DFM 检查零违规&quot;
+      basis: &quot;3D 打印工艺规范&quot;
+
+  # 不满足验收标准的后果
+  on_failure: &quot;回滚至上一版本，Generator 重新分析失败原因&quot;
+
+  # 人类介入条件
+  human_gate: &quot;安全系数变更 &gt; 0.1 或材料替换时触发&quot;
+</code></pre>
+<p><strong>价值</strong>：Sprint Contract 将隐性的设计要求显性化，使每次迭代都有<strong>明确的完成定义（Definition of Done）</strong>。</p>
+<h3 id="46-depth-first-working">4.6 Depth-First Working（深度优先构建）</h3>
+<p><strong>来源</strong>：OpenAI 实践——大目标拆小构件，逐个构建后解锁更复杂任务</p>
+<p><strong>载具设计适配</strong>：</p>
+<pre><code>Level 0: 全机级概念设计
+  ├── Level 1: 机翼设计
+  │     ├── Level 2: 机翼蒙皮（先完成）
+  │     ├── Level 2: 机翼翼肋（先完成）
+  │     └── Level 2: 机翼大梁（先完成）──→ 解锁 Level 1 验收
+  ├── Level 1: 机身设计
+  │     ├── Level 2: 机身框（先完成）
+  │     └── Level 2: 机身蒙皮（先完成）──→ 解锁 Level 1 验收
+  └── Level 1 全部完成 ──→ 解锁 Level 0 全机级多学科优化
+</code></pre>
+<p><strong>核心原则</strong>：<br />
+- 自底向上构建，每个最小构件独立验证<br />
+- 上层任务只有在所有下层任务完成后才能开始<br />
+- 避免在未经验证的基础上构建复杂设计</p>
+<h3 id="47">4.7 架构模式选择矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>载具类型</th>
+<th>推荐主架构</th>
+<th>辅助架构</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>民用飞机</td>
+<td>Coordinator Mode + Generator-Evaluator</td>
+<td>Sprint Contract</td>
+<td>安全关键、多学科、需人工审批</td>
+</tr>
+<tr>
+<td>航天器</td>
+<td>Repo-as-Truth + Depth-First</td>
+<td>Planner-Worker-Judge</td>
+<td>数据环境质量是核心、自底向上构建</td>
+</tr>
+<tr>
+<td>无人机</td>
+<td>Planner-Worker-Judge</td>
+<td>Generator-Evaluator</td>
+<td>迭代快、多目标、成本敏感</td>
+</tr>
+<tr>
+<td>运载火箭</td>
+<td>Sprint Contract + Coordinator Mode</td>
+<td>Repo-as-Truth</td>
+<td>任务级约束严格、一次性使用</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">相关笔记</h2>
+<ul>
+<li><a href="_drafts/harness-vehicle-report-06-conclusion.md">harness-vehicle-report-06-conclusion</a></li>
+<li><a href="_drafts/harness-vehicle-report-01-abstract-intro.md">harness-vehicle-report-01-abstract-intro</a></li>
+<li><a href="langchain-harness-memory-analysis.md">langchain-harness-memory-analysis</a></li>
+<li><a href="Harness-Engineering-载具设计研究报告.md">Harness-Engineering-载具设计研究报告</a></li>
+<li><a href="_drafts/垂域模型_p4_harness.md">垂域模型_p4_harness</a></li>
+</ul>
+</body>
+</html>

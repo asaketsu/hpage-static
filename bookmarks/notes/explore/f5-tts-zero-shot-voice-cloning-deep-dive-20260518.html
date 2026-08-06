@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>f5-tts-zero-shot-voice-cloning-deep-dive-20260518</title>
+
+<meta property="og:title" content="f5-tts-zero-shot-voice-cloning-deep-dive-20260518" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '$', right: '$', display: false},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="f5-tts">F5-TTS 零样本语音克隆：原理、架构与优化深度笔记</h1>
+<blockquote>
+<p>主题: F5-TTS 零样本语音克隆原理与优化 | 类型: 深度技术分析 | 日期: 2026-05-18<br />
+目标: ≥3000 字深度笔记，含核心概念、技术细节、实践案例、知识缺口</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、概述与定位</h2>
+<p>F5-TTS（"A Fairytaler that Fakes Fluent and Faithful Speech with Flow Matching"）是由上海人工智能实验室（Shanghai AI Lab / SWivid 团队）开发的全非自回归文本转语音系统。该模型于 2024 年底发布，基于 Flow Matching + Diffusion Transformer (DiT) 架构，在公开的 100K 小时多语言数据集上训练。</p>
+<p><strong>核心定位</strong>：开源 TTS 领域首个在零样本语音克隆质量上接近商业 API（如 ElevenLabs）的模型。</p>
+<p><strong>关键能力</strong>：<br />
+- 仅需 5-15 秒参考音频即可克隆声音<br />
+- 支持中英日韩等多语言<br />
+- 无缝代码切换（code-switching）<br />
+- 语速可控<br />
+- 实时推理（RTF &gt; 1）</p>
+<hr />
+<h2 id="_2">二、核心架构详解</h2>
+<h3 id="21-flow-matching-dit">2.1 整体架构：Flow Matching + DiT</h3>
+<p>F5-TTS 的核心是 <strong>条件流匹配（Conditional Flow Matching, CFM）</strong> 框架，这是 Diffusion Model 的一种变体。</p>
+<p><strong>传统 TTS 管线</strong>（如 VITS, Tacotron2）：</p>
+<pre><code>文本 → 文本编码器 → 注意力对齐 → 时长预测 → 声学特征 → 声码器 → 音频
+</code></pre>
+<p><strong>F5-TTS 管线</strong>（简化）：</p>
+<pre><code>文本 → 字符嵌入 + Filler Tokens → ConvNeXt 精炼 → DiT 去噪 → Mel 频谱 → 声码器 → 音频
+                  ↑                         ↑
+            参考 audio embedding       Flow Matching ODE
+</code></pre>
+<p>关键简化：<strong>不需要显式的时长模型、文本编码器或音素对齐</strong>。</p>
+<h3 id="22-filler-token">2.2 Filler Token 机制（核心创新之一）</h3>
+<p>这是 F5-TTS 继承自 E2 TTS 的关键设计：</p>
+<p><strong>原理</strong>：<br />
+1. 将输入文本转换为字符嵌入序列<br />
+2. 用特殊的 <strong>filler tokens（填充标记）</strong> 将文本序列填充到与目标语音相同长度<br />
+3. 模型在训练中学会自动将 filler tokens 替换为正确的语音内容</p>
+<p><strong>代码示意</strong>：</p>
+<pre><code class="language-python"># 伪代码：Filler Token 填充
+text_tokens = tokenize(&quot;你好世界&quot;)  # [B, N, D] N=4 字符
+mel_length = target_mel.shape[1]     # e.g., 200 帧
+filler_count = mel_length - len(text_tokens)  # 196 个 filler
+
+# 填充
+input_sequence = [text_tokens[0], filler, filler, ..., text_tokens[1], filler, filler, ...]
+# 文本 token 间隔分布，filler 填补空白
+</code></pre>
+<p><strong>优势</strong>：<br />
+- 消除了传统 TTS 中复杂的时长预测模块<br />
+- 模型自动学习文本-语音的时间对齐<br />
+- 简化了训练流程</p>
+<p><strong>劣势</strong>：<br />
+- 收敛较慢（E2 TTS 的主要问题）<br />
+- 对长文本稳定性差</p>
+<h3 id="23-convnext-v2-f5-tts-e2-tts">2.3 ConvNeXt V2 文本表示精炼（F5-TTS 对 E2 TTS 的改进）</h3>
+<p>E2 TTS 的问题：纯字符嵌入难以与语音特征对齐 → 收敛慢、鲁棒性差。</p>
+<p><strong>F5-TTS 的解决方案</strong>：在文本嵌入后加一层 <strong>ConvNeXt V2</strong> 模块：</p>
+<pre><code class="language-python"># 伪代码
+text_features = character_embedding(text)          # [B, T_text, D]
+refined_features = ConvNeXt_V2(text_features)      # [B, T_text, D]
+# ConvNeXt 的局部感受野帮助精炼文本表示
+# 使文本特征更容易与语音特征对齐
+</code></pre>
+<p><strong>ConvNeXt V2 的选择理由</strong>：<br />
+- 纯卷积结构，推理快<br />
+- 深度可分离卷积，参数少<br />
+- 局部感受野天然适合音素级的特征提取<br />
+- V2 版本的 Global Response Normalization (GRN) 增强特征多样性</p>
+<p><strong>效果</strong>：显著加速收敛，提高零样本克隆的鲁棒性。</p>
+<h3 id="24-ditdiffusion-transformer">2.4 DiT（Diffusion Transformer）主干</h3>
+<p>F5-TTS 使用 DiT 作为去噪网络：</p>
+<pre><code>输入: [参考语音 embedding + 填充后的文本特征 + 噪声 Mel]
+       ↓
+DiT Blocks (AdaLN-Zero)
+  - Multi-Head Self-Attention
+  - FFN with GELU
+  - AdaLN-Zero 调制（条件注入）
+       ↓
+输出: 去噪后的 Mel 频谱
+</code></pre>
+<p><strong>AdaLN-Zero</strong>：自适应层归一化，将时间步 t 和条件信息注入 Transformer。这是 DiT 的标志性设计，允许模型在不同去噪阶段调整特征幅度。</p>
+<h3 id="25-sway-samplingf5-tts">2.5 Sway Sampling（推理优化，F5-TTS 独有）</h3>
+<p><strong>E2 TTS 使用</strong>：均匀采样 flow step + 中点 ODE 求解器</p>
+<p><strong>F5-TTS 引入 Sway Sampling</strong>：<br />
+- 推理时不再均匀采样 flow step<br />
+- 偏向采样更"关键"的 step<br />
+- 允许使用更少的 NFE（Neural Function Evaluations）<br />
+- 可用更简单的 Euler ODE 求解器替代中点求解器</p>
+<p><strong>效果</strong>：推理速度显著提升，质量不降。</p>
+<h3 id="26-fast-f5-tts2025-interspeech">2.6 Fast F5-TTS（2025 InterSpeech）</h3>
+<p>上海交大的后续工作，提出 <strong>EPSS（Empirically Pruned Step Sampling）</strong>：<br />
+- 训练无关、即插即用的加速方法<br />
+- 通过实验剪枝不必要的 flow step<br />
+- 在 F5-TTS 和 E2 TTS 上均有效<br />
+- 进一步降低推理 NFE</p>
+<hr />
+<h2 id="_3">三、零样本语音克隆原理</h2>
+<h3 id="31">3.1 流程</h3>
+<pre><code>参考音频 (5-15s) → Mel 频谱 → VAE Encoder → 参考 embedding
+                                                    ↓
+目标文本 → 字符嵌入 + Filler → ConvNeXt → DiT(条件=参考 embedding) → 去噪 Mel → Vocoder → 音频
+</code></pre>
+<p><strong>关键</strong>：<br />
+- 参考 embedding 捕获说话人的声学特征（音色、韵律、语速）<br />
+- DiT 生成时以参考 embedding 为条件<br />
+- 无需微调，直接推理</p>
+<h3 id="32-5-15">3.2 为什么 5-15 秒就够？</h3>
+<p>Flow Matching 的连续归一化流（CNF）理论保证：<br />
+1. <strong>概率路径学习</strong>：模型学习的是从噪声到语音的概率路径，而非直接映射<br />
+2. <strong>条件注入</strong>：参考 embedding 通过 AdaLN 注入 DiT 的每一层，强条件约束<br />
+3. <strong>Mel 频谱空间的低维性</strong>：说话人特征在 Mel 空间中的流形维度较低，少量样本足以定位</p>
+<h3 id="33">3.3 与其他零样本方案对比</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>架构</th>
+<th>参考音频</th>
+<th>多语言</th>
+<th>质量</th>
+<th>推理速度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F5-TTS</td>
+<td>Flow+DiT</td>
+<td>5-15s</td>
+<td>✅</td>
+<td>★★★★</td>
+<td>快 (RTF&gt;1)</td>
+</tr>
+<tr>
+<td>XTTS v2</td>
+<td>AR+Diffusion</td>
+<td>3-10s</td>
+<td>✅</td>
+<td>★★★</td>
+<td>中</td>
+</tr>
+<tr>
+<td>CosyVoice 2.0</td>
+<td>LLM+FSQ</td>
+<td>3s</td>
+<td>✅</td>
+<td>★★★★☆</td>
+<td>中</td>
+</tr>
+<tr>
+<td>VALL-E</td>
+<td>AR</td>
+<td>3s</td>
+<td>❌(EN)</td>
+<td>★★★★</td>
+<td>慢</td>
+</tr>
+<tr>
+<td>Voicebox</td>
+<td>Flow+Transformer</td>
+<td>3s</td>
+<td>❌(EN)</td>
+<td>★★★★</td>
+<td>快</td>
+</tr>
+<tr>
+<td>Qwen3-TTS</td>
+<td>LLM</td>
+<td>5s</td>
+<td>✅</td>
+<td>★★★★★</td>
+<td>中</td>
+</tr>
+<tr>
+<td>X-Voice</td>
+<td>Flow+F5扩展</td>
+<td>5-15s</td>
+<td>✅(30语言)</td>
+<td>★★★★☆</td>
+<td>快</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">四、性能与部署</h2>
+<h3 id="41">4.1 硬件需求</h3>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>VRAM</th>
+<th>推理时间（10s 文本）</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RTX 5070 (12GB)</td>
+<td>2-3GB</td>
+<td>2-5s</td>
+<td>推荐</td>
+</tr>
+<tr>
+<td>RTX 3080 (10GB)</td>
+<td>2-3GB</td>
+<td>3-6s</td>
+<td>良好</td>
+</tr>
+<tr>
+<td>GTX 1080 (8GB)</td>
+<td>~4GB</td>
+<td>60s+</td>
+<td>勉强可用</td>
+</tr>
+<tr>
+<td>Jetson Orin (8GB)</td>
+<td>~4GB</td>
+<td>需量化</td>
+<td>待验证</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-jetson-orin">4.2 Jetson Orin 部署考量</h3>
+<p>F5-TTS 的 Jetson 部署需要关注：<br />
+1. <strong>模型大小</strong>：F5-TTS base 约 1.2B 参数（~2.4GB FP32, ~1.2GB FP16）<br />
+2. <strong>VRAM 占用</strong>：推理时约 2-4GB，Jetson Orin 8GB 可用<br />
+3. <strong>量化</strong>：支持 FP16 推理，INT8 量化需 TensorRT 转换<br />
+4. <strong>RTF（Real-Time Factor）</strong>：目标 RTF &gt; 1（快于实时），Jetson 上可能需要优化</p>
+<pre><code class="language-python"># F5-TTS 推理代码示例
+from f5_tts.api import F5TTS
+
+# 初始化模型
+model = F5TTS(ckpt_file=&quot;F5TTS_base.pt&quot;, vocab_file=&quot;vocab.txt&quot;)
+
+# 零样本语音克隆
+model.infer(
+    ref_file=&quot;reference_audio.wav&quot;,    # 参考音频
+    ref_text=&quot;参考音频的文本内容&quot;,       # 参考音频对应文本
+    gen_text=&quot;需要生成的文本内容&quot;,       # 目标文本
+    file_wave=&quot;output.wav&quot;,            # 输出文件
+    speed=1.0,                         # 语速控制
+)
+</code></pre>
+<h3 id="43">4.3 微调指南</h3>
+<p>当零样本质量不够时，可以微调：</p>
+<pre><code class="language-yaml"># 微调配置示例
+model:
+  pretrained_path: &quot;path/to/f5-tts-base&quot;
+training:
+  learning_rate: 1e-5
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  num_epochs: 30
+  warmup_steps: 300
+  precision: &quot;bf16&quot;
+  save_every_n_epochs: 5
+data:
+  train_dir: &quot;path/to/train_wavs&quot;
+  metadata: &quot;path/to/metadata.csv&quot;
+  sample_rate: 24000
+  max_duration: 15.0
+</code></pre>
+<p><strong>微调数据要求</strong>：<br />
+- 至少 30 分钟目标说话人音频<br />
+- 采样率 24kHz<br />
+- 格式：WAV/FLAC<br />
+- 需要配套转录文本</p>
+<hr />
+<h2 id="_5">五、衍生与后续工作</h2>
+<h3 id="51-x-voice2025f5-tts">5.1 X-Voice（2025，F5-TTS 的多语言扩展）</h3>
+<p>X-Voice 直接扩展 F5-TTS 架构：<br />
+- <strong>0.4B 参数</strong>：多语言零样本克隆<br />
+- <strong>支持 30 种语言</strong>：使用 IPA（国际音标）作为统一表示<br />
+- <strong>420K 小时</strong>训练数据<br />
+- <strong>两阶段训练</strong>：<br />
+  - Stage 1：标准 flow matching 训练 + 合成 10K 小时说话人一致性片段作为 audio prompts<br />
+  - Stage 2：对 audio pairs 微调，prompt text 被 mask，实现无需音频 prompt 转录的零样本克隆<br />
+- <strong>架构创新</strong>：双级语言标识符注入 + CFG 解耦调度<br />
+- <strong>性能</strong>：超越 LEMAS-TTS，与 Qwen3-TTS（十亿级）相当</p>
+<h3 id="52-glm-tts-cogaudio2025">5.2 GLM-TTS（智谱 CogAudio，2025）</h3>
+<ul>
+<li>基于 GLM 架构的 TTS</li>
+<li><strong>强化学习优化</strong>：多奖励 RL 训练</li>
+<li>CER 0.89（RL 版），开源最佳</li>
+<li>与 F5-TTS 路线不同（LLM-based vs Flow-based）</li>
+</ul>
+<hr />
+<h2 id="_6">六、实践启发</h2>
+<ol>
+<li>
+<p><strong>F5-TTS vs f5tts-voice-clone Skill 对比</strong>：现有 Skill 已覆盖基本用法，但缺少架构层面的理解。本笔记补充了 Flow Matching 原理和优化方向。</p>
+</li>
+<li>
+<p><strong>Jetson 部署路径</strong>：F5-TTS 的 2-3GB VRAM 占用使其成为 Jetson Orin 8GB 上可行的 TTS 方案。建议先用 FP16 测 RTF，不够再考虑 EPSS 加速或 TensorRT 量化。</p>
+</li>
+<li>
+<p><strong>Sway Sampling 实战价值</strong>：直接降低推理 NFE，不重训模型，部署时即开即用。</p>
+</li>
+<li>
+<p><strong>X-Voice 的 IPA 统一表示</strong>：对多语言场景（如中英混合）有实际意义，IPA 统一了不同书写系统的音素表示。</p>
+</li>
+<li>
+<p><strong>微调 vs 零样本</strong>：5-15 秒参考音频适合快速原型；30 分钟微调适合生产部署。两者不是替代关系，而是不同阶段。</p>
+</li>
+<li>
+<p><strong>Fast F5-TTS (EPSS)</strong>：即插即用的推理加速，特别适合边缘设备。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_7">七、知识缺口</h2>
+<ol>
+<li>
+<p><strong>Jetson Orin 实测 RTF</strong>：F5-TTS 在 Jetson aarch64 + CUDA 上的实际推理速度，现有 f5tts-voice-clone Skill 报告 RTF 1.5x，但未说明文本长度和模型配置。</p>
+</li>
+<li>
+<p><strong>TensorRT 加速可行性</strong>：F5-TTS 的 DiT + Flow Matching 是否能成功转为 TensorRT engine，有哪些算子兼容性问题。</p>
+</li>
+<li>
+<p><strong>FP16 vs BF16 影响</strong>：AdaLN-Zero 对精度的敏感度，Jetson Orin 的 BF16 支持情况。</p>
+</li>
+<li>
+<p><strong>长文本稳定性</strong>：Filler Token 机制在超过 30 秒文本上的表现，是否有截断或重复问题。</p>
+</li>
+<li>
+<p><strong>与 CosyVoice 2.0 的直接对比</strong>：同属 Flow Matching 路线，但 CosyVoice 使用 FSQ（Finite-Scalar Quantization）替代 VQ，两者在中文场景的质量差异。</p>
+</li>
+<li>
+<p><strong>参考音频质量影响</strong>：噪声、混响、背景音对克隆效果的影响量化。</p>
+</li>
+<li>
+<p><strong>说话人相似度指标</strong>：F5-TTS 在不同说话人特征（高音/低音/快语速/方言）上的克隆一致性分布。</p>
+</li>
+<li>
+<p><strong>多轮对话一致性</strong>：同一个说话人在多次推理中的音色一致性，对对话系统至关重要。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_8">八、技术细节补充</h2>
+<h3 id="flow-matching">Flow Matching 基础</h3>
+<p>Flow Matching 是 Lipsman et al. (2023) 提出的生成模型框架：</p>
+<p><strong>核心思想</strong>：学习一个向量场 v(x, t)，将简单分布（高斯噪声）通过 ODE 变换到目标分布（语音 Mel 频谱）。</p>
+<p>$$\frac{dx}{dt} = v_\theta(x, t), \quad t \in [0, 1]$$</p>
+<ul>
+<li>t=0: 纯噪声（高斯分布）</li>
+<li>t=1: 目标语音 Mel 频谱</li>
+<li>$v_\theta$: 由 DiT 参数化的向量场</li>
+</ul>
+<p><strong>训练目标</strong>：<br />
+$$L_{CFM} = E_{t, x_0, x_1} \|v_\theta(x_t, t) - (x_1 - x_0)\|^2$$</p>
+<p>其中 $x_t = (1-t)x_0 + tx_1$（线性插值路径）。</p>
+<p><strong>与 DDPM Diffusion 的区别</strong>：<br />
+- Flow Matching: ODE（确定性），单步即可采样（理论上）<br />
+- DDPM: SDE（随机），需要多步去噪<br />
+- Flow Matching 推理更快，但训练可能需要更多数据</p>
+<h3 id="sway-sampling">Sway Sampling 数学</h3>
+<p>标准均匀采样：$t \sim U(0, 1)$</p>
+<p>Sway Sampling：$t \sim \text{Beta}(\alpha, \beta)$ 其中 $\alpha > \beta$，偏向采样更接近 t=1 的 step（即更接近目标分布的 step）。</p>
+<p>这使得在少步推理（如 4-8 步）时质量更好。</p>
+<hr />
+<p><em>生成时间: 2026-05-18 19:10 | 自动学习 Phase 3 | 约 3800 字</em></p>
+<h2 id="2026-2026-05-18">九、2026 竞品格局更新（增量补充 2026-05-18）</h2>
+<h3 id="91-tts-2026">9.1 开源 TTS 排名（2026 年中）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>自然度(5分)</th>
+<th>RTF</th>
+<th>VRAM</th>
+<th>参数量</th>
+<th>零样本克隆</th>
+<th>许可证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kokoro v1.0</td>
+<td>4.2</td>
+<td>0.03</td>
+<td>&lt;1GB</td>
+<td>82M</td>
+<td>否(style presets)</td>
+<td>Apache 2.0</td>
+</tr>
+<tr>
+<td>Fish Speech</td>
+<td>4.1</td>
+<td>0.12</td>
+<td>~4GB</td>
+<td>500M</td>
+<td>是(10-30s)</td>
+<td>Apache 2.0</td>
+</tr>
+<tr>
+<td><strong>F5-TTS</strong></td>
+<td><strong>4.1</strong></td>
+<td><strong>0.14</strong></td>
+<td><strong>~4GB</strong></td>
+<td><strong>336M</strong></td>
+<td><strong>是(5-15s)</strong></td>
+<td><strong>CC-BY-NC 4.0</strong></td>
+</tr>
+<tr>
+<td>Dia (Nari Labs)</td>
+<td>4.0</td>
+<td>0.15</td>
+<td>~5GB</td>
+<td>1.6B</td>
+<td>是(audio prompt)</td>
+<td>Apache 2.0</td>
+</tr>
+<tr>
+<td>XTTS v2</td>
+<td>4.0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>是</td>
+<td>AGPL-3.0</td>
+</tr>
+<tr>
+<td>CosyVoice 2.0</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+<td>是</td>
+<td>Apache 2.0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：<br />
+- F5-TTS 的 CC-BY-NC 许可证是商业使用的障碍，Kokoro/Fish Speech 的 Apache 2.0 更友好<br />
+- Kokoro 以仅 82M 参数达到最高自然度，但<strong>不支持零样本克隆</strong>，定位不同<br />
+- F5-TTS 仍然是<strong>开源零样本克隆</strong>中质量/参数比最优的选择</p>
+<h3 id="92-x-voice2026-5">9.2 新竞品：X-Voice（2026 年 5 月）</h3>
+<p>arXiv 2605.05611v2 提出 <strong>X-Voice</strong>，0.4B 参数多语言零样本克隆模型：<br />
+- <strong>基于 F5-TTS 架构扩展</strong>：双级语言标识注入 + CFG 解耦调度<br />
+- <strong>训练数据</strong>：420K 小时多语言语料，使用 IPA 作为统一音素表示，支持 30 种语言<br />
+- <strong>两阶段训练</strong>：S1 标准 CFM → S2 无需参考音频转录的零样本克隆<br />
+- <strong>声称</strong>：零样本跨语言克隆能力媲美 Qwen3-TTS（十亿级模型）</p>
+<h3 id="93-chatterbox-mit">9.3 新竞品：Chatterbox (MIT)</h3>
+<ul>
+<li>开源 MIT 许可，语音克隆质量 63.75% 偏好率 vs ElevenLabs</li>
+<li>在 voice cloning 场景超越 ElevenLabs 的首个开源模型</li>
+<li><strong>威胁评估</strong>：如果可在 Jetson Orin 运行，可能替代 F5-TTS</li>
+</ul>
+<h3 id="94-glm-tts-cogaudio">9.4 新竞品：GLM-TTS (智谱 CogAudio)</h3>
+<ul>
+<li>RL 优化版本 CER 0.89（开源最优），支持情感表达</li>
+<li>通过 ModelScope 下载，智谱 API 已在 free-model-apis 中配置</li>
+</ul>
+<h3 id="95-f5-tts">9.5 F5-TTS 定位重新评估</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>2025 年评估</th>
+<th>2026 年更新</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>零样本克隆</td>
+<td>开源顶级</td>
+<td>有竞争力，但 Chatterbox 威胁</td>
+</tr>
+<tr>
+<td>推理速度</td>
+<td>RTF 0.14</td>
+<td>Kokoro RTF 0.03 远超，但不支持克隆</td>
+</tr>
+<tr>
+<td>许可证</td>
+<td>CC-BY-NC</td>
+<td>商业场景 Fish Speech (Apache 2.0) 更好</td>
+</tr>
+<tr>
+<td>参数效率</td>
+<td>336M</td>
+<td>Kokoro 82M 证明可以更小</td>
+</tr>
+<tr>
+<td>生态</td>
+<td>活跃</td>
+<td>X-Voice 等衍生模型证明架构生命力</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：F5-TTS 仍然是 Jetson Orin 本地零样本克隆的<strong>务实选择</strong>，但需关注 Chatterbox (MIT) 的 Jetson 兼容性。</p>
+<hr />
+<h2 id="_9">十、知识缺口更新</h2>
+<ol>
+<li><strong>Chatterbox Jetson 兼容性</strong>：架构、依赖、ARM64 可行性</li>
+<li><strong>X-Voice 两阶段训练</strong>：S1→S2 微调流程是否可用于 F5-TTS 改进</li>
+<li><strong>F5-TTS → TensorRT 实际基准</strong>：Jetson Orin 上的 RTF 是否可达 1.0+</li>
+</ol>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-02-Agent Skills才是关键抽象层.md">Agent Skills才是关键抽象层</a></li>
+<li><a href="../2026-04-02-MiniMax Office Skills全家桶.md">MiniMax Office Skills全家桶</a></li>
+<li><a href="../2026-04-03-OpenClaw-paper-review-skill.md">OpenClaw-paper-review-skill</a></li>
+<li><a href="../2026-04-05-SelfImproving-Agent-CLI-infra.md">SelfImproving-Agent-CLI-infra</a></li>
+<li><a href="../2026-04-09-SKILL-md-ai-agent-skills.md">SKILL-md-ai-agent-skills</a></li>
+<li><a href="../2026-04-12-distill-skill-yupi.md">distill-skill-yupi</a></li>
+<li><a href="../2026-04-24-歸藏PPT-Skill-电子杂志风网页演示.md">歸藏PPT-Skill-电子杂志风网页演示</a></li>
+<li><a href="../2026-04-29-竞品吸收笔记-khazix-skills.md">竞品吸收笔记-khazix-skills</a></li>
+<li><a href="../2026-05-02-SkillClaw-analysis.md">SkillClaw-analysis</a></li>
+<li><a href="../2026-05-05-github-ai-trending-mattpocock-skills.md">github-ai-trending-mattpocock-skills</a></li>
+<li><a href="../2026-05-06-lewislulu-html-ppt-skill-analysis.md">lewislulu-html-ppt-skill-analysis</a></li>
+<li><a href="../2026-05-10-skill-building-invoice-automation.md">skill-building-invoice-automation</a></li>
+<li><a href="../2026-05-10-softwarecopyright-skill-analysis.md">softwarecopyright-skill-analysis</a></li>
+<li><a href="../2026-05-18-开源AI模型工具2025春季爆发.md">开源AI模型工具2025春季爆发</a></li>
+<li><a href="2026-05-18-f5-tts-voice-cloning-incremental.md">f5-tts-voice-cloning-incremental</a></li>
+<li><a href="2026-05-18-skill-lifecycle-management-deep-dive.md">skill-lifecycle-management-deep-dive</a></li>
+<li><a href="2026-05-19-autotts-analysis.md">autotts-analysis</a></li>
+<li><a href="2026-05-19-tts-stt-pipeline-optimization-deep-dive.md">tts-stt-pipeline-optimization-deep-dive</a></li>
+<li><a href="2026-05-20-llm_wiki分析与Skill进化.md">llm_wiki分析与Skill进化</a></li>
+<li><a href="local-tts-stt-optimization-20260519.md">local-tts-stt-optimization-20260519</a></li>
+<li><a href="../orphan/2026-04-02-OpenClaw核心机制Skills全解析.md">OpenClaw核心机制Skills全解析</a></li>
+<li><a href="../orphan/2026-04-07-OpenClaw-Skills-handbook.md">OpenClaw-Skills-handbook</a></li>
+<li><a href="../orphan/2026-05-03-CyberVerse公众号HTML模板分析.md">CyberVerse公众号HTML模板分析</a></li>
+<li><a href="../orphan/2026-05-04-国自然申请书AI-Skill流水线.md">国自然申请书AI-Skill流水线</a></li>
+<li><a href="../orphan/2026-05-09-数据血缘-lineage-工具全景.md">数据血缘-lineage-工具全景</a></li>
+<li><a href="../orphan/2026-05-16-HTML的不合理有效性-Claude-Code-团队.md">HTML的不合理有效性-Claude-Code-团队</a></li>
+<li><a href="../orphan/20260512-10-skill-学术去ai味框架.md">20260512-10-skill-学术去ai味框架</a></li>
+<li><a href="../orphan/build-ai-cli.md">build-ai-cli</a></li>
+<li><a href="../orphan/frontend-slides-skill.md">frontend-slides-skill</a></li>
+<li><a href="../orphan/hermes-skill-top10-2026w18.md">hermes-skill-top10-2026w18</a></li>
+<li><a href="../orphan/skills-apple.md">skills-apple</a></li>
+<li><a href="../orphan/skills-catalog.md">skills-catalog</a></li>
+<li><a href="../orphan/skills-data-science.md">skills-data-science</a></li>
+<li><a href="../orphan/skills-dogfood.md">skills-dogfood</a></li>
+<li><a href="../orphan/skills-email.md">skills-email</a></li>
+<li><a href="../orphan/skills-github.md">skills-github</a></li>
+<li><a href="../orphan/skills-leisure.md">skills-leisure</a></li>
+<li><a href="../orphan/skills-logo-generator-skill.md">skills-logo-generator-skill</a></li>
+<li><a href="../orphan/skills-smart-home.md">skills-smart-home</a></li>
+<li><a href="../orphan/skills-social-media.md">skills-social-media</a></li>
+<li><a href="../orphan/skills-team-roles.md">skills-team-roles</a></li>
+<li><a href="../skills-autonomous-ai-agents.md">skills-autonomous-ai-agents</a></li>
+<li><a href="../skills-creative.md">skills-creative</a></li>
+<li><a href="../skills-devops.md">skills-devops</a></li>
+<li><a href="../skills-gaming.md">skills-gaming</a></li>
+<li><a href="../skills-mcp.md">skills-mcp</a></li>
+<li><a href="../skills-media.md">skills-media</a></li>
+<li><a href="../skills-mlops.md">skills-mlops</a></li>
+<li><a href="../skills-note-taking.md">skills-note-taking</a></li>
+<li><a href="../skills-openclaw-imports.md">skills-openclaw-imports</a></li>
+<li><a href="../skills-overview.md">skills-overview</a></li>
+<li><a href="../skills-productivity.md">skills-productivity</a></li>
+<li><a href="../skills-red-teaming.md">skills-red-teaming</a></li>
+<li><a href="../skills-research.md">skills-research</a></li>
+<li><a href="../skills-software-development.md">skills-software-development</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Herdr编码Agent的tmux终端复用器</title>
+
+<meta property="og:title" content="Herdr编码Agent的tmux终端复用器" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="herdr-agent-tmux">Herdr：编码 Agent 的 tmux——终端复用器</h1>
+<blockquote>
+<p><strong>来源</strong>: <a href="https://herdr.dev">herdr.dev</a><br />
+<strong>类型</strong>: Agent Multiplexer（编码 Agent 终端复用器）<br />
+<strong>许可证</strong>: 开源<br />
+<strong>平台</strong>: Linux/macOS（稳定）+ Windows（preview beta）<br />
+<strong>无</strong>: Electron / 账号 / 遥测 / Web 视图 / 托管控制面<br />
+<strong>日期</strong>: 2026-07-31<br />
+<strong>标签</strong>: <code>Herdr</code> <code>tmux</code> <code>Agent-Multiplexer</code> <code>CLI</code> <code>远程</code> <code>编码Agent</code> <code>终端</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p><strong>Herdr is to coding agents what tmux is to terminals。</strong> Herdr 是一个<strong>编码 Agent 终端复用器（multiplexer）</strong>——一个二进制文件（不是 App），在一个终端里管理所有编码 Agent（Claude Code / OpenCode / Codex 等）。Agent 在服务器上运行、SSH 远程附着、手机也能连、关闭笔记本后 Agent 继续跑。一眼看到哪个 Agent 在 blocked/working/done。</p>
+<hr />
+<h2 id="_2">一、解决什么问题？</h2>
+<h3 id="_3">现有工具的缺陷</h3>
+<table>
+<thead>
+<tr>
+<th>工具类型</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>tmux / Zellij</strong></td>
+<td>拥有持久终端会话，但<strong>不理解 Agent</strong>——不知道哪个窗口在 blocked/working/done</td>
+</tr>
+<tr>
+<td><strong>桌面 Agent 应用</strong></td>
+<td>理解 Agent，但<strong>绑死在一台有 GUI 的机器上</strong>——无法远程</td>
+</tr>
+<tr>
+<td><strong>Worktree 编排器</strong></td>
+<td>远程项目，但<strong>工作流自有</strong>（不可被 Agent 自身编排）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="herdr">Herdr 的定位</h3>
+<blockquote>
+<p>tmux 和 Zellij 拥有持久终端会话但不理解 Agent。桌面 Agent 应用理解 Agent 但只活在一台机器上。<strong>Herdr 在你的终端里保持复用器特性，同时让它对 Agent 感知。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_4">二、核心能力</h2>
+<h3 id="21-agent">2.1 终端内的 Agent 感知复用</h3>
+<pre><code>┌─ herdr 终端 ──────────────────────────────────────┐
+│                                                   │
+│  spaces (侧边栏)                                   │
+│  ├── herdr (master)                               │
+│  ├── llm-proxy (master)                           │
+│  └── qmp-auto/research                            │
+│                                                   │
+│  agents (分组)                          │
+│  ● herdr      working · claude                    │
+│  ○ explore    idle · opencode                     │
+│  ● llm-proxy  blocked · claude  ← 需要审批         │
+│  ● qmp        done · codex                        │
+│                                                   │
+│  [点击侧边栏 → 切换到对应 Agent 的真实终端 pane]    │
+│                                                   │
+└───────────────────────────────────────────────────┘
+
+每个 Agent 运行在自己的真实终端 (PTY) 中
+侧边栏一目了然: ●working / ○idle / ●blocked / ●done
+</code></pre>
+<h3 id="22">2.2 三种使用模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>场景</th>
+<th>命令</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>local</strong></td>
+<td>本机，分屏/标签，关终端 Agent 继续跑</td>
+<td><code>$ herdr</code></td>
+</tr>
+<tr>
+<td><strong>over SSH</strong></td>
+<td>在服务器上运行 Herdr，SSH 连入</td>
+<td><code>$ ssh you@server` → `$ herdr</code></td>
+</tr>
+<tr>
+<td><strong>thin client</strong></td>
+<td>本地客户端连远程会话，自动装 Herdr，桥接剪贴板（含图片粘贴），保持你的快捷键</td>
+<td><code>$ herdr --remote workbox</code></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>关键：<strong>Agent 跑在服务器上（服务器在 Agent 关闭后保持存活），你从任何终端（含手机）附着</strong>。桌面 Agent 管理器做不到这点。</p>
+</blockquote>
+<h3 id="23">2.3 移动端友好</h3>
+<blockquote>
+<p>手机/平板 SSH 连入时，终端变窄，Herdr 自动切换到<strong>触屏尺寸的切换菜单</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="_5">三、关键特性</h2>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不是终端模拟器</strong></td>
+<td>你的 Ghostty/Kitty/iTerm/Alacritty 不变——Herdr 在它里面运行</td>
+</tr>
+<tr>
+<td><strong>不是浏览器仪表盘</strong></td>
+<td>无 Web 视图、无账号、无托管控制面</td>
+</tr>
+<tr>
+<td><strong>持久 PTY 会话</strong></td>
+<td>Agent 在真实终端里跑，detach 后继续</td>
+</tr>
+<tr>
+<td><strong>语义 Agent 状态</strong></td>
+<td>blocked / working / done / idle——不只是"有输出"</td>
+</tr>
+<tr>
+<td><strong>直接 Agent 附着</strong></td>
+<td>可直接附着到特定 Agent（tmux 做不到）</td>
+</tr>
+<tr>
+<td><strong>Agent 可编排它</strong></td>
+<td>Agent 自身可以编排 Herdr（tmux 仅可脚本化）</td>
+</tr>
+<tr>
+<td><strong>150+ 社区插件</strong></td>
+<td><a href="https://herdr.dev/plugins">市场</a>，可发布自己的</td>
+</tr>
+<tr>
+<td><strong>无遥测</strong></td>
+<td>无 Electron / 无账号 / 无遥测</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">四、与同类工具对比</h2>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>tmux/Zellij</th>
+<th>桌面 Agent 应用</th>
+<th>Worktree 编排器</th>
+<th><strong>Herdr</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>运行在终端内</strong></td>
+<td>✅</td>
+<td>❌</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>持久 PTY 会话</strong></td>
+<td>✅</td>
+<td>有限</td>
+<td>嵌入式</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>远程 SSH 附着</strong></td>
+<td>✅</td>
+<td>有限</td>
+<td>远程项目</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>语义 Agent 状态</strong></td>
+<td>❌</td>
+<td>部分</td>
+<td>工作区状态</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>直接 Agent 附着</strong></td>
+<td>❌</td>
+<td>❌</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>Agent 可编排它</strong></td>
+<td>可脚本化</td>
+<td>部分</td>
+<td>工作流自有</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">五、安装</h2>
+<pre><code class="language-bash"># Linux/macOS 稳定版
+curl -fsSL https://herdr.dev/install.sh | sh
+
+# Homebrew
+brew install herdr
+
+# Nix flake
+# (见文档)
+
+# Windows preview beta
+irm https://herdr.dev/install.ps1 | iex
+</code></pre>
+<hr />
+<h2 id="app">六、为什么不是 App？</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>桌面 App（如 Cursor 内置 Agent 管理）</th>
+<th>Herdr（二进制 multiplexer）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>离开机器</strong></td>
+<td>❌ 绑死在有 GUI 的机器</td>
+<td>✅ Agent 跑在服务器，任何终端附着</td>
+</tr>
+<tr>
+<td><strong>SSH</strong></td>
+<td>❌ 无法 SSH</td>
+<td>✅ 手机 SSH 也能用</td>
+</tr>
+<tr>
+<td><strong>资源</strong></td>
+<td>Electron 重</td>
+<td>单二进制，极轻</td>
+</tr>
+<tr>
+<td><strong>账号</strong></td>
+<td>通常需要</td>
+<td><strong>不需要</strong></td>
+</tr>
+<tr>
+<td><strong>编排</strong></td>
+<td>人操作</td>
+<td><strong>Agent 可编排它</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>Agent 跑在"工作发生的地方"（服务器/Mac Mini/沙箱 VM），你从任何终端附着。</p>
+</blockquote>
+<hr />
+<h2 id="agent">七、支持的编码 Agent</h2>
+<p>从首页 mock 可见支持：</p>
+<table>
+<thead>
+<tr>
+<th>Agent</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Claude Code</strong></td>
+<td>✅（v2.1.198，含 Max/Fable 模式）</td>
+</tr>
+<tr>
+<td><strong>OpenCode</strong></td>
+<td>✅（含 Zen 模式）</td>
+</tr>
+<tr>
+<td><strong>Codex</strong></td>
+<td>✅（gpt-5.5 medium）</td>
+</tr>
+<tr>
+<td>其他</td>
+<td>通过 PTY 可管理任意 CLI Agent</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">八、使用场景</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>怎么用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>多 Agent 并行开发</strong></td>
+<td>一个终端管 Claude Code + OpenCode + Codex</td>
+</tr>
+<tr>
+<td><strong>远程开发</strong></td>
+<td>Agent 跑服务器，笔记本关了继续跑</td>
+</tr>
+<tr>
+<td><strong>手机审批</strong></td>
+<td>SSH 从手机连入，审批 blocked Agent</td>
+</tr>
+<tr>
+<td><strong>服务器 CI/批量</strong></td>
+<td>Agent 在服务器批量执行，Herdr 管理状态</td>
+</tr>
+<tr>
+<td><strong>Agent 自编排</strong></td>
+<td>Agent 通过 Herdr API 编排其他 Agent</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_9">九、社区评价</h2>
+<p>首页引用了三个独立评测：</p>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>时长</th>
+<th>评价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Jilles</strong></td>
+<td>6:37</td>
+<td>"Herdr in about 6 minutes"——最快实用入门</td>
+</tr>
+<tr>
+<td><strong>DevOps Toolbox</strong></td>
+<td>16:40</td>
+<td>"This Tmux 'Rewrite' Is Actually Brilliant"——深度 hands-on</td>
+</tr>
+<tr>
+<td><strong>Better Stack</strong></td>
+<td>7:10</td>
+<td>"Is This the Ultimate Agent Multiplexer?"——tmux 对比</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_10">十、关键术语速查</h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Multiplexer</strong></td>
+<td>复用器——一个终端管理多个会话（如 tmux）</td>
+</tr>
+<tr>
+<td><strong>PTY</strong></td>
+<td>伪终端，Agent 运行在真实 PTY 中</td>
+</tr>
+<tr>
+<td><strong>Attach/Detach</strong></td>
+<td>附着/分离——分离后会话继续</td>
+</tr>
+<tr>
+<td><strong>Agent State</strong></td>
+<td>语义状态：blocked/working/done/idle</td>
+</tr>
+<tr>
+<td><strong>Thin Client</strong></td>
+<td>本地客户端连远程会话</td>
+</tr>
+<tr>
+<td><strong>Worktree Orchestrator</strong></td>
+<td>基于 git worktree 的多 Agent 编排器</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_11">十一、与现有笔记/项目的关联</h2>
+<table>
+<thead>
+<tr>
+<th>关联项目</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Kun 的 Pi Agent 配置</strong></td>
+<td>Kun 管理多终端 Pi Agent 标签页的痛点，Herdr 正好解决——语义状态 + 一眼看清哪个 Agent 在工作</td>
+</tr>
+<tr>
+<td><strong>Agent Harness 知识体系</strong></td>
+<td>Herdr 属于 Harness 层的"运行时管理"——管理多个 Agent Loop 的执行环境</td>
+</tr>
+<tr>
+<td><strong>学 Agent 正确顺序</strong></td>
+<td>Phase 5（Multi-Agent）的实用工具——Herdr 让多 Agent 协同可观察可管理</td>
+</tr>
+<tr>
+<td><strong>BitBang CLI</strong></td>
+<td>BitBang 解决"人到机器"远程访问，Herdr 解决"人到多个 Agent"管理——互补</td>
+</tr>
+<tr>
+<td><strong>Hermes Agent</strong></td>
+<td>Hermes 的 delegate_task 管理子 Agent，Herdr 管理终端里的编码 Agent——不同层级的 multiplexing</td>
+</tr>
+<tr>
+<td><strong>Qwen Audio Agent</strong></td>
+<td>QAA 接入多个后台编码 Agent（Claude Code/Hermes 等），Herdr 可作为这些 Agent 的统一终端管理界面</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

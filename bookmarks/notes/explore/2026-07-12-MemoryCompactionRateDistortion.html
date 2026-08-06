@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MemoryCompactionRateDistortion</title>
+
+<meta property="og:title" content="MemoryCompactionRateDistortion" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '$', right: '$', display: false},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="what-to-keep-what-to-forget-a-ratedistortion-view-of-memory-compaction-in-llms-and-agents">What to Keep, What to Forget: A Rate–Distortion View of Memory Compaction in LLMs and Agents</h1>
+<blockquote>
+<p><strong>arXiv</strong>: 2607.08032 | <strong>日期</strong>: 2026-07-09 | <strong>作者</strong>: Ashwin Gerard Colaco, Nada Lahjouji<br />
+<strong>领域</strong>: LLM 推理优化 / Agent 记忆系统 / 信息论</p>
+</blockquote>
+<hr />
+<h2 id="_1">核心问题与研究动机</h2>
+<p>LLM 和 Agent 面临一个共同的瓶颈：<strong>记忆不够用</strong>。模型权重之外，注意力 KV cache、长 prompt、循环状态、跨会话记忆——每个都在疯狂占用资源。四个独立的研究社区各自发展了压缩技术（KV eviction/quantization、prompt compression、architectural state、agent memory），但彼此几乎不交流。</p>
+<p><strong>本文核心论点</strong>：这四个方向的压缩本质上都是同一个问题——<strong>率失真决策</strong>（rate–distortion decision）：在资源预算约束下，保留什么信息、丢弃什么信息、以什么精度保留，以最大化下游任务效用。</p>
+<hr />
+<h2 id="_2">方法论：统一形式化框架</h2>
+<h3 id="_3">核心公式</h3>
+<p>压缩方案是一个二元组 $(\mathcal{C}_\theta, \mathcal{U})$：<br />
+- <strong>压缩算子</strong> $\mathcal{C}_\theta: H \mapsto Z$：将历史信息 $H$ 压缩为紧凑表示 $Z$，满足 $\text{rate}(Z) \leq B$<br />
+- <strong>使用算子</strong> $\mathcal{U}$：消费 $Z$ 进行下游计算</p>
+<p><strong>统一优化目标</strong>：<br />
+$$\min_\theta \mathbb{E}_{(H,Q,Y)}[\ell(\mathcal{U}(\mathcal{C}_\theta(H), Q), Y)] \quad \text{s.t.} \quad \text{rate}(Z) \leq B$$</p>
+<p>这是一个信息瓶颈问题：最大化 $I(Z; Y|Q)$，约束 $I(Z;H) \leq B$。</p>
+<h3 id="_4">不可逆性下界</h3>
+<p>令 $I^\star(Q) = I(Y; H|Q)$ 为任务条件信息量。当预算 $B < I^\star(Q)$ 时：</p>
+<p>$$P_e \geq \frac{H(Y|Q) - B - 1}{\log|\mathcal{Y}|}$$</p>
+<p><strong>该下界对任何压缩记忆 $Z$ 均成立</strong>——无论是 KV cache、gist 向量、循环状态还是 Agent 笔记存储。</p>
+<h3 id="_5">三条直接推论</h3>
+<ol>
+<li><strong>低于信息需求必出错</strong>：当 $B < I^\star(Q)$，所有层都必须犯错误，无架构特例</li>
+<li><strong>压缩比依赖任务</strong>：压缩比 $\propto 1/I^\star(Q)$。精确/多跳检索任务压缩性差，分类/冗余摘要压缩性好——这就是同一个 KV evictor 在摘要任务上几乎无损、在检索任务上崩溃的原因</li>
+<li><strong>查询无关的代价</strong>：查询无关算子的有效预算约 $B - H(Q)$；查询条件算子可全额使用 $B$。差距 $H(Q)$ 就是不知道查询的精确代价</li>
+</ol>
+<hr />
+<h2 id="_6">七轴分类法</h2>
+<p>论文提出七个正交维度分类所有压缩方法：</p>
+<ol>
+<li><strong>压缩粒度</strong>：bit → rank → token → page → layer → NL span → soft token → recurrent state → semantic item → visual token → inter-agent message</li>
+<li><strong>生命周期阶段</strong>：预训练 → prompt/prefill → prefill-to-decode → decode-time → serving → within-task → between-task → offline indexing</li>
+<li><strong>损失性与保真度</strong>：无损 / 近无损 / 均匀有损 / 多保真度（小型高保真层 + 大型有损层）</li>
+<li><strong>查询/任务自适应性</strong>：查询无关离线缓存 / 查询条件在线 / 任务感知学习</li>
+<li><strong>可学习性</strong>：无训练启发式 / 后训练适配器 / 从头训练架构 / RL学习策略 / LLM-as-controller</li>
+<li><strong>机制</strong>：evict / select-retrieve / merge / quantize / factorize / summarize / encode-to-latent / recurrent write-forget / structure / internalize</li>
+<li><strong>存储介质</strong>：On-GPU KV / host-SSD-remote / parameters / external text+vector / knowledge graph / in-context dense / hybrid</li>
+</ol>
+<p><strong>核心发现</strong>：层间差异集中在三个维度——<strong>粒度、生命周期、查询自适应</strong>。</p>
+<hr />
+<h2 id="_7">四层压缩全景</h2>
+<h3 id="1kv-cache-4">第1层：KV-Cache 压缩（§4）</h3>
+<p>六个子方向：<br />
+- <strong>Token Eviction</strong>（不可逆丢弃）：H2O、SnapKV——按累积注意力分数 evict<br />
+- <strong>Dynamic Sparse Retrieval</strong>（全保留选择性读取）：Quest——永不 evict，按查询检索<br />
+- <strong>Quantization</strong>：KIVI——2-bit/4-bit 存储<br />
+- <strong>Low-Rank</strong>：MLA (DeepSeek)——低秩分解 KV<br />
+- <strong>Cross-Layer Sharing</strong>：跨层共享 KV<br />
+- <strong>Cross-Cutting Tensions</strong>：量化 × 低秩 × evict 的组合效果</p>
+<h3 id="2contextprompt-5">第2层：Context/Prompt 压缩（§5）</h3>
+<ul>
+<li><strong>Hard compaction</strong>：LLMLingua（基于困惑度的 token 剪枝）、gisting（NL span → 学习的"gist"向量）</li>
+<li><strong>Soft compaction</strong>：学习潜在表示替代文本 span</li>
+</ul>
+<h3 id="36">第3层：架构级有界状态（§6）</h3>
+<ul>
+<li>Mamba/SSM：固定大小状态压缩全部历史</li>
+<li>循环写-忘机制：参数化记忆</li>
+</ul>
+<h3 id="4agent-7">第4层：Agent 语义记忆压缩（§7）——最长时间尺度</h3>
+<p>这是与 Hermes Agent 最直接相关的层。</p>
+<p><strong>第一族：任务内轨迹压缩</strong><br />
+- <strong>MemGPT/Letta</strong>：操作系统分页隐喻，LLM 窗口=主存，外部存储=磁盘<br />
+- <strong>ACON</strong>：失败驱动的压缩准则迭代优化<br />
+- <strong>Context-Folding</strong>（FoldGRPO）：分支子任务→折叠中间步骤→只留结果摘要<br />
+- <strong>MEM1</strong>：常数大小内部状态，每轮重写合并<br />
+- <strong>ReSum</strong>：周期性摘要工具压缩搜索历史<br />
+- <strong>IterResearch</strong>：每轮从核心输出重建工作空间</p>
+<blockquote>
+<p>报告 3-10× 活跃上下文缩减，但全部不可逆折叠/剪枝/重写——<strong>结构风险</strong>：策略判定不重要的细节永久丢失。</p>
+</blockquote>
+<p><strong>第二族：跨任务记忆固化</strong><br />
+- <strong>Generative Agents</strong>：时间戳+重要性+相关性评分的记忆流，周期性合成高层反思<br />
+- <strong>Reflexion</strong>：失败后写语言自批评，下一轮前置<br />
+- <strong>ExpeL</strong>：成功/失败轨迹对比提炼 NL 洞见<br />
+- <strong>Mem0</strong>：extract-then-update，ADD/UPDATE/DELETE/NOOP 操作<br />
+- <strong>A-MEM</strong>：Zettelkasten 风格原子笔记，动态链接自组织<br />
+- <strong>MemoryBank</strong>：Ebbinghaus 遗忘曲线衰减<br />
+- <strong>MIRIX</strong>：六类型模块（core/episodic/semantic/procedural/resource/knowledge-vault）</p>
+<blockquote>
+<p><strong>核心病理</strong>：错误反思或过度泛化规则被存储后，会偏置每次未来检索——这是 Agent 级别的"evicted needle"类比，但更糟：Agent 不仅丢失好记忆，还会按需重建坏记忆。</p>
+</blockquote>
+<hr />
+<h2 id="agent-10">推理 ↔ Agent 记忆桥接（§10）——核心创新</h2>
+<h3 id="_8">三层记忆层次</h3>
+<ol>
+<li><strong>KV Cache</strong>：亚秒级，GPU 上，近无损，token 粒度</li>
+<li><strong>工作上下文</strong>：任务跨度内，context window 中，轨迹+工具结果</li>
+<li><strong>长期存储</strong>：跨会话，外部语义存储</li>
+</ol>
+<blockquote>
+<p>三层跨越多个数量级的时间尺度，但都回答同一个公式：在预算下保留未来查询需要的信息。</p>
+</blockquote>
+<h3 id="_9">五个共享设计旋钮</h3>
+<table>
+<thead>
+<tr>
+<th>旋钮</th>
+<th>KV Cache 层</th>
+<th>Agent 长期记忆层</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>重要性信号</td>
+<td>attention score</td>
+<td>LLM-judged salience</td>
+</tr>
+<tr>
+<td>遗忘机制</td>
+<td>sliding window / eviction</td>
+<td>decay curve</td>
+</tr>
+<tr>
+<td>查询条件</td>
+<td>per-query pages</td>
+<td>recall-time retrieval</td>
+</tr>
+<tr>
+<td>可逆性</td>
+<td>keep-all vs evict</td>
+<td>archive vs summarize</td>
+</tr>
+<tr>
+<td>停止规则</td>
+<td>output-error bound</td>
+<td><strong>（空白——研究机会）</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">三个跨层移植案例</h3>
+<ol>
+<li><strong>MemoryBank 遗忘曲线 → KV evictor 先验</strong>：H2O 纯按注意力 evict 偏向早期 token，加入基于重访统计的衰减先验作为替代评分</li>
+<li><strong>Quest 无 evict 检索 → Agent 记忆设计</strong>：Agent 在召回时从归档存储检索（可逆+查询条件）优于急切摘要</li>
+<li><strong>Ada-KV 输出误差界 → Agent 摘要停止规则</strong>：不再按固定计划压缩，而是压缩到诱导输出误差的有界估计</li>
+</ol>
+<h3 id="_11">五条压缩感知设计原则</h3>
+<p><strong>P1. 永不不可逆地丢弃你无法廉价重建的内容</strong><br />
+- 可逆算子弱优于不可逆算子（等预算下，只在被丢弃证据的查询上有差异，可逆的赢）<br />
+- Quest 遵循 P1；H2O 和固定计划摘要违反它</p>
+<p><strong>P2. 条件化于查询分布，而非仅当前查询</strong><br />
+- 查询无关算子被收取 $H(Q)$ 的熵代价<br />
+- 可训练稀疏注意力和查询感知压缩代价更低</p>
+<p><strong>P3. 分离廉价可逆情景层与有损语义层</strong><br />
+- 多保真度记忆优于单一有损层：便宜可恢复地保留原始情景，只抽象证明可复用的<br />
+- MIRIX 类型模块和 Compressive Transformer 双层就是这样设计的</p>
+<p><strong>P4. 使压缩异步且可学习，而非阻塞启发式</strong><br />
+- 当"决定保留什么"本身是关键路径上的 LLM 调用时，它侵蚀了它买入的节省<br />
+- RL 学习策略和 sleep-time 整合将决策移出关键路径</p>
+<p><strong>P5. 独立测量每个轴的预算</strong><br />
+- 没有基准同时保持一个预算轴穿过所有层并测量重复压缩</p>
+<hr />
+<h2 id="_12">关键实验结果</h2>
+<h3 id="1-">实验1：统一精度-预算前沿</h3>
+<ul>
+<li><strong>设置</strong>：Qwen2.5-1.5B-Instruct，RTX 4060 8GB，needle-in-a-haystack 检索</li>
+<li><strong>方法</strong>：SnapKV、StreamingLLM、TOVA、Knorm、expected-attention、random-eviction，各5个预算点</li>
+<li><strong>结果</strong>：1395 次生成。满缓存准确率 1.00；预算低于约 1/4 时<strong>所有方法趋近零</strong></li>
+<li><strong>关键发现</strong>：预算低于任务信息需求 $I^\star(Q)$ 时，没有任何评分器能恢复答案——公式(2)的精确预测</li>
+</ul>
+<h3 id="2">实验2：重复压缩下的误差累积</h3>
+<ul>
+<li><strong>设置</strong>：Agent 分块阅读长文档，累积12个KV事实，周期性压缩工作记忆</li>
+<li><strong>可逆算子</strong>：归档全部 chunk，查询时检索（Quest/MemGPT-archival 纪律）</li>
+<li><strong>不可逆算子</strong>：用 LLM 摘要覆盖工作记忆</li>
+<li><strong>结果</strong>：可逆算子 recall 维持 ~0.95；不可逆算子在 0.33-0.56 之间</li>
+<li><strong>关键发现</strong>：<strong>单轮 needle 测试无法区分两个算子</strong>——只在重复压缩时差距才显现。相同平均预算下差距约 0.5 recall。</li>
+</ul>
+<hr />
+<h2 id="compact-bench-13">COMPACT-Bench 提案（§13）</h2>
+<p>现有基准的两大缺陷：<br />
+1. <strong>预算轴不统一</strong>：KV 报 GPU bytes，prompt 报压缩比，recurrent 报状态维度，agent 报存储大小——单位永不对齐<br />
+2. <strong>未测量重复压缩</strong>：当前所有 suite 只测单轮长上下文的固定质量比率，Agent 实际所处的"重复压缩"体制完全未测</p>
+<p>COMPACT-Bench 的三个组件：<br />
+- <strong>统一预算轴</strong>：bytes-per-token-of-history (BPT)，所有方法在同一标尺上比较<br />
+- <strong>能力测量</strong>：方法是否知道它丢弃了什么、能否取回、信心是否反映保留内容<br />
+- <strong>重复压缩测量</strong>：跨多次压缩事件追踪误差累积</p>
+<hr />
+<h2 id="_13">创新点分析</h2>
+<ol>
+<li><strong>统一形式化</strong>：首次用单一率失真目标 + 可证明下界统一四个独立社区的工作，而非描述性分组</li>
+<li><strong>跨层可移植性</strong>：KV eviction 的 attention score 和 Agent memory 的 LLM salience 被识别为同一个量的不同估计器，使设计跨层可移植</li>
+<li><strong>失败模式的统一诊断</strong>：查询无关 + 不可逆 = 所有层的共同失败根源，由同一个下界预测</li>
+<li><strong>COMPACT-Bench</strong>：填补重复压缩测量空白，且在统一预算轴上使异构方法可比</li>
+<li><strong>五条设计原则</strong>：直接从形式化推导，每条附带预测的失败模式</li>
+</ol>
+<hr />
+<h2 id="_14">局限性与未来方向</h2>
+<h3 id="_15">论文自述局限</h3>
+<ul>
+<li>这是综述：提出形式化和基准协议但未提供大规模实证验证</li>
+<li>下界假设查询无关算子的最简形式，$I^\star(Q)$ 对真实任务的估计本身是开放问题</li>
+<li>"算子代数"是经验组合图而非已证定律</li>
+<li>参考实验在小规模运行（小模型+单GPU），绝对数字应视为方法论说明而非排行榜</li>
+</ul>
+<h3 id="_16">七大开放问题</h3>
+<ol>
+<li><strong>查询条件+可逆+多保真度的全层压缩</strong>（最高杠杆）</li>
+<li><strong>信息损失归因与校准压缩置信度</strong></li>
+<li><strong>堆叠算子的组合图</strong>（量化×低秩×evict 的协同/冗余/冲突）</li>
+<li><strong>预测性压缩标度律</strong>（$I^\star(Q)$ 的估计公式）</li>
+<li><strong>情景→语义固化桥与停止规则</strong></li>
+<li><strong>廉价、异步、RL 稳定的 Agent 自策展</strong></li>
+<li><strong>多模态×多智能体共享记忆压缩</strong></li>
+</ol>
+<hr />
+<h2 id="_17">借鉴点评估</h2>
+<h3 id="p0-hermes">🔨 P0：可逆记忆架构（直接关联 Hermes）</h3>
+<p><strong>论文原则 P1 + P3 与 Hermes 当前实践高度相关</strong>：<br />
+- Hermes 的 <code>memorygraph</code> 记忆系统目前是 ADD/UPDATE/DELETE 操作（Mem0 模式）——<strong>不可逆</strong><br />
+- 论文实验证明：不可逆算子在重复压缩下 recall 仅 0.33-0.56，可逆算子维持 0.95<br />
+- <strong>建议</strong>：为关键记忆（USER.md、核心技术决策）实现 archival tier——删除操作前归档原值，支持 rollback。借鉴 MemGPT 分页模型：context window = 主存，外部 JSONL = 磁盘</p>
+<h3 id="p1">🔨 P1：查询条件检索替代急切摘要</h3>
+<p><strong>论文原则 P2 + Quest 移植案例</strong>：<br />
+- Hermes 的 <code>context-compressor</code> skill 当前做急切摘要——查询无关<br />
+- 论文证明：查询无关算子被收取 $H(Q)$ 熵代价<br />
+- <strong>建议</strong>：在工具输出压缩时，延迟摘要到查询时——先存储完整工具输出（带索引），按查询关键词检索相关片段，而非预摘要。这与 <code>hybrid-search</code> skill 方向一致</p>
+<h3 id="p2">⚠️ P2：压缩停止规则</h3>
+<p><strong>论文 Ada-KV 界 → Agent 摘要停止规则</strong>：<br />
+- Hermes 当前按固定阈值/计划触发记忆压缩——无停止规则<br />
+- <strong>建议</strong>：引入输出误差估计作为停止信号——当压缩诱导的估计误差超过阈值时停止进一步压缩</p>
+<h3 id="p2_1">⚠️ P2：异步整合替代关键路径压缩</h3>
+<p><strong>论文原则 P4</strong>：<br />
+- Hermes 的 <code>memory-refiner</code> 在对话中同步调用 LLM 策展记忆——侵蚀节省<br />
+- <strong>建议</strong>：将记忆策展移到 <code>idle-busy-loop</code> 的后台阶段（已有 <code>sleep-time</code> cron），与 <code>auto-memory-keeper</code> 整合</p>
+<h3 id="p3">❌ P3：率失真下界实证</h3>
+<ul>
+<li>$I^\star(Q)$ 对真实任务的估计是开放研究问题</li>
+<li>对 Hermes 规模的系统暂不适用，但理论框架值得记录到 <code>memory-consolidation</code> skill 中</li>
+</ul>
+<h3 id="_18">📝 概念借鉴：三性质检查清单</h3>
+<p>为 Hermes 记忆系统增加三性质审计（可加到 <code>memory-consolidation</code> skill）：<br />
+- <strong>(P-rev) 可逆性</strong>：这条记忆删除后能否重建？如果不能，是否值得保留原始记录？<br />
+- <strong>(P-q) 查询条件</strong>：这条记忆的保留决策是否考虑了未来可能的查询？<br />
+- <strong>(P-fid) 保真度</strong>：这条记忆是精确记录还是摘要？是否需要多保真度分层？</p>
+<hr />
+<h2 id="_19">关联论文</h2>
+<ul>
+<li><strong>MemGPT/Letta</strong> (Packer et al., 2024) — Agent 记忆 OS 分页模型</li>
+<li><strong>Quest</strong> (Tang et al., 2024b) — KV cache 无 evict 查询条件检索</li>
+<li><strong>Ada-KV</strong> (Feng et al., 2025) — KV eviction 输出误差界</li>
+<li><strong>MemoryBank</strong> (Zhong et al., 2023) — Ebbinghaus 遗忘曲线 Agent 记忆</li>
+<li><strong>MIRIX</strong> (Wang and Chen, 2025) — 六类型记忆模块</li>
+<li><strong>Context-Folding</strong> (Sun et al., 2025b) — FoldGRPO 轨迹折叠</li>
+<li><strong>A-MEM</strong> (Xu et al., 2025) — Zettelkasten 原子笔记自组织网络</li>
+<li><strong>COMPACT-Bench</strong> — 本文提出的统一压缩评估基准（扩展 SCBench + KVPress）</li>
+<li><strong>NoLiMa</strong> (Modarressali et al., 2025) — 词汇匹配探针高估模型能力</li>
+<li><strong>EM-LLM</strong> (Fountas et al., 2025) — KV cache 分割为情景事件并检索，推理-记忆桥接的实证标志</li>
+</ul>
+<h2 id="_20">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-04-Kara-KVCache压缩.md">Kara: KV Cache 压缩</a> — KV eviction 实证方法</li>
+<li><a href="./2026-07-05-KVCache量化压缩-TurboQuant-RotorQuant.md">KV Cache 量化压缩：TurboQuant/RotorQuant</a> — 量化方向压缩技术</li>
+<li><a href="./2026-07-03-GLM-5.2架构深度解析-IndexShare长上下文.md">GLM-5.2 架构：IndexShare 长上下文</a> — 长上下文架构优化</li>
+<li><a href="./2026-07-03-Agent记忆系统2026-四模块框架与MAGMA多图架构.md">Agent 记忆系统 2026</a> — Agent 跨会话记忆框架</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-消费级GPU推理</title>
+
+<meta property="og:title" content="本地模型部署-消费级GPU推理" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<hr />
+<p>title: 本地模型部署：消费级GPU推理<br />
+date: 2026-08-01<br />
+source: web_research<br />
+tags: [LLM, 本地部署, GPU推理, 量化, vLLM, Ollama, llama.cpp]</p>
+<hr />
+<h1 id="gpu2026">本地模型部署：消费级GPU推理（2026 速览）</h1>
+<h2 id="_1">摘要</h2>
+<p>2025-2026 年，量化技术的成熟让消费级 GPU（8-24GB VRAM）已能流畅运行过去需数据中心级硬件的大模型。核心变量是<strong>量化格式选择</strong>（GGUF/AWQ/GPTQ/EXL3）和<strong>推理引擎匹配</strong>（llama.cpp/Ollama/vLLM）。70B 模型经 Q4 量化后约 35-42GB，可通过 CPU 卸载在消费级双卡或单卡+大内存方案上运行。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1-vram">1. 量化格式对比（VRAM 缩减核心）</h3>
+<ul>
+<li><strong>GGUF（llama.cpp/Ollama 标准）</strong></li>
+<li>Q4_K_M：VRAM 缩减约 72%，质量损失仅 1-2%，是多数场景的最佳平衡点</li>
+<li>Q5_K_M：多占约 15% VRAM，几乎补齐质量差距，适合编程/数学/法律场景</li>
+<li>Q8_0：近乎无损，VRAM 减半</li>
+<li>独有优势：支持 GPU+CPU 分层卸载，模型可大于 VRAM 总量</li>
+<li><strong>AWQ / GPTQ</strong>：GPU 原生格式，需 CUDA，配合 vLLM/TensorRT-LLM 性能最佳</li>
+<li><strong>EXL3（ExLlamaV3）</strong>：专为消费级 GPU 设计，给定质量目标下体积最小，但生态较小众</li>
+<li><strong>NVFP4（Blackwell 原生）</strong>：RTX 50 系原生支持，比 FP8 再省一半 VRAM，动态范围优于整数 Q4</li>
+</ul>
+<h3 id="2">2. 推理引擎选型矩阵</h3>
+<ul>
+<li><strong>llama.cpp</strong>：纯 C/C++ 零依赖，2025-2026 更新支持 NVFP4/FP8 量化、Vulkan（AMD/Intel GPU）、token 生成提速 35%。适合边缘设备、ARM 工控机。7B 模型仅需 4GB 内存</li>
+<li><strong>Ollama</strong>：llama.cpp 的产品化封装，开箱即用，适合个人开发/快速原型/并发&lt;20 的 RAG 场景。吞吐量瓶颈明显（8B 模型约 300 tokens/s）</li>
+<li><strong>vLLM</strong>：高并发生产首选。PagedAttention 减少 70% 显存碎片，连续批处理 GPU 利用率达 90%+。同等硬件吞吐量是 Ollama 的 10 倍（3000+ vs 300 tokens/s）。一行命令启动 OpenAI 兼容 API</li>
+<li><strong>SGLang</strong>：适合复杂推理流程（结构化输出、多轮对话、并行推理）</li>
+<li><strong>LMDeploy</strong>：上海 AI 实验室出品，适合资源受限的边缘计算</li>
+</ul>
+<h3 id="3">3. 消费级硬件现实</h3>
+<ul>
+<li>RTX 5090（32GB）是当前消费级旗舰，但量化一个 8B 模型到 NVFP4 竟会超出 32GB VRAM（量化过程本身需大内存），被迫依赖预量化权重或 CPU 卸载</li>
+<li>双 RTX 3090（48GB）二手方案仍是性价比之王，可跑 Q4 的 70B 模型</li>
+<li>GGUF CPU 卸载是硬件受限场景的标准 fallback，速度受 PCIe 带宽限制</li>
+<li>Apple Silicon 统一内存是独特优势，MLX 框架支持本地量化但生态与 NVIDIA 有摩擦</li>
+</ul>
+<h3 id="4">4. 经验法则</h3>
+<ul>
+<li>VRAM 估算：FP16 显存 ÷ 4 = Q4，÷ 2 = Q8，再加 10-20% KV cache 开销</li>
+<li>先量化再选硬件，而非反过来</li>
+<li>"Ecosystem Friction"（生态摩擦）是比纯算力更常见的部署障碍——AMD GPU 在本地 LLM 推理上仍是痛点</li>
+</ul>
+<h2 id="_3">对工作的价值</h2>
+<ol>
+<li><strong>直接可用</strong>：Jetson Orin Nano（本项目运行环境）可用 llama.cpp + GGUF Q4 量化部署 7B-14B 模型，4GB 内存即可启动</li>
+<li><strong>成本优化</strong>：量化使推理成本可减半（70B Q4 单 A100 即可，省一张卡的钱）</li>
+<li><strong>选型决策</strong>：个人/开发用 Ollama，生产/高并发用 vLLM，边缘/资源受限用 llama.cpp，这条线已非常清晰</li>
+</ol>
+<h2 id="_4">行动建议</h2>
+<ul>
+<li>短期：在本机 Jetson 上实测 Qwen2.5-7B Q4_K_M via Ollama，记录 token/s 基准</li>
+<li>中期：评估 vLLM 在多用户场景的部署可行性（如团队共享推理服务）</li>
+<li>长期：关注 EXL3 格式和 NVFP4 生态成熟度，它们可能重塑消费级推理的性价比曲线</li>
+</ul>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-30-本地模型部署-GGUF量化部署.md">GGUF量化部署</a> — GGUF量化格式与部署实践</li>
+<li><a href="./2026-08-01-KVarN-KV-Cache量化后端.md">KVarN KV-Cache量化</a> — vLLM原生KV-Cache量化后端</li>
+<li><a href="./2026-08-02-本地模型部署-MLA多头潜在注意力.md">MLA多头潜在注意力</a> — 推理优化核心架构</li>
+<li><a href="./2026-07-31-本地模型部署-Q-K-V投影共享.md">Q-K-V投影共享</a> — 降低注意力参数量</li>
+</ul>
+</body>
+</html>

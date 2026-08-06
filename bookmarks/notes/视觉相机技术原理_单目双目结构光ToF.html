@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视觉相机技术原理_单目双目结构光ToF</title>
+
+<meta property="og:title" content="视觉相机技术原理_单目双目结构光ToF" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="tof">视觉相机技术原理深度解析：单目、双目、结构光、ToF 优劣与适用场景</h1>
+<p><strong>出处：</strong> 微信公众号（原文链接 https://mp.weixin.qq.com/s/z87zzuOVK2r6oR_MQH10jg）<br />
+<strong>日期：</strong> 2026-07-15<br />
+<strong>标签：</strong> #机器人视觉 #自动驾驶 #深度相机 #技术原理 #多传感器融合</p>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p>四大视觉方案不存在绝对优劣，只存在场景适配区别。高阶方案采用多类视觉设备互补 + 激光雷达融合 + BEV统一空间建模。</p>
+<hr />
+<h2 id="rgb2d">一、单目RGB（2D）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>成像原理</strong></td>
+<td>小孔成像，CMOS接收反射光，3D场景投影为2D像素</td>
+</tr>
+<tr>
+<td><strong>深度获取</strong></td>
+<td>无原生深度，靠AI模型+纹理尺寸/遮挡关系/地面几何先验推理</td>
+</tr>
+<tr>
+<td><strong>优势</strong></td>
+<td>成本极低、体积小、标定简单、分辨率上限高、语义识别强</td>
+</tr>
+<tr>
+<td><strong>缺陷</strong></td>
+<td>弱纹理区域失效、尺度混淆、远距离误差大</td>
+</tr>
+<tr>
+<td><strong>定位</strong></td>
+<td>自动驾驶主力感知设备，需搭配BEV模型或激光雷达补深度</td>
+</tr>
+<tr>
+<td><strong>场景</strong></td>
+<td>前视主摄、侧方补盲、环视泊车、纯视觉SLAM</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="25d">二、双目立体视觉（2.5D）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>成像原理</strong></td>
+<td>人眼视差原理，两台同步相机+固定基线，三角几何直接算深度</td>
+</tr>
+<tr>
+<td><strong>核心逻辑</strong></td>
+<td>视差越大→物体越近；视差越小→物体越远</td>
+</tr>
+<tr>
+<td><strong>优势</strong></td>
+<td>物理测距可信度高、输出稠密深度图、被动方案无光源干扰、室内外通用</td>
+</tr>
+<tr>
+<td><strong>缺陷</strong></td>
+<td>低纹理场景失效、算力消耗高、标定维护要求严苛（震动/热变形影响基线）</td>
+</tr>
+<tr>
+<td><strong>定位</strong></td>
+<td>户外纯视觉高精度方案</td>
+</tr>
+<tr>
+<td><strong>场景</strong></td>
+<td>室外巡检机器人、无人机、NAV2室内小车辅助定位</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3d">三、结构光相机（3D·主动式）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>成像原理</strong></td>
+<td>主动投射编码光斑/条纹→接触物体形变→接收相机采集畸变图案→三角测距</td>
+</tr>
+<tr>
+<td><strong>本质</strong></td>
+<td>主动制造人工纹理，纯白无纹理环境也能工作</td>
+</tr>
+<tr>
+<td><strong>优势</strong></td>
+<td>无光环境稳定、无纹理场景可行、毫米级近距离精度、细节丰富</td>
+</tr>
+<tr>
+<td><strong>缺陷</strong></td>
+<td><strong>太阳光下完全失效</strong>（红外杂光覆盖编码光斑）、测距短、成本高、体积大</td>
+</tr>
+<tr>
+<td><strong>定位</strong></td>
+<td>室内高精度专用</td>
+</tr>
+<tr>
+<td><strong>场景</strong></td>
+<td>人形机器人机械臂抓取、三维扫描重建、人脸识别门禁</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="tof3d">四、ToF飞行时间相机（3D·主动式）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>成像原理</strong></td>
+<td>高频调制红外光→反射→记录时间差/相位差→光速换算距离</td>
+</tr>
+<tr>
+<td><strong>优势</strong></td>
+<td>帧率高、算力需求低、无光稳定、成本低于结构光</td>
+</tr>
+<tr>
+<td><strong>缺陷</strong></td>
+<td>深度分辨率低（仅轮廓）、远距离精度衰减、多机红外串扰、户外强光削弱</td>
+</tr>
+<tr>
+<td><strong>定位</strong></td>
+<td>低成本近距离动态测距</td>
+</tr>
+<tr>
+<td><strong>场景</strong></td>
+<td>扫地机器人、仓储AGV避障、人体感应</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">横向对比矩阵</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>单目RGB</th>
+<th>双目</th>
+<th>结构光</th>
+<th>ToF</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>测距方式</strong></td>
+<td>AI推理</td>
+<td>三角几何</td>
+<td>三角测距</td>
+<td>光时差</td>
+</tr>
+<tr>
+<td><strong>是否主动光源</strong></td>
+<td>❌ 被动</td>
+<td>❌ 被动</td>
+<td>✅ 主动</td>
+<td>✅ 主动</td>
+</tr>
+<tr>
+<td><strong>室内</strong></td>
+<td>✅</td>
+<td>✅</td>
+<td>✅ 最佳</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>户外</strong></td>
+<td>✅</td>
+<td>✅ 最佳</td>
+<td>❌</td>
+<td>⚠️ 受限</td>
+</tr>
+<tr>
+<td><strong>无光环境</strong></td>
+<td>❌</td>
+<td>❌</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>无纹理场景</strong></td>
+<td>❌</td>
+<td>❌</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>精度</strong></td>
+<td>低(AI)</td>
+<td>中</td>
+<td>毫米级</td>
+<td>低</td>
+</tr>
+<tr>
+<td><strong>成本</strong></td>
+<td>最低</td>
+<td>中</td>
+<td>高</td>
+<td>低-中</td>
+</tr>
+<tr>
+<td><strong>算力需求</strong></td>
+<td>低</td>
+<td>高</td>
+<td>中</td>
+<td>低</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">最终选型逻辑</h2>
+<ul>
+<li><strong>语义识别 + 量产 + 长期稳定</strong> → 单目RGB + BEV大模型</li>
+<li><strong>户外 + 纯视觉物理深度</strong> → 双目视觉</li>
+<li><strong>室内 + 毫米级高精度抓取/建模</strong> → 结构光</li>
+<li><strong>算力有限 + 近距离快速避障</strong> → ToF</li>
+<li><strong>高阶方案</strong> → 多类视觉互补 + 激光雷达融合 + BEV统一空间建模</li>
+</ul>
+<hr />
+<h2 id="_4">关联思考</h2>
+<ul>
+<li>与机器人视觉系统选型直接相关（参见 ~/uclaw/project/two-wheel-legged-robot/）</li>
+<li>双目方案对STM32+Pixracer平台算力有要求，需评估嵌入式可行性</li>
+<li>结构光适合机械臂抓取环节，ToF适合近距离避障</li>
+<li>后续可研究BEV模型架构（Occupancy Network / BEVFusion等）</li>
+</ul>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-15-视觉相机技术原理深度解析.md">视觉相机技术(正式版)</a> — 同主题正式版</li>
+<li><a href="./2026-07-16-双轮腿机器人V2功能分析与扩展说明.md">双轮腿机器人V2</a> — 机器人感知</li>
+</ul>
+</body>
+</html>

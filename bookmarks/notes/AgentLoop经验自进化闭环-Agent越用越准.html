@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentLoop经验自进化闭环-Agent越用越准</title>
+
+<meta property="og:title" content="AgentLoop经验自进化闭环-Agent越用越准" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agentloop-agent">AgentLoop 经验自进化闭环：让 Agent 越用越准、成本越来越低</h1>
+<blockquote>
+<p><strong>出处</strong>: <a href="https://mp.weixin.qq.com/s/imwXP56r-llaQwD-qAQM6Q">微信公众号 - 马云雷（阿里妹）</a><br />
+<strong>日期</strong>: 2026-07-22<br />
+<strong>标签</strong>: #AI-Agent #经验自进化 #AgentLoop #Trace分析 #阿里 #质量优化 #成本优化<br />
+<strong>核心内容</strong> (conf=0.95): 阿里 AgentLoop 构建"模型外经验层"——从 Agent 真实运行 Trace 中清洗出标准化 Trajectory（压缩至原始数据 4-6%），跨轨迹挖掘有效路径/失败模式/恢复策略，形成结构化经验库，在运行时通过 Recall Skill+CLI 注入上下文。不修改模型权重，仅靠经验召回提高成功率+稳定性+降低单位成功成本。</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心架构：经验自进化飞轮</h2>
+<pre><code>观测 → Trace清洗 → Trajectory组装 → 跨轨迹挖掘 → 结构化经验
+    ↑                                                    ↓
+  再运行 ← 召回注入 ← Recall Skill ← 经验库 ←──────┘
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>做什么</th>
+<th>关键产出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trace 清洗</strong></td>
+<td>去除基础设施 Span、重复消息、无关日志</td>
+<td>高价值 Trajectory（<strong>原始 Trace 的 4-6%</strong>）</td>
+</tr>
+<tr>
+<td><strong>Trajectory 组装</strong></td>
+<td>保留任务目标、行动步骤、工具调用、观察结果、错误、恢复过程、最终结果</td>
+<td>标准化决策序列</td>
+</tr>
+<tr>
+<td><strong>经验挖掘</strong></td>
+<td>跨多条轨迹比较，识别反复出现的有效动作和高风险路径</td>
+<td>结构化经验卡片</td>
+</tr>
+<tr>
+<td><strong>运行时召回</strong></td>
+<td>根据当前任务/工具/进度/错误状态，召回少量适用经验</td>
+<td>注入 Agent 上下文</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">二、五类结构化经验</h2>
+<table>
+<thead>
+<tr>
+<th>经验类型</th>
+<th>说明</th>
+<th>Hermes 对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>工具选择和调用顺序</strong></td>
+<td>哪个入口最有效、什么顺序最优</td>
+<td>Skill 加载优先级</td>
+</tr>
+<tr>
+<td><strong>参数规则与前置条件</strong></td>
+<td>工具调用的参数约束、数据范围</td>
+<td>Skill Pitfall 章节</td>
+</tr>
+<tr>
+<td><strong>反模式（Anti-pattern）</strong></td>
+<td>容易导致失败的错误路径</td>
+<td>error-case-library</td>
+</tr>
+<tr>
+<td><strong>错误恢复策略</strong></td>
+<td>遇到错误后如何绕行/恢复</td>
+<td>evolver 自动修复规则</td>
+</tr>
+<tr>
+<td><strong>结果验证规则</strong></td>
+<td>什么才算真正完成</td>
+<td>verification-gate skill</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">三、质量与成本度量体系</h2>
+<h3 id="_4">质量指标（不只是看一次成功）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>平均任务成功率</strong></td>
+<td>多次运行的平均水平</td>
+</tr>
+<tr>
+<td><strong>首次完成率</strong></td>
+<td>不返工的一次通过率</td>
+</tr>
+<tr>
+<td><strong>稳定性</strong></td>
+<td>同类任务多次执行的成功率/最低表现/波动范围</td>
+</tr>
+<tr>
+<td><strong>失败模式集中度</strong></td>
+<td>失败是否集中在少数可识别的场景</td>
+</tr>
+<tr>
+<td><strong>人工接管率</strong></td>
+<td>需要人工介入的比例</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">成本指标（单位成功成本）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Token/成功任务</td>
+<td>不是单次 Token，是每个<strong>成功</strong>任务的综合消耗</td>
+</tr>
+<tr>
+<td>工具调用次数/成功任务</td>
+<td>无效调用和重复查询</td>
+</tr>
+<tr>
+<td>执行时间/成功任务</td>
+<td>含超时</td>
+</tr>
+<tr>
+<td>人工调优投入</td>
+<td>查看 Trace、总结问题、修改提示词</td>
+</tr>
+<tr>
+<td>Trace 存储成本</td>
+<td>原始数据的存储/传输/重复分析</td>
+</tr>
+</tbody>
+</table>
+<h3 id="benchmark">Benchmark 验证结果</h3>
+<table>
+<thead>
+<tr>
+<th>Bench</th>
+<th>注入前</th>
+<th>注入后</th>
+<th>Token 变化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>StarOps 指标查询</td>
+<td>7.1%</td>
+<td><strong>36.1%</strong></td>
+<td>-6.8%</td>
+</tr>
+<tr>
+<td>PawBench</td>
+<td>24.53%</td>
+<td><strong>30.67%</strong></td>
+<td><strong>-58.16%</strong></td>
+</tr>
+<tr>
+<td>PinchBench</td>
+<td>0.2928</td>
+<td><strong>0.3464 (+18.3%)</strong></td>
+<td>+2.9%</td>
+</tr>
+<tr>
+<td>ClawProBench</td>
+<td>74.51%</td>
+<td><strong>78.43%</strong></td>
+<td>-11%</td>
+</tr>
+<tr>
+<td>SWE-bench Verified</td>
+<td>67.2%</td>
+<td><strong>74.4% (+7.2pp)</strong></td>
+<td>362M→536M</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键发现</strong>：质量提升和成本下降并非总同步——有些场景为更高成功率需更多 Token。目标是在质量护栏下持续优化<strong>单位成功成本</strong>。</p>
+<hr />
+<h2 id="_6">四、与现有能力层的差异定位</h2>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>解决什么</th>
+<th>如何生效</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory</td>
+<td>用户/会话历史</td>
+<td>检索事实和偏好</td>
+</tr>
+<tr>
+<td>RAG/知识库</td>
+<td>业务事实和规则</td>
+<td>外部知识检索</td>
+</tr>
+<tr>
+<td>Workflow/SOP</td>
+<td>标准流程</td>
+<td>人工定义步骤</td>
+</tr>
+<tr>
+<td>Skill</td>
+<td>可复用能力</td>
+<td>封装操作方法</td>
+</tr>
+<tr>
+<td>Fine-tuning/RL</td>
+<td>改变模型行为</td>
+<td>更新权重</td>
+</tr>
+<tr>
+<td><strong>经验自进化</strong></td>
+<td><strong>当前情境下哪些行动有效/失败</strong></td>
+<td><strong>从真实 Trajectory 挖掘，运行时注入</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>一句话：Memory 让 Agent 记得过去，RAG 让 Agent 找到知识，Skill 让 Agent 获得能力，<strong>经验自进化让 Agent 在当前任务中复用真实验证过的方法</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="agent">五、多 Agent 经验共享</h2>
+<table>
+<thead>
+<tr>
+<th>价值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>冷启动加速</td>
+<td>新 Agent 继承已有方法</td>
+</tr>
+<tr>
+<td>新成员上手</td>
+<td>直接使用骨干积累</td>
+</tr>
+<tr>
+<td>跨模型迁移</td>
+<td>换模型后业务经验不丢</td>
+</tr>
+<tr>
+<td>通用经验共享</td>
+<td>跨 Agent 召回</td>
+</tr>
+<tr>
+<td>业务经验隔离</td>
+<td>按 AgentSpace 和经验库权限控制</td>
+</tr>
+<tr>
+<td>能力资产化</td>
+<td>个人经验→企业可管理资产</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="hermes">六、🔥 借鉴分析：Hermes 可落地的改进点</h2>
+<h3 id="hermes_1">当前 Hermes 已有的"半成品经验闭环"</h3>
+<table>
+<thead>
+<tr>
+<th>Hermes 组件</th>
+<th>对应 AgentLoop 概念</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>evolver</code> skill</td>
+<td>经验挖掘 + 反模式</td>
+<td>❌ 只从错误学，不从成功轨迹学</td>
+</tr>
+<tr>
+<td><code>error-case-library</code></td>
+<td>反模式库</td>
+<td>✅ 已有，但无自动召回</td>
+</tr>
+<tr>
+<td><code>session-distill</code></td>
+<td>Trajectory 提取</td>
+<td>❌ 只做摘要，不做跨轨迹比较</td>
+</tr>
+<tr>
+<td>Skills (Pitfall/Verification)</td>
+<td>参数规则/验证规则</td>
+<td>✅ 有，但人工维护</td>
+</tr>
+<tr>
+<td><code>exchange-protocol</code></td>
+<td>多 Agent 共享</td>
+<td>✅ 三机经验池已有</td>
+</tr>
+<tr>
+<td>Memory (L1/L2/L3)</td>
+<td>Memory 层</td>
+<td>✅ 已分层</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5">可落地的 5 个改进方向</h3>
+<h4 id="1-evolver">1. 🔴 成功轨迹经验挖掘（evolver 升级）</h4>
+<p><strong>现状</strong>：evolver 只从错误学（error-case-library）。<br />
+<strong>改进</strong>：成功 cron/任务执行后，自动提取"有效路径"存入经验库。<br />
+<strong>实现</strong>：cron 成功执行后，检查 agent.log 的工具调用序列，与历史失败轨迹对比，差异部分即为"有效经验"。</p>
+<h4 id="2-tracetrajectory">2. 🟡 Trace→Trajectory 压缩</h4>
+<p><strong>现状</strong>：session-distill 只做文本摘要。<br />
+<strong>改进</strong>：提取结构化 Trajectory（目标→步骤→工具→结果→恢复），压缩至原始 4-6%。<br />
+<strong>实现</strong>：扩展 session-distill 脚本，输出 JSON 格式的 Trajectory 而非散文摘要。</p>
+<h4 id="3">3. 🟡 运行时经验召回</h4>
+<p><strong>现状</strong>：error-case-library 需要人工或 evolver 主动查。<br />
+<strong>改进</strong>：任务启动时自动召回相似历史经验注入上下文。<br />
+<strong>实现</strong>：新增 session-boot hook，根据任务关键词自动从 error-case-library + evolver 经验池召回 Top-3 经验卡片。</p>
+<h4 id="4">4. 🟢 质量度量仪表盘</h4>
+<p><strong>现状</strong>：observability-dashboard 有工具调用统计，缺成功率/稳定性维度。<br />
+<strong>改进</strong>：增加"同类任务多次执行成功率"、"首次完成率"、"失败模式集中度"指标。<br />
+<strong>实现</strong>：扩展 watchdog 统计逻辑，按 session title 聚类计算。</p>
+<h4 id="5_1">5. 🟢 单位成功成本追踪</h4>
+<p><strong>现状</strong>：有 token 统计（ccusage），但无"每成功任务成本"。<br />
+<strong>改进</strong>：用 <code>token / 任务成功标志</code> 计算真实单位成本。<br />
+<strong>实现</strong>：cron 执行记录已有 ok/error 标记，结合 session token 消耗即可计算。</p>
+<hr />
+<h2 id="_7">七、与用户其他笔记的交叉关联</h2>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>关联</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Graph Engineering</strong></td>
+<td>经验召回 = 图中的"边"（数据从经验库流向 Agent 上下文）</td>
+</tr>
+<tr>
+<td><strong>NVIDIA Cosmos</strong></td>
+<td>世界模型 = "环境的经验"；经验自进化 = "Agent 行动的经验"</td>
+</tr>
+<tr>
+<td><strong>Klipper 架构</strong></td>
+<td>指令缓冲+预调度 = 经验预加载到上下文，运行时只执行</td>
+</tr>
+<tr>
+<td><strong>无感 FOC 虚拟传感器</strong></td>
+<td>"传统控制负责稳定，AI 负责感知" = "Skill 负责执行，经验负责导航"</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

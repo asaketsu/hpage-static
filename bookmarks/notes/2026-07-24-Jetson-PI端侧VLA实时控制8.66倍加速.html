@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jetson-PI端侧VLA实时控制8.66倍加速</title>
+
+<meta property="og:title" content="Jetson-PI端侧VLA实时控制8.66倍加速" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="jetson-pivlajetson-orin866">Jetson-PI：让VLA跑上机器人，Jetson Orin控制频率提升8.66倍</h1>
+<blockquote>
+<p><strong>出处</strong>: <a href="https://mp.weixin.qq.com/s/ugr2S_Vuf1x9jpHA6IEDzw">微信公众号 - 机器之心</a><br />
+<strong>论文</strong>: <a href="https://arxiv.org/abs/2607.12659">arXiv:2607.12659</a><br />
+<strong>代码</strong>: <a href="https://github.com/PKU-SEC-Lab/Jetson-PI">github.com/PKU-SEC-Lab/Jetson-PI</a><br />
+<strong>日期</strong>: 2026-07-24<br />
+<strong>标签</strong>: #VLA #Jetson #端侧部署 #异步推理 #具身智能 #π0.5 #实时控制 #北大<br />
+<strong>核心内容</strong> (conf=0.96): 北大团队开源 Jetson-PI，从异步推理算法（前瞻对齐异步修正）、置信度调度、底层推理引擎优化三个层面，将 π0.5 VLA 模型在 Jetson Orin 上的控制频率从 0.70Hz 提升至 6.06Hz（8.66倍），不损失精度、不依赖量化剪枝。核心创新是用 40M 参数的未来修正模块预测"未来环境表征"而非未来图像，解决感知-执行错位。</p>
+</blockquote>
+<hr />
+<h2 id="vla">一、问题：端侧 VLA 的三重困境</h2>
+<table>
+<thead>
+<tr>
+<th>挑战</th>
+<th>具体表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>推理太慢</strong></td>
+<td>π0.5 在 Jetson Orin 单次推理 ~1.4s，控制频率仅 0.70Hz</td>
+</tr>
+<tr>
+<td><strong>感知-执行错位</strong></td>
+<td>异步推理时，模型用推理开始时的图像预测动作，但执行时环境已变</td>
+</tr>
+<tr>
+<td><strong>反应时间过长</strong></td>
+<td>即使异步并行，响应速度仍受完整推理延迟限制</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="jetson-pi">二、Jetson-PI 三层解决方案</h2>
+<h3 id="1foresight-aligned-asynchronous-correction">层 1：前瞻对齐异步修正（Foresight-Aligned Asynchronous Correction）</h3>
+<table>
+<thead>
+<tr>
+<th>设计</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不预测未来图像</strong></td>
+<td>生成完整未来图像计算成本过高</td>
+</tr>
+<tr>
+<td><strong>只修正最后一层表征</strong></td>
+<td>预测 VLM 最后一层环境表示（非全部 KV Cache）</td>
+</tr>
+<tr>
+<td><strong>40M 参数</strong></td>
+<td>仅占完整 VLA 的 ~1%</td>
+</tr>
+<tr>
+<td><strong>训练时随机采样延迟</strong></td>
+<td>适配不同硬件（Orin/Thor/GPU）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>工作流</strong>：</p>
+<pre><code>当前VLM表征 + 已提交动作序列 → 未来修正模块(40M)
+    → 预测&quot;动作执行后&quot;的未来环境表征
+    → 动作专家从未来时刻开始生成动作
+</code></pre>
+<h3 id="2">层 2：置信度调度</h3>
+<table>
+<thead>
+<tr>
+<th>置信度</th>
+<th>系统行为</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>高于阈值</strong></td>
+<td>跳过 VLM，直接用修正表征调用动作专家</td>
+<td>高频生成动作</td>
+</tr>
+<tr>
+<td><strong>低于阈值</strong></td>
+<td>重新调用 VLM 读最新摄像头画面</td>
+<td>校正环境理解</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>让机器人学会判断："什么时候可以凭借已有认知继续行动，什么时候必须重新看一眼。"</p>
+</blockquote>
+<ul>
+<li>平稳动作/环境可预测 → 置信度高 → 跳过VLM</li>
+<li>抓取/接触/放置 → 置信度下降 → 触发VLM更新</li>
+</ul>
+<h3 id="3jetson-pi-edge-llamacpp">层 3：Jetson-PI-Edge 推理引擎（基于 llama.cpp）</h3>
+<table>
+<thead>
+<tr>
+<th>优化</th>
+<th>原理</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>计算图复用</strong></td>
+<td>VLA 输入张量尺寸固定 → 首次构建 CUDA Graph 后复用</td>
+<td>避免每轮重复建图</td>
+</tr>
+<tr>
+<td><strong>常驻 GPU 中间缓存</strong></td>
+<td>ViT/LLM/动作专家中间结果直接 GPU 内复用</td>
+<td>消除 GPU↔CPU 往返</td>
+</tr>
+<tr>
+<td><strong>Flow matching 展开</strong></td>
+<td>π 系列多轮去噪展开到统一计算图</td>
+<td>减少 kernel launch 开销</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">三、性能数据</h2>
+<h3 id="jetson-orin">Jetson Orin 上的延迟分解</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>原生 PyTorch</th>
+<th>Jetson-PI-Edge</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>动作专家</td>
+<td>536.8ms</td>
+<td><strong>123.1ms</strong></td>
+</tr>
+<tr>
+<td>单次推理总计</td>
+<td>~1400ms</td>
+<td><strong>412.9ms</strong></td>
+</tr>
+<tr>
+<td>反应时间（+调度）</td>
+<td>—</td>
+<td><strong>165.1ms</strong></td>
+</tr>
+<tr>
+<td><strong>控制频率</strong></td>
+<td><strong>0.70 Hz</strong></td>
+<td><strong>6.06 Hz (↑8.66×)</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="libero">精度验证（LIBERO 数据集）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>平均成功率</th>
+<th>vs Jetson-PI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Jetson-PI</td>
+<td>基准</td>
+<td>—</td>
+</tr>
+<tr>
+<td>RTC</td>
+<td>-3.9pp</td>
+<td>Jetson-PI 更优</td>
+</tr>
+<tr>
+<td>VLASH</td>
+<td>-14.8pp</td>
+<td>Jetson-PI 更优</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>延迟越大，Jetson-PI 优势越明显（Δ=9 时 vs VLASH 高 45.6pp）</li>
+</ul>
+<hr />
+<h2 id="_2">四、关键设计哲学</h2>
+<blockquote>
+<p><strong>不预测未来图像，而修正未来表征。</strong></p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>对比</th>
+<th>预测未来图像</th>
+<th>Jetson-PI 修正未来表征</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>计算成本</td>
+<td>极高</td>
+<td>极低（40M，1%）</td>
+</tr>
+<tr>
+<td>信息利用率</td>
+<td>浪费在像素保真</td>
+<td>聚焦因果相关变量</td>
+</tr>
+<tr>
+<td>延迟适应性</td>
+<td>差</td>
+<td>好（训练时随机采样延迟）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">五、与用户项目关联</h2>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>关联</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Jetson Orin Nano Super</strong></td>
+<td>Jetson-PI 直接在你的设备上可用，控制频率从 0.7→6.06Hz</td>
+</tr>
+<tr>
+<td><strong>双轮腿机器人</strong></td>
+<td>VLA 模型端侧部署的关键使能技术——不必背工作站上机器人</td>
+</tr>
+<tr>
+<td><strong>NVIDIA GR00T 教程笔记</strong></td>
+<td>GR00T 的端侧部署瓶颈，Jetson-PI 提供了解决方案</td>
+</tr>
+<tr>
+<td><strong>曼宁框架笔记</strong></td>
+<td>Jetson-PI 的"未来环境表征预测"是因果表示的一个实例——理解动作对环境的影响</td>
+</tr>
+<tr>
+<td><strong>F5-TTS / LuxTTS</strong></td>
+<td>llama.cpp 基座的优化技术（计算图复用/GPU缓存）可迁移到 TTS 引擎</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-26-边缘端LLM推理优化与量化鲁棒性.md">边缘端LLM推理优化与量化鲁棒性</a> — 同属 Jetson 端侧推理优化，侧重量化鲁棒性与 MoE 交互</li>
+<li><a href="./2026-07-23-边缘AI推理优化-TinyML到TinyLM的2026现状.md">边缘AI推理优化-TinyML到TinyLM</a> — 边缘 AI 推理演进全景，Jetson-PI 是 VLA 实时控制的具体实例</li>
+<li><a href="./2026-07-24-Bonsai-1bit-Ternary极限量化-27B模型塞进手机.md">Bonsai 1bit/Ternary 极限量化</a> — 极限量化路线，Jetson-PI 走异步推理而非量化剪枝的对比路线</li>
+<li><a href="../explore/2026-07-26-consumer-gpu-llm-inference-deep-dive.md">消费级 GPU 推理全景</a> — 桌面端 VRAM 破解策略，与 Jetson 端侧形成云端-边缘对照（explore 目录）</li>
+<li><a href="./2026-07-22-NVIDIA-Cosmos物理AI世界基础模型平台-功能与使用指南.md">NVIDIA Cosmos 物理AI世界基础模型</a> — Jetson-PI 的"未来环境表征预测"与 Cosmos 世界模型在具身智能中的互补</li>
+</ul>
+</body>
+</html>

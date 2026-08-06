@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nanobot源码架构拆解</title>
+
+<meta property="og:title" content="Nanobot源码架构拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="nanobot-3935-agent">Nanobot 源码架构拆解：3935 行代码的极简 Agent 框架</h1>
+<blockquote>
+<p>来源：腾讯云开发者 · 俞孟凡 · <a href="https://mp.weixin.qq.com/s/6m2ezyi119r8NLMBjsARDQ">原文链接</a><br />
+整理日期：2026-06-09</p>
+</blockquote>
+<hr />
+<h2 id="_1">项目概况</h2>
+<p>香港大学数据科学实验室（HKUDS）开源的 <strong>nanobot</strong>，核心代码仅 <strong>3,935 行</strong>（对比 LangChain 430,000+ 行），30 天内 28,500+ GitHub Stars。</p>
+<p><strong>设计哲学</strong>：用最少的抽象做最诚实的 Agent 框架——代码量和功能声明完全匹配。</p>
+<hr />
+<h2 id="01">01 整体架构：控制面集中化</h2>
+<pre><code>Chat Platforms (13 channels)
+  ↓
+MessageBus (asyncio.Queue)  ← inbound / outbound
+  ↓
+AgentLoop（核心控制面）
+  ├── SessionManager  → 历史对话加载
+  ├── ContextBuilder  → system prompt + messages 组装
+  └── while loop: LLM → tool calls → execute → append → LLM...
+  ↓
+ToolRegistry / SubagentMgr / exec / MCP / cron
+</code></pre>
+<p><strong>决定性特征</strong>：控制面完全集中在 AgentLoop。没有 Chain/Runnable/LCEL 编排层，没有 DAG，没有显式 PLAN 步骤。所有决策路径穿过同一个 <code>while</code> 循环。</p>
+<blockquote>
+<p>可理解性最大化，但弹性空间随之缩小。</p>
+</blockquote>
+<hr />
+<h2 id="02-react">02 核心：ReAct 循环极简实现</h2>
+<p>整个 Agent 编排逻辑约 <strong>20 行</strong>：</p>
+<pre><code class="language-python">async def _run_agent_loop(self, initial_messages, on_progress):
+    messages = initial_messages
+    while iteration &lt; self.max_iterations:  # 默认 40 次
+        response = await self.provider.chat(messages, tools, model)
+        if response.has_tool_calls:
+            for tool_call in response.tool_calls:
+                result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                messages = append_tool_result(messages, tool_call.id, result)
+        else:
+            final_content = response.content
+            break
+</code></pre>
+<h3 id="_2">关键工程细节</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">设计</th>
+<th style="text-align: left;">作用</th>
+<th style="text-align: left;">代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">错误响应不持久化到 session history</td>
+<td style="text-align: left;">防止"400 中毒循环"</td>
+<td style="text-align: left;">—</td>
+</tr>
+<tr>
+<td style="text-align: left;">工具结果截断为 500 字符存入 session</td>
+<td style="text-align: left;">控制上下文增长</td>
+<td style="text-align: left;">跨会话工具结果不可追溯</td>
+</tr>
+<tr>
+<td style="text-align: left;">错误处理只追加一句引导提示</td>
+<td style="text-align: left;">把恢复责任交给 LLM</td>
+<td style="text-align: left;">弱模型可能无效循环</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="03-tool-python">03 Tool 系统：最小 Python 接口</h2>
+<pre><code class="language-python">class Tool(ABC):
+    name -&gt; str           # 工具名
+    description -&gt; str    # 描述
+    parameters -&gt; dict    # JSON Schema
+    execute(**kwargs) -&gt; str  # 硬约束：必须返回 str
+</code></pre>
+<p><strong>设计选择</strong>：<code>execute</code> 强制返回 <code>str</code>——接口统一，LLM 天然消费字符串；代价是丢失类型信息。</p>
+<p>无装饰器、无配置文件、无元类。JSON Schema 需手写维护。</p>
+<hr />
+<h2 id="04-skill-markdown-llm">04 Skill 系统：Markdown 扩展 LLM 能力</h2>
+<p><strong>nanobot 最独特的设计。</strong> Skill 不是代码，而是 <strong>Markdown 文档</strong>，教 LLM 如何使用已有 CLI 工具。</p>
+<h3 id="progressive-loading">Progressive Loading：文件系统做懒加载</h3>
+<ol>
+<li>System prompt 只注入 XML 索引（name + description + location）</li>
+<li>LLM 需要某 skill 时，用 <code>read_file</code> 读取完整 SKILL.md</li>
+<li>不用的 skill 零 token 开销</li>
+</ol>
+<pre><code class="language-xml">&lt;skills&gt;
+  &lt;skill available=&quot;true&quot;&gt;
+    &lt;name&gt;weather&lt;/name&gt;
+    &lt;description&gt;Get current weather...&lt;/description&gt;
+    &lt;location&gt;/path/to/skills/weather/SKILL.md&lt;/location&gt;
+  &lt;/skill&gt;
+&lt;/skills&gt;
+</code></pre>
+<h3 id="skill-vs-tool">Skill vs Tool 分工</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: center;">Tool</th>
+<th style="text-align: center;">Skill</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">需要 Python 逻辑</td>
+<td style="text-align: center;">✓</td>
+<td style="text-align: center;"></td>
+</tr>
+<tr>
+<td style="text-align: left;">包装已有 CLI 工具</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;">✓</td>
+</tr>
+<tr>
+<td style="text-align: left;">需要直接调 API</td>
+<td style="text-align: center;">✓</td>
+<td style="text-align: center;"></td>
+</tr>
+<tr>
+<td style="text-align: left;">非工程师添加能力</td>
+<td style="text-align: center;"></td>
+<td style="text-align: center;">✓</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">局限</h3>
+<p>skill 数量极大时（数百个），XML 索引本身占满 context window。有规模天花板。</p>
+<hr />
+<h2 id="05-grep-beats-rag">05 记忆系统："grep beats RAG"</h2>
+<p>两个 Markdown 文件，不用向量库：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">文件</th>
+<th style="text-align: left;">内容</th>
+<th style="text-align: left;">加载方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">MEMORY.md</td>
+<td style="text-align: left;">长期事实、用户偏好</td>
+<td style="text-align: left;">每次注入 system prompt</td>
+</tr>
+<tr>
+<td style="text-align: left;">HISTORY.md</td>
+<td style="text-align: left;">对话摘要，追加写入</td>
+<td style="text-align: left;">LLM 用 <code>exec grep</code> 按需搜索</td>
+</tr>
+</tbody>
+</table>
+<p>当 <code>unconsolidated_messages &gt;= 100</code> 时，异步触发 LLM 驱动的记忆整合。</p>
+<p><strong>适用范围</strong>：个人规模（数百条历史）成立。企业规模（数万条、多用户、跨语言）需向量库。</p>
+<hr />
+<h2 id="06-subagent">06 Subagent 系统：消息总线重注入</h2>
+<pre><code class="language-python">asyncio.create_task(self._run_subagent(task_id, task, label, origin))
+</code></pre>
+<p><strong>能力约束</strong>：无 message 工具、无 spawn（防递归）、最多 15 次迭代、无 memory/history。</p>
+<p><strong>巧妙设计</strong>：Subagent 完成后，通过 MessageBus 重新注入 InboundMessage → 主 agent 像处理普通消息一样处理 → 无需轮询或回调。</p>
+<p><strong>局限</strong>：asyncio.Task 同进程，无法跨机器分布。</p>
+<hr />
+<h2 id="07-mcp">07 MCP 集成：零成本协议桥接</h2>
+<p>MCP 工具自动包装为原生 Tool 对象，命名空间隔离（<code>mcp_{server}_{tool}</code>）。支持 stdio 和 streamable-http 两种 MCP Server。</p>
+<p>长期价值：MCP 生态扩张时，nanobot 零成本接入所有兼容工具。</p>
+<hr />
+<h2 id="08">08 可借鉴的架构模式</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">模式</th>
+<th style="text-align: left;">核心思想</th>
+<th style="text-align: left;">适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>Markdown-as-Config</strong></td>
+<td style="text-align: left;">能力添加不改代码、不重启</td>
+<td style="text-align: left;">LLM 需注入领域知识</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>懒加载 + 文件系统</strong></td>
+<td style="text-align: left;">system prompt 只放索引，按需加载</td>
+<td style="text-align: left;">降低常规 token 消耗</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>消息总线解耦</strong></td>
+<td style="text-align: left;">子任务结果重注入输入流</td>
+<td style="text-align: left;">异步任务结果通知</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>最小公共类型</strong></td>
+<td style="text-align: left;">所有工具返回 <code>str</code></td>
+<td style="text-align: left;">LLM 消费所有输出</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>错误恢复委托 LLM</strong></td>
+<td style="text-align: left;">框架不处理重试，LLM 决定下一步</td>
+<td style="text-align: left;">强模型场景</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="09">09 使用建议</h2>
+<p><strong>适合</strong>：个人自托管 AI 助手 / 快速原型 / Agent 框架学习材料</p>
+<p><strong>不适合</strong>：精确多 agent 协调 / 大规模历史记忆 / 细粒度行为控制 / 生产安全隔离</p>
+<hr />
+<p><em>nanobot 是目前最诚实的 Agent 框架：代码量和功能声明完全匹配。这本身就值得学习。</em></p>
+<blockquote>
+<p>项目地址：https://github.com/HKUDS/nanobot</p>
+</blockquote>
+<h2 id="_4">相关笔记</h2>
+<ul>
+<li>[[2026-04-23-MCP协议与Agentic-LLM-2025趋势]]</li>
+<li>[[2026-05-26-proactive-learn-mcp-llm-quant-evolution]]</li>
+<li>[[2026-05-14-手撸Agent-ReAct-Loop从零实现]]</li>
+<li>[[2026-04-02-Agent Skills才是关键抽象层]]</li>
+<li>[[2026-04-07-agent-loop-core-scheduling]]</li>
+</ul>
+</body>
+</html>

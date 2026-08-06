@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fastmcp-sdk-deep-dive</title>
+
+<meta property="og:title" content="fastmcp-sdk-deep-dive" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="fastmcp-python-sdk-v1271">FastMCP Python SDK 深度精读（v1.27.1 源码级）</h1>
+<blockquote>
+<p>日期: 2026-05-26<br />
+来源: mcp Python SDK v1.27.1 源码精读（已安装在 Jetson Orin 本地）<br />
+相关技能: mcp-integration, native-mcp</p>
+</blockquote>
+<h2 id="_1">核心发现</h2>
+<h3 id="1-fastmcp-toolresourceprompt">发现1: FastMCP 三层架构 — Tool/Resource/Prompt 装饰器模式</h3>
+<p>FastMCP 的核心设计是<strong>装饰器驱动的声明式 API</strong>，将 MCP 协议的三大原语（Tool、Resource、Prompt）映射为 Python 装饰器：</p>
+<pre><code class="language-python">from mcp.server.fastmcp import FastMCP
+
+mcp = FastMCP(&quot;my-server&quot;)
+
+# 1. Tool — 最常用，可注入 Context
+@mcp.tool()
+def analyze_data(query: str, ctx: Context) -&gt; str:
+    ctx.info(f&quot;Processing: {query}&quot;)  # 日志回传客户端
+    return f&quot;Result for {query}&quot;
+
+# 2. Resource — 数据提供者（类似 REST GET）
+@mcp.resource(&quot;resource://config&quot;)
+def get_config() -&gt; str:
+    return json.dumps({&quot;version&quot;: &quot;1.0&quot;})
+
+# 3. Resource Template — 参数化资源
+@mcp.resource(&quot;resource://{symbol}/price&quot;)
+def get_price(symbol: str) -&gt; str:
+    return f&quot;Price of {symbol}: 100.5&quot;
+
+# 4. Prompt — 提示模板
+@mcp.prompt()
+def analyze_table(table_name: str) -&gt; list[dict]:
+    return [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: f&quot;Analyze {table_name}&quot;}]
+</code></pre>
+<p><strong>关键洞察</strong>: Resource Template 自动检测 URI 中的 <code>{param}</code> 与函数参数的匹配关系，不匹配直接抛 ValueError。这是编译期检查，不是运行时。</p>
+<h3 id="2-context">发现2: Context 对象 — 工具与服务器的双向通信桥梁</h3>
+<p>Context 是 FastMCP 最强大的特性之一，注入方式是<strong>纯类型标注驱动</strong>（参数名任意，只要标注为 <code>Context</code> 类型即可）：</p>
+<pre><code class="language-python">@mcp.tool()
+async def smart_tool(query: str, context: Context) -&gt; str:
+    # 1. 日志 — 回传到客户端
+    await context.info(&quot;Starting analysis...&quot;)
+
+    # 2. 进度报告 — 支持进度条
+    await context.report_progress(50, 100, message=&quot;Halfway done&quot;)
+
+    # 3. 读取其他资源 — 跨组件访问
+    data = await context.read_resource(&quot;resource://config&quot;)
+
+    # 4. Elicitation — 向用户请求额外信息（MCP 2025 新特性）
+    from pydantic import BaseModel
+    class ConfirmInput(BaseModel):
+        approved: bool
+        comment: str | None = None
+
+    result = await context.elicit(&quot;Do you approve?&quot;, ConfirmInput)
+    if result.action == &quot;accept&quot;:
+        print(result.data.approved)  # True/False
+
+    # 5. URL Elicitation — 敏感信息收集（OAuth、支付等）
+    url_result = await context.elicit_url(
+        message=&quot;需要授权 Google 账号&quot;,
+        url=&quot;https://accounts.google.com/oauth/...&quot;,
+        elicitation_id=&quot;google-auth-001&quot;
+    )
+
+    return &quot;Done&quot;
+</code></pre>
+<p><strong>Elicitation 的革命性意义</strong>: 传统 MCP 工具是单向的（LLM 调用 → 结果返回），Elicitation 打破了这一限制，允许工具在执行中<strong>暂停并请求人类输入</strong>。这使 MCP 工具可以安全处理需要人类确认的操作（如：交易确认、敏感数据访问）。</p>
+<p><strong>Elicitation Schema 限制</strong>: 只允许原始类型（str/int/float/bool）和 list[str]，不支持嵌套模型。这是设计决策，不是技术限制——确保所有客户端都能渲染表单。</p>
+<h3 id="3">发现3: 三种传输模式与生产部署架构</h3>
+<pre><code class="language-python"># 开发模式 — stdio（默认）
+mcp.run(transport=&quot;stdio&quot;)
+
+# 生产模式1 — SSE（Server-Sent Events）
+mcp.run(transport=&quot;sse&quot;)  # 启动 uvicorn HTTP 服务器
+
+# 生产模式2 — StreamableHTTP（推荐新方案）
+mcp.run(transport=&quot;streamable-http&quot;)  # 基于 Starlette 的 ASGI 应用
+</code></pre>
+<p><strong>StreamableHTTP vs SSE 对比</strong>:<br />
+- SSE: 长连接，服务器推送，旧方案<br />
+- StreamableHTTP: 无状态友好（<code>stateless_http=True</code>），支持 EventStore 持久化，支持 JSON 响应模式（<code>json_response=True</code>），更适合云部署</p>
+<p><strong>DNS Rebinding 防护</strong>: FastMCP 在 localhost 模式下自动启用 <code>TransportSecuritySettings</code>，只允许 127.0.0.1/localhost/[::1] 来源。这是安全默认配置。</p>
+<p><strong>自定义路由</strong>: FastMCP 支持在 MCP 协议之外添加自定义 HTTP 端点：</p>
+<pre><code class="language-python">@mcp.custom_route(&quot;/health&quot;, methods=[&quot;GET&quot;])
+async def health_check(request: Request) -&gt; Response:
+    from starlette.responses import JSONResponse
+    return JSONResponse({&quot;status&quot;: &quot;ok&quot;})
+</code></pre>
+<h3 id="4-clientsessiongroup">发现4: ClientSessionGroup — 多服务器聚合客户端</h3>
+<p>这是 <strong>SDK 级的多 MCP 服务器统一客户端</strong>，解决了「一个 Agent 连接多个 MCP 服务器」的核心问题：</p>
+<pre><code class="language-python">from mcp.client.session_group import ClientSessionGroup, StdioServerParameters
+from mcp.client.session_group import StreamableHttpParameters
+
+async with ClientSessionGroup(
+    component_name_hook=lambda name, info: f&quot;{info.name}_{name}&quot;
+) as group:
+    # 连接多个服务器
+    await group.connect_to_server(
+        StdioServerParameters(command=&quot;npx&quot;, args=[&quot;-y&quot;, &quot;mcp-server-sqlite&quot;])
+    )
+    await group.connect_to_server(
+        StreamableHttpParameters(url=&quot;http://localhost:8080/mcp&quot;)
+    )
+
+    # 自动聚合所有工具
+    tools = group.tools  # dict[str, Tool]
+
+    # 直接调用，自动路由到正确的服务器
+    result = await group.call_tool(&quot;sqlite_query&quot;, {&quot;sql&quot;: &quot;SELECT 1&quot;})
+
+    # 动态断连
+    await group.disconnect_from_server(session)
+</code></pre>
+<p><strong>命名冲突解决</strong>: <code>component_name_hook</code> 允许自定义命名策略（如 <code>{server_name}.{tool_name}</code>），避免多服务器工具名冲突。Hermes 的 native-mcp 用前缀 <code>mcp_{server}_{tool}</code> 实现了类似逻辑。</p>
+<h3 id="5-oauth2">发现5: OAuth2 认证体系 — 企业级安全</h3>
+<p>FastMCP 内建完整的 OAuth2 授权服务器支持：</p>
+<pre><code class="language-python">from mcp.server.auth.provider import OAuthAuthorizationServerProvider
+from mcp.server.auth.settings import AuthSettings
+
+mcp = FastMCP(
+    &quot;secure-server&quot;,
+    auth_server_provider=MyOAuthProvider(),
+    auth=AuthSettings(
+        issuer_url=&quot;https://my-server.com&quot;,
+        required_scopes=[&quot;read&quot;, &quot;write&quot;],
+    ),
+)
+</code></pre>
+<p>两种认证模式:<br />
+- <code>auth_server_provider</code>: 完整 OAuth2 授权服务器（自己管理 token）<br />
+- <code>token_verifier</code>: 外部 token 验证（如使用 Auth0/Clerk 等）</p>
+<h3 id="6-experimental-tasks">发现6: Experimental Tasks — 异步长时间任务支持</h3>
+<p>SDK 内置了实验性的 Task 系统（<code>mcp.server.experimental</code>），支持：<br />
+- <code>ServerTaskContext.elicit()</code>: 任务执行中请求用户输入<br />
+- <code>ServerTaskContext.create_message()</code>: 任务中调用 LLM sampling<br />
+- <code>TaskStatusNotification</code>: 异步状态推送（WORKING → INPUT_REQUIRED → COMPLETED）<br />
+- <code>TaskStore</code> + <code>Resolver</code>: 任务持久化和解析</p>
+<p>这是 MCP 协议向「长时间异步任务」扩展的关键基础设施。</p>
+<h2 id="_2">技术细节</h2>
+<h3 id="_3">环境变量配置</h3>
+<p>所有 FastMCP 设置可通过 <code>FASTMCP_</code> 前缀的环境变量配置：</p>
+<table>
+<thead>
+<tr>
+<th>环境变量</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FASTMCP_DEBUG</td>
+<td>false</td>
+<td>调试模式</td>
+</tr>
+<tr>
+<td>FASTMCP_LOG_LEVEL</td>
+<td>INFO</td>
+<td>日志级别</td>
+</tr>
+<tr>
+<td>FASTMCP_HOST</td>
+<td>127.0.0.1</td>
+<td>HTTP 监听地址</td>
+</tr>
+<tr>
+<td>FASTMCP_PORT</td>
+<td>8000</td>
+<td>HTTP 端口</td>
+</tr>
+<tr>
+<td>FASTMCP_SSE_PATH</td>
+<td>/sse</td>
+<td>SSE 端点路径</td>
+</tr>
+<tr>
+<td>FASTMCP_STREAMABLE_HTTP_PATH</td>
+<td>/mcp</td>
+<td>StreamableHTTP 端点</td>
+</tr>
+<tr>
+<td>FASTMCP_JSON_RESPONSE</td>
+<td>false</td>
+<td>JSON 响应模式</td>
+</tr>
+<tr>
+<td>FASTMCP_STATELESS_HTTP</td>
+<td>false</td>
+<td>无状态 HTTP 模式</td>
+</tr>
+</tbody>
+</table>
+<h3 id="structured-output">Structured Output 支持</h3>
+<pre><code class="language-python">from pydantic import BaseModel
+
+class AnalysisResult(BaseModel):
+    score: float
+    recommendation: str
+
+@mcp.tool(structured_output=True)
+def analyze(text: str) -&gt; AnalysisResult:
+    return AnalysisResult(score=0.95, recommendation=&quot;Buy&quot;)
+</code></pre>
+<p><code>structured_output</code> 三态:<br />
+- <code>None</code>（默认）: 自动检测返回类型注解<br />
+- <code>True</code>: 强制结构化输出（需 Pydantic 返回类型）<br />
+- <code>False</code>: 强制非结构化（返回纯文本/ContentBlock）</p>
+<h3 id="toolannotations">ToolAnnotations — 工具元信息</h3>
+<pre><code class="language-python">from mcp.types import ToolAnnotations
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title=&quot;数据分析工具&quot;,
+        readOnlyHint=True,      # 只读操作
+        destructiveHint=False,   # 非破坏性
+        idempotentHint=True,    # 幂等
+        openWorldHint=False,     # 封闭世界
+    )
+)
+def analyze(query: str) -&gt; str:
+    ...
+</code></pre>
+<h2 id="_4">实践启发</h2>
+<ol>
+<li>
+<p><strong>自定义 MCP Server 是 Agent 工具扩展的最佳路径</strong>: Hermes 的 native-mcp 已实现客户端侧，但用 FastMCP 构建自定义 Server 可以将任何 Python 函数暴露为 Agent 工具——这对量化交易数据源接入特别有价值。</p>
+</li>
+<li>
+<p><strong>Elicitation 是 Agent 安全操作的关键</strong>: 对于需要人类确认的操作（如交易执行、文件删除），<code>ctx.elicit()</code> 提供了协议级的「人在环路」支持，比自定义确认逻辑更可靠。</p>
+</li>
+<li>
+<p><strong>ClientSessionGroup &gt; 手动多服务器管理</strong>: 如果 Hermes 未来需要更复杂的多 MCP 服务器协调，可以直接使用 <code>ClientSessionGroup</code> 替代当前的 <code>mcp_servers</code> YAML 配置模式。</p>
+</li>
+<li>
+<p><strong>StreamableHTTP + stateless_http=True 是无服务器部署的最佳选择</strong>: 结合 EventStore 可以实现完全无状态的 MCP 服务器，适合部署在 Cloudflare Workers / AWS Lambda。</p>
+</li>
+</ol>
+<h2 id="_5">知识缺口</h2>
+<ol>
+<li><strong>Elicitation 客户端实现</strong>: 当前 Hermes native-mcp 客户端是否支持响应 elicitation 请求？需要验证。</li>
+<li><strong>Task 系统成熟度</strong>: Experimental Tasks 仍是实验特性，协议规范可能变化，暂不建议生产使用。</li>
+<li><strong>FastMCP vs gofastmcp.com 独立项目</strong>: 源码中直接使用 <code>from mcp.server.fastmcp import FastMCP</code>，但 gofastmcp.com 似乎是一个独立增强项目——两者关系需厘清。</li>
+<li><strong>Performance 特性</strong>: 大量工具注册时的内存占用和工具发现延迟未测试。</li>
+</ol>
+<h2 id="mcp-server">代码示例: 量化数据源 MCP Server</h2>
+<pre><code class="language-python">&quot;&quot;&quot;量化交易数据源 MCP Server 示例&quot;&quot;&quot;
+from mcp.server.fastmcp import FastMCP, Context
+from pydantic import BaseModel
+
+mcp = FastMCP(
+    &quot;quant-data-server&quot;,
+    instructions=&quot;A股量化数据源，提供实时行情和历史数据&quot;,
+)
+
+class StockQuote(BaseModel):
+    symbol: str
+    price: float
+    change_pct: float
+
+@mcp.tool()
+async def get_realtime_quote(symbol: str, ctx: Context) -&gt; str:
+    &quot;&quot;&quot;获取股票实时行情&quot;&quot;&quot;
+    await ctx.info(f&quot;Fetching quote for {symbol}&quot;)
+    await ctx.report_progress(50, 100)
+    # 实际实现: 调用行情 API
+    return f&quot;Symbol: {symbol}, Price: 25.50, Change: +1.2%&quot;
+
+@mcp.tool()
+async def execute_trade(symbol: str, side: str, amount: int, ctx: Context) -&gt; str:
+    &quot;&quot;&quot;执行交易（需要人类确认）&quot;&quot;&quot;
+    class TradeConfirm(BaseModel):
+        confirmed: bool
+        max_price: float | None = None
+
+    result = await ctx.elicit(
+        f&quot;确认{side} {amount}股 {symbol}？&quot;,
+        TradeConfirm
+    )
+    if result.action != &quot;accept&quot; or not result.data.confirmed:
+        return &quot;交易已取消&quot;
+
+    return f&quot;已执行: {side} {amount}股 {symbol}&quot;
+
+@mcp.resource(&quot;resource://{symbol}/profile&quot;)
+def get_stock_profile(symbol: str) -&gt; str:
+    &quot;&quot;&quot;获取股票基本信息&quot;&quot;&quot;
+    return f&quot;Profile for {symbol}&quot;
+
+# 启动
+if __name__ == &quot;__main__&quot;:
+    mcp.run(transport=&quot;stdio&quot;)
+
+## 相关笔记
+
+- [Agent Skills才是关键抽象层](2026-04-02-Agent Skills才是关键抽象层.md) — Skills架构
+- [OpenClaw最佳实践15条精华版](2026-04-03-OpenClaw最佳实践15条精华版.md) — 实践指南
+- [Claude-Code四层记忆架构](2026-04-03-Claude-Code四层记忆架构.md) — 记忆分层
+- [SKILL-md-ai-agent-skills](2026-04-09-SKILL-md-ai-agent-skills.md) — Skill规范
+- [Hermes-Agent-competitor-analysis](2026-04-05-Hermes-Agent-competitor-analysis.md) — 竞品对比
+</code></pre>
+</body>
+</html>

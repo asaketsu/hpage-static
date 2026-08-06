@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ths-auto-trader-architecture-deep-dive-20260517</title>
+
+<meta property="og:title" content="ths-auto-trader-architecture-deep-dive-20260517" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="_1">同花顺自动交易系统 — 全栈架构方案</h1>
+<blockquote>
+<p>2026-05-17 | proactive-learn Phase 3 整合产出 | Topic: ths-auto-trader<br />
+基于 5 份已有探索笔记的深度整合 + 本地知识蒸馏<br />
+难度: L4（架构级）| 字数: ~4500</p>
+</blockquote>
+<hr />
+<h2 id="5">一、核心结论（5 个关键发现）</h2>
+<h3 id="1a-3">发现 1：A 股零售量化存在 3 条技术路径，适用场景完全不同</h3>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>代表方案</th>
+<th>延迟</th>
+<th>资金门槛</th>
+<th>适用策略</th>
+<th>可靠性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>GUI 自动化</strong></td>
+<td>xdotool / easytrader</td>
+<td>200-1200ms</td>
+<td>0</td>
+<td>日线/小时线趋势</td>
+<td>⭐⭐-⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td><strong>券商 API</strong></td>
+<td>QMT(xtquant) / PTrade</td>
+<td>10-50ms</td>
+<td>30-50万</td>
+<td>分钟线/事件驱动</td>
+<td>⭐⭐⭐⭐⭐</td>
+</tr>
+<tr>
+<td><strong>柜台直连</strong></td>
+<td>恒生 TTS / 金证 KCBP</td>
+<td>1-10ms</td>
+<td>100万+</td>
+<td>高频/做市</td>
+<td>⭐⭐⭐⭐⭐</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：对 ths-auto-trader 项目（Jetson Orin + Linux 环境），推荐路径：<br />
+- <strong>短期</strong>：xdotool（已验证可用，Linux 原生支持）<br />
+- <strong>中期</strong>：QMT + xtquant（需 Windows VM 或远程券商 API 服务）<br />
+- <strong>长期</strong>：PTrade 程序化交易（券商直连，最低延迟）</p>
+<h3 id="2jetson-orin-linuxarm64">发现 2：Jetson Orin (Linux/ARM64) 环境的特殊约束</h3>
+<p>Jetson Orin Nano Super 运行 Ubuntu (aarch64)，这带来几个关键约束：</p>
+<ol>
+<li><strong>同花顺 Linux 版本</strong>：THS 提供了 Linux 客户端（deb 包），但功能受限，缺少部分 Windows 版本的量化功能</li>
+<li><strong>easytrader 不可用</strong>：依赖 pywinauto（Windows Accessibility API），Linux 无法运行</li>
+<li><strong>xdotool 是唯一 GUI 方案</strong>：Linux 下自动化只能用 xdotool/xdg/AT-SPI</li>
+<li><strong>容器化限制</strong>：THS 客户端需要 X11 显示环境，Docker 内运行需要 Xvfb + VNC</li>
+<li><strong>ARM 兼容性</strong>：tushare/akshare 纯 Python 无问题，但 numpy/pandas 在 ARM64 上性能略低于 x86</li>
+</ol>
+<p><strong>环境优化建议</strong>：</p>
+<pre><code class="language-bash"># 确保 X11 转发正常（SSH 访问时）
+export DISPLAY=:0
+# 或使用 VNC/XRDP 远程桌面
+
+# THS Linux 客户端安装
+sudo dpkg -i ths_linux_*.deb
+sudo apt-get install -f  # 修复依赖
+
+# 验证 xdotool 可操作性
+xdotool search --name &quot;同花顺&quot;
+</code></pre>
+<h3 id="3-5">发现 3：完整量化系统需要 5 层架构，不是"下单脚本"</h3>
+<p>一个可用的自动交易系统不只是 GUI 自动化，需要完整 5 层：</p>
+<pre><code>┌─────────────────────────────────────────────────┐
+│ Layer 5: 风控层 (Risk Management)                 │
+│  - 最大回撤限制、单票仓位上限、止损规则              │
+│  - 异常检测（闪崩、涨跌停、停牌）                    │
+├─────────────────────────────────────────────────┤
+│ Layer 4: 策略层 (Strategy Engine)                 │
+│  - 信号生成（北向因子 + 技术指标 + 基本面）          │
+│  - 调仓逻辑（频率、滑点预算、冲击成本估算）          │
+├─────────────────────────────────────────────────┤
+│ Layer 3: 回测层 (Backtest Engine)                 │
+│  - 历史数据回放、手续费模型、滑点模拟               │
+│  - Walk-Forward 验证、参数敏感性分析               │
+├─────────────────────────────────────────────────┤
+│ Layer 2: 数据层 (Data Pipeline)                   │
+│  - AKShare/Tushare 数据源适配                      │
+│  - 北向资金/主力资金/行情/基本面 多源融合            │
+│  - 数据缓存（SQLite/Parquet）、增量更新             │
+├─────────────────────────────────────────────────┤
+│ Layer 1: 执行层 (Execution Engine)                │
+│  - xdotool GUI 自动化（Linux/Jetson 方案）         │
+│  - 订单状态管理（pending/filled/canceled）          │
+│  - 成交确认、部分成交处理                           │
+└─────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>现有 ths-auto-trader 项目的状态</strong>：<br />
+- Layer 1: ✅ xdotool 基础下单已验证<br />
+- Layer 2: ⚠️ AKShare 数据获取已探索，但未整合到系统<br />
+- Layer 3: ⚠️ BacktestEngine 框架已有，但北向因子未接入<br />
+- Layer 4: ❌ 策略信号生成逻辑未实现<br />
+- Layer 5: ❌ 风控层未实现</p>
+<h3 id="4xdotool-7">发现 4：xdotool 下单的容错必须覆盖 7 类异常</h3>
+<p>基于已有笔记整合，xdotool 方案需要处理的 7 类异常：</p>
+<table>
+<thead>
+<tr>
+<th>异常类型</th>
+<th>概率</th>
+<th>检测方法</th>
+<th>恢复策略</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>窗口焦点丢失</strong></td>
+<td>高</td>
+<td><code>xdotool getactivewindow</code> 验证</td>
+<td>重新获取焦点</td>
+</tr>
+<tr>
+<td><strong>控件位置偏移</strong></td>
+<td>中</td>
+<td>截图 + OCR 验证按钮文本</td>
+<td>相对坐标重定位</td>
+</tr>
+<tr>
+<td><strong>网络超时</strong></td>
+<td>中</td>
+<td>券商回报超时（&gt;5s）</td>
+<td>重试（最多 3 次）</td>
+</tr>
+<tr>
+<td><strong>价格涨停/跌停</strong></td>
+<td>低</td>
+<td>盘口检查买一/卖一量</td>
+<td>跳过该标的</td>
+</tr>
+<tr>
+<td><strong>余额不足</strong></td>
+<td>低</td>
+<td>下单前查询 <code>balance</code></td>
+<td>减少数量或跳过</td>
+</tr>
+<tr>
+<td><strong>客户端崩溃</strong></td>
+<td>极低</td>
+<td>进程检测 <code>pgrep ths</code></td>
+<td>自动重启客户端</td>
+</tr>
+<tr>
+<td><strong>交易时段外</strong></td>
+<td>周期性</td>
+<td>时间校验 9:30-11:30/13:00-15:00</td>
+<td>休眠等待</td>
+</tr>
+</tbody>
+</table>
+<p><strong>推荐容错架构</strong>：</p>
+<pre><code class="language-python">class RobustExecutor:
+    &quot;&quot;&quot;xdotool 下单容错执行器&quot;&quot;&quot;
+
+    MAX_RETRIES = 3
+    RETRY_DELAY = 2  # seconds
+
+    def execute_order(self, code, direction, price, amount):
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                # Pre-check: verify trading session
+                if not self.is_trading_hours():
+                    raise TradingHoursError()
+
+                # Pre-check: verify THS client alive
+                if not self.is_client_alive():
+                    self.restart_client()
+                    time.sleep(5)
+
+                # Pre-check: verify window focus
+                self.ensure_focus()
+
+                # Execute: xdotool sequence
+                result = self.xdotool_buy(code, price, amount)
+
+                # Post-check: verify order submitted
+                if self.verify_order_submitted(code, direction, amount):
+                    return OrderResult(success=True, attempt=attempt+1)
+
+            except (FocusLostError, ClientCrashError) as e:
+                self.log.warning(f&quot;Attempt {attempt+1} failed: {e}&quot;)
+                time.sleep(self.RETRY_DELAY * (attempt + 1))
+            except (BalanceError, PriceLimitError) as e:
+                return OrderResult(success=False, reason=str(e))
+
+        return OrderResult(success=False, reason=&quot;Max retries exceeded&quot;)
+</code></pre>
+<h3 id="5_1">发现 5：数据层是系统成败的关键——多源融合方案</h3>
+<p>单一数据源会失败（API 限流、数据缺口、服务下线）。推荐双源热备：</p>
+<pre><code class="language-python">class DataSourceManager:
+    &quot;&quot;&quot;多数据源管理器 — 双源热备 + 自动降级&quot;&quot;&quot;
+
+    PRIORITY = ['tushare', 'akshare']  # 优先级排序
+
+    def get_northbound_flow(self, start_date, end_date):
+        &quot;&quot;&quot;获取北向资金流向 — 自动降级&quot;&quot;&quot;
+        for source_name in self.PRIORITY:
+            try:
+                source = self.sources[source_name]
+                data = source.fetch_northbound(start_date, end_date)
+                if self.validate(data):
+                    return data
+            except Exception as e:
+                self.log.warning(f&quot;{source_name} failed: {e}, falling back...&quot;)
+                continue
+
+        # 全部失败 → 使用缓存
+        return self.cache.get_northbound(start_date, end_date)
+
+    def validate(self, data):
+        &quot;&quot;&quot;数据质量校验&quot;&quot;&quot;
+        checks = [
+            len(data) &gt; 0,                          # 非空
+            not data.isnull().all(axis=1).any(),     # 无全空行
+            data['net_flow'].abs().max() &lt; 1e6,      # 数值范围合理（亿元级）
+        ]
+        return all(checks)
+</code></pre>
+<p><strong>数据缓存策略</strong>：<br />
+- 本地存储：Parquet 格式（压缩比高，读取快）<br />
+- 增量更新：每日收盘后自动拉取当日新数据<br />
+- 历史回补：首次运行时批量获取 3 年历史数据<br />
+- 存储位置：<code>~/ths-data/cache/</code>（预估 3 年数据 &lt; 500MB）</p>
+<hr />
+<h2 id="_2">二、技术深度：可落地的系统架构</h2>
+<h3 id="21">2.1 推荐目录结构</h3>
+<pre><code>~/ths-auto-trader/
+├── config/
+│   ├── strategy.yaml      # 策略参数（因子权重、调仓频率）
+│   ├── risk.yaml          # 风控参数（止损线、仓位上限）
+│   └── data_sources.yaml  # 数据源配置（API keys、缓存路径）
+├── data/
+│   ├── cache/             # Parquet 缓存
+│   └── raw/               # 原始数据备份
+├── engine/
+│   ├── executor.py        # xdotool 执行器（含容错）
+│   ├── data_manager.py    # 多源数据管理
+│   ├── strategy.py        # 策略信号生成
+│   ├── risk_manager.py    # 风控模块
+│   └── backtest.py        # 回测引擎
+├── factors/
+│   ├── northbound.py      # 北向资金因子（4 维）
+│   ├── technical.py       # 技术指标因子
+│   └── fundamental.py     # 基本面因子
+├── logs/                  # 运行日志
+├── notebooks/             # Jupyter 研究笔记本
+├── tests/                 # 单元测试
+└── main.py                # 主入口（调度器）
+</code></pre>
+<h3 id="22">2.2 日度运行调度</h3>
+<pre><code class="language-python"># main.py — 日度调度器
+import schedule
+import time
+
+# 08:50 — 启动前检查（数据更新、系统健康）
+schedule.every().day.at(&quot;08:50&quot;).do(pre_market_check)
+
+# 09:25 — 集合竞价后，生成当日信号
+schedule.every().day.at(&quot;09:25&quot;).do(generate_signals)
+
+# 09:30 — 开盘执行（首批订单）
+schedule.every().day.at(&quot;09:30&quot;).do(execute_opening_orders)
+
+# 10:30 — 盘中检查（风控巡检）
+schedule.every().day.at(&quot;10:30&quot;).do(risk_check)
+schedule.every().day.at(&quot;13:30&quot;).do(risk_check)
+
+# 14:50 — 尾盘调仓
+schedule.every().day.at(&quot;14:50&quot;).do(execute_closing_orders)
+
+# 15:10 — 盘后结算（更新缓存、生成报告）
+schedule.every().day.at(&quot;15:10&quot;).do(post_market_settle)
+</code></pre>
+<h3 id="23">2.3 风控模块核心逻辑</h3>
+<pre><code class="language-python">class RiskManager:
+    &quot;&quot;&quot;风控模块 — 独立于策略，最高优先级&quot;&quot;&quot;
+
+    def __init__(self, config):
+        self.max_drawdown = config.get('max_drawdown', 0.15)      # 最大回撤 15%
+        self.max_position = config.get('max_position', 0.10)       # 单票上限 10%
+        self.daily_loss_limit = config.get('daily_loss_limit', 0.03) # 日亏损上限 3%
+        self.stop_loss = config.get('stop_loss', 0.07)              # 个股止损 7%
+
+    def check_before_order(self, portfolio, order):
+        &quot;&quot;&quot;下单前风控检查&quot;&quot;&quot;
+        # 1. 单票仓位检查
+        current_pct = portfolio.get_position_pct(order.code)
+        if current_pct + order.amount * order.price / portfolio.total_value &gt; self.max_position:
+            return RiskResult(reject=True, reason=&quot;单票仓位超限&quot;)
+
+        # 2. 日亏损检查
+        daily_pnl = portfolio.get_daily_pnl()
+        if daily_pnl / portfolio.total_value &lt; -self.daily_loss_limit:
+            return RiskResult(reject=True, reason=&quot;日亏损超限，暂停交易&quot;)
+
+        # 3. 总仓位检查
+        if portfolio.get_total_position_pct() &gt; 0.80:
+            return RiskResult(reject=True, reason=&quot;总仓位超过 80%&quot;)
+
+        # 4. 回撤检查
+        if portfolio.get_drawdown() &gt; self.max_drawdown:
+            return RiskResult(reject=True, reason=&quot;回撤超限，停止开新仓&quot;)
+
+        return RiskResult(reject=False)
+
+    def check_stop_loss(self, portfolio):
+        &quot;&quot;&quot;检查止损&quot;&quot;&quot;
+        positions = portfolio.get_all_positions()
+        to_stop = []
+        for pos in positions:
+            pnl_pct = (pos.current_price - pos.cost_price) / pos.cost_price
+            if pnl_pct &lt; -self.stop_loss:
+                to_stop.append(pos)
+        return to_stop
+</code></pre>
+<hr />
+<h2 id="_3">三、实践启发</h2>
+<h3 id="31-roadmap">3.1 开发优先级建议（Roadmap）</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>任务</th>
+<th>预估工时</th>
+<th>依赖</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P0</strong></td>
+<td>数据层（AKShare + 缓存 + 北向因子）</td>
+<td>2-3 天</td>
+<td>无</td>
+</tr>
+<tr>
+<td><strong>P0</strong></td>
+<td>xdotool 执行器（含容错）</td>
+<td>1-2 天</td>
+<td>已有基础</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>回测引擎接入北向因子</td>
+<td>1-2 天</td>
+<td>P0 数据层</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>策略信号生成（三因子融合）</td>
+<td>2-3 天</td>
+<td>P0 + P1</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>风控模块</td>
+<td>1 天</td>
+<td>无（独立）</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>日度调度器</td>
+<td>0.5 天</td>
+<td>P0-P1</td>
+</tr>
+<tr>
+<td><strong>P3</strong></td>
+<td>实盘模拟运行</td>
+<td>1 周</td>
+<td>P0-P2</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32">3.2 关键风险</h3>
+<ol>
+<li><strong>监管风险</strong>：中国限制散户全自动交易，xdotool 方案处于灰色地带。建议：仅用于自有账户，不推广</li>
+<li><strong>技术债务</strong>：xdotool 方案的天花板在 500ms+ 延迟，长期需要迁移到 QMT</li>
+<li><strong>数据成本</strong>：AKShare 免费但限速，Tushare Pro 年费 500-5000 元（按积分）</li>
+<li><strong>过拟合风险</strong>：策略参数过多（4 个北向因子 + 多种窗口），必须 Walk-Forward 验证</li>
+</ol>
+<hr />
+<h2 id="_4">四、知识缺口</h2>
+<ol>
+<li><strong>THS Linux 客户端版本</strong>：控件树结构与 Windows 版差异？xdotool 定位是否需要适配？</li>
+<li><strong>QMT 远程 API</strong>：能否在 Linux 上通过 HTTP/WebSocket 调用 Windows 端 QMT？有人做过类似方案吗？</li>
+<li><strong>北向因子的行业轮动效果</strong>：东方证券研报提到但未详述，需要独立验证</li>
+<li><strong>Jetson GPU 加速因子计算</strong>：能否用 CUDA 加速 numpy/pandas 计算？实际提速比？</li>
+<li><strong>实时行情推送</strong>：AKShare 是否支持 WebSocket 实时推送？还是只能轮询？</li>
+</ol>
+<hr />
+<h2 id="_5">五、参考资料</h2>
+<ol>
+<li>已有探索笔记（5 份）：</li>
+<li><code>ths-auto-trader-20260517.md</code> — THS 平台概览</li>
+<li><code>easytrader-deep-dive-2026-05-17.md</code> — easytrader 架构分析</li>
+<li><code>xdotool-trading-automation-deep-dive.md</code> — xdotool 方案深度</li>
+<li><code>QMT-PTrade-量化接口调研-20260517.md</code> — 券商 API 对比</li>
+<li><code>2026-05-17-北向资金主力资金流向指标有效性验证-深度研究.md</code> — 因子验证</li>
+<li>AKShare: https://github.com/akfamily/akshare</li>
+<li>xtquant 文档: https://dict.thinktrader.net/nativeApi/start_now.html</li>
+<li>Backtrader: https://www.backtrader.com/</li>
+</ol>
+<hr />
+<p><em>笔记生成时间：2026-05-17 16:15 | 整合了 5 份已有笔记 + 架构设计</em><br />
+<em>下一步：在 ths-auto-trader 中实现数据层（AKShare + 缓存）</em></p>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-06-wencai-stock-picker-notes.md">wencai-stock-picker-notes</a></li>
+<li><a href="../2026-04-10-OpenClaw-4-things-persistent-tasks.md">OpenClaw-4-things-persistent-tasks</a></li>
+<li><a href="../2026-04-11-stock-trading-discipline-washout.md">stock-trading-discipline-washout</a></li>
+<li><a href="../2026-04-24-通达信tdxquant量化模拟交易封装.md">通达信tdxquant量化模拟交易封装</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-05-08-MACD-KDJ共振策略.md">MACD-KDJ共振策略</a></li>
+<li><a href="../2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="../2026-05-11-RSI布林带组合策略.md">RSI布林带组合策略</a></li>
+<li><a href="../2026-05-11-板块轮动资金流向分析.md">板块轮动资金流向分析</a></li>
+<li><a href="../2026-05-18-板块轮动概念轮动.md">板块轮动概念轮动</a></li>
+<li><a href="2026-05-06-rsi-bollinger-strategy.md">rsi-bollinger-strategy</a></li>
+<li><a href="2026-05-06-板块轮动与北向资金流向.md">板块轮动与北向资金流向</a></li>
+<li><a href="2026-05-09-技术指标组合策略-多指标确认.md">技术指标组合策略-多指标确认</a></li>
+<li><a href="2026-05-17-动态止损策略对比.md">动态止损策略对比</a></li>
+<li><a href="2026-05-17-北向资金主力资金流向指标有效性验证-深度研究.md">北向资金主力资金流向指标有效性验证-深度研究</a></li>
+<li><a href="2026-05-17-北向资金主力资金流向指标有效性验证.md">北向资金主力资金流向指标有效性验证</a></li>
+<li><a href="2026-05-17-实盘模拟vs真实交易技术差异.md">实盘模拟vs真实交易技术差异</a></li>
+<li><a href="2026-05-18-ths-auto-trader-2025-2026-tech-ecosystem-update.md">ths-auto-trader-2025-2026-tech-ecosystem-update</a></li>
+<li><a href="2026-05-19-VLA-AD视觉语言动作策略蒸馏.md">VLA-AD视觉语言动作策略蒸馏</a></li>
+<li><a href="2026-05-19-ths-auto-trader-api-era-ecosystem.md">ths-auto-trader-api-era-ecosystem</a></li>
+<li><a href="2026-05-19-板块轮动-北向资金.md">板块轮动-北向资金</a></li>
+<li><a href="2026-05-19-板块轮动-概念轮动.md">板块轮动-概念轮动</a></li>
+<li><a href="easytrader-deep-dive-2026-05-17.md">easytrader-deep-dive-2026-05-17</a></li>
+<li><a href="ths-auto-trader-2025-2026-ecosystem-update.md">ths-auto-trader-2025-2026-ecosystem-update</a></li>
+<li><a href="ths-auto-trader-2026.md">ths-auto-trader-2026</a></li>
+<li><a href="ths-auto-trader-20260517.md">ths-auto-trader-20260517</a></li>
+<li><a href="ths-auto-trader-deep-dive.md">ths-auto-trader-deep-dive</a></li>
+<li><a href="ths-auto-trader-deep-learn.md">ths-auto-trader-deep-learn</a></li>
+<li><a href="ths-auto-trader-ecosystem-update-20260518.md">ths-auto-trader-ecosystem-update-20260518</a></li>
+<li><a href="ths-auto-trader-production-ops-20260517.md">ths-auto-trader-production-ops-20260517</a></li>
+<li><a href="ths-auto-trader-qmt-xtquant-tick-strategy-20260518.md">ths-auto-trader-qmt-xtquant-tick-strategy-20260518</a></li>
+<li><a href="ths-auto-trader-update-20260519.md">ths-auto-trader-update-20260519</a></li>
+<li><a href="ths-jqktrader-ecosystem-update-20260518.md">ths-jqktrader-ecosystem-update-20260518</a></li>
+<li><a href="../stock-analysis-system.md">stock-analysis-system</a></li>
+<li><a href="../tdx-quant-trader.md">tdx-quant-trader</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer-QKV变体研究-投影共享与推理压缩</title>
+
+<meta property="og:title" content="Transformer-QKV变体研究-投影共享与推理压缩" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="transformer-qkv">Transformer 需要三个投影吗？QKV 变体系统性研究</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2606.04032 · 学术论文 · 2026-06-05<br />
+<strong>原文</strong>：https://arxiv.org/abs/2606.04032<br />
+<strong>热度</strong>：HN #15, 159 pts<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含借鉴进化点</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>论文系统评估了 Transformer 注意力机制中 QKV 三个投影的必要性，测试了三种投影共享约束：Q-K=V（共享 key-value）、Q=K-V（共享 query-key）、Q=K=V（单一投影）。在合成任务、视觉（MNIST/CIFAR/TinyImageNet）、语言建模（300M 和 1.2B 参数模型，10B tokens）上的实验表明，Q-K=V 可减少 50% KV cache，仅 3.1% 困惑度退化。结合 GQA-4 达到 87.5% cache 压缩，结合 MQA 达到 96.9%，使端侧推理成为可能。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="_3">研究问题</h3>
+<p>Transformer 的 QKV 注意力是否真的需要三个独立投影矩阵？去掉一些会怎样？</p>
+<h3 id="_4">三种投影共享方案</h3>
+<ol>
+<li><strong>Q-K=V（共享 Key-Value）</strong>：Key 和 Value 使用同一投影，Query 独立</li>
+<li>KV cache 减少 50%</li>
+<li>困惑度仅退化 3.1%</li>
+<li>
+<p>原因：Key 和 Value 在表示空间中高度相似，注意力在低秩区域运行</p>
+</li>
+<li>
+<p><strong>Q=K-V（共享 Query-Key）</strong>：Query 和 Key 使用同一投影，Value 独立</p>
+</li>
+<li>破坏了注意力的方向性</li>
+<li>
+<p>性能显著下降</p>
+</li>
+<li>
+<p><strong>Q=K=V（单一投影）</strong>：三个投影合一</p>
+</li>
+<li>产生对称注意力图</li>
+<li>需要非对称注意力修正（2D 位置编码）</li>
+</ol>
+<h3 id="_5">关键发现</h3>
+<ul>
+<li>Q-K=V 效果好是因为 Key 和 Value 占据相似的表示空间</li>
+<li>注意力本质上在低秩机制中运行</li>
+<li>Q=K-V 破坏注意力方向性是根本缺陷</li>
+<li>投影共享与头共享（GQA/MQA）是互补的，可叠加</li>
+</ul>
+<h3 id="kv-cache">KV Cache 压缩效果</h3>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>KV Cache 减少</th>
+<th>困惑度退化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准 QKV</td>
+<td>0%</td>
+<td>基线</td>
+</tr>
+<tr>
+<td>Q-K=V</td>
+<td>50%</td>
+<td>3.1%</td>
+</tr>
+<tr>
+<td>Q-K=V + GQA-4</td>
+<td>87.5%</td>
+<td>~5%</td>
+</tr>
+<tr>
+<td>Q-K=V + MQA</td>
+<td>96.9%</td>
+<td>~7%</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">关键概念</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>定义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>投影共享</td>
+<td>多个注意力投影矩阵共享权重，减少参数和内存</td>
+</tr>
+<tr>
+<td>KV Cache</td>
+<td>推理时缓存 Key 和 Value 的中间结果，避免重复计算</td>
+</tr>
+<tr>
+<td>GQA</td>
+<td>Grouped Query Attention，多组共享 Key/Value 头</td>
+</tr>
+<tr>
+<td>MQA</td>
+<td>Multi-Query Attention，所有头共享一组 Key/Value</td>
+</tr>
+<tr>
+<td>低秩机制</td>
+<td>注意力矩阵实际秩远低于理论值，冗余可压缩</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">能力边界</h2>
+<ul>
+<li>实验规模最大 1.2B 参数，未在超大模型验证</li>
+<li>困惑度退化在长上下文场景下可能更显著</li>
+<li>2D 位置编码作为对称注意力修正增加了实现复杂度</li>
+<li>对推理质量敏感的任务（如代码生成）需要更谨慎评估</li>
+</ul>
+<h2 id="_8">最佳实践</h2>
+<ol>
+<li>端侧部署优先考虑 Q-K=V + MQA 组合（96.9% 压缩）</li>
+<li>云端推理用 Q-K=V + GQA-4 平衡质量和效率</li>
+<li>投影共享是权重绑定的一个被低估的实例，值得系统性探索</li>
+<li>2D 位置编码可以缓解对称注意力问题</li>
+</ol>
+<h2 id="_9">🔍 借鉴学习进化点</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>投影共享×头共享互补</td>
+<td>Q-K=V + GQA 可叠加压缩 87.5%</td>
+<td>量化选股模型中的因子组合可借鉴"互补维度叠加"思路</td>
+<td>在 quant-stock-pool skill 中评估因子正交性和互补性</td>
+</tr>
+<tr>
+<td>2</td>
+<td>低秩假设指导压缩</td>
+<td>注意力在低秩区域运行，冗余可安全压缩</td>
+<td>RAG 索引的向量维度可能也有冗余，可降维加速检索</td>
+<td>在 rag-index-rebuild skill 中增加 PCA/降维选项</td>
+</tr>
+<tr>
+<td>3</td>
+<td>确定性测试覆盖多尺度</td>
+<td>从合成任务到 1.2B 模型系统验证</td>
+<td>Hermes Skill 的测试应覆盖从单元到集成的多尺度</td>
+<td>在 verification-gate skill 中增加"多尺度验证"要求</td>
+</tr>
+<tr>
+<td>4</td>
+<td>KV Cache 压缩 = 推理民主化</td>
+<td>96.9% 压缩让端侧推理成为可能</td>
+<td>本地部署的 Hermes Agent 可受益于更小的模型内存占用</td>
+<td>评估 llama.cpp 量化配置是否可结合 Q-K=V 进一步压缩</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_10">当前状态</h3>
+<ul>
+<li>LLM 架构笔记已有 multi-stream-llms（并行流架构）</li>
+<li>模型推理有 llama-cpp、gguf-quantization 相关 skill</li>
+</ul>
+<h3 id="_11">改进方案</h3>
+<ol>
+<li>将 Q-K=V 压缩方案加入 llama-cpp skill 的参考知识</li>
+<li>与 multi-stream-llms 笔记建立双向引用，丰富 LLM 架构知识图谱</li>
+</ol>
+<h3 id="_12">已执行操作</h3>
+<ul>
+<li>✅ 笔记已写入</li>
+<li>⏳ 待与 multi-stream-llms 笔记建立交叉引用</li>
+</ul>
+<h2 id="_13">相关笔记</h2>
+<ul>
+<li><a href="2026-06-05-KVarN-华为vLLM原生KV-Cache量化后端.md">KVarN-华为vLLM原生KV-Cache量化后端</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM自进化为何崩溃-自合成数据信息增益</title>
+
+<meta property="og:title" content="LLM自进化为何崩溃-自合成数据信息增益" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm">LLM 自进化为什么容易崩溃：自合成数据流水线的信息增益视角</h1>
+<blockquote>
+<p>论文：<a href="https://arxiv.org/abs/2603.02218">arXiv:2603.02218</a> | Self-Play Only Evolves When Self-Synthetic Pipeline Ensures Learnable Information Gain | 2026-03<br />
+关联论文：Absolute Zero (Zhao 2025), R-Zero (Huang 2025), Dr. Zero (Yue 2026), URPO, Cooper</p>
+</blockquote>
+<p><strong>标签</strong>：#LLM自进化 #合成数据 #信息论 #自博弈 #Agent架构 #强化学习</p>
+<hr />
+<h2 id="_1">核心结论（一句话）</h2>
+<p><strong>绝大多数"自进化 LLM"系统本质是脆弱的自博弈（self-play），它们在几轮后就会崩溃或平台化；根本原因是循环在不断合成新数据但没有增加"可学习信息"（learnable information）。要实现真正的持续自进化，必须把循环看作一个自合成数据流水线，确保 Proposer/Solver/Verifier 三角角色协同维持可学习信息单调递增。</strong></p>
+<hr />
+<h2 id="_2">一、问题诊断：自进化为什么会崩溃</h2>
+<h3 id="11">1.1 现象层证据</h3>
+<p>近期大量"零数据自进化"系统都报告了快速衰减：</p>
+<ul>
+<li><strong>Absolute Zero</strong>（Zhao 2025）：Proposer 退化成生成 trivial 恒等函数 <code>f(x)=x</code></li>
+<li><strong>R-Zero</strong>（Huang 2025）：性能早期达峰后持续下降</li>
+<li><strong>Dr. Zero</strong>（Yue 2026）：搜索 Agent 自进化同样出现早期峰值后崩塌</li>
+<li><strong>Self-questioning LM</strong>（Chen 2025）：需要极其精细的 prompt 才能保持问题在合理范围</li>
+</ul>
+<h3 id="12">1.2 失败的根因：信息论视角</h3>
+<p>论文的核心洞察——<strong>自进化 ≠ 自博弈</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>自博弈（self-play）</th>
+<th>自合成数据流水线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>目标</td>
+<td>在固定博弈中自我提升</td>
+<td>持续产生新的可学习信息</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>每轮合成更多数据</td>
+<td>每轮合成信息密度更高的数据</td>
+</tr>
+<tr>
+<td>失败模式</td>
+<td>模式崩溃/自我欺骗</td>
+<td>无（设计正确时）</td>
+</tr>
+<tr>
+<td>信息源</td>
+<td>完全封闭（预训练权重）</td>
+<td>主动引入外部信息</td>
+</tr>
+</tbody>
+</table>
+<p>关键概念：<strong>可学习信息（Learnable Information）</strong>。在有限计算预算的观察者（bounded observer）下，数据的可学习信息 = 模型能从中提取的结构化知识减去已知的噪声。如果每轮合成的数据只是已有知识的重新组合，可学习信息不增，系统必然平台化。</p>
+<h3 id="13-reward-shaping">1.3 为什么"纯 reward shaping"不够</h3>
+<p>信息论视角揭示了：仅优化奖励信号只能改变数据的选择压力，不能增加数据的信息上限。这正是 Absolute Zero 崩溃的原因——Proposer 生成的问题虽然满足 reward 约束，但信息量趋于零（恒等映射）。</p>
+<hr />
+<h2 id="proposer-solver-verifier">二、三角角色模型：Proposer / Solver / Verifier</h2>
+<p>自进化系统必然包含三个角色：</p>
+<pre><code>Proposer（提出者）——生成任务/问题
+     ↕
+Solver（求解者）——尝试解决方案
+     ↕
+Verifier（验证者）——提供训练信号
+</code></pre>
+<h3 id="21">2.1 三种角色编排模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>组合</th>
+<th>特点</th>
+<th>问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自博弈</td>
+<td>P⇄S + 固定V</td>
+<td>代码/数学等可验证域</td>
+<td>Proposer 退化</td>
+</tr>
+<tr>
+<td>偏好进化</td>
+<td>固定P + S⇄V</td>
+<td>指令跟随/偏好学习</td>
+<td>Verifier 自我欺骗</td>
+</tr>
+<tr>
+<td>三角联合</td>
+<td>P+S+V 全协同</td>
+<td>本文推荐</td>
+<td>实现复杂度高</td>
+</tr>
+</tbody>
+</table>
+<p>论文指出，简单地从 <code>P+SP+S</code> 和 <code>S+VS+V</code> 拼成 <code>P+S+V</code> 是不够的（SPELL、Multi-agent Evolve 已尝试）。关键在于三者的<strong>协同设计</strong>以保信息增益。</p>
+<hr />
+<h2 id="_3">三、三大系统设计原则</h2>
+<p>论文提出三个让自进化可持续的设计原则：</p>
+<h3 id="1asymmetric-co-evolution">原则 1：非对称协同进化（Asymmetric Co-evolution）</h3>
+<p>框架：Solver 与其"内部环境"（Proposer + Verifier）之间进行协同进化。虽然三方共享同一信息源（预训练权重），但它们在合成方向上的分歧（问题/解法/反馈）会产生<strong>信息间隙（information gap）</strong>，实现弱→强的监督。</p>
+<p>要点：必须把 Solver 的改进<strong>显式同步回</strong> Proposer/Verifier（强→弱监督），形成"弱→强→弱"闭环。否则信息间隙会消失，系统回到平台。</p>
+<h3 id="2capacity-growth">原则 2：容量增长（Capacity Growth）</h3>
+<p>可学习信息不仅取决于数据分布，还取决于<strong>观察者模型的容量</strong>。随着自进化推进：</p>
+<ul>
+<li>参数容量必须扩展（更大的模型或 MoE 的专家扩展）</li>
+<li>推理时计算预算必须扩展（更多推理步数、更长的思维链）</li>
+</ul>
+<blockquote>
+<p>"Scaling Embeddings Outperforms Scaling Experts"（arXiv:2601.21204）支持了嵌入维度的扩展优先于专家数量。</p>
+</blockquote>
+<h3 id="3proactive-information-seeking">原则 3：主动信息获取（Proactive Information Seeking）</h3>
+<p>零数据或固定数据集驱动的自进化从根本上受限于有限信息。自进化系统必须<strong>主动获取外部信息源</strong>，且要与当前能力对齐：</p>
+<ul>
+<li>提供新的合成数据上下文</li>
+<li>引入新的合成方向（新的任务类型）</li>
+<li>创造可被协同进化利用的新非对称性</li>
+</ul>
+<hr />
+<h2 id="_4">四、实证：编码任务上的自博弈实验</h2>
+<p>论文在 Absolute Zero 的编码任务上做了消融实验，揭示三种任务类型的信息特性：</p>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>输入</th>
+<th>输出</th>
+<th>预测</th>
+<th>难度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>演绎（deduction）</td>
+<td>代码+输入</td>
+<td>—</td>
+<td>输出</td>
+<td>最常见</td>
+</tr>
+<tr>
+<td>归纳（induction）</td>
+<td>—</td>
+<td>输入→输出</td>
+<td>代码</td>
+<td>最难，需多对样例</td>
+</tr>
+<tr>
+<td>逆推（abduction）</td>
+<td>代码+输出</td>
+<td>—</td>
+<td>输入</td>
+<td>需逆向推理</td>
+</tr>
+</tbody>
+</table>
+<p>实验发现：当 Proposer 只在某一类任务上生成时，Solver 的可学习信息快速饱和；引入跨任务的多样性后，信息增益显著提升。这直接验证了"信息增益"作为自进化健康度指标的有效性。</p>
+<hr />
+<h2 id="hermes">五、对 Hermes 自进化架构的启示</h2>
+<h3 id="51">5.1 当前架构的问题映射</h3>
+<p>Hermes 的 Skill 自进化系统（evolver、experience-bank、auto-learner）本质是一个 P+S+V 流水线：</p>
+<ul>
+<li><strong>Proposer</strong> = task-discoverer + error-monitor 发现新任务/问题</li>
+<li><strong>Solver</strong> = 各业务 Skill 执行任务</li>
+<li><strong>Verifier</strong> = watchdog + Data Meow 质量审计</li>
+</ul>
+<p>风险点：当前 Verifier 主要是<strong>规则校验</strong>（exit_code、文件存在），不引入新信息。如果 Skill 执行错误都是同类型（如飞书 token 过期），Proposer 端的可学习信息会饱和。</p>
+<h3 id="52">5.2 可落地的改进</h3>
+<ol>
+<li><strong>引入非对称性</strong>：定期让 OPM Meow（战略视角）审查 Skill 覆盖范围，主动制造新任务类别（而非只等错误发生）</li>
+<li><strong>容量增长</strong>：Skill 文件应定期与外部最新论文/工具对齐（auto-learner 已部分实现，但需要强化信息增益度量）</li>
+<li><strong>主动信息获取</strong>：夜间自学习应引入更多外部源（arXiv、GitHub trending、技术博客），而非只依赖飞书对话历史</li>
+</ol>
+<hr />
+<h2 id="_5">六、与其他理论的关联</h2>
+<table>
+<thead>
+<tr>
+<th>关联理论</th>
+<th>连接点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>多 Agent 信息瓶颈（2607.16133）</td>
+<td>两者都用信息论解释系统行为；本文关注信息增益，前者关注信息传输</td>
+</tr>
+<tr>
+<td>Model Collapse（Shumailov 2024）</td>
+<td>自合成数据导致崩溃的微观机制；本文提供了系统级解法</td>
+</tr>
+<tr>
+<td>Mem0/EvolveMem 记忆自进化</td>
+<td>记忆检索基础设施必须与内容同步进化——同一原则的特例</td>
+</tr>
+<tr>
+<td>DeepSeek-R1 RL 自反思</td>
+<td>RL 后训练可涌现自反思；本文解释了为什么 RL 在数据稀缺时需要外部锚定</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">七、核心要点速查</h2>
+<ul>
+<li>自进化系统崩溃的根因不是 reward 设计问题，而是<strong>可学习信息不再增长</strong></li>
+<li>三角角色（P/S/V）必须协同，单纯两两组合都会退化</li>
+<li>三大设计原则：非对称协同、容量增长、主动信息获取</li>
+<li>信息论视角提供可量化指标：可学习信息增益应作为自进化健康度的首要度量</li>
+<li>对生产 Agent 系统的启示：定期引入外部信息源、扩展模型容量、避免在同质数据上反复训练</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>记录日期</strong>：2026-07-21<br />
+<strong>学习来源</strong>：arXiv 2603.02218v2 全文 + 引用网络分析<br />
+<strong>价值评级</strong>：⭐⭐⭐⭐（对 Agent 自进化系统设计有理论指导价值，但缺乏开箱即用的实现细节）</p>
+</blockquote>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-10-EvoSOP自进化工具优化.md">EvoSOP自进化工具优化</a> — 工具优化场景的自进化实践</li>
+<li><a href="./2026-07-05-Agent自进化-经验内化参数-EvoSC-MemSkill.md">Agent自进化-经验内化参数</a> — 经验内化的参数化路径</li>
+<li><a href="./2026-07-09-LLM-Agent失败模式综合分类法.md">LLM Agent失败模式分类法</a> — 崩溃模式的系统性分类</li>
+<li><a href="./2026-07-02-ReGRPO反思增强策略优化.md">ReGRPO反思增强策略优化</a> — 自博弈训练的反思增强变体</li>
+</ul>
+</body>
+</html>

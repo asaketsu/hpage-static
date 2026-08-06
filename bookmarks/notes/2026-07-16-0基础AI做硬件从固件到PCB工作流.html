@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>0基础AI做硬件从固件到PCB工作流</title>
+
+<meta property="og:title" content="0基础AI做硬件从固件到PCB工作流" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="0-ai-pcb">0 基础用 AI 做硬件：从固件到 PCB 的完整工作流</h1>
+<blockquote>
+<p><strong>来源</strong>：公众号「我是J」（专注 AI 辅助硬件工作流与实战分享）<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/6-xqR9TIIp9StXwGIwCJxQ<br />
+<strong>记录日期</strong>：2026-07-16</p>
+</blockquote>
+<p><strong>标签</strong>：#嵌入式 #PCB #AI辅助设计 #硬件开发 #EasyEDA #ESP32 #BMS</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心主张</h3>
+<p>不会写代码、不会画板，现在也能做出能跑的硬件——AI 把"写固件"和"画 PCB"这两步最劝退的门槛压到几乎为零。全流程 0 成本起步（工具全免费，只花板子钱），一个周末就能搞定。</p>
+<h3 id="12-0-aily-blockly">1.2 上半场：0 成本写固件 — Aily Blockly</h3>
+<p><strong>工具</strong>：Aily Blockly（GitHub 2.2k ⭐ 开源项目），浏览器打开即用，支持云端+本地混合编译，直接烧录到开发板。</p>
+<p><strong>核心能力</strong>：<br />
+- 将「图形化积木」和「AI 自然语言」结合<br />
+- 用大白话描述需求 → 自动生成代码<br />
+- 支持硬件：Arduino、ESP32、STM32、RP2040、NRF5x<br />
+- 国内下载：yiyu.pro/download</p>
+<p><strong>实战示例</strong>：ESP32 读取 BMS 保护板过充状态引脚</p>
+<blockquote>
+<p>自然语言输入："用 ESP32 写一个程序：读取 BMS 保护板的过充状态引脚，引脚为高时红灯亮、绿灯灭；正常时绿灯亮、红灯灭。用 Arduino 框架，引脚用 GPIO 定义。"</p>
+</blockquote>
+<p>AI 几秒内生成完整代码，下载→编译→烧录，一次成功。从打开软件到看到灯亮，<strong>不到 1 小时</strong>。</p>
+<blockquote>
+<p><strong>踩坑提示</strong>：AI 不知道你的硬件实际怎么接线。生成后一定要对照原理图检查引脚配置。焊接、接线、万用表测量，这些 AI 帮不了你。</p>
+</blockquote>
+<h3 id="13-0-pcb-easyeda-agent">1.3 下半场：0 基础画 PCB — EasyEDA Agent</h3>
+<p><strong>工具</strong>：EasyEDA Agent（嘉立创 EDA 专业版 + AI 原生自动化层），用自然语言说需求，调用立创 EDA 官方接口自动画原理图和 PCB。</p>
+<p><strong>三大核心优势</strong>：</p>
+<p><strong>① 电路块库（最实用）</strong><br />
+- 社区积累成熟外设电路：CH340 串口、ESP32 自动下载、按键去抖、USB-HUB、降压模块等<br />
+- 不用从头画，照拓扑抄，只把对外几根线重绑到主控网络即可<br />
+- 引脚用功能名引用，零改号</p>
+<p><strong>② 全流程自动化</strong><br />
+- 原理图生成 → 导入 PCB → 布局 → 铺铜 → 丝印 → DRC，一条龙<br />
+- 每一步都跑 <code>sch check</code> / <code>pcb drc</code>，结果以数据说话</p>
+<p><strong>③ 真实校验</strong><br />
+- 每一步都有门控验证（gate check），不是"看起来画完了"，而是 DRC 双归零</p>
+<h3 id="14-easyeda-agent">1.4 EasyEDA Agent 安装与使用</h3>
+<p><strong>Agent 工具选择</strong>：WorkBuddy（内置免费 hy3 模型，开箱即聊，不用申请 API key）</p>
+<p><strong>安装四步</strong>：<br />
+1. 把 GitHub 地址丢给 Agent：<code>github.com/zhoushoujianwork/easyeda-agent</code>，Agent 自动跑一键脚本<br />
+2. 打开立创 EDA 专业版，开启「允许外部交互」<br />
+3. 装上连接器 <code>.eext</code>（或从立创插件市场一键装）<br />
+4. 启动并查健康：看到 <code>healthy</code> 就说明连上了</p>
+<p><strong>画图流程</strong>（对 Agent 说需求 → 确认里程碑）：</p>
+<pre><code>需求描述：&quot;画一个 ESP32-S3 小板，USB 5V 供电、降压到 3V3、CH340 烧录、两个按键、四角 M3 安装孔。&quot;
+
+自动流程：
+原理图生成 → 导入 PCB → 四层叠层 → 布局 → GND 内电层/电源平面 → 丝印 → 挖槽
+（每步跑 DRC，最终 pcb drc 双归零，layout-lint 100/100）
+</code></pre>
+<blockquote>
+<p>全程不用懂 EDA，只需在每个里程碑点确认（单面/双面、接口朝向等需要人拍板）。</p>
+</blockquote>
+<h3 id="15-bms">1.5 完整项目串联：BMS 监控小板</h3>
+<p>将两部分合起来就是一个能跑的完整项目：</p>
+<ol>
+<li><strong>板子</strong>：EasyEDA Agent 画 ESP32-S3 小板（USB 供电 + CH340 烧录 + 状态 LED）</li>
+<li><strong>固件</strong>：Aily Blockly 写程序，读取保护板状态，过充红灯/正常绿灯</li>
+<li><strong>打样</strong>：嘉立创打板几十块钱，几天到手</li>
+</ol>
+<h3 id="16">1.6 踩坑总结</h3>
+<ol>
+<li><strong>AI 不是万能的</strong>：引脚接错、规则漏检，生成完必须对照检查、亲自确认</li>
+<li><strong>硬件苦力活还在</strong>：焊接、接线、上电测试，AI 替不了</li>
+<li><strong>从小项目开始</strong>：先让一个 LED 闪起来、读个传感器，把"学习成本"降到"玩的成本"</li>
+<li><strong>AI 是加速器，不是替代品</strong>：你得知道自己要什么，AI 才能帮你实现</li>
+</ol>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-easyeda-agent-eda">2.1 EasyEDA Agent 与 EDA 自动化趋势</h3>
+<p>EasyEDA Agent 代表了 EDA 工具从"辅助画图"到"自动化生成"的范式转变。传统 EDA（Altium/KiCad）的 AI 辅助仅停留在自动布线层面，而 EasyEDA Agent 通过 Agent + 官方 API 接口实现了从需求描述到原理图/PCB 的全自动生成。GitHub 项目地址 <code>zhoushoujianwork/easyeda-agent</code> 采用 CLI + Skill 模式，本质是给 LLM 装了调用 EDA API 的"手"。</p>
+<h3 id="22-aily-blockly">2.2 Aily Blockly 与图形化编程</h3>
+<p>Aily Blockly 是基于 Google Blockly 的扩展项目，核心创新是加入了 AI 自然语言生成代码层。区别于传统 Scratch（MIT 教育编程），Aily 直接面向硬件开发，生成的代码可以直接编译烧录。2.2k ⭐ 说明社区认可度较高。支持的芯片覆盖了主流嵌入式平台（Arduino/ESP32/STM32/RP2040/NRF5x）。</p>
+<h3 id="23-ai">2.3 AI 辅助硬件开发的局限性</h3>
+<p>文章诚实地指出 AI 无法替代的部分：硬件接线验证、焊接、上电测试。这是因为 AI 只能操作"数字域"（代码+图纸），而硬件的"物理域"（信号完整性、EMC、热设计、机械装配）仍需工程师经验。AI 把"设计门槛"降低了，但"验证门槛"没有降低。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-ai">3.1 AI 辅助硬件开发工具链全景</h3>
+<pre><code>┌─────────────── AI 辅助硬件开发 ───────────────┐
+│                                               │
+│  固件层（大脑）                                │
+│  ├── Aily Blockly (自然语言 → 代码)           │
+│  │   ├── 支持: Arduino/ESP32/STM32/RP2040    │
+│  │   └── 特点: 浏览器即用 + AI 生成           │
+│  │                                            │
+│  硬件层（身体）                                │
+│  ├── EasyEDA Agent (自然语言 → PCB)           │
+│  │   ├── 电路块库: CH340/USB-HUB/降压模块     │
+│  │   ├── 全流程: 原理图→布局→铺铜→DRC        │
+│  │   └── 校验: sch check + pcb drc 双归零     │
+│  │                                            │
+│  协调层                                        │
+│  └── WorkBuddy (Agent 宿主, 内置 hy3 模型)    │
+│                                               │
+│  AI 替不了的部分:                              │
+│  └── 焊接 / 接线 / 万用表 / 上电测试 / EMC    │
+└───────────────────────────────────────────────┘
+</code></pre>
+<h3 id="32-vs-ai">3.2 传统入门 vs AI 辅助入门</h3>
+<ul>
+<li><strong>传统</strong>：学 C → 装 IDE → 配编译链 → 画元件 → 连网络 → 布线 → DRC（数月）</li>
+<li><strong>AI 辅助</strong>：说需求 → 生成代码 → 说需求 → 生成 PCB → 确认里程碑 → 打样（周末）</li>
+<li><strong>关键差异</strong>：学习路径从"啃手册+配环境"变为"说需求+看结果"，动手能力门槛大幅降低</li>
+</ul>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41-eda-agent">4.1 EDA 工具的"Agent 化"将成为硬件开发新范式</h3>
+<p>依据：EasyEDA Agent 已实现从自然语言到 PCB 的全自动生成（含 DRC 校验），GitHub 开源 <code>easyeda-agent</code> CLI+Skill 模式可被 LLM Agent 调用。Altium/KiCad 等传统 EDA 如果不跟进 Agent 化，将面临用户流失。</p>
+<h3 id="42-ai">4.2 "AI 加速器而非替代品"是当前阶段的准确认知</h3>
+<p>依据：文章多次强调 AI 替代不了焊接、接线、测试等"物理域"操作。当前 AI 在硬件领域的定位是"把设计门槛压到零"，但验证和实施仍需人工。这一认知与 LLM 在软件开发中的定位一致。</p>
+<h3 id="43-ai">4.3 硬件开源生态将受益于 AI 工具链普及</h3>
+<p>依据：Aily Blockly（2.2k ⭐）和 EasyEDA Agent 均开源，降低了硬件入门门槛。更多人能参与硬件开发 → 更多开源硬件项目 → 更多成熟电路块 → 工具更好用，形成正循环。</p>
+<h3 id="44-agent-api">4.4 "Agent + 专业工具 API"模式将扩展到更多工程领域</h3>
+<p>依据：EasyEDA Agent 的本质是 LLM + EDA API，这种"Agent 调用专业工具 API"的模式可以复制到机械 CAD（SolidWorks/Fusion360）、仿真（ANSYS/COMSOL）、PLC 编程等领域。WorkBuddy + hy3 模型的组合证明了无需自建 API 即可跑通。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-v2-uclawprojectwheel-legged-robot-v2">5.1 与双轮腿机器人 V2 项目（<code>~/uclaw/project/wheel-legged-robot-v2</code>）的关联</h3>
+<p>本文的工具链直接适用于双轮腿机器人的 PCB 迭代：<br />
+- <strong>EasyEDA Agent</strong> 可用于重新设计主控板（当前项目用 WeAct STM32H743 成品板，未来可定制 PCB）：描述需求如"STM32H743 + ODrive CAN 接口 + STS3025 舵机 TTL 总线 + MPU6050 I2C + ESP32-S3 USART3 + 电源三路隔离"，Agent 自动生成原理图和 PCB<br />
+- <strong>Aily Blockly</strong> 不适用于本项目（固件已用 C 手写，复杂度远超 Blockly 能力），但适合快速原型验证阶段</p>
+<h3 id="52-stm32-embedded-dev-skill">5.2 与 stm32-embedded-dev skill 的关联</h3>
+<p>stm32-embedded-dev skill 中定义的 STM32 嵌入式固件开发工作流（HAL 驱动 + FreeRTOS），与本文的 Aily Blockly 形成对比：<br />
+- Aily Blockly 适合：零基础快速验证、简单逻辑（LED/传感器读取）<br />
+- C + HAL 适合：复杂实时控制（LQR 平衡、IK 求解、1kHz 控制环）<br />
+- AI 辅助可加速：从自然语言生成 HAL 初始化代码框架，再人工细化</p>
+<h3 id="53-index-tts-analysis-uclawprojectindex-tts-analysis">5.3 与 index-tts-analysis 项目（<code>~/uclaw/project/index-tts-analysis</code>）的关联</h3>
+<p>两者都是"AI 降低专业门槛"的案例：IndexTTS2 降低了语音合成的算法门槛，EasyEDA Agent 降低了 PCB 设计门槛。共同趋势是"AI Agent + 专业工具 API"正在重塑专业工具链。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「不是嵌入式变难了，是工具链变了。你当年懂的那些电路原理、调试思路，一个都没过时，只是'怎么用工具'变了。」</p>
+<p>「AI 是加速器，不是替代品。你得知道自己要什么，AI 才能帮你实现。」</p>
+<p>「AI 不知道你的硬件实际怎么接线的。生成后一定要对照原理图检查引脚配置。」</p>
+<p>「全流程 0 成本起步——工具全免费，只花板子钱，一个周末就能搞定。」</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>行动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EasyEDA Agent 可从需求到 PCB 全自动</td>
+<td>评估用于双轮腿机器人定制主控板设计</td>
+</tr>
+<tr>
+<td>Aily Blockly 适合快速原型验证</td>
+<td>在简单传感器读取场景尝试（非复杂控制）</td>
+</tr>
+<tr>
+<td>电路块库可复用成熟设计</td>
+<td>积累 CH340/降压/USB-HUB 等常用电路块</td>
+</tr>
+<tr>
+<td>Agent + 工具 API 模式可复制</td>
+<td>评估用于机械 CAD 和仿真自动化</td>
+</tr>
+<tr>
+<td>硬件验证仍需人工</td>
+<td>AI 生成的 PCB 必须人工跑 DRC + 上电测试</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./Bus_Servo_Adapter_A_总线舵机驱动板.md">总线舵机驱动板</a> — 硬件驱动板设计</li>
+<li><a href="./2026-07-15-Bus-Servo-Adapter-A微雪总线舵机驱动板.md">Bus-Servo-Adapter-A微雪版</a> — 舵机驱动板PCB</li>
+<li><a href="./视觉相机技术原理_单目双目结构光ToF.md">视觉相机技术原理</a> — 传感器硬件选型</li>
+<li><a href="../project/servo-arm-control/SKILL.md">ESP32舵机机器人控制</a> — ESP32+舵机嵌入式</li>
+<li><a href="./2026-07-04-CATIA_CAA开发-批量Body处理.md">CATIA CAA批量Body处理</a> — CAD+硬件协同</li>
+</ul>
+</body>
+</html>

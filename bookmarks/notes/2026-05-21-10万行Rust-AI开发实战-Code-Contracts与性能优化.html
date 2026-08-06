@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>10万行Rust-AI开发实战-Code-Contracts与性能优化</title>
+
+<meta property="og:title" content="10万行Rust-AI开发实战-Code-Contracts与性能优化" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="10-rust-ai-code-contractsspec-driven">10 万行 Rust + AI 开发实战：Code Contracts、Spec-Driven 与极致性能优化</h1>
+<blockquote>
+<p><strong>来源</strong>：Cheng Huang · 个人博客 · 2025-12-01<br />
+<strong>原文</strong>：https://zfhuang99.github.io/rust/claude%20code/codex/contracts/spec-driven%20development/2025/12/01/rust-with-ai.html<br />
+<strong>评分</strong>：⭐5/5<br />
+<strong>标签</strong>：#AI编程 #Rust #CodeContracts #SpecDriven #性能优化 #Paxos #分布式系统</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>作者用 3 个月时间，借助 AI 编程代理（Claude Code + Codex CLI 为主力），从零构建了一个 Rust 实现的多 Paxos 共识引擎，复现 Azure RSL 全部功能并现代化。4 周写 10 万行代码，3 周将吞吐从 23K ops/sec 优化到 300K ops/sec。文章系统性地分享了三大关键技术：AI 驱动的 Code Contracts、轻量级 Spec-Driven Development、以及 AI 协助的性能工程闭环。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1-azure-rsl">1. 项目背景：为什么重写 Azure RSL</h3>
+<p>Azure 的 Replicated State Library (RSL) 实现了多 Paxos 协议，支撑 Azure 大部分核心服务。但 RSL 超过十年历史，存在三大缺陷：</p>
+<p>无流水线：投票进行中新请求必须等待，延迟膨胀<br />
+  无 NVM 支持：非易失内存已普及但 RSL 未利用<br />
+  硬件感知不足：未利用 Azure 数据中心普遍部署的 RDMA</p>
+<h3 id="2-ai">2. AI 生产力飞跃</h3>
+<p>6 周完成 13 万行 Rust 代码，覆盖多 Paxos、leader 选举、日志复制、快照、配置变更<br />
+  主力工具：Claude Code（命令行异步工作流） + Codex CLI（分担速率限制）<br />
+  心理技巧：$100/月订阅费成为"不做就亏"的强迫函数</p>
+<h3 id="3-code-contracts-ai-ai">3. Code Contracts —— AI 写、AI 验</h3>
+<p>三层防御体系：</p>
+<p>第一层：AI 编写前置条件、后置条件和不变量（GPT-5 High 写的合约质量最高）<br />
+  第二层：从合约自动生成针对性测试用例<br />
+  第三层：将合约转化为 Property-Based 测试，随机探索输入空间</p>
+<p>实战成果：process_2a 方法有 16 个合约；一个 AI 生成的合约发现了 Paxos 安全性违规，避免了一次严重的复制一致性问题</p>
+<h3 id="4-spec-driven-development">4. 轻量级 Spec-Driven Development</h3>
+<p>作者从严格 SDD（需求→设计→任务列表）转向更灵活的流程：</p>
+<p>/specify 生成用户故事 + 验收标准<br />
+  /clarify 让 AI 自我批评并改进规格<br />
+  单个用户故事作为 AI 编码代理的"甜蜜点"工作单元</p>
+<h3 id="5-23k-300k">5. 性能优化闭环（23K → 300K）</h3>
+<p>反复循环：AI 埋点 → 运行性能测试 → AI 分析瓶颈 → 提出优化 → 重测<br />
+  关键发现：锁竞争、冗余内存拷贝、不必要的 task spawn<br />
+  Rust 的安全模型让激进的零拷贝和去 async 优化更有信心</p>
+<h2 id="_3">关键概念</h2>
+<p>Code Contracts：前置条件、后置条件、不变量的运行时断言（测试启用、生产禁用）<br />
+  Spec-Driven Development（SDD）：从形式化规格推导代码，AI 时代可轻量化<br />
+  Property-Based Testing：基于属性的随机测试，从合约自动生成海量测试输入<br />
+  Multi-Paxos：分布式共识协议，Azure RSL 的核心实现</p>
+<h2 id="_4">能力边界</h2>
+<p>AI 编写合约的质量依赖模型能力，GPT-5 High &gt; Opus 4.1<br />
+  性能优化闭环需要人类判断优先级，AI 不能自主决定优化方向<br />
+  单用户故事作为工作单元适合当前 AI 上下文窗口限制，但不适合超大型重构</p>
+<h2 id="_5">最佳实践</h2>
+<p>CLI 异步工作流比 IDE 集成更高效（Claude Code 命令行模式）<br />
+  多订阅分担速率限制（一个周一周三，一个周四周六）<br />
+  合约优先于测试：合约是测试的"元信息"，指导 AI 生成更精准的测试<br />
+  性能优化从度量开始，AI 写分析脚本比人类手写更快</p>
+<h2 id="_6">🔍 借鉴学习进化点</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Code Contracts 模式</td>
+<td>AI 写合约→从合约生成测试→Property-Based 验证</td>
+<td>为 Hermes Skill 系统引入合约概念</td>
+<td>设计 skill-contracts 规范，为关键 skill 定义前置/后置条件</td>
+</tr>
+<tr>
+<td>2</td>
+<td>性能优化闭环</td>
+<td>AI 埋点→测试→分析瓶颈→优化→重测的迭代循环</td>
+<td>Agent 任务执行后自动度量并优化</td>
+<td>在 task-executor skill 中加入性能度量和迭代改进循环</td>
+</tr>
+<tr>
+<td>3</td>
+<td>轻量 Spec-Driven</td>
+<td>/specify → /clarify → 单用户故事编码</td>
+<td>用 spec 驱动 skill 和工具开发</td>
+<td>在 plan skill 中引入 specify + clarify 两步法</td>
+</tr>
+<tr>
+<td>4</td>
+<td>CLI 异步工作流</td>
+<td>命令行模式让 AI 和人类异步协作效率最高</td>
+<td>Hermes 的 cron 任务本质就是 CLI 异步</td>
+<td>优化 cron 输出格式，便于人类异步审阅</td>
+</tr>
+<tr>
+<td>5</td>
+<td>多工具分担限制</td>
+<td>双订阅分流速率限制</td>
+<td>搜索/生图等工具降级链已实现</td>
+<td>强化 simple-image-gen 的多通道降级逻辑</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_7">当前状态</h3>
+<ul>
+<li>已有 agent-search-edit skill 实现精准搜索编辑</li>
+<li>已有 verification-gate skill 实现三级验证</li>
+<li>缺少"合约"概念的系统性实现</li>
+</ul>
+<h3 id="_8">改进方案</h3>
+<ol>
+<li>为 skill 系统引入 contracts 字段（前置条件 + 后置条件）</li>
+<li>在 evolver 闭环中加入合约验证环节</li>
+</ol>
+<h3 id="_9">已执行操作</h3>
+<ul>
+<li>✅ 笔记已写入</li>
+<li>⏳ 待评估 skill-contracts 规范的可行性</li>
+</ul>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li>[[2026-04-09-SKILL-md-ai-agent-skills.md|SKILL.md 模式：如何写出真正能用的 AI 智能体技能]]</li>
+<li>[[2026-04-13-4-ai-agent-frameworks-comparison.md|4大AI智能体框架对比：Hermes、OpenClaw、LangChain、OpenAI Agent SDK]]</li>
+<li>[[2026-04-26-数字孪生低代码平台项目方案.md|数字孪生低代码可视化平台 — 独立项目方案]]</li>
+<li>[[2026-05-08-企业AI转型三步法-知识库技能化智能体.md|企业 AI 转型三步法：知识库 → 技能化 → 智能体]]</li>
+<li>[[2026-05-16-OpenHuman-记忆树AI智能体-i龙虾.md|OpenHuman — 通过记忆树记住你全部的AI智能体]]</li>
+<li><a href="2026-06-03-mai-code-1-flash.md">微软推出专属编程模型 MAI-Code-1-Flash</a></li>
+</ul>
+</body>
+</html>

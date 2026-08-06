@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解</title>
+
+<meta property="og:title" content="多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="grporeward-gdposhape-grpoaw-grporacoospoarpo">多目标 GRPO：Reward 融合、冲突消解与前沿方法全景（GDPO/ShapE-GRPO/AW-GRPO/RACO/OSPO/ARPO）</h1>
+<blockquote>
+<p>📅 2026-05-14 | 夜间自学习 | 深度 L3<br />
+🏷️ #GRPO #GDPO #多目标优化 #Reward融合 #对齐训练 #强化学习 #DeepSeek #NVIDIA #Shapley值</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="1grpo-reward-reward-collapse">发现1：GRPO 在多 Reward 场景存在「Reward Collapse」致命缺陷</h3>
+<p>NVIDIA 2026年1月论文 GDPO（arXiv:2601.05242）揭示了一个被忽视的关键问题：当 GRPO 直接应用于多 reward 场景时，不同 reward 组合经过组内标准化后会坍缩为相同的 advantage 值。</p>
+<p><strong>数学证明</strong>：假设有 3 个 reward（正确性 r₁、格式 r₂、长度 r₃），对于同一个 prompt 采样 G 个响应。GRPO 的做法是：</p>
+<pre><code># GRPO 的错误做法：先求和再标准化
+total_reward = w₁*r₁ + w₂*r₂ + w₃*r₃
+advantage = (total_reward - mean(total_rewards)) / std(total_rewards)
+</code></pre>
+<p>问题在于：当不同的 reward 维度呈现不同的分布特性（例如 r₁ 是二值的 0/1，r₂ 是连续的 [0,1] 浮点），求和后再标准化，低方差维度的信号被高方差维度淹没。极端情况下，两个完全不同的 reward 组合（如 [1, 0.5, 0.8] vs [0, 0.9, 0.7]）可能得到相同的 advantage 值，导致模型无法区分哪些行为真正需要改进。</p>
+<p><strong>实证</strong>：在 Tool Calling、Math Reasoning、Code Reasoning 三个任务上，朴素多 reward GRPO 的约束满足率（format/length）比单 reward GRPO 更差，甚至出现训练早期崩溃。</p>
+<h3 id="2gdpo-decoupled-normalization">发现2：GDPO 的解法——先标准化再聚合（Decoupled Normalization）</h3>
+<p>GDPO 的核心思想极其简洁：<strong>对每个 reward 维度独立进行组内标准化，然后再加权聚合</strong>。</p>
+<pre><code># GDPO 的正确做法：先分维度标准化再聚合
+for i in [1,2,3]:
+    adv_i = (r_i - mean(r_i_group)) / (std(r_i_group) + ε)
+final_advantage = w₁*adv_1 + w₂*adv_2 + w₃*adv_3
+</code></pre>
+<p><strong>关键差异</strong>：<br />
+- GRPO：Σ reward → 标准化 → advantage（一个总 reward，一次标准化）<br />
+- GDPO：标准化 reward₁ → 标准化 reward₂ → 标准化 reward₃ → 加权求和（每个维度独立标准化）</p>
+<p>这样做保留了每个 reward 维度的相对信息，避免了维度间的信号淹没。GDPO 在 NVlabs/GDPO 开源实现中基于 verl、TRL 和 nemo-RL 框架。</p>
+<p><strong>实验结果</strong>（NVIDIA 报告）：<br />
+- Tool Calling：格式准确率从 GRPO 的 72% 提升到 GDPO 的 94%<br />
+- Math Reasoning：准确率 +3.2%，长度约束满足率 +18%<br />
+- Code Reasoning：bug 率下降 40%，格式合规率 +22%<br />
+- 训练稳定性：GRPO 在 30% 的多 reward 配置下出现训练崩溃，GDPO 为 0</p>
+<h3 id="3aw-grpocyberagentemnlp-industry-2025">发现3：AW-GRPO（CyberAgent/EMNLP Industry 2025）——自适应权重平衡</h3>
+<p>AW-GRPO（Auto-Weighted GRPO）解决了另一个问题：<strong>多 reward 的权重如何设定？</strong></p>
+<p>传统做法是手动设定 w₁, w₂, w₃ 权重，但 AW-GRPO 让模型在训练过程中自动调整权重。其核心思想是：根据每个 reward 维度的训练进度（loss 下降率）动态调整权重——训练较慢的维度获得更大权重。</p>
+<p><strong>算法</strong>：<br />
+1. 初始化各 reward 维度权重 w_i = 1/K<br />
+2. 每个 training step 计算各维度的 advantage<br />
+3. 根据各维度的「违反率」（constraint violation rate）动态调整权重<br />
+4. 违反率高的维度权重增大，反之减小</p>
+<p><strong>应用</strong>：CyberAgent 在广告文本生成任务（WMT 2024 En-Ja 翻译）上验证，AW-GRPO 在 Readability 和 BLEURT 两个指标上同时取得最优，且约束违反率降低 60%。</p>
+<h3 id="4shape-grpo-ospo-reward">发现4：ShapE-GRPO 和 OSPO——用博弈论分解 Reward</h3>
+<p>两篇独立论文将 Shapley 值引入 GRPO 框架，但解决不同层次的问题：</p>
+<p><strong>ShapE-GRPO</strong>（arXiv:2603.29871, MIT/2026）：解决「集合级 reward 如何分配到单个候选」的问题。在推荐、头脑风暴等场景中，LLM 生成一组候选 {y₁, y₂, ..., yₖ}，reward 评估的是整个集合的效用（如多样性+覆盖率），而非单个候选。朴素 GRPO 给所有候选分配同一个集合级 reward，ShapE-GRPO 用 Shapley 值将集合 reward 分解为每个候选的边际贡献。</p>
+<p><strong>OSPO</strong>（Amazon, arXiv:2601.08403）：解决「序列级 reward 如何分配到 token/片段」的问题。标准 GRPO 给整个响应分配一个标量 advantage，OSPO 用 Owen-Shapley 分解将 advantage 分配到响应的各个片段（segment），实现细粒度的信用分配（credit assignment）。</p>
+<h3 id="5raco-reward-model">发现5：RACO——免 Reward Model 的多目标对齐</h3>
+<p>RACO（Reward-free Alignment for Conflicting Objectives, arXiv:2602.02495）提出了一个更激进的方案：完全不需要 reward model。</p>
+<p><strong>核心思想</strong>：用 Conflict-Averse Gradient Descent（CAGrad）直接在偏好数据上优化多个目标，避免学习显式的 reward model。当 helpfulness 和 safety 的梯度方向冲突时，CAGrad 找到一个「最不坏」的更新方向。</p>
+<p><strong>改进 CAGrad-Clip</strong>：原始 CAGrad 在高度冲突的偏好批次上会过度保护低优先级目标，CAGrad-Clip 通过权重预算约束（π_i ≤ w_i）防止过度修正，同时保留 Pareto 收敛保证。</p>
+<hr />
+<h2 id="_2">二、技术原理解析</h2>
+<h3 id="21-reward">2.1 多 Reward 融合的三大流派</h3>
+<table>
+<thead>
+<tr>
+<th>流派</th>
+<th>代表方法</th>
+<th>核心思路</th>
+<th>优势</th>
+<th>局限</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>标准化后聚合</strong></td>
+<td>GDPO</td>
+<td>每个 reward 独立标准化再加权</td>
+<td>保留维度信息</td>
+<td>需要预设权重</td>
+</tr>
+<tr>
+<td><strong>自适应权重</strong></td>
+<td>AW-GRPO</td>
+<td>动态调整各 reward 权重</td>
+<td>免手动调权</td>
+<td>训练不稳定风险</td>
+</tr>
+<tr>
+<td><strong>博弈论分解</strong></td>
+<td>ShapE-GRPO/OSPO</td>
+<td>用 Shapley 值分配 credit</td>
+<td>理论最优</td>
+<td>计算开销 O(2^n)</td>
+</tr>
+<tr>
+<td><strong>梯度冲突消解</strong></td>
+<td>RACO</td>
+<td>CAGrad 直接在偏好数据优化</td>
+<td>无需 reward model</td>
+<td>偏好数据需求大</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-gdpo">2.2 GDPO 的数学推导</h3>
+<p><strong>Step 1: GRPO 的 Reward Collapse 问题形式化</strong></p>
+<p>设有 K 个 reward 函数 {r₁, r₂, ..., r_K}，对 prompt q 采样 G 个响应 {o₁, ..., o_G}。GRPO 的 advantage 为：</p>
+<pre><code>A_i = (Σ_k w_k * r_k(o_i, q) - μ) / σ
+</code></pre>
+<p>其中 μ = (1/G)Σ_i Σ_k w_k * r_k(o_i, q)，σ = std(Σ_k w_k * r_k(o_i, q))</p>
+<p><strong>Collapse 证明</strong>：考虑两个响应 o_a 和 o_b，其中 r₁(o_a) &gt; r₁(o_b) 但 r₂(o_a) &lt; r₂(o_b)，且 Σ_k w_k * r_k(o_a) = Σ_k w_k * r_k(o_b)。则 A_a = A_b，模型无法区分——即使 o_a 在维度1上更好。</p>
+<p><strong>Step 2: GDPO 的解法</strong></p>
+<pre><code>GDPO advantage:
+A_i^GDPO = Σ_k w_k * (r_k(o_i, q) - μ_k) / (σ_k + ε)
+</code></pre>
+<p>其中 μ_k = (1/G)Σ_i r_k(o_i, q)，σ_k = std({r_k(o_i, q)}_i=1..G)</p>
+<p>每个维度独立标准化后加权，不会出现维度间的信号淹没。</p>
+<h3 id="23-shape-grpo-shapley">2.3 ShapE-GRPO 的 Shapley 分解</h3>
+<p>对于集合级 reward U(S)，其中 S = {y₁, ..., yₖ}，候选 y_j 的 Shapley 值为：</p>
+<pre><code>φ_j = (1/K!) Σ_{π∈Perm(K)} [U(S_{π,≤j}) - U(S_{π,&lt;j})]
+</code></pre>
+<p>其中 S_{π,≤j} = {y_{π(1)}, ..., y_{π(j)}} 是排列 π 中前 j 个元素组成的子集。</p>
+<p><strong>近似计算</strong>：精确 Shapley 值需要 O(K!) 次评估，实践中用蒙特卡洛采样 M 个随机排列近似，复杂度降为 O(M·K·C_eval)。</p>
+<p><strong>与 GRPO 的整合</strong>：将 Shapley 值 φ_j 作为候选 y_j 的 advantage 信号替代原来的统一 set-level reward。</p>
+<h3 id="24-arpoagent-rl">2.4 ARPO——Agent 专用的多轮 RL</h3>
+<p>ARPO（Agentic Reinforced Policy Optimization, arXiv:2507.19849）将 GRPO 扩展到多轮工具调用场景：</p>
+<p><strong>核心创新</strong>：<br />
+1. <strong>Entropy-based Adaptive Rollout</strong>：在高熵（不确定性大）的工具调用轮次自动分支采样，低熵轮次直接通过<br />
+2. <strong>Advantage Attribution</strong>：将最终 reward 归因到每一步工具调用，而非统一分配到整个轨迹<br />
+3. <strong>Step-level GRPO</strong>：每步独立计算组内 advantage，类似 GDPO 的思想但作用在时间维度</p>
+<p><strong>效果</strong>：用 50% 的 tool-use 数据即超过轨迹级 RL 的表现，30B 参数模型在工具调用任务上超过 10x 大小的前沿模型。</p>
+<hr />
+<h2 id="_3">三、知识关联</h2>
+<ul>
+<li>[[2026-05-04-LLM对齐训练范式RLHF-DPO-GRPO-DAPO.md]] → 本篇直接扩展了 GRPO 的数学基础，从单 reward 推广到多 reward。原有 GRPO 公式中的 A_i 是单维度 Z-score，GDPO 将其扩展为多维独立 Z-score 的加权和</li>
+<li>[[2026-05-09-LLM知识蒸馏技术全景.md]] → RLAD（RL 感知蒸馏）与多 reward GRPO 有交叉：蒸馏时保留 RL 能力本质上是多 reward 平衡问题（模仿教师 + 保留 RL 信号）</li>
+<li>[[2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md]] → GoR 的 QAT+KD 损失自适应平衡与 AW-GRPO 的动态权重调整思想一致</li>
+<li>[[2026-05-05-大模型数据工程-合成数据-数据质量-课程学习.md]] → 多 reward 设定下的课程学习：先训练主 reward（如正确性），再逐步加入约束 reward（如格式、长度），与数据课程学习范式相通</li>
+<li>[[2026-05-06-MoE混合专家模型-路由策略-负载均衡-训练稳定性.md]] → Shapley 值在 MoE 专家重要性评估（Shapley-MoE）和多 reward 分配（ShapE-GRPO）中的应用一脉相承</li>
+<li>[[2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析.md]] → ARPO 的 step-level advantage 与投机解码的 token-level 验证有类似的多粒度信号分解思想</li>
+<li>obs_notes: [[computer SCI]] → 已有 RL 基础概念参考</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">四、Actionable Insights</h2>
+<h3 id="41-hermes-agent">4.1 对 Hermes Agent 的直接价值</h3>
+<ol>
+<li>
+<p><strong>Hermes Skill 训练可用 GDPO</strong>：当 Skill 涉及多个质量维度（正确性 + 格式 + 风格）时，GDPO 的分维度标准化可避免训练信号坍缩。TRL 库已支持 GDPO。</p>
+</li>
+<li>
+<p><strong>Self-Evolution 用 RACO 思路</strong>：Hermes 的 evolver 需要同时优化多个质量指标（错误率、响应时间、用户满意度），RACO 的 CAGrad 提供了免 reward model 的多目标优化方案。</p>
+</li>
+<li>
+<p><strong>Agent RL 用 ARPO</strong>：Hermes 的工具调用训练本质上就是多轮决策，ARPO 的 entropy-based adaptive rollout 和 advantage attribution 直接适用。</p>
+</li>
+</ol>
+<h3 id="42">4.2 技术落地路径</h3>
+<ol>
+<li><strong>短期</strong>（1-2周）：在 TRL/vLLM 中实验 GDPO 替代 GRPO 进行多 reward 微调</li>
+<li><strong>中期</strong>（1月）：探索 AW-GRPO 自适应权重用于 Hermes Skill 质量优化</li>
+<li><strong>长期</strong>：ShapE-GRPO + OSPO 的细粒度 credit assignment 用于 Agent 工具调用训练</li>
+</ol>
+<h3 id="43">4.3 开源资源</h3>
+<ul>
+<li>NVIDIA GDPO 实现：github.com/NVlabs/GDPO（基于 verl + TRL + nemo-RL）</li>
+<li>CyberAgent AW-GRPO：github.com/CyberAgentAILab/AW-GRPO</li>
+<li>Amazon OSPO：github.com/amazon-science/owen-shapley-policy-optimization</li>
+<li>ARPO：dongguanting/ARPO-RL-Reasoning-10K</li>
+</ul>
+<hr />
+<h2 id="_4">五、方法对比矩阵</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>发表</th>
+<th>解决的问题</th>
+<th>核心</th>
+<th>多 reward</th>
+<th>计算开销</th>
+<th>收敛稳定性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GRPO</td>
+<td>2024</td>
+<td>去除 Critic</td>
+<td>组内 Z-score</td>
+<td>❌ 坍缩</td>
+<td>低</td>
+<td>单 reward 稳定</td>
+</tr>
+<tr>
+<td>DAPO</td>
+<td>2024</td>
+<td>GRPO 效率改进</td>
+<td>非对称裁剪+动态采样</td>
+<td>❌ 同 GRPO</td>
+<td>低</td>
+<td>较好</td>
+</tr>
+<tr>
+<td>GDPO</td>
+<td>2026.01</td>
+<td>多 Reward 坍缩</td>
+<td>分维度独立标准化</td>
+<td>✅</td>
+<td>低</td>
+<td>最好</td>
+</tr>
+<tr>
+<td>AW-GRPO</td>
+<td>2025.11</td>
+<td>权重设定</td>
+<td>自适应权重调整</td>
+<td>✅</td>
+<td>中</td>
+<td>中</td>
+</tr>
+<tr>
+<td>ShapE-GRPO</td>
+<td>2026.03</td>
+<td>集合级 Reward 分配</td>
+<td>Shapley 值分解</td>
+<td>✅</td>
+<td>高</td>
+<td>好</td>
+</tr>
+<tr>
+<td>OSPO</td>
+<td>2026.01</td>
+<td>Token 级 Credit</td>
+<td>Owen-Shapley 分解</td>
+<td>✅</td>
+<td>高</td>
+<td>好</td>
+</tr>
+<tr>
+<td>RACO</td>
+<td>2026.02</td>
+<td>免 Reward Model</td>
+<td>CAGrad 梯度冲突消解</td>
+<td>✅</td>
+<td>低</td>
+<td>好</td>
+</tr>
+<tr>
+<td>ARPO</td>
+<td>2025.07</td>
+<td>Agent 多轮训练</td>
+<td>Entropy 采样+Advantage 归因</td>
+<td>✅</td>
+<td>中</td>
+<td>好</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">六、待深入的问题清单</h2>
+<ol>
+<li><strong>GDPO 的权重敏感性</strong>：虽然解决了坍缩问题，但 w₁, w₂, w₃ 权重仍需手动设定。权重变化 10% 对最终效果的影响有多大？是否可用 AW-GRPO 的自适应权重 + GDPO 的分维度标准化？</li>
+<li><strong>ShapE-GRPO 的计算效率</strong>：蒙特卡洛 Shapley 的采样数 M 如何选择？M 太小近似误差大，M 太大训练慢。是否存在自适应采样策略？</li>
+<li><strong>RACO + GDPO 的联合</strong>：CAGrad 的梯度冲突消解 + GDPO 的分维度标准化是否互补？前者作用于梯度空间，后者作用于 advantage 空间，理论上可叠加。</li>
+<li><strong>多 Reward 在 MoE 模型上的特殊挑战</strong>：MoE 的专家路由不均可能导致不同 expert 对不同 reward 维度的敏感度不同，是否需要 expert-aware 的 reward 分配？</li>
+<li><strong>OSPO 与投机解码的关联</strong>：Owen-Shapley 的 token 级 credit assignment 是否能用于改进投机解码的 draft model 训练？</li>
+<li><strong>ARPO 在 Hermes Agent 上的实证</strong>：entropy-based adaptive rollout 与 Hermes 的多工具调用场景匹配度如何？是否需要针对 Agent 场景调整 advantage attribution 策略？</li>
+</ol>
+<hr />
+<h2 id="_6">七、参考论文</h2>
+<ol>
+<li>Liu et al. "GDPO: Group reward-Decoupled Normalization Policy Optimization for Multi-reward RL Optimization" (NVIDIA, arXiv:2601.05242, Jan 2026)</li>
+<li>Ai et al. "ShapE-GRPO: Shapley-Enhanced Reward Allocation for Multi-Candidate LLM Training" (MIT, arXiv:2603.29871, Mar 2026)</li>
+<li>Ichihara &amp; Jinnai. "Auto-Weighted Group Relative Preference Optimization for Multi-Objective Text Generation Tasks" (CyberAgent, EMNLP Industry 2025)</li>
+<li>Li et al. "Optimizing Safe and Aligned Language Generation: A Multi-Objective GRPO Approach" (arXiv:2503.21819, Mar 2025)</li>
+<li>Chen et al. "Reward-free Alignment for Conflicting Objectives" (arXiv:2602.02495, Feb 2026)</li>
+<li>Sarkar et al. "Owen-Shapley Policy Optimization (OSPO): A Principled RL Algorithm for Generative Search LLMs" (Amazon, arXiv:2601.08403, Jan 2026)</li>
+<li>Dong et al. "Agentic Reinforced Policy Optimization" (arXiv:2507.19849, 2025)</li>
+<li>"Multi-Reward GRPO Fine-Tuning for De-biasing Large Language Models" (arXiv:2511.06023, Nov 2024)</li>
+</ol>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析.md">MoE投机解码-稀疏激活与推理加速深度解析</a></li>
+<li><a href="2026-05-13-从零训练GPT完整指南.md">从零训练GPT完整指南</a></li>
+<li><a href="2026-05-15-序列并行与上下文并行-长上下文训练的第四维并行.md">序列并行与上下文并行-长上下文训练的第四维并行</a></li>
+</ul>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="2026-05-12-网络安全-security-automation.md">2026-05-12-网络安全-security-automation</a></li>
+<li><a href="2026-05-12-数据治理-data-catalog.md">2026-05-12-数据治理-data-catalog</a></li>
+<li><a href="20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化.md">20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化</a></li>
+<li><a href="llm-wiki-gbrain-agent-evolution_33aa818c.md">llm-wiki-gbrain-agent-evolution_33aa818c</a></li>
+<li><a href="2026-05-15-上下文才是Agent的命门-QClaw上下文竞争论.md">2026-05-15-上下文才是Agent的命门-QClaw上下文竞争论</a></li>
+</ul>
+</body>
+</html>

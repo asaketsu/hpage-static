@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>序列并行与上下文并行-长上下文训练的第四维并行</title>
+
+<meta property="og:title" content="序列并行与上下文并行-长上下文训练的第四维并行" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="_1">序列并行与上下文并行 — 长上下文训练的第四维并行</h1>
+<blockquote>
+<p><strong>来源</strong>：深度学习前沿论文综合分析 · 2026-05-15<br />
+<strong>笔记ID</strong>：seq-parallel-ctx-parallel-2026<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含借鉴进化点 · RAG/wiki联动<br />
+<strong>关联</strong>：[[2026-05-05-分布式训练技术全景-FSDP-DeepSpeed-Megatron]] · [[2026-05-08-LLM推理优化前沿技术2026]]</p>
+</blockquote>
+<h2 id="_2">摘要</h2>
+<p>序列并行（Sequence Parallelism / Context Parallelism）是继 DP/TP/PP 三维并行之后的第四维并行策略，专门解决长上下文训练中注意力 O(n²) 计算和显存瓶颈。本文深入分析六大前沿方法：Ring Attention（环形块状计算，无限序列长度）、DeepSpeed Ulysses（注意力头并行，all-to-all 通信）、USP 统一框架（混合 Ulysses + Ring）、StarTrail（同心环多维并行，GPT 模型提速 77.12%）、TSP 折叠并行（同时分片权重和序列，2.6x 吞吐）、以及 AutoSP（编译器自动化 SP）。还覆盖了 ZeCO（线性注意力零通信开销）、Untied Ulysses/UPipe（逐头分块省 87.5% 显存）和 HelixPipe（注意力并行流水线）等重要工作。长上下文模型（DeepSeek-V3 128K、Gemini 2M）已将序列并行从可选优化变为训练必需基础设施。</p>
+<h2 id="_3">核心内容</h2>
+<h3 id="_4">一、问题根源：为什么需要第四维并行</h3>
+<p>标准 Transformer 注意力计算复杂度 O(L²·d)，其中 L 是序列长度。随着上下文从 4K（GPT-3.5）→ 128K（Llama 3）→ 1M（Gemini 1.5 Pro / Qwen 2.5-1M）→ 2M（Gemini 2.5 Pro），注意力显存和计算量呈二次增长：</p>
+<ul>
+<li>70B 模型 128K 序列：单层注意力需要 ~128GB 显存（KV cache + attention matrix）</li>
+<li>1M token 训练：超出任何单卡 H100 80GB 的承载能力</li>
+</ul>
+<p>传统的三维并行（DP + TP + PP）无法解决：<br />
+- <strong>DP</strong>：每卡持有完整序列，序列太长直接 OOM<br />
+- <strong>TP</strong>：切分权重，但不切分序列长度（激活值仍然完整）<br />
+- <strong>PP</strong>：按层切分，每层的注意力仍然是完整序列</p>
+<p>因此需要在<strong>序列维度</strong>上进行切分，这就是序列并行/上下文并行的核心动机。</p>
+<h3 id="ring-attention-vs-deepspeed-ulysses">二、两大基础范式：Ring Attention vs DeepSpeed Ulysses</h3>
+<h4 id="21-ring-attention">2.1 Ring Attention — 环形块状计算</h4>
+<p>论文：<em>Ring Attention with Blockwise Transformers for Near-Infinite Context</em>（Liu et al., 2023）</p>
+<p>核心思想：将长度为 L 的序列均分到 N 张 GPU，每张持有 L/N 的 Q、K、V 片段。GPU 排成逻辑环（Ring），通过 N 轮迭代完成完整注意力计算。</p>
+<p>工作机制（以 4 张 GPU 为例）：<br />
+1. 初始：GPU_i 持有 Q_i, K_i, V_i（各 1/4 序列）<br />
+2. 每轮：GPU_i 用本地 Q_i 与当前持有的 K、V 计算局部注意力，同时将 K、V 传递给下一 GPU<br />
+3. 经过 4 轮迭代，每张 GPU 都看到了全部 K、V，得到正确的注意力输出</p>
+<p>关键技术：利用 FlashAttention 的 online softmax 数值稳定性技巧：</p>
+<pre><code>l_{j+1} = l_j · e^{m_j - m_{j+1}} + Σ_k e^{q_x · k^{(j+1)}/√d - m_{j+1}}
+O_{j+1} = (O_j · l_j · e^{m_j - m_{j+1}} + Σ_k e^{...} · v_k^{(j+1)}) / l_{j+1}
+</code></pre>
+<p>优势：序列长度无理论上限（只需更多 GPU）；通信与计算可重叠<br />
+劣势：P2P 通信量与 GPU 数 N 和序列长度 L 成正比，跨节点带宽瓶颈严重</p>
+<h4 id="22-deepspeed-ulysses">2.2 DeepSpeed Ulysses — 注意力头并行</h4>
+<p>论文：<em>DeepSpeed Ulysses: System Optimizations for Enabling Training of Extreme Long Sequence Transformer Models</em>（Jacobs et al., 2024）</p>
+<p>核心思想：沿<strong>注意力头（attention heads）维度</strong>切分。每张 GPU 持有完整序列但只有 H/N 个注意力头。</p>
+<p>工作机制：<br />
+1. 初始：GPU_i 持有完整的 Q、K、V，但只有第 i 组注意力头<br />
+2. 通过 all-to-all 通信交换序列分片 → 变为每卡持有 L/N 的序列但拥有全部注意力头<br />
+3. 本地计算注意力（每头独立，无需通信）<br />
+4. 再次 all-to-all 通信恢复原始分布</p>
+<p>通信模式：两次 all-to-all（不是环形 P2P）<br />
+通信量：4·L·d_model（与 GPU 数无关！）</p>
+<p>优势：通信量不随 GPU 数增长；实现简单<br />
+劣势：<strong>受注意力头数限制</strong> — GPU 数不能超过注意力头数 H。Llama 3 8B 有 32 头，最多 32 张 GPU 做序列并行</p>
+<h3 id="usp">三、USP 统一框架 — 混合两全其美</h3>
+<p>论文：<em>USP: A Unified Sequence Parallelism Approach for Long Context Generative AI</em>（Fang &amp; Zhao, 2024, arXiv:2405.07719）</p>
+<p>核心贡献：将 Ulysses 和 Ring Attention 统一到同一框架。用记号 U_xR_y 表示：<br />
+- x = Ulysses 组大小（头维度切分数）<br />
+- y = Ring 组大小（序列维度环大小）<br />
+- 总 GPU 数 P = x × y</p>
+<p>配置示例：<br />
+- U_4R_1 = 纯 Ulysses（4 头并行，无环）<br />
+- U_1R_4 = 纯 Ring Attention<br />
+- U_2R_2 = 混合（2 组头并行 × 2 节点环形）</p>
+<p>工程价值：一个框架覆盖所有配置，根据硬件拓扑（NVLink 节点内 + 跨节点网络带宽）选择最优组合。已在 HuggingFace Accelerate、TRL SFTTrainer 中集成。</p>
+<h3 id="startrail-neurips-2025">四、StarTrail — 同心环多维并行（NeurIPS 2025）</h3>
+<p>论文：<em>StarTrail: Concentric Ring Sequence Parallelism for Efficient Near-Infinite-Context Transformer Model Training</em>（NeurIPS 2025 Poster）</p>
+<p>核心创新：引入额外并行维度 C（team size），将 P2P 通信拆成子环，大幅降低跨节点通信。</p>
+<p>工作原理：<br />
+- C 张 GPU 组成一个"团队"，团队内部用 Ulysses 式 all-to-all<br />
+- 团队之间用 Ring Attention 式 P2P，但每个 GPU 只与 P/C² 个其他 GPU 通信<br />
+- P2P 通信量减少约 C 倍</p>
+<p>实测性能：<br />
+- <strong>GPT 模型：提速 77.12%</strong><br />
+- <strong>DiT（Diffusion Transformer）：提速 114.33%</strong><br />
+- 覆盖 NLP 和 CV 任务，适用性广<br />
+- 不受注意力头数限制（克服 Ulysses 短板）</p>
+<h3 id="tsp-zyphra-2026">五、TSP — 折叠张量与序列并行（Zyphra, 2026）</h3>
+<p>论文：<em>Folding Tensor and Sequence Parallelism for Memory-Efficient Transformer Training &amp; Inference</em>（arXiv:2604.26294, April 2026）</p>
+<p>核心创新：<strong>将 TP 和 SP 折叠到同一设备轴</strong>。每个 GPU 同时持有权重分片和序列分片，单一设备轴实现 1/D 的参数显存 + 1/D 的激活显存。</p>
+<p>关键突破：<br />
+- 之前：TP 减参数但不减激活，SP 减激活但不减参数。TP+SP 需要二维设备布局（不同轴分别负责）<br />
+- TSP：一个轴同时负责，每个 rank 持有权重分片 + 序列分片<br />
+- 是唯一在单一设备轴上同时降低权重显存和激活显存的方案</p>
+<p>实测数据（1024 × AMD MI300X）：<br />
+- <strong>128K 序列长度，D=8：TSP 173M tokens/sec vs TP+SP 66M tokens/sec → 2.6x 吞吐</strong><br />
+- 显存：TSP 38.8 GB/GPU vs TP+SP 85-140 GB/GPU（128K 序列）<br />
+- 支持 16K~128K 各种序列长度，显存优势一致</p>
+<p>适用场景：长上下文 + 显存受限（如 AMD MI300X 192GB HBM3 虽大但模型也大）</p>
+<h3 id="autosp-pytorch-2026">六、AutoSP — 编译器自动化序列并行（PyTorch 官方, 2026）</h3>
+<p>论文：<em>AutoSP: Unlocking Long-Context LLM Training Via Compiler-Based Sequence Parallelism</em>（arXiv:2604.27089, April 2026）</p>
+<p>核心贡献：<strong>全自动将普通训练代码转为序列并行代码</strong>，用户只需 import + compile。</p>
+<p>技术路线：<br />
+- 在 Torch IR 层面实现编译器 pass<br />
+- 自动识别注意力层，插入序列并行通信原语<br />
+- 自动生成长上下文友好的 activation checkpointing 策略<br />
+- 集成 DeepSpeed，兼容 ZeRO</p>
+<p>实测性能：<br />
+- <strong>NVIDIA GPU：可训练上下文长度提升 2.7x</strong><br />
+- <strong>AMD GPU：提升 2.5x</strong><br />
+- 运行时开销极小（negligible throughput loss）</p>
+<p>工程价值：降低了 SP 的工程门槛。之前需要手写 Ulysses/Ring Attention 通信逻辑，现在编译器自动完成。</p>
+<h3 id="_5">七、其他重要工作</h3>
+<h4 id="zeco-neurips-2025">ZeCO — 线性注意力零通信开销（NeurIPS 2025）</h4>
+<ul>
+<li>专为线性注意力模型设计（非标准 softmax attention）</li>
+<li>通信量：D·e（仅与设备数和元素大小有关，不随序列长度增长！）</li>
+<li>对比：Ulysses 需要 4LD，Megatron CP 需要 2PLD</li>
+<li>适用场景：Mamba/RWKV/RetNet 等线性注意力架构</li>
+</ul>
+<h4 id="untied-ulysses-upipe-arxiv260221196-feb-2026">Untied Ulysses / UPipe — 逐头分块省显存（arXiv:2602.21196, Feb 2026）</h4>
+<ul>
+<li>在注意力头维度上做更细粒度的分块（headwise chunking）</li>
+<li>中间张量显存减少 <strong>87.5%</strong>（32B Transformer）</li>
+<li>Llama3-8B 单节点 8×H100 可训练 <strong>5M token 上下文</strong>（比之前方法提升 25%+）</li>
+<li>速度与现有方法持平</li>
+</ul>
+<h4 id="helixpipe-arxiv250700394-jul-2025">HelixPipe — 注意力并行流水线（arXiv:2507.00394, Jul 2025）</h4>
+<ul>
+<li>将序列并行与流水线并行结合</li>
+<li>注意力并行分区：不同 micro-batch 的注意力计算跨流水线阶段并行</li>
+<li>二折 FILO micro-batch 调度：平衡显存 + 通信计算重叠</li>
+<li>解决长序列下 PP 气泡和显存膨胀问题</li>
+</ul>
+<h2 id="_6">方法对比</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>切分维度</th>
+<th>序列长度上限</th>
+<th>通信模式</th>
+<th>通信量</th>
+<th>头数限制</th>
+<th>代表性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ring Attention</td>
+<td>序列</td>
+<td>无限（GPU够多）</td>
+<td>环形P2P</td>
+<td>O(PLD)</td>
+<td>无</td>
+<td>基线</td>
+</tr>
+<tr>
+<td>DeepSpeed Ulysses</td>
+<td>注意力头</td>
+<td>受GPU显存</td>
+<td>All-to-all</td>
+<td>4LD</td>
+<td>≤H</td>
+<td>百万token训练</td>
+</tr>
+<tr>
+<td>USP (UxRy)</td>
+<td>头+序列</td>
+<td>灵活</td>
+<td>混合</td>
+<td>可调</td>
+<td>可绕过</td>
+<td>统一框架</td>
+</tr>
+<tr>
+<td>StarTrail</td>
+<td>头+子环</td>
+<td>无限</td>
+<td>子环P2P</td>
+<td>O(PLD/C)</td>
+<td>无</td>
+<td>GPT +77%, DiT +114%</td>
+</tr>
+<tr>
+<td>TSP</td>
+<td>权重+序列</td>
+<td>受显存</td>
+<td>混合</td>
+<td>较高</td>
+<td>无</td>
+<td>2.6x吞吐 vs TP+SP</td>
+</tr>
+<tr>
+<td>AutoSP</td>
+<td>编译器自动</td>
+<td>硬件决定</td>
+<td>自动选择</td>
+<td>自动</td>
+<td>无</td>
+<td>上下文 2.7x</td>
+</tr>
+<tr>
+<td>ZeCO</td>
+<td>序列(线性)</td>
+<td>无限</td>
+<td>极少</td>
+<td>De</td>
+<td>无</td>
+<td>线性注意力专用</td>
+</tr>
+<tr>
+<td>UPipe</td>
+<td>注意力头(细粒度)</td>
+<td>5M(8×H100)</td>
+<td>All-to-all</td>
+<td>4LD</td>
+<td>无</td>
+<td>显存 -87.5%</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">关键概念</h2>
+<ul>
+<li><strong>Sequence Parallelism (SP)</strong>：序列并行，将序列维度切分到多个 GPU。Megatron SP 只切非矩阵乘法操作（LayerNorm、Dropout），与 TP 配合使用</li>
+<li><strong>Context Parallelism (CP)</strong>：上下文并行，将所有层的序列维度切分（包括注意力），通信与计算重叠。Megatron-LM 和 NeMo 框架中的叫法</li>
+<li><strong>Blockwise FlashAttention</strong>：分块计算注意力，将 O(L²) 显存降为 O(L)，是 Ring Attention 的数学基础</li>
+<li><strong>Online Softmax</strong>：逐块累积 softmax 归一化常数，避免一次性加载全部注意力矩阵</li>
+<li><strong>All-to-All Communication</strong>：全互联通信，每对 GPU 之间交换数据。Ulysses 的核心通信原语</li>
+<li><strong>NVLink vs 跨节点网络</strong>：NVLink 节点内带宽 900 GB/s，跨节点 InfiniBand 通常 50-100 GB/s。SP 方案设计必须考虑这个差距</li>
+</ul>
+<h2 id="_8">能力边界</h2>
+<ol>
+<li><strong>Ring Attention 跨节点瓶颈</strong>：P2P 通信在跨节点场景下延迟高，低带宽环境下性能退化严重</li>
+<li><strong>Ulysses 头数限制</strong>：32 头的模型最多 32 张 GPU 做序列并行，对超大规模训练不够灵活</li>
+<li><strong>TSP 通信开销</strong>：折叠策略增加了通信量，在通信带宽充足的 NVLink 节点内表现最好</li>
+<li><strong>AutoSP 覆盖范围</strong>：编译器 pass 目前支持标准 Transformer 架构，自定义注意力变体可能不兼容</li>
+<li><strong>ZeCO 仅限线性注意力</strong>：标准 softmax attention 模型无法使用</li>
+<li><strong>所有方案都需要足够 GPU 数量</strong>：序列并行度 = GPU 数量，128K 训练通常至少需要 8 卡</li>
+</ol>
+<h2 id="_9">最佳实践</h2>
+<ol>
+<li><strong>混合配置优先</strong>：用 USP 框架的 U_xR_y 配置，节点内 Ulysses（NVLink 高带宽 all-to-all），跨节点 Ring（减少跨节点通信量）</li>
+<li><strong>与 TP/PP/DP 正交组合</strong>：SP 是独立维度，与三维并行无冲突。典型 4D 并行：TP=4(节点内) + CP=2(跨节点序列) + PP=2 + DP=剩余</li>
+<li><strong>Activation Checkpointing + SP</strong>：长上下文训练中两者配合使用效果最佳，AutoSP 已自动处理</li>
+<li><strong>GQA/MQA 减少通信</strong>：分组查询注意力（GQA）和多头查询注意力（MQA）减少 KV 头数，Ring Attention 通信量相应降低</li>
+<li><strong>先 profiling 后选方案</strong>：不同硬件拓扑（NVLink/IB 数量、带宽比例）下最优 SP 配置差异大</li>
+</ol>
+<h2 id="_10">知识关联</h2>
+<ul>
+<li>[[2026-05-05-分布式训练技术全景-FSDP-DeepSpeed-Megatron]] → 本篇补充了三维并行之外的第四维（序列并行），DeepSpeed Ulysses 是 DeepSpeed 生态的一部分</li>
+<li>[[2026-05-08-LLM推理优化前沿技术2026]] → KV Cache 优化（Ada-KV/DefensiveKV/DepthKV/PagedEviction）与序列并行互补，训练用 SP、推理用 KV 压缩</li>
+<li>[[2026-05-06-MoE混合专家模型-路由策略-负载均衡]] → TSP 论文明确提到支持 MoE 模型，Expert Parallelism 可与 SP 正交组合</li>
+<li>[[2026-05-05-大模型数据工程-合成数据-数据质量-课程学习]] → 长上下文训练数据工程（Long Continued Pretrain 1-20B token @ 32K/128K/1M）需要 SP 支撑</li>
+<li>obs_notes 中无序列并行内容 → 本篇填补了本地知识库的空白</li>
+</ul>
+<h2 id="_11">🔍 借鉴学习进化点</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>USP 混合配置思路</td>
+<td>节点内 Ulysses + 跨节点 Ring，根据带宽自适应选择</td>
+<td>任何分布式系统中，本地高带宽用粗粒度通信，远程用细粒度点对点，这个模式可迁移到 Agent 多机协作的通信策略</td>
+<td>审视 exchange-protocol skill 的通信模式</td>
+</tr>
+<tr>
+<td>2</td>
+<td>AutoSP 编译器自动化</td>
+<td>编译器 pass 自动插入 SP 通信原语，零手写</td>
+<td>Hermes 的 skill pipeline 也应是"编译器式"——自动注入、自动优化，而非手动拼装</td>
+<td>skill-pipeline skill 可借鉴 AutoSP 的 pass 设计理念</td>
+</tr>
+<tr>
+<td>3</td>
+<td>TSP 折叠策略</td>
+<td>单一设备轴同时处理权重+序列，降低两维度显存</td>
+<td>系统 agent 中，一个维度同时承担两种职责（如 memory-skill 同时做读+写优化），减少组件间数据拷贝</td>
+<td>审视 memory-system skill 是否有类似冗余</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Ring Attention online softmax</td>
+<td>逐块累积统计量，无需一次性加载全部数据</td>
+<td>流式处理大数据（如 RAG 索引重建、大文件分析）时可用类似"累积归一化"模式</td>
+<td>rag-index-rebuild skill 中应用流式处理</td>
+</tr>
+<tr>
+<td>5</td>
+<td>StarTrail 子环分组</td>
+<td>C² 通信量降为 P/C²，分组隔离减少跨组通信</td>
+<td>多 agent 协作中，按亲和度分组（sub-ring），组内高频通信，组间低频同步</td>
+<td>kanban-orchestrator 的 agent 分组策略参考</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_12">当前状态</h3>
+<ul>
+<li>wiki-kb：无序列并行相关条目</li>
+<li>RAG：无序列并行索引</li>
+<li>Memory：分布式训练笔记中提及但未深入</li>
+</ul>
+<h3 id="_13">改进方案</h3>
+<ol>
+<li>新增 RAG 索引条目（序列并行/上下文并行/长上下文训练）</li>
+<li>更新 learning-targets.md 知识地图中的分布式训练分支，加入 SP/CP 子树</li>
+<li>与推理加速笔记建立交叉引用</li>
+</ol>
+<h3 id="_14">已执行操作</h3>
+<ul>
+<li>✅ 生成双格式笔记（MD + HTML）</li>
+<li>✅ 更新 index.md</li>
+<li>✅ 更新 RAG 索引</li>
+<li>✅ 更新 learning-targets.md</li>
+</ul>
+<h2 id="_15">待深入问题</h2>
+<ol>
+<li><strong>DeepSeek-V3/V4 的 MLA（Multi-head Latent Attention）+ SP 交互</strong> — MLA 压缩 KV 后，Ring Attention 通信量如何变化？</li>
+<li><strong>MoE + 序列并行的专家路由问题</strong> — 不同序列片段可能激活不同专家，EP 和 SP 的 GPU 分配如何优化？</li>
+<li><strong>SP 对训练精度的影响</strong> — Ring Attention 的分块计算是否有数值精度损失？不同精度（FP32/BF16/FP8）下的差异？</li>
+<li><strong>推理阶段的序列并行</strong> — 训练用 SP，推理时 Prefill 阶段能否复用？Decode 阶段（逐 token 生成）SP 无意义？</li>
+<li><strong>1M+ token 的实际训练成本</strong> — 用 SP 训练 1M 上下文需要多少 GPU·小时？性价比分析？</li>
+<li><strong>序列并行 + 量化的兼容性</strong> — QAT + SP 是否有交互影响？</li>
+</ol>
+<h2 id="_16">相关笔记</h2>
+<ul>
+<li><a href="2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析.md">MoE投机解码-稀疏激活与推理加速深度解析</a></li>
+<li><a href="2026-05-13-从零训练GPT完整指南.md">从零训练GPT完整指南</a></li>
+<li><a href="2026-05-14-多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解.md">多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解</a></li>
+</ul>
+<h2 id="_17">相关笔记</h2>
+<ul>
+<li><a href="2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案.md">JAX-NVIDIA-GPU-微调Llama3.1</a></li>
+<li><a href="2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析.md">MoE投机解码-稀疏激活与推理加速</a></li>
+<li><a href="2026-05-14-多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解.md">多目标GRPO-Reward融合</a></li>
+</ul>
+<h2 id="_18">相关笔记</h2>
+<ul>
+<li><a href="2026-05-12-网络安全-security-automation.md">2026-05-12-网络安全-security-automation</a></li>
+<li><a href="2026-05-12-数据治理-data-catalog.md">2026-05-12-数据治理-data-catalog</a></li>
+<li><a href="20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化.md">20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化</a></li>
+<li><a href="llm-wiki-gbrain-agent-evolution_33aa818c.md">llm-wiki-gbrain-agent-evolution_33aa818c</a></li>
+<li><a href="2026-05-15-上下文才是Agent的命门-QClaw上下文竞争论.md">2026-05-15-上下文才是Agent的命门-QClaw上下文竞争论</a></li>
+</ul>
+</body>
+</html>

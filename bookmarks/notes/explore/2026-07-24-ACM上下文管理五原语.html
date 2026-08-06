@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ACM上下文管理五原语</title>
+
+<meta property="og:title" content="ACM上下文管理五原语" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agentic-context-management-agent">Agentic Context Management：从"存储"到"全生命周期"的 Agent 上下文管理范式</h1>
+<blockquote>
+<p>论文：Agentic Context Management: Solving Agent Memory and Cost by Treating Them as Lifecycle and Architecture Problems<br />
+arXiv: 2607.21503 | 2026-07-23 | cs.AI, cs.IR<br />
+作者：Gaurav Dadhich（Maximem AI）<br />
+代码：github.com/maximem-ai（含开源 eval harness）</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心问题与研究动机</h2>
+<p>生产级 AI Agent 的主要失败原因不是"推理能力不足"，而是"无法管理推理上下文中应该有什么"。</p>
+<p>论文指出当前行业将这个问题框定为"记忆"（memory）——一个存储和检索问题。这个框定本身是局限的。Agent 需要在每一轮对话中做出五种决策：</p>
+<ol>
+<li>刚说的内容中哪些值得保留</li>
+<li>以什么结构保留</li>
+<li>已保留的所有信息中，哪些属于当前轮次需要的上下文</li>
+<li>下一轮可能需要什么</li>
+<li>当相关上下文超出模型预算时该怎么办</li>
+</ol>
+<p>这五个决策发生在五个不同时刻，而"存储"只覆盖了其中一个。</p>
+<p>行业现状佐证：McKinsey 2025 报告显示，多数企业在试验 AI Agent，但只有约 1/4 报告扩展中，不到 10% 在单个业务功能中成功规模化。绝大多数 Agent 试点永远无法进入生产。</p>
+<hr />
+<h2 id="acm">二、核心理论框架：ACM 五原语</h2>
+<p>论文提出 <strong>Agentic Context Management（ACM）</strong> 学科定义，分解为五个原语：</p>
+<h3 id="1architecting">原语 1：Architecting（架构设计）</h3>
+<ul>
+<li>在存储任何记忆之前，必须决定给定 Agent 的记忆形态</li>
+<li>哪些信息类别重要、如何提取、存储在哪、保存多久、如何检索和压缩</li>
+<li>关键论点：<strong>通用固定 schema 无法同时服务金融支持 Agent 和编码助手</strong>——它们的类别、保留策略和压缩需求完全不同</li>
+<li>Maximem Synap 采用自主 LLM 推理的设计步骤，根据 Agent 用途生成定制架构</li>
+</ul>
+<h3 id="2ingesting">原语 2：Ingesting（摄入）</h3>
+<ul>
+<li>原始信号（对话轮次、多模态文档、工具调用及响应）必须转化为结构化、可检索的记忆</li>
+<li><strong>核心观察：检索质量受限于摄入质量</strong></li>
+<li>反例：存"用户提到了定价计划"永远无法检索到"用户在4月3日从 Starter 升级到 Pro"这个具体事实</li>
+<li>摄入是异步队列驱动的多阶段管线：资格审查→提取记忆类别（事实/偏好/事件/情感/时间事件）+ 实体/关系/时间有效性→实体解析→多存储持久化</li>
+<li><strong>实体解析</strong>：同一实体以多种表面形态出现（"Sarah"/"Sarah Chen"/"SC"），通过置信度排序的级联匹配策略解决——从精确标识符到渐进式宽松的词法/语义/上下文信号</li>
+</ul>
+<h3 id="3scoping">原语 3：Scoping（作用域管理）</h3>
+<ul>
+<li>在摄入和检索时，系统必须决定哪些信息与未来相关，在什么作用域内</li>
+<li><strong>三级作用域层次</strong>（从窄到宽）：</li>
+<li>user（个体用户/子 Agent）</li>
+<li>customer（用户所属的组织）</li>
+<li>client（跨多组织的平台运营者）</li>
+<li>摄入和检索都应<strong>从窄到宽</strong>解析：先 user，再 customer，再 client，严格执行隔离</li>
+<li>全局知识层单独存在（如公共实体的规范身份）</li>
+<li><strong>作用域泄漏失败模式</strong>：一个用户的偏好出现在另一个用户的会话中</li>
+</ul>
+<h3 id="4anticipating">原语 4：Anticipating（预取）</h3>
+<ul>
+<li>Agent 不知道自己不知道什么。如果从不主动请求，就不可能检索到</li>
+<li>借鉴计算机系统的<strong>推测性预取</strong>（speculative prefetching），应用于 Agent 上下文</li>
+<li>不同于缓存：缓存重放已查询的答案；预取从 Agent 的行为演化中预测尚未请求的上下文，在请求到达前准备好</li>
+<li><strong>价值在于延迟而非去重</strong>：将阻塞式检索往返变为缓存读取</li>
+<li>当前实测命中率 60%+</li>
+</ul>
+<h3 id="5compacting-consolidation">原语 5：Compacting &amp; Consolidation（压缩与合并）</h3>
+<ul>
+<li>当相关上下文超出下游模型预算时，系统必须在不丢弃关键信息的前提下削减</li>
+<li><strong>核心论点：压缩必须是可验证的操作</strong></li>
+<li>无验证的压缩比不压缩更糟糕——它产生自信的错误答案</li>
+<li>先例：Zhang et al. (2025) 将 18,282 token 压缩到 122 token，任务准确率从 66.7% 降到 57.1%，<strong>低于完全不提供上下文的基线</strong></li>
+<li>Maximem Synap 的验证压缩：检查原始对话的关键信息是否能从压缩结果中恢复，输出显式验证分数和压缩比，验证不达标时自动降级重试</li>
+</ul>
+<h3 id="_2">原语间的耦合</h3>
+<p>五个原语相互耦合：架构原语选择的配置改变了其他四个原语应该做什么。这种耦合是<strong>将上下文作为系统管理</strong>（而非拼装五个独立工具）的核心论据。</p>
+<hr />
+<h2 id="_3">三、经济论证：为什么全生命周期管理是必需的</h2>
+<h3 id="31-on2">3.1 不做任何管理的成本是 O(n²)</h3>
+<p>朴素"全追加"模式（每轮重新发送完整历史）：<br />
+- 第 k 轮输入上下文 ≈ k·t tokens<br />
+- n 轮累积输入 token：C_append ≈ (t/2)·n² = <strong>O(n²)</strong><br />
+- 因为提供商按输入 token 计费，成本随对话长度二次增长</p>
+<p>如果系统将上下文限制在固定预算 W：<br />
+- 累积 token：n·W = <strong>O(n)</strong><br />
+- 全追加与有界上下文的成本比：t(n+1)/(2W)，随 n 线性增长<br />
+- 示例值（t=500, W=4000）：100 轮时 6×，200 轮时 13×</p>
+<h3 id="32">3.2 朴素压缩会摧毁准确率</h3>
+<p>有界预算是必要的，但如何决定边界决定了是否保持准确率。</p>
+<ul>
+<li><strong>粗糙摘要</strong>（crude summarization）：限制 token 但有损且无验证，损失可能是灾难性的</li>
+<li><strong>验证压缩</strong>（validated compaction）：O(n) 成本 + 保持保真度</li>
+</ul>
+<p>三种方案的准确率-成本前沿：<br />
+- 全追加：O(n²) 成本，完整（直到上下文腐蚀）<br />
+- 粗糙摘要：O(n) 成本，有损未验证 → 准确率悬崖<br />
+- 验证压缩：O(n) 成本，保持且检查 ← <strong>目标</strong></p>
+<h3 id="33">3.3 检索不等于充分性</h3>
+<p>答案质量 ≤ min(摄入质量, 检索质量, 推理充分性)</p>
+<p>每一个环节都会限制输出质量：<br />
+- 存入垃圾 → 摄入质量限制你<br />
+- 检索到错误材料 → 检索质量限制你<br />
+- 检索到部分相关材料但非全部推理所需 → 推理充分性限制你（<strong>最被忽视的瓶颈</strong>）</p>
+<p><strong>五域检索对照研究</strong>（10,000 文档/域 × 5 域 × 1,000 查询/域，MRR@10 评分）：<br />
+- 代码检索（CodeXGLUE）：向量 0.91 vs 关键词 0.29（语义鸿沟最大时向量完胜）<br />
+- 科学QA（SciQ）：关键词 0.81 vs 向量 0.61（术语是精确实体时关键词完胜）<br />
+- 事实QA（SQuAD）：持平<br />
+- 多跳推理（HotpotQA）：略偏向关键词<br />
+- <strong>向量税</strong>：索引同一语料库，向量嵌入生成比关键词索引慢 <strong>60-100 倍</strong></p>
+<p>关键发现：现有评测（包括 HotpotQA）只评"金标文档是否出现在 Top-K"，<strong>无法检测最重要的 Agent 失败——检索到了相关文档但缺失完成推理链所需的桥接文档</strong>。</p>
+<p><strong>结论：检索必须结合词法和语义信号——关键词+向量混合检索</strong>。再加上图检索保留关系信息和来源管理，形成三路混合。</p>
+<hr />
+<h2 id="maximem-synap">四、参考实现：Maximem Synap 系统</h2>
+<h3 id="_4">客户端界面</h3>
+<ul>
+<li>异步优先 SDK（Python 正典，JavaScript 桥接）</li>
+<li>记忆写入立即返回摄入 ID，永不阻塞</li>
+<li>统一的作用域感知检索调用</li>
+<li>会话压缩调用 + 流式通道</li>
+<li>租户隔离在存储层（每租户命名空间）和查询层（作用域谓词）双重强制</li>
+</ul>
+<h3 id="polyglot">多语言存储栈（polyglot）</h3>
+<ul>
+<li>向量存储（嵌入）</li>
+<li>图存储（实体-关系图）</li>
+<li>关系存储（真相来源 + 短期上下文）</li>
+<li>对象存储（原始内容 + 每 Agent 配置）</li>
+<li>时序存储（使用遥测）</li>
+<li>内存存储（队列/缓存/协调）</li>
+</ul>
+<h3 id="_5">生产集成模式（核心三调用模式）</h3>
+<p>每轮对话围绕模型调用的三步操作：<br />
+1. <strong>FETCH</strong>：作用域感知检索过去上下文（scope={user, customer}）<br />
+2. <strong>COMPACT</strong>：验证压缩当前会话<br />
+3. <strong>MODEL</strong>：组装（检索+压缩+最近轮次）调用模型<br />
+4. <strong>INGEST</strong>：异步摄入新轮次（立即返回摄入 ID）</p>
+<p>关键：此模式中<strong>没有</strong> schema 设计、嵌入模型选择、索引管理和隔离逻辑——这些都是生命周期的工作。</p>
+<h3 id="_6">压缩的线性成本证明</h3>
+<p>验证不是免费的——压缩+检查需要消耗 token。但压缩不是一次性事件：每 p 轮触发一次，每次处理已压缩上下文+最近轮次。N 轮总 token 成本：N·W·(1+c/p)——即 O(n) 乘以固定因子。</p>
+<p>对比 O(n²) 全追加基线，节省随对话长度增长：<br />
+- t=500, W=4000, p=8, c=2（固定 1.25× 开销）<br />
+- 100 轮节省 ~80%<br />
+- 200 轮节省 ~90%<br />
+- 500 轮节省 ~96%</p>
+<hr />
+<h2 id="_7">五、关键实验结果</h2>
+<h3 id="longmemeval-500-6">LongMemEval 基准（500 题，6 类能力）</h3>
+<p>总分 <strong>92.0%（460/500）</strong>，使用 gpt-5-mini 作为答案模型和裁判</p>
+<p>分项：<br />
+- 单会话用户信息：100%（70/70）<br />
+- 单会话用户偏好：100%（30/30）<br />
+- 知识更新：100%（78/78）<br />
+- 时间推理：100%（133/133）<br />
+- 单会话助手信息：87.5%（49/56）<br />
+- <strong>多会话推理：75.2%（100/133）← 最弱类别</strong></p>
+<h3 id="locomo-300">LoCoMo 基准（~300 轮长对话）</h3>
+<p>总分 <strong>93.2%</strong>（类别 1-4，排除对抗性类别 5）</p>
+<p>分项：<br />
+- 多跳推理：97.3%<br />
+- 开放域：93.4%<br />
+- 时间：90.8%<br />
+- 单跳：88.8%</p>
+<h3 id="longmemeval">竞争格局（LongMemEval 自报数据，非控制对比）</h3>
+<ul>
+<li>Maximem Synap：92.0%（gpt-5-mini）</li>
+<li>SuperMemory：85.2%（Gemini-3 Pro）</li>
+<li>Zep：71.2%（gpt-4o）</li>
+<li>Mem0：未公布</li>
+<li>Letta (MemGPT)：未公布</li>
+</ul>
+<p>关键观察：Maximem Synap 使用<strong>更小的答案模型</strong>（gpt-5-mini）达到了最高分——增益来自上下文层而非模型能力。</p>
+<h3 id="_8">弱点诚实声明</h3>
+<p>残留错误集中在多会话类别（75.2%）——必须跨多个独立会话连接信息的推理，恰好是论文 3.3 节描述的"推理充分性"机制。</p>
+<hr />
+<h2 id="_9">六、创新点分析</h2>
+<ol>
+<li>
+<p><strong>范式重构</strong>：将"记忆"（存储问题）重新定义为"上下文管理"（生命周期问题），这是概念层面的核心贡献。不是更好的记忆工具，而是更高的抽象层级。</p>
+</li>
+<li>
+<p><strong>五原语分解</strong>：将模糊的"上下文管理"操作化为五个可独立评估的原语，每个原语都有对应的<strong>命名失败模式</strong>（Table 1）：垃圾累积、细节丢失、身份碎片化、作用域泄漏、跨会话遗忘、检索在关键路径上、准确率悬崖、二次成本增长。</p>
+</li>
+<li>
+<p><strong>经济论证的数学严谨性</strong>：不只是说"管理上下文很重要"，而是证明了不管理的成本是 O(n²)，有界管理是 O(n)，且验证压缩可以在线性成本下保持保真度。</p>
+</li>
+<li>
+<p><strong>作用域层次</strong>：将多租户隔离作为一等公民。大多数记忆工具扁平化为单用户作用域，要么丢失组织上下文，要么泄漏用户数据。</p>
+</li>
+<li>
+<p><strong>检索充分性缺口</strong>：指出现有基准的根本缺陷——只衡量"检索命中"而非"推理所需一切是否出现"，这是一个未被现有评测捕获的关键失败模式。</p>
+</li>
+<li>
+<p><strong>混合检索经验证据</strong>：五域对照实验量化了向量与关键词检索各自的优势域，以及"向量税"的 60-100 倍索引延迟成本。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_10">七、局限性与未来方向</h2>
+<h3 id="_11">论文承认的局限</h3>
+<ul>
+<li>两个基准只衡量对话召回和基于召回内容的推理，<strong>不衡量延迟、token 效率和上下文腐蚀抵抗</strong></li>
+<li>跨厂商对比不可比（不同方法学、不同答案模型）</li>
+<li>参考实现 Maximem Synap 是商业产品，核心机制未公开（压缩验证机制、预取预测机制均为专有）</li>
+<li>五域检索研究是单操作者、单关键词引擎对单向量存储，无分块，小规模</li>
+</ul>
+<h3 id="_12">未来方向：决策级与组织级上下文</h3>
+<ul>
+<li>当前生命周期管理对话级和组织级上下文</li>
+<li>前沿是<strong>决策级上下文</strong>：不仅捕获发生了什么，还捕获组织为什么做出该决策</li>
+<li>难题：大多数决策是隐式的从未被记录；记录的理由往往是事后辩护而非真实追踪；将决策与结果关联需要因果归因；知道过去的决策何时被取代本身就是问题</li>
+</ul>
+<hr />
+<h2 id="_13">八、开源评估框架</h2>
+<p>论文配套开源了 <strong>memory_and_context_eval_harness</strong>（github.com/maximem-ai/memory_and_context_eval_harness），MIT 许可：</p>
+<ul>
+<li><strong>五阶段管线</strong>：Ingest → Search → Answer → Evaluate → Report</li>
+<li><strong>四提供商</strong>：Synap、Mem0、Zep、Supermemory + 自定义 Provider ABC</li>
+<li><strong>两基准</strong>：LongMemEval（500题/940会话）、LoCoMo（1540题/5290会话）</li>
+<li><strong>两评估模式</strong>：Global（共享容器，快速跨会话推理）、Isolated（每题独立容器，无交叉污染）</li>
+<li><strong>检索指标</strong>：Hit@K、Precision@K、Recall@K、F1@K、MRR、NDCG</li>
+<li><strong>前端</strong>：Next.js 交互式仪表盘</li>
+</ul>
+<p>Provider 接口抽象：</p>
+<pre><code>initialize → ingest → await_indexing → search → clear
+</code></pre>
+<hr />
+<h2 id="hermes-agent">九、借鉴点评估（关联 Hermes Agent）</h2>
+<h3 id="p0">P0 — 可立即执行</h3>
+<p><strong>1. 验证压缩门禁（Validated Compaction Gate）</strong></p>
+<p>论文核心论点：无验证的压缩比不压缩更糟糕（18,282→122 token 导致准确率低于无上下文基线）。Hermes 已有 <code>context-compressor</code> skill，但缺乏压缩后验证。</p>
+<p>建议：在 <code>context-compressor</code> 中增加压缩后验证步骤——压缩完成后，用 LLM 检查关键信息是否可从压缩结果恢复，输出验证分数，不达标时自动降级重试。</p>
+<p><strong>2. 混合检索路由（Hybrid Retrieval）</strong></p>
+<p>论文五域实验证明：向量检索在语义鸿沟大的场景完胜（代码 0.91 vs 0.29），关键词检索在精确实体场景完胜（科学 0.81 vs 0.61）。Hermes 已有 <code>hybrid-search</code> skill（semantic+keyword+entity 三路）。</p>
+<p>建议：为 <code>knowledge-query</code> skill 增加<strong>场景感知路由</strong>——检测查询类型自动选择检索策略，而非统一用向量检索。代码/概念查询 → 向量优先，实体/配置查询 → 关键词优先。</p>
+<p><strong>3. 记忆垃圾治理（Junk Rate Audit）</strong></p>
+<p>论文引用的审计案例：某记忆库 32 天存入 10,134 条，仅 38 条可用，垃圾率 99.6%（启动文件重述、cron 噪声、配置转储）。这与 Hermes 的 <code>memory-consolidation</code> skill 直接相关。</p>
+<p>建议：立即执行一次 Hermes 记忆垃圾审计——扫描 <code>~/.hermes/memories/</code> 统计低价值条目比例（重复、过短、配置转储），评估是否需要更新 <code>memory-consolidation</code> 的清理规则。</p>
+<h3 id="p1">P1 — 值得规划</h3>
+<p><strong>4. 作用域感知检索（Scope-Aware Retrieval）</strong></p>
+<p>论文三级作用域（user→customer→client）与 Hermes 的多 profile 架构对应。Hermes 已有 cross-profile 软防护，但缺乏主动的作用域感知检索。</p>
+<p>建议：在 <code>knowledge-query</code> 中增加 profile scope 参数，检索时从窄到宽解析（当前 profile → 共享知识 → 全局知识），带严格隔离。</p>
+<p><strong>5. 预取机制（Anticipatory Prefetch）</strong></p>
+<p>论文的预取原语（60%+ 命中率）在 Hermes 中可体现为：<code>session-boot</code> 时预加载可能需要的上下文（近期未完成任务+关联记忆），而非被动等待用户请求。</p>
+<h3 id="p2">P2 — 长期方向</h3>
+<p><strong>6. 验证压缩的线性成本模型</strong></p>
+<p>论文证明了验证压缩的 N·W·(1+c/p) 线性成本公式，200 轮节省 90% token。Hermes 长会话（如 cron 任务连续执行）可参考此模型设计周期性压缩触发策略（每 p 轮触发一次）。</p>
+<p><strong>7. 决策级上下文</strong></p>
+<p>论文的前沿方向——捕获"为什么做了这个决策"而非仅"发生了什么"。Hermes 的 <code>error-case-library</code> skill 部分覆盖了错误决策追踪，但缺乏成功决策的推理过程记录。</p>
+<hr />
+<h2 id="_14">十、关联论文与资源</h2>
+<ul>
+<li><strong>Mem0</strong>（2504.19413）—— 生产级 Agent 长期记忆系统</li>
+<li><strong>Zep</strong>（Rasmussen et al. 2025）—— 时序知识图记忆，LongMemEval 71.2%</li>
+<li><strong>Miras</strong>（2504.13173）—— 测试时记忆化/注意力偏置/保留/在线优化，ICLR 2026</li>
+<li><strong>Zhang et al. (2025)</strong>—— 压缩准确率悬崖的经典案例（66.7%→57.1%）</li>
+<li><strong>LongMemEval</strong>（2407.01501）—— 500 题长期记忆基准</li>
+<li><strong>LoCoMo</strong>—— ~300 轮超长对话问答基准</li>
+<li><strong>开源 eval harness</strong>：github.com/maximem-ai/memory_and_context_eval_harness</li>
+<li><strong>检索对照数据</strong>：github.com/maximem-ai/file-vs-vector-study-results</li>
+</ul>
+<hr />
+<p><em>笔记生成时间：2026-07-24 | 精读策略：B（arXiv API 自主搜索）| 选文评分：12分（agent+memory+cost+context+lifecycle 关键词多重命中）</em></p>
+<h2 id="_15">相关笔记</h2>
+<ul>
+<li><a href="./2026-07-22-SupraCognitiveModes-Agent记忆路由架构.md">SupraCognitiveModes: Agent记忆路由架构</a> — Agent 记忆多模式路由</li>
+<li><a href="./2026-07-21-SlotGuard-Agent转录本隐私边界.md">SlotGuard: Agent转录本隐私边界</a> — 转录本隐私保护</li>
+<li><a href="./2026-07-21-LLM自进化为何崩溃-自合成数据信息增益.md">LLM自进化为何崩溃</a> — 自合成数据的信息增益退化</li>
+<li><a href="./2026-07-23-BindingDrift-多步Agent实体绑定漂移.md">BindingDrift: 多步Agent实体绑定漂移</a> — 多步 Agent 实体一致性</li>
+</ul>
+</body>
+</html>

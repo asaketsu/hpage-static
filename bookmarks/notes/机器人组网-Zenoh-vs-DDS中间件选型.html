@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器人组网-Zenoh-vs-DDS中间件选型</title>
+
+<meta property="og:title" content="机器人组网-Zenoh-vs-DDS中间件选型" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="zenoh-dds">机器人从单机走向组网，Zenoh 会替代 DDS 吗？</h1>
+<blockquote>
+<p><strong>来源</strong>: <a href="https://mp.weixin.qq.com/s/imTIz9WBlo7jm0k6CxJVHA">微信公众号 - 机器人技术笔记</a><br />
+<strong>作者</strong>: 机器人技术笔记<br />
+<strong>日期</strong>: 2026-07-24<br />
+<strong>标签</strong>: <code>robotics</code> <code>middleware</code> <code>DDS</code> <code>Zenoh</code> <code>ROS2</code> <code>通信架构</code> <code>组网</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心结论</h2>
+<p>DDS 和 Zenoh 长期共存。<strong>已稳定运行的 DDS 项目无需迁移；从头设计的多控制器机器人应尽早把 Zenoh 放进测试矩阵。</strong> 关键判据：数据从哪产生、要经过哪些设备、哪些链路不能中断——画清楚这三点，答案自然浮现。</p>
+<hr />
+<h2 id="_2">一、问题背景：一个动作为什么要多台机器协作</h2>
+<p>现代具身机器人的控制链已从单机演进到多机接力：</p>
+<pre><code>&quot;拿起桌上瓶子&quot; 的控制链:
+
+独立推理机 (Orin/GPU)       → 理解自然语言 + 相机画面
+    ↓
+AI 控制器 (x86/RK3588)      → 找到目标
+    ↓
+运动控制器                   → 计算动作轨迹
+    ↓
+底盘/关节控制器              → 执行电机指令
+</code></pre>
+<h3 id="_3">为什么必须拆开？</h3>
+<table>
+<thead>
+<tr>
+<th>设备</th>
+<th>职责</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>独立推理机</td>
+<td>视觉感知、大模型推理</td>
+<td>吃算力，适合 Orin/Thor/GPU</td>
+</tr>
+<tr>
+<td>AI/运动控制器</td>
+<td>运动规划</td>
+<td>要求稳定及时，放 x86 工控机/RK3588</td>
+</tr>
+<tr>
+<td>底盘/关节控制器</td>
+<td>底层闭环</td>
+<td>按自己节奏运行</td>
+</tr>
+</tbody>
+</table>
+<p><strong>代价</strong>：原来留在一块主板里的数据，现在要在网络上来回跑。且数据特性各异：<br />
+- 相机图像：<strong>大且连续</strong><br />
+- 关节状态：<strong>小但高频</strong><br />
+- 大模型返回：<strong>速度波动</strong><br />
+- 运动控制：<strong>不能忽快忽慢</strong></p>
+<hr />
+<h2 id="dds-vs-zenoh">二、DDS vs Zenoh：核心区别</h2>
+<h3 id="dds">DDS 的思路：「找到人，再传数据」</h3>
+<pre><code>DDS 工作流:
+参与者进入同一通信域
+    ↓
+自动发现彼此 (Discovery)
+    ↓
+交换各自有哪些 读/写端
+    ↓
+相同 Topic 的写端和读端匹配
+    ↓
+数据开始流动 (QoS 约定可靠性/历史深度)
+</code></pre>
+<ul>
+<li><strong>Fast DDS</strong>：ROS 2 默认实现，支持 UDP/TCP/共享内存/Discovery Server</li>
+<li><strong>Cyclone DDS</strong>：另一套实现，自动发现 + QoS + 单播 Peer 配置</li>
+<li><strong>优势</strong>：一台控制器或边界清楚的局域网里，自动发现很省心</li>
+<li><strong>痛点</strong>：跨无线链路和多个子网时，发现范围需要人为约束，配置复杂度随网络边界增多而上升</li>
+</ul>
+<h3 id="zenoh">Zenoh 的思路：「先给数据取名，再决定数据往哪走」</h3>
+<pre><code>Zenoh 工作流:
+数据取键名 (key)
+  例: robot/01/camera/front
+  例: robot/01/target/bottle
+    ↓
+节点订阅键名
+    ↓
+只有订阅了该键的节点才收到数据
+    ↓
+跨主机/子网时由 Router 把数据带到另一边
+</code></pre>
+<ul>
+<li>网络由 <strong>Peer、Client、Router</strong> 组成</li>
+<li>Router 听起来像中心 Broker，但在 <code>rmw_zenoh</code> 默认设计中，<strong>本机数据仍可在节点间直接传输</strong></li>
+<li>Router 主要帮助节点发现彼此，并连接不同主机/网络区域</li>
+</ul>
+<h3 id="_4">对比总结</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>DDS</th>
+<th>Zenoh</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>设计起点</strong></td>
+<td>先发现参与者，再传数据</td>
+<td>先给数据取名，再决定路由</td>
+</tr>
+<tr>
+<td><strong>发现机制</strong></td>
+<td>同域自动发现 (可配 Discovery Server/Peer)</td>
+<td>Router 辅助发现，按数据键路由</td>
+</tr>
+<tr>
+<td><strong>跨子网</strong></td>
+<td>可配置但复杂度随网络边界上升</td>
+<td>Router 天然连接不同网络区域</td>
+</tr>
+<tr>
+<td><strong>数据过滤</strong></td>
+<td>基于内容过滤订阅</td>
+<td>按键名订阅（<strong>内容过滤订阅暂不支持</strong>）</td>
+</tr>
+<tr>
+<td><strong>ROS 2 支持</strong></td>
+<td><code>rmw_fastrtps_cpp</code> / <code>rmw_cyclonedds_cpp</code></td>
+<td><code>rmw_zenoh_cpp</code> (Kilted 起 Tier-1)</td>
+</tr>
+<tr>
+<td><strong>Dora 支持</strong></td>
+<td>—</td>
+<td>跨机器时原生用 Zenoh 发布订阅</td>
+</tr>
+<tr>
+<td><strong>成熟度</strong></td>
+<td>成熟，QoS/调试工具/团队经验积累深厚</td>
+<td>新兴，部分功能仍有限制</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">三、官方支持现状</h2>
+<h3 id="ros-2-rmw">ROS 2 RMW 层</h3>
+<table>
+<thead>
+<tr>
+<th>中间件</th>
+<th>RMW 实现</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Fast DDS</strong></td>
+<td><code>rmw_fastrtps_cpp</code></td>
+<td>✅ <strong>默认实现</strong></td>
+</tr>
+<tr>
+<td><strong>Cyclone DDS</strong></td>
+<td><code>rmw_cyclonedds_cpp</code></td>
+<td>✅ 完整支持</td>
+</tr>
+<tr>
+<td><strong>Zenoh</strong></td>
+<td><code>rmw_zenoh_cpp</code></td>
+<td>✅ <strong>Kilted 起 Tier-1</strong>，随二进制发行版提供</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dora">Dora</h3>
+<ul>
+<li>本机通信：共享内存</li>
+<li>跨机器：<strong>自动采用 Zenoh 发布订阅</strong></li>
+<li>接入 ROS 2：通过 ROS 2 Bridge（目前标为 <strong>Experimental</strong>）</li>
+</ul>
+<h3 id="zenoh_1">Zenoh 当前限制</h3>
+<ul>
+<li>内容过滤订阅（Content-Filtered Subscription）<strong>暂不支持</strong></li>
+<li>跨发行版兼容性有限制</li>
+<li>桥接互操作仍在完善</li>
+</ul>
+<hr />
+<h2 id="_6">四、选型建议</h2>
+<h3 id="_7">决策树</h3>
+<pre><code>你的项目情况?
+│
+├── 老项目，Fast DDS 已稳定运行
+│   └── 继续 DDS ✅ (QoS配置/抓包/故障定位经验是稳定性的一部分)
+│
+├── 想留在 DDS 但对默认实现不满意
+│   └── 测试 Cyclone DDS ✅ (用真实图像大小/控制频率/网络条件对比)
+│
+└── 新的多控制器项目
+    ├── 连接独立 VLM 推理机 / 多机器人 / 边缘服务器
+    │   └── 从设计阶段放入 Zenoh 测试矩阵 ✅
+    └── 但测试不能省
+        ├── Router 怎样部署
+        ├── 断网后多久恢复
+        └── 现有 ROS 2 功能是否都能覆盖
+</code></pre>
+<h3 id="_8">一句话原则</h3>
+<blockquote>
+<p><strong>选型前，先把数据从哪里产生、要经过哪些设备、哪些链路不能中断画清楚。做到这一步，项目更适合 DDS 还是 Zenoh，答案通常已经很明显了。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_9">五、与自身项目的关联思考</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>适用中间件</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单控制器机器人（感知/规划/控制同机）</td>
+<td><strong>DDS</strong></td>
+<td>通信在进程间，DDS 成熟够用</td>
+</tr>
+<tr>
+<td>多控制器机器人（推理机+控制器+底层分离）</td>
+<td><strong>Zenoh 值得测</strong></td>
+<td>跨设备发现/路由/恢复是架构核心</td>
+</tr>
+<tr>
+<td>多机器人组网</td>
+<td><strong>Zenoh</strong></td>
+<td>Router 天然适合跨网络区域</td>
+</tr>
+<tr>
+<td>已有稳定 DDS 项目</td>
+<td><strong>维持 DDS</strong></td>
+<td>迁移风险 &gt; 收益</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_10">六、关键术语</h2>
+<table>
+<thead>
+<tr>
+<th>术语</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DDS</strong></td>
+<td>Data Distribution Service，ROS 2 的标准中间件协议</td>
+</tr>
+<tr>
+<td><strong>Zenoh</strong></td>
+<td>新兴网络协议，以数据键和路由为核心</td>
+</tr>
+<tr>
+<td><strong>RMW</strong></td>
+<td>ROS Middleware，ROS 2 的中间件抽象层</td>
+</tr>
+<tr>
+<td><strong>QoS</strong></td>
+<td>Quality of Service，DDS 的传输质量约定</td>
+</tr>
+<tr>
+<td><strong>Discovery Server</strong></td>
+<td>Fast DDS 的发现服务器，用于约束发现范围</td>
+</tr>
+<tr>
+<td><strong>Router (Zenoh)</strong></td>
+<td>Zenoh 的路由节点，连接不同主机/网络区域</td>
+</tr>
+<tr>
+<td><strong>Dora</strong></td>
+<td>新一代机器人数据流框架，原生集成 Zenoh</td>
+</tr>
+<tr>
+<td><strong>Tier-1</strong></td>
+<td>ROS 2 中间件最高支持级别</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_11">相关笔记</h2>
+<ul>
+<li><a href="./机器人关节通信-EtherCAT-vs-CAN.md">机器人关节通信 EtherCAT vs CAN</a> — 关节级实时通信选型</li>
+<li><a href="./2026-07-13-VLA之后Robots在卷什么-8篇具身智能新论文.md">VLA之后Robots在卷什么</a> — 多机协同通信需求</li>
+</ul>
+</body>
+</html>

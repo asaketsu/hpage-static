@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-Agent可靠性科学-从失败模式到优雅降级</title>
+
+<meta property="og:title" content="AI-Agent可靠性科学-从失败模式到优雅降级" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="ai-agent">AI Agent 可靠性科学：从失败模式到优雅降级</h1>
+<blockquote>
+<p><strong>日期</strong>: 2026-07-13<br />
+<strong>来源</strong>: arXiv 2603.29231, Zylos Research, Galileo AI<br />
+<strong>领域</strong>: Agent系统 (L4)<br />
+<strong>标签</strong>: #AI-Agent #可靠性工程 #优雅降级 #Circuit-Breaker #Fallback</p>
+</blockquote>
+<h2 id="_1">核心结论</h2>
+<p><strong>能力 (capability) ≠ 可靠性 (reliability)。</strong> 现有 benchmark 只测 pass@1（单次成功率），但生产环境需要的是跨多次调用的一致性成功。研究表明，多 Agent 系统在生产中的失败率高达 41-86.7%，而前沿模型在长时序任务中的"崩溃率"(meltdown) 反而最高——因为它们倾向于尝试雄心勃勃的多步策略，有时会陷入螺旋。</p>
+<hr />
+<h2 id="_2">一、可靠性科学框架：四大指标</h2>
+<p>来自 arXiv 2603.29231（Khanal et al., 2026-03），提出了超越 pass@1 的正式化框架：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>全称</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RDC</strong></td>
+<td>Reliability Decay Curve</td>
+<td>任务长度增加时成功率的衰减曲线</td>
+</tr>
+<tr>
+<td><strong>VAF</strong></td>
+<td>Variance Amplification Factor</td>
+<td>重复执行时的方差放大倍数</td>
+</tr>
+<tr>
+<td><strong>GDS</strong></td>
+<td>Graceful Degradation Score</td>
+<td>失败时的优雅降级程度（0-1）</td>
+</tr>
+<tr>
+<td><strong>MOP</strong></td>
+<td>Meltdown Onset Point</td>
+<td>系统完全崩溃的任务长度阈值</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">五大关键发现</h3>
+<ol>
+<li><strong>可靠性衰减是领域分层的</strong> —— 软件工程任务 GDS 从 0.90 跌到 0.44，而文档处理几乎不变（0.74 → 0.71）</li>
+<li><strong>VAF 按能力层级二分</strong> —— 高 VAF 是<strong>能力签名</strong>而非不稳定信号（前沿 VAF ≥ 2.37，中端 ≤ 1.26）</li>
+<li><strong>能力和可靠性排名严重偏离</strong> —— 长时序任务中出现多级排名反转</li>
+<li><strong>前沿模型崩溃率最高</strong>（达 19%）—— 因为它们尝试复杂多步策略时更容易"螺旋"</li>
+<li><strong>记忆脚手架普遍有害</strong> —— 所有 10 个模型加入 memory scaffold 后长时序表现反而下降</li>
+</ol>
+<h3 id="_4">评估规模</h3>
+<ul>
+<li>10 个开源模型，23,392 个 episode</li>
+<li>396 个任务，4 个时长桶，3 个领域</li>
+</ul>
+<hr />
+<h2 id="_5">二、优雅降级模式：四层防御体系</h2>
+<p>来自 Zylos Research（2026-02），生产级 AI Agent 的韧性工程已从"终端错误"进化为"分层韧性"。</p>
+<h3 id="circuit-breaker">第一层：Circuit Breaker（断路器）</h3>
+<p><strong>三态状态机</strong>：CLOSED → OPEN → HALF-OPEN → CLOSED</p>
+<p><strong>关键配置参数</strong>：<br />
+- 失败阈值：3-5 次<br />
+- 检测窗口：5 分钟<br />
+- 初始退避：5 分钟<br />
+- 扩展退避：15 分钟（针对 flapping 问题）<br />
+- 恢复后渐进扩容：从 1 个 worker 开始，每 5 分钟 +1</p>
+<p><strong>关键区分</strong>：断路器只对<strong>基础设施故障</strong>跳闸（timeout / connection refused / HTTP 502/503/504），不对<strong>业务逻辑错误</strong>跳闸（HTTP 400/401/验证失败）。</p>
+<h3 id="fallback">第二层：Fallback 策略</h3>
+<p><strong>四级升级层次</strong>：</p>
+<ul>
+<li><strong>Level 1</strong> (&lt;2s): 低置信度/限流 → 切换备用模型</li>
+<li><strong>Level 2</strong> (&lt;10s): 模型类不可用 → 切换备用 Agent 系统/提供商</li>
+<li><strong>Level 3</strong> (&lt;30s): 复杂/模糊失败 → 人工接管</li>
+<li><strong>Level 4</strong> (立即): 灾难性故障 → 紧急协议 + 排队重试</li>
+</ul>
+<p><strong>模型行为一致性挑战</strong>：不同模型输出格式不同，downstream parsing 可能断裂。Sierra AI 的方案是将<strong>模型意图</strong>（抽象任务规范）与<strong>提供商适配</strong>（如何针对特定模型 prompt）分离。</p>
+<h3 id="rate-limit-token-budget">第三层：Rate Limit + Token Budget</h3>
+<ul>
+<li><strong>RPM</strong> + <strong>TPM</strong> + <strong>输入TPM vs 输出TPM</strong>（Anthropic 分开计）</li>
+<li><strong>日配额</strong>：按计划重置的累积限制</li>
+<li><strong>指数退避 + 抖动</strong>（±25% 随机化，防止惊群效应）</li>
+<li><strong>Token Bucket 模型</strong>：按 token/秒 速率补充虚拟桶</li>
+</ul>
+<h3 id="partial-functionality">第四层：Partial Functionality（部分功能模式）</h3>
+<p>将能力分为三档：</p>
+<ul>
+<li><strong>Essential</strong>（必须保住）：语言推理 → 始终可用（本地模型）</li>
+<li><strong>Enhanced</strong>（增强但可降级）：实时搜索 → 禁用，标注信息可能过时</li>
+<li><strong>Optional</strong>（可选可跳过）：图像生成 → 跳过并说明限制</li>
+</ul>
+<p><strong>核心原则</strong>：永远向下游消费者<strong>明确声明降级状态</strong>。</p>
+<hr />
+<h2 id="agent">三、Agent 不稳定性的根因</h2>
+<p>来自 Galileo AI（Microsoft Research Victor Dibia 总结）：</p>
+<ol>
+<li><strong>非确定性 LLM 规划行为</strong> —— 相同输入产生不同执行路径</li>
+<li><strong>指数级编排复杂度</strong> —— 每个 Agent 新增通信路径和冲突场景</li>
+<li><strong>级联多步工作流失败</strong> —— 早期工具选择错误累积传导</li>
+<li><strong>不当终止条件</strong> —— 死循环重试或继续处理已完成任务</li>
+<li><strong>自治级别不当</strong> —— 过低需频繁人工介入，过高失控</li>
+<li><strong>共享基础模型依赖</strong> —— 底层 LLM 出问题时所有依赖 Agent 同时失败</li>
+</ol>
+<hr />
+<h2 id="hermes">四、对我们 Hermes 系统的直接启示</h2>
+<h3 id="_6">已有的可强化项</h3>
+<ol>
+<li><strong>antigravity-model-failover skill</strong> → 已实现模型级 fallback，但缺少 Circuit Breaker 状态机（只有简单重试）</li>
+<li><strong>agent-reliability-engineering skill</strong> → 已有七层降级架构理论，但 Zylos 的四级升级层次可以补充为具体实现模板</li>
+<li><strong>auto-diagnose-fix cron</strong> → 当前只检测 timeout，可以增加 GDS/RDC 维度的日志分析</li>
+</ol>
+<h3 id="_7">建议改进</h3>
+<ul>
+<li><strong>为 cron job 添加 Circuit Breaker</strong>：连续失败 3 次的 cron 自动进入 15 分钟冷却期，而不是每次都重试浪费配额</li>
+<li><strong>可靠性衰减监控</strong>：跟踪同类型任务在不同执行长度下的成功率，建立 RDC 曲线</li>
+<li><strong>Memory scaffold 审慎使用</strong>：研究证明 memory scaffold 普遍损害长时序表现，应评估当前 auto-memory-keeper 对长任务的实际影响</li>
+<li><strong>VAF 作为能力指标</strong>：高方差不再等于不稳定，前沿模型天然高 VAF，应在评估时区分"能力签名"和"真实不稳定"</li>
+</ul>
+<hr />
+<h2 id="_8">五、代码模式速查</h2>
+<h3 id="circuit-breaker_1">Circuit Breaker 核心逻辑</h3>
+<pre><code class="language-python">class CircuitBreaker:
+    def __init__(self, failure_threshold=3, cooldown=300, extended_cooldown=900):
+        self.failures = 0
+        self.state = &quot;CLOSED&quot;
+        self.opened_at = None
+        self.flap_count = 0
+
+    def can_execute(self):
+        if self.state == &quot;OPEN&quot;:
+            if time.time() - self.opened_at &gt; self._current_cooldown():
+                self.state = &quot;HALF_OPEN&quot;
+                return True  # probe
+            return False
+        return True
+
+    def record_failure(self):
+        self.failures += 1
+        if self.failures &gt;= self.failure_threshold:
+            self.state = &quot;OPEN&quot;
+            self.opened_at = time.time()
+            self.flap_count += 1
+
+    def _current_cooldown(self):
+        # Flapping detection: use extended cooldown
+        return self.extended_cooldown if self.flap_count &gt; 1 else self.cooldown
+</code></pre>
+<h3 id="_9">指数退避 + 抖动</h3>
+<pre><code class="language-python">async def retry_with_backoff(fn, max_retries=5, base=1.0, cap=60.0):
+    for attempt in range(max_retries):
+        try:
+            return await fn()
+        except RateLimitError as e:
+            if attempt == max_retries - 1: raise
+            delay = min(base * (2 ** attempt), cap)
+            jitter = delay * 0.25 * (2 * random.random() - 1)
+            await asyncio.sleep(delay + jitter)
+</code></pre>
+<hr />
+<h2 id="_10">参考来源</h2>
+<ul>
+<li>arXiv 2603.29231 — <em>Beyond pass@1: A Reliability Science Framework for Long-Horizon LLM Agents</em> (Khanal, Tao, Zhou, 2026-03)</li>
+<li>Zylos Research — <em>Graceful Degradation Patterns in AI Agent Systems</em> (2026-02-20)</li>
+<li>Galileo AI — <em>A Guide to AI Agent Reliability for Mission Critical Systems</em> (2025-07, Victor Dibia / Microsoft Research 引述)</li>
+<li>Brandon Lincoln Hendricks — <em>Circuit Breaker Patterns for AI Agent Reliability</em></li>
+</ul>
+</body>
+</html>
