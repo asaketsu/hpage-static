@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenObserve-开源可观测性平台-Rust单二进制140x降本</title>
+
+<meta property="og:title" content="OpenObserve-开源可观测性平台-Rust单二进制140x降本" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '$', right: '$', display: false},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="openobserve-rust-140x">OpenObserve — 开源可观测性平台（Rust 单二进制，140x 存储成本降低）</h1>
+<blockquote>
+<p><strong>来源</strong>：<a href="https://github.com/openobserve/openobserve">github.com/openobserve/openobserve</a><br />
+<strong>官网</strong>：<a href="https://openobserve.ai">openobserve.ai</a><br />
+<strong>Stars</strong>：20.6K · <strong>Forks</strong>：988 · <strong>License</strong>：AGPL-3.0<br />
+<strong>语言</strong>：Rust（后端）+ TypeScript（前端）<br />
+<strong>创建日期</strong>：2023-02-02 · 最后更新：2026-08-08</p>
+</blockquote>
+<hr />
+<h2 id="_1">一句话定义</h2>
+<blockquote>
+<p><strong>开源的 Datadog/Splunk/Elasticsearch 替代品</strong>——统一日志、指标、链路追踪、前端监控和 LLM 可观测性。Rust 单二进制部署，比 Elasticsearch 存储<strong>成本低 140 倍</strong>，10 倍易用性，PB 级规模。</p>
+</blockquote>
+<hr />
+<h2 id="_2">一、核心特性</h2>
+<h3 id="11">1.1 功能矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>描述</th>
+<th>对标产品</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>日志</strong></td>
+<td>SQL + 全文检索，PB 级日志搜索</td>
+<td>Elasticsearch / Splunk / Loki</td>
+</tr>
+<tr>
+<td><strong>指标</strong></td>
+<td>Prometheus 兼容采集和存储</td>
+<td>Prometheus / Mimir</td>
+</tr>
+<tr>
+<td><strong>链路追踪</strong></td>
+<td>分布式追踪，OpenTelemetry 兼容</td>
+<td>Jaeger / Tempo</td>
+</tr>
+<tr>
+<td><strong>前端监控 (RUM)</strong></td>
+<td>Real User Monitoring，会话回放+错误追踪</td>
+<td>Datadog RUM / Sentry</td>
+</tr>
+<tr>
+<td><strong>LLM 可观测性</strong></td>
+<td>Prompt/Token/延迟/成本追踪</td>
+<td>LangFuse / Helicone</td>
+</tr>
+<tr>
+<td><strong>Dashboard</strong></td>
+<td>交互式仪表盘</td>
+<td>Grafana</td>
+</tr>
+<tr>
+<td><strong>告警</strong></td>
+<td>条件告警 + 多渠道通知</td>
+<td>AlertManager</td>
+</tr>
+<tr>
+<td><strong>Pipeline</strong></td>
+<td>无代码数据摄取管道，摄入时转换和路由</td>
+<td>Logstash / Vector</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12">1.2 核心优势</h3>
+<table>
+<thead>
+<tr>
+<th>优势</th>
+<th>说明</th>
+<th>技术实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>140x 存储成本降低</strong></td>
+<td>相比 Elasticsearch</td>
+<td>Rust 列式存储 + 压缩</td>
+</tr>
+<tr>
+<td><strong>单二进制部署</strong></td>
+<td>一个文件启动</td>
+<td>Rust 编译为单一可执行文件</td>
+</tr>
+<tr>
+<td><strong>10x 易用性</strong></td>
+<td>相比 ELK Stack</td>
+<td>内置 UI + Web 管理界面</td>
+</tr>
+<tr>
+<td><strong>PB 级规模</strong></td>
+<td>单节点和 HA 两种模式</td>
+<td>分离存储（本地/S3/MinIO）</td>
+</tr>
+<tr>
+<td><strong>SIMD 优化</strong></td>
+<td>AVX512 (Intel) / NEON (ARM)</td>
+<td>SIMD 加速查询</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">二、架构设计</h2>
+<h3 id="21">2.1 技术栈</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>技术</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>后端</strong></td>
+<td>Rust</td>
+<td>高性能、内存安全</td>
+</tr>
+<tr>
+<td><strong>前端</strong></td>
+<td>TypeScript + Vue</td>
+<td>管理界面</td>
+</tr>
+<tr>
+<td><strong>存储</strong></td>
+<td>本地/S3/MinIO/GCS/Azure Blob</td>
+<td>分离存储架构</td>
+</tr>
+<tr>
+<td><strong>摄取</strong></td>
+<td>OpenTelemetry / Prometheus / curl / Filebeat</td>
+<td>多协议摄入</td>
+</tr>
+<tr>
+<td><strong>查询</strong></td>
+<td>SQL + 全文检索</td>
+<td>内置 SQL 引擎</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 部署模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>适用场景</th>
+<th>架构</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>单节点</strong></td>
+<td>开发/测试/小规模生产</td>
+<td>单二进制 + 本地存储/S3</td>
+</tr>
+<tr>
+<td><strong>高可用 (HA)</strong></td>
+<td>生产环境</td>
+<td>EKS/AKS/GKE 多副本 + 共享存储</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 数据流</h3>
+<pre><code>数据源 → OpenTelemetry/Prometheus/curl
+  → 摄取层（HTTP API / OTLP）
+  → Pipeline（可选：转换/过滤/路由）
+  → 存储层（本地/S3/MinIO，列式压缩）
+  → 查询层（SQL + 全文检索）
+  → 可视化（Dashboard/告警/搜索）
+</code></pre>
+<hr />
+<h2 id="_4">三、快速部署</h2>
+<h3 id="31">3.1 单二进制部署（最简）</h3>
+<pre><code class="language-bash"># Linux/macOS
+ZO_ROOT_USER_EMAIL=&quot;root@example.com&quot; \
+ZO_ROOT_USER_PASSWORD=&quot;Complexpass#123&quot; \
+./openobserve
+
+# 访问 http://localhost:5080
+</code></pre>
+<h3 id="32-docker">3.2 Docker 部署</h3>
+<pre><code class="language-bash">docker run -v $PWD/data:/data \
+  -e ZO_DATA_DIR=&quot;/data&quot; \
+  -p 5080:5080 \
+  -e ZO_ROOT_USER_EMAIL=&quot;root@example.com&quot; \
+  -e ZO_ROOT_USER_PASSWORD=&quot;Complexpass#123&quot; \
+  o2cr.ai/openobserve/openobserve-enterprise:latest
+
+# ARM 优化版（带 NEON SIMD）
+# 使用 latest-simd tag
+</code></pre>
+<h3 id="33-kubernetes">3.3 Kubernetes 部署</h3>
+<pre><code class="language-bash">kubectl create namespace openobserve
+kubectl apply -f https://raw.githubusercontent.com/zinclabs/openobserve/main/deploy/k8s/statefulset.yaml
+kubectl -n openobserve port-forward svc/openobserve 5080:5080
+</code></pre>
+<h3 id="34">3.4 摄取数据</h3>
+<pre><code class="language-bash"># 加载示例 K8s 日志
+curl -L https://zinc-public-data.s3.us-west-2.amazonaws.com/zinc-enl/sample-k8s-logs/k8slog_json.json.zip -o k8slog_json.json.zip
+unzip k8slog_json.json.zip
+
+# 推送到 OpenObserve
+curl -u &quot;root@example.com:Complexpass#123&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  http://localhost:5080/api/default/default/_json \
+  -d &quot;@k8slog_json.json&quot;
+
+# 返回: {&quot;code&quot;:200,&quot;status&quot;:&quot;ok&quot;,&quot;records&quot;:1000}
+</code></pre>
+<h3 id="35">3.5 查询数据</h3>
+<pre><code class="language-sql">-- 在 Web UI 的 Logs 中运行 SQL
+-- 全部日志
+SELECT * FROM default LIMIT 100
+
+-- 按级别过滤
+SELECT * FROM default WHERE level='error'
+
+-- 全文检索
+match_all('error')
+
+-- 时间聚合
+SELECT histogram(_timestamp, '1 minute') AS bucket, count(*) AS cnt
+FROM default GROUP BY bucket ORDER BY bucket
+</code></pre>
+<hr />
+<h2 id="_5">四、与竞品对比</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>OpenObserve</th>
+<th>Elasticsearch</th>
+<th>Datadog</th>
+<th>Grafana LGTM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>存储成本</strong></td>
+<td>1x</td>
+<td>140x</td>
+<td>SaaS 定价</td>
+<td>中等</td>
+</tr>
+<tr>
+<td><strong>部署复杂度</strong></td>
+<td>单二进制</td>
+<td>多组件集群</td>
+<td>SaaS</td>
+<td>多组件</td>
+</tr>
+<tr>
+<td><strong>统一日志+指标+追踪</strong></td>
+<td>✅ 原生</td>
+<td>需分别搭建</td>
+<td>✅</td>
+<td>✅ (Loki+Mimir+Tempo)</td>
+</tr>
+<tr>
+<td><strong>LLM 可观测性</strong></td>
+<td>✅ 内置</td>
+<td>❌</td>
+<td>✅ (附加产品)</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>前端监控 (RUM)</strong></td>
+<td>✅ 内置</td>
+<td>❌</td>
+<td>✅</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>Pipeline</strong></td>
+<td>✅ 无代码</td>
+<td>需 Logstash</td>
+<td>✅</td>
+<td>需 Vector</td>
+</tr>
+<tr>
+<td><strong>SQL 查询</strong></td>
+<td>✅</td>
+<td>❌ (DSL)</td>
+<td>✅</td>
+<td>LogQL/PromQL</td>
+</tr>
+<tr>
+<td><strong>开源协议</strong></td>
+<td>AGPL-3.0</td>
+<td>Elastic License</td>
+<td>闭源</td>
+<td>Apache-2.0</td>
+</tr>
+<tr>
+<td><strong>语言</strong></td>
+<td>Rust</td>
+<td>Java</td>
+<td>—</td>
+<td>Go</td>
+</tr>
+<tr>
+<td><strong>ARM/SIMD 优化</strong></td>
+<td>✅ NEON</td>
+<td>部分</td>
+<td>—</td>
+<td>部分</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="llm">五、LLM 可观测性（特色功能）</h2>
+<p>OpenObserve 内置了 LLM 应用监控，无需额外工具：</p>
+<table>
+<thead>
+<tr>
+<th>监控维度</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Prompt 追踪</strong></td>
+<td>记录每次 LLM 调用的 prompt 和 completion</td>
+</tr>
+<tr>
+<td><strong>Token 用量</strong></td>
+<td>输入/输出 token 数和成本</td>
+</tr>
+<tr>
+<td><strong>延迟</strong></td>
+<td>首字延迟(TTFT)和完整响应延迟</td>
+</tr>
+<tr>
+<td><strong>错误率</strong></td>
+<td>API 调用失败率和重试</td>
+</tr>
+<tr>
+<td><strong>模型对比</strong></td>
+<td>不同模型的成本和性能对比</td>
+</tr>
+</tbody>
+</table>
+<p>这对 Hermes Agent 这样的 LLM 应用非常有价值——可以实时追踪每次 LLM 调用的 token 消耗和成本。</p>
+<hr />
+<h2 id="hermes-agent">六、与 Hermes Agent 的结合价值</h2>
+<h3 id="61">6.1 可直接使用的场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>实现方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Hermes 日志统一</strong></td>
+<td>将 Hermes Gateway 日志推送到 OpenObserve，替代 grep + journalctl</td>
+</tr>
+<tr>
+<td><strong>Agent 可观测性</strong></td>
+<td>追踪每个 Agent 的工具调用链路（Traces）</td>
+</tr>
+<tr>
+<td><strong>LLM 成本监控</strong></td>
+<td>通过 LLM Observability 追踪每次模型调用的 token 和成本</td>
+</tr>
+<tr>
+<td><strong>Cron 任务监控</strong></td>
+<td>Cron 执行日志推送到 OpenObserve，设置告警</td>
+</tr>
+<tr>
+<td><strong>Homepage/CDN 监控</strong></td>
+<td>RUM 监控前端加载性能</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-jetson-orin-nano">6.2 部署建议（Jetson Orin Nano 环境）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>评估</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CPU</strong></td>
+<td>ARM64 原生支持（NEON SIMD）</td>
+</tr>
+<tr>
+<td><strong>内存</strong></td>
+<td>单节点模式 1-2GB 足够</td>
+</tr>
+<tr>
+<td><strong>存储</strong></td>
+<td>可用本地 NVMe 或挂载 NFS（Jetson 已有 NFS）</td>
+</tr>
+<tr>
+<td><strong>部署方式</strong></td>
+<td>Docker 或单二进制</td>
+</tr>
+<tr>
+<td><strong>资源消耗</strong></td>
+<td>Rust 单二进制非常轻量</td>
+</tr>
+</tbody>
+</table>
+<h3 id="63">6.3 对比现有方案</h3>
+<table>
+<thead>
+<tr>
+<th>现有方案</th>
+<th>OpenObserve 优势</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>journalctl</code> + grep</td>
+<td>全文搜索 + SQL + Dashboard</td>
+</tr>
+<tr>
+<td><code>cron-log-analysis</code> Skill</td>
+<td>实时告警 + 可视化</td>
+</tr>
+<tr>
+<td><code>observability-dashboard</code> Skill</td>
+<td>统一日志+指标+追踪</td>
+</tr>
+<tr>
+<td><code>error-monitoring</code> Skill</td>
+<td>结构化错误追踪 + 告警</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">七、结合最新研究与技术变化</h2>
+<h3 id="1-yc-qm-agent">1. 与 YC QM 多人 Agent 工作台的关联</h3>
+<p>QM 的 <code>audit</code> 模块负责审计所有 Agent 操作。OpenObserve 可以作为 QM 的<strong>可观测性后端</strong>——将 Agent 的 <code>execute</code> 工具调用推送到 OpenObserve，实现端到端的操作追踪。</p>
+<h3 id="2-coding-agent-harness">2. 与 Coding Agent Harness 解剖学的关联</h3>
+<p>Mastra 文章分析 Coding Agent 的 27 分钟架构中提到"可观测性是 Harness 工程的核心"。OpenObserve 的 Traces + LLM Observability 正好满足这个需求——追踪 Agent 的每一步决策链路。</p>
+<h3 id="3-hermes-skill">3. 与 Hermes 可观测性 Skill 的关联</h3>
+<p>Hermes 已有 <code>observability-dashboard</code> 和 <code>error-monitoring</code> Skill，但缺少一个统一的存储和查询后端。OpenObserve 可以作为这个后端——把分散的日志分析能力统一到一个平台。</p>
+<hr />
+<h2 id="_7">八、学习进化借鉴点</h2>
+<table>
+<thead>
+<tr>
+<th>洞察</th>
+<th>可借鉴到 Hermes</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>LLM 可观测性内置</strong></td>
+<td>在 Hermes 中追踪每次 LLM 调用的 token/cost</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>Rust 单二进制</strong></td>
+<td>性能敏感组件可考虑 Rust</td>
+<td>中</td>
+</tr>
+<tr>
+<td><strong>无代码 Pipeline</strong></td>
+<td>数据摄取管道可视化</td>
+<td>中</td>
+</tr>
+<tr>
+<td><strong>SQL 查询日志</strong></td>
+<td>比 grep 更强大的日志分析</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>140x 存储优化</strong></td>
+<td>列式存储 + 压缩对 Hermes 日志同样适用</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">九、趋势判断</h2>
+<ol>
+<li><strong>可观测性市场正在被 Rust 重写</strong>——OpenObserve 用 Rust 实现了 ELK Stack 的核心功能，存储成本低 140x</li>
+<li><strong>LLM 可观测性是新刚需</strong>——随着 Agent 应用爆发，追踪 LLM 调用链路和成本成为标配</li>
+<li><strong>统一平台替代碎片化工具栈</strong>——一个平台覆盖日志+指标+追踪+RUM+LLM，而非分别搭建 ELK+Prometheus+Jaeger+Sentry</li>
+<li><strong>单二进制部署降低门槛</strong>——Rust 编译的单文件部署比 JVM 生态更轻量</li>
+<li><strong>ARM 原生支持</strong>——OpenObserve 的 SIMD 镜像明确支持 NEON (ARM)，对边缘部署友好</li>
+</ol>
+<hr />
+<h2 id="_9">📎 关键资源</h2>
+<table>
+<thead>
+<tr>
+<th>资源</th>
+<th>链接</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>官网</td>
+<td><a href="https://openobserve.ai">openobserve.ai</a></td>
+</tr>
+<tr>
+<td>文档</td>
+<td><a href="https://openobserve.ai/docs/">openobserve.ai/docs</a></td>
+</tr>
+<tr>
+<td>快速开始</td>
+<td><a href="https://openobserve.ai/docs/quickstart/">Quickstart</a></td>
+</tr>
+<tr>
+<td>Cloud</td>
+<td><a href="https://cloud.openobserve.ai">cloud.openobserve.ai</a></td>
+</tr>
+<tr>
+<td>下载</td>
+<td><a href="https://openobserve.ai/downloads">openobserve.ai/downloads</a></td>
+</tr>
+<tr>
+<td>Slack 社区</td>
+<td><a href="https://short.openobserve.ai/community">short.openobserve.ai/community</a></td>
+</tr>
+<tr>
+<td>GitHub</td>
+<td><a href="https://github.com/openobserve/openobserve">github.com/openobserve/openobserve</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>笔记创建：2026-08-08 · 来源：OpenObserve GitHub + 官方文档</em></p>
+</body>
+</html>
