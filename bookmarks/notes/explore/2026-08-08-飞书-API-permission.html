@@ -158,92 +158,88 @@ strong { color: #8b1a1a; }
 </style>
 </head>
 <body>
-<h1 id="api-permission">飞书 API Permission 权限体系全景</h1>
+<h1 id="permission-api">飞书 Permission API — 云文档权限管理</h1>
 <blockquote>
-<p>嗅探学习 | 2026-08-08 | 来源: 飞书开放平台官方文档 + Apifox API 镜像</p>
+<p>来源：飞书开放平台官方文档 + 火山引擎 ArkClaw 权限清单<br />
+日期：2026-08-08</p>
 </blockquote>
-<h2 id="_1">一、摘要</h2>
-<p>飞书 API 的"permission"不是一个单一概念，而是 <strong>三层权限模型</strong>的叠加：API Scope（接口调用权）× 数据权限范围（可见数据边界）× 资源级权限（文档/群等具体资源的协作者权限）。任何 API 调用失败（403/1063002），根因必在这三层之一。</p>
-<h2 id="_2">二、三层权限模型</h2>
-<h3 id="1-api-scope">层1: API Scope（接口级权限）</h3>
+<h2 id="_1">摘要</h2>
+<p>飞书云文档权限系统由<strong>权限成员</strong>（所有者 + 协作者）和<strong>权限设置</strong>（分享/复制/评论/链接等）两部分组成，通过 <code>/drive/v1/permissions/:token/</code> 路径下的 member 和 public 两组接口进行管理。权限设置已升级到 v2，增加了组织维度和协作者维度的协作者管理权限区分。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1">1. 权限成员角色（三级）</h3>
 <ul>
-<li><strong>定义</strong>: 应用调 API 前必须在开发者后台「权限管理」页申请的 scope</li>
-<li><strong>等级</strong>: 普通权限（低敏感）vs 高级权限（高敏感，商店应用审核更严）</li>
-<li><strong>原则</strong>: 最小可用原则，权限过大威胁企业数据安全</li>
-<li><strong>机制</strong>: 同一接口的多个 scope 之间是 <strong>或关系</strong>（申请任一即可调用），但 <strong>字段级权限</strong>是独立的（想拿 user_id 字段必须开对应 scope）</li>
-<li><strong>申请流程</strong>: 自建应用 → 开发者后台开通权限 → 创建版本 → 租户管理员审核 → 发布生效</li>
+<li><code>view</code>（可阅读）：只能看</li>
+<li><code>edit</code>（可编辑）：可改内容</li>
+<li><code>full_access</code>（可管理）：可改内容 + 管理权限（妙记不支持 full_access）</li>
 </ul>
-<h3 id="2-data-scope">层2: 数据权限范围（Data Scope）</h3>
+<h3 id="2">2. 协作者类型（四种）</h3>
 <ul>
-<li><strong>定义</strong>: 即使有了 API scope，应用能读写的数据范围还有边界限制</li>
-<li><strong>tenant_access_token</strong>: 数据范围由 <strong>应用数据权限配置</strong>决定</li>
-<li><strong>user_access_token</strong>: 数据范围由 <strong>该用户自身的可见范围</strong>决定</li>
-<li><strong>配置位置</strong>: 开发者后台 → 安全设置 → 数据权限范围</li>
+<li>普通用户（user）</li>
+<li>文档应用（机器人，openid）</li>
+<li>群组（chat）</li>
+<li>部门（department）— <strong>tenant_access_token 不支持添加部门协作者</strong></li>
 </ul>
-<h3 id="3-resource-permission">层3: 资源级权限（Resource Permission）</h3>
+<h3 id="3-api">3. 核心 API 端点清单</h3>
 <ul>
-<li><strong>定义</strong>: 具体某个云文档/多维表格的协作者权限</li>
-<li><strong>角色</strong>: 所有者 &gt; 可管理 &gt; 可编辑 &gt; 可评论 &gt; 可阅读</li>
-<li><strong>关键陷阱</strong>: 用 tenant_access_token 操作文档时，必须先在文档页面「...更多 → 添加文档应用」给应用加权限</li>
-<li><strong>多维表格</strong>: 若开启高级权限，必须给应用「可管理」角色，否则 scope 开了也调不通</li>
-<li><strong>API 端点</strong>: <code>GET /drive/v1/permissions/:token/public</code> 查询权限设置</li>
+<li>添加协作者：<code>POST /drive/v1/permissions/:token/members</code></li>
+<li>批量添加协作者：<code>POST /drive/v1/permissions/:token/members/batch_create</code>（限频 100/min）</li>
+<li>更新协作者权限：<code>PUT /drive/v1/permissions/:token/members/:member_id</code></li>
+<li>移除协作者：<code>DELETE /drive/v1/permissions/:token/members/:member_id</code></li>
+<li>判断协作者是否有某权限：<code>POST /drive/permission/member/permitted</code></li>
+<li>获取协作者列表：<code>POST /drive/permission/member/list</code></li>
+<li>转移所有者：<code>POST /drive/permission/member/transfer</code></li>
+<li>获取权限设置（v1）：<code>GET /drive/v1/permissions/:token/public</code></li>
+<li>更新权限设置（v1）：<code>PATCH /drive/v1/permissions/:token/public</code></li>
+<li>获取/更新权限设置（v2 推荐）：<code>/drive/v2/permissions/:token/public</code></li>
 </ul>
-<h2 id="_3">三、关键发现</h2>
-<h3 id="1-token">1. 两种 Token 的权限差异</h3>
+<h3 id="4">4. 权限设置字段</h3>
 <ul>
-<li><strong>tenant_access_token</strong>（应用身份）: 组织级操作，权限由 app scope + data scope 决定</li>
-<li><strong>user_access_token</strong>（用户身份）: 个人级操作，权限继承用户本人权限，需 OAuth 流程</li>
-<li><strong>选择原则</strong>: 管理类任务用 tenant，个人助手类用 user</li>
+<li><code>external_access</code>：允许分享到组织外</li>
+<li><code>share_entity</code>：谁可以添加协作者（组织维度）</li>
+<li><code>invite_external</code>：允许非管理员分享到组织外</li>
+<li><code>link_share_entity</code>：链接分享范围</li>
+<li><code>anyone_readable</code> / <code>anyone_editable</code>：互联网获得链接的人可读/可编辑</li>
+<li>复制/创建副本/打印/下载 控制</li>
+<li>评论开关</li>
 </ul>
-<h3 id="2">2. 免审核小范围测试</h3>
+<h3 id="5-scope">5. 所需 Scope 权限</h3>
 <ul>
-<li>可用成员 ≤ 10 人（可配置）时，应用发布 <strong>无需审核</strong></li>
-<li>适合开发阶段快速联调</li>
+<li><code>docs:permission</code>（权限管理总开关）</li>
+<li><code>docs:permission:member:create</code>（添加/修改/删除协作者）</li>
+<li><code>docx:document</code>（文档读写）</li>
+<li><code>drive:drive</code>（云空间文件读写）</li>
+<li><code>wiki:wiki</code>（知识库编辑/成员管理）</li>
+<li><code>wiki:wiki:readonly</code>（知识库只读）</li>
 </ul>
-<h3 id="3-oauth-scope">3. OAuth Scope 细节</h3>
+<h3 id="6">6. 常见错误码</h3>
 <ul>
-<li>scope 参数是 <strong>空格分隔、大小写敏感</strong>的字符串</li>
-<li>一次最多请求 200 个 scope</li>
-<li>需要离线刷新 token 必须加 <code>offline_access</code> scope</li>
-<li>未在后台申请的 scope 在授权时会报 20027 错误</li>
+<li><strong>1063002 Permission denied（403）</strong>：最常见。身份不是协作者或权限不足</li>
+<li>tenant_access_token → 需在文档页面「添加文档应用」入口授权</li>
+<li>user_access_token → 需在「分享」入口为当前用户添加权限</li>
+<li><strong>1063001 Invalid parameter（400）</strong>：token 与 type 不匹配、协作者不存在</li>
+<li><strong>Invalid operation（400）</strong>：协作者数量达上限、企业管控策略限制、可见性限制</li>
 </ul>
-<h3 id="4-403">4. 常见 403 错误排查路径</h3>
-<pre><code>1063002 Permission denied
-├── 检查1: API scope 是否已申请并发布生效？
-├── 检查2: 数据权限范围是否覆盖目标资源？
-├── 检查3: 资源级权限 — 应用是否已添加为该文档协作者？
-│   ├── tenant_access_token → 文档页面「添加文档应用」
-│   └── user_access_token → 文档页面「分享」给该用户
-└── 检查4: 多维表格是否开启高级权限？需给应用「可管理」角色
-</code></pre>
-<h3 id="5">5. 权限审核规则（商店应用）</h3>
+<h3 id="7">7. 高频踩坑</h3>
 <ul>
-<li>普通权限: 上架审核（飞书平台）+ 租户安装审核（企业管理员）</li>
-<li>高级权限: 审核更严，无充分理由不通过</li>
-<li>自建应用: 仅需租户管理员审核</li>
+<li><strong>机器人创建文档默认所有者是机器人</strong>：用户无法编辑，需调用转移所有者接口或主动添加用户为协作者</li>
+<li><strong>多维表格高级权限</strong>：即使有 docx 权限，多维表格开启高级权限后仍需单独添加"可管理"角色</li>
+<li><strong>知识库节点（wiki type）的特殊参数 <code>perm_type</code></strong>：<code>container</code>（当前页+子页面）vs <code>single_page</code>（仅当前页）</li>
+<li><strong>transfer owner 接口</strong>：仅限文档所有者调用</li>
+<li><strong>频率限制</strong>：协作者相关操作 100次/分钟，权限设置查询 1000次/分钟</li>
 </ul>
-<h2 id="hermes">四、对 Hermes 工作的价值</h2>
-<h3 id="_4">当前痛点直击</h3>
+<h2 id="_3">对工作的价值</h2>
 <ol>
-<li><strong>lark-cli / MCP 操作文档时常遇 403</strong>: 根因大概率是层3（资源级权限），而非 API scope 缺失</li>
-<li><strong>批量操作多维表格失败</strong>: 需检查是否开启高级权限，给应用「可管理」角色</li>
-<li><strong>用户身份操作</strong>: 用 user_access_token 时，scope 要手动拼接且大小写敏感</li>
+<li><strong>解决 Hermes 飞书机器人创建文档后用户无权编辑的问题</strong>：创建文档后自动调用 <code>POST /permissions/:token/members</code> 添加用户为 <code>full_access</code> 协作者，或直接调用 transfer owner 转移所有权</li>
+<li><strong>批量权限管理</strong>：用 <code>batch_create</code> 接口一次性为多人授权，效率比循环单条调用高 100 倍</li>
+<li><strong>权限审计</strong>：用 <code>member/list</code> 获取协作者列表，结合 <code>permitted</code> 判断接口，可做权限合规检查</li>
+<li><strong>lark-cli 已封装</strong>：现有 lark-cli Skills 中的 permission 相关命令可直接调用，无需手写 curl</li>
 </ol>
-<h3 id="_5">行动建议</h3>
-<ol>
-<li><strong>权限排查 SOP</strong>: 遇 1063002 错误时，按上述四步排查路径逐层检查，不要只查 API scope</li>
-<li><strong>应用数据权限配置</strong>: 定期审查 Hermes 应用的数据权限范围，遵循最小可用原则</li>
-<li><strong>lark-mcp --scope 参数</strong>: 需要用户身份操作时，明确指定 scope 并确保包含 offline_access</li>
-<li><strong>文档操作前置检查</strong>: tenant_access_token 操作文档前，确认应用已通过「添加文档应用」入口获得协作者权限</li>
-</ol>
-<h2 id="_6">五、参考文档</h2>
+<h2 id="_4">行动建议</h2>
 <ul>
-<li>权限概述: https://open.feishu.cn/document/server-docs/docs/permission/overview</li>
-<li>申请 API 权限: https://open.feishu.cn/document/server-docs/application-scope/introduction</li>
-<li>获取云文档权限设置: https://open.feishu.cn/document/server-docs/docs/permission/permission-public/get</li>
-<li>Scope 列表: https://open.feishu.cn/document/ukTMukTMukTM/uYTM5UjL2ETO14iNxkTN/scope-list</li>
-<li>权限列表(Apifox镜像): https://feishu.apifox.cn/doc-1939254</li>
-<li>自建应用发版审核: https://www.feishu.cn/hc/zh-CN/articles/374230668270</li>
+<li>[ ] 在 lark-doc / lark-drive Skill 中补充：创建文档后自动调用添加协作者接口，把用户设为 full_access</li>
+<li>[ ] 验证 lark-cli 是否已封装 permission member 的 CRUD 命令（预期应有 <code>lark-cli permission member create/list/update/delete</code>）</li>
+<li>[ ] 对 Issue #252（机器人创建文档归属问题）确认是否已通过权限接口解决</li>
+<li>[ ] 如需知识库节点权限管理，注意 perm_type 参数的 container vs single_page 选择</li>
 </ul>
 </body>
 </html>
