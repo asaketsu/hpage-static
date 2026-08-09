@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理优化2026-Speculative-Decoding前沿突破</title>
+
+<meta property="og:title" content="LLM推理优化2026-Speculative-Decoding前沿突破" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-2026-speculative-decoding">LLM 推理优化 2026 — Speculative Decoding 三大前沿突破</h1>
+<blockquote>
+<p>本笔记梳理 2026 年推测解码（Speculative Decoding）领域的三大突破方向：SpecSA（稀疏注意力+推测解码融合）、SSD/Saguaro（双重推测解码）、以及 P-EAGLE 并行草稿生成。聚焦生产级部署（vLLM/SGLang）的实际加速数据与配置实践。信息来源：arXiv 2605.19893 (SpecSA)、arXiv 2603.03251 (SSD)、vLLM Blog (P-EAGLE)、Spheron/JarvisLabs 生产 Benchmark。</p>
+</blockquote>
+<h2 id="_1">目录</h2>
+<ul>
+<li><a href="#核心背景为什么推测解码是-2026-最高-roi">核心背景：为什么推测解码是 2026 最高 ROI</a></li>
+<li><a href="#突破一specsa--稀疏注意力--推测解码融合">突破一：SpecSA — 稀疏注意力 × 推测解码融合</a></li>
+<li><a href="#突破二ssdsaguaro--双重推测解码">突破二：SSD/Saguaro — 双重推测解码</a></li>
+<li><a href="#突破三p-eagle--并行草稿生成">突破三：P-EAGLE — 并行草稿生成</a></li>
+<li><a href="#2026-生产-benchmark-数据">2026 生产 Benchmark 数据</a></li>
+<li><a href="#对-jetson-边缘部署的启示">对 Jetson 边缘部署的启示</a></li>
+<li><a href="#内容整理">内容整理</a></li>
+<li><a href="#查询拓展">查询拓展</a></li>
+<li><a href="#归纳总结">归纳总结</a></li>
+<li><a href="#趋势判断">趋势判断</a></li>
+<li><a href="#关联分析">关联分析</a></li>
+<li><a href="#出处">出处</a></li>
+</ul>
+<hr />
+<h2 id="2026-roi">核心背景：为什么推测解码是 2026 最高 ROI</h2>
+<p>LLM 自回归解码是<strong>内存带宽受限</strong>（memory-bandwidth bound）的：每生成一个 token，都要把整个 KV Cache 从 HBM 加载到计算单元，但实际计算量很小。推测解码的核心洞察是——<strong>验证 K 个 token 的成本 ≈ 生成 1 个 token 的成本</strong>（因为计算利用率被拉满了）。</p>
+<h3 id="2026">2026 推测解码方法对比</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>加速倍数</th>
+<th>核心机制</th>
+<th style="text-align: center;">需要独立草稿模型</th>
+<th style="text-align: center;">生产可用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>基础 Speculative</strong></td>
+<td>2-3x</td>
+<td>小模型提议 → 大模型并行验证</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">✅</td>
+</tr>
+<tr>
+<td><strong>EAGLE-3</strong></td>
+<td>2.5-3x</td>
+<td>训练时特征对齐，无需独立草稿模型</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">✅ vLLM</td>
+</tr>
+<tr>
+<td><strong>Apple ReDrafter</strong></td>
+<td>2.8x</td>
+<td>RNN-based 草稿头</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">部分</td>
+</tr>
+<tr>
+<td><strong>PEARL</strong></td>
+<td>4.43x</td>
+<td>自适应草稿长度</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">实验室</td>
+</tr>
+<tr>
+<td><strong>SpecSA</strong></td>
+<td>3.49x</td>
+<td>稀疏注意力 + 推测验证融合</td>
+<td style="text-align: center;">✅</td>
+<td style="text-align: center;">实验室</td>
+</tr>
+<tr>
+<td><strong>SSD/Saguaro</strong></td>
+<td>~5x</td>
+<td>草稿模型预测验证结果，消除串行依赖</td>
+<td style="text-align: center;">✅ (独立设备)</td>
+<td style="text-align: center;">✅ Together AI</td>
+</tr>
+<tr>
+<td><strong>P-EAGLE</strong></td>
+<td>+69% over EAGLE-3</td>
+<td>并行草稿生成（非自回归）</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">✅ vLLM</td>
+</tr>
+<tr>
+<td><strong>DeepSeek V3 MTP</strong></td>
+<td>1.6x</td>
+<td>模型内置 MTP 权重</td>
+<td style="text-align: center;">❌</td>
+<td style="text-align: center;">✅ vLLM</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="specsa">突破一：SpecSA — 稀疏注意力 × 推测解码融合</h2>
+<h3 id="_2">问题：结构性错配</h3>
+<p>推测解码和动态稀疏注意力（如 NSA）理论上互补——前者通过增大有效 batch 来提高计算密度，后者通过缩减 KV Cache 工作集来降低内存访问量。但直接组合暴露了一个<strong>结构性错配</strong>：</p>
+<blockquote>
+<p><strong>稀疏注意力的 per-query 选择性</strong> vs <strong>推测验证的 cross-query 共性性</strong>——验证查询本应共享 KV 块，但稀疏路由为每个 query 分配了不同的稀疏布局。</p>
+</blockquote>
+<p>这导致三个实际问题：<br />
+1. <strong>跨查询复用被隐藏</strong>：邻近验证查询选中的 KV 块高度重叠，但稀疏 kernel 逐 query 独立处理，重复加载<br />
+2. <strong>NSA 分支结构碎片化</strong>：压缩/选择/滑窗三个分支在短验证 batch 下无法摊销 kernel launch 开销<br />
+3. <strong>最优策略输入依赖</strong>：固定的推测配置在不同 prompt 和上下文长度下表现差异巨大</p>
+<h3 id="specsa_1">SpecSA 三大机制</h3>
+<p><strong>机制 1：Overlap-Aware 分组执行</strong><br />
+- 将 draft tree 扁平化，按遍历顺序排列<br />
+- 将最多 C 个相邻验证查询分到同一线程块<br />
+- 精确合并模式：去重重叠选中块，保留 per-query 语义<br />
+- 近似共享索引模式：复用一个代表性 query 的稀疏布局</p>
+<p><strong>机制 2：Refresh/Reuse 内核融合</strong><br />
+- Refresh 层：重新计算选中索引 + 部分融合选择分支和滑窗分支<br />
+- Reuse 层：继承最近 Refresh 层的索引，跳过重复索引构建，运行完全融合的 NSA 路径<br />
+- 跨层索引稳定性指导调度：<code>S = {1,2,3,6,8,10,11,15}</code></p>
+<p><strong>机制 3：Profile-Guided 自适应编排</strong><br />
+- 离线搜索完整策略元组：draft-tree 形状 + 遍历顺序 + 合并模式 + refresh/reuse 调度<br />
+- 按上下文长度 regime 和精度类别预排序候选<br />
+- 运行时观察接受 token 数，偏离离线 profile 时动态切换策略</p>
+<h3 id="h100-gpu">实验数据（H100 GPU）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>加速倍数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Kernel 级加速</td>
+<td>6.86×</td>
+</tr>
+<tr>
+<td>验证阶段加速</td>
+<td>1.45×</td>
+</tr>
+<tr>
+<td>端到端吞吐量</td>
+<td>3.49×</td>
+</tr>
+<tr>
+<td>Profile-guided 规划带来的接受 token 吞吐量提升</td>
+<td>+33.2%</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="ssdsaguaro">突破二：SSD/Saguaro — 双重推测解码</h2>
+<h3 id="_3">核心创新：消除串行依赖</h3>
+<p>传统推测解码有一个隐藏瓶颈：<strong>验证必须完成后才能开始下一轮推测</strong>。SSD（Speculative Speculative Decoding）的核心问题是：</p>
+<blockquote>
+<p><strong>能否并行化推测和验证？</strong></p>
+</blockquote>
+<p>SSD 的方案：当目标模型正在验证时，草稿模型<strong>预测验证结果</strong>并为所有可能的结果<strong>预先准备</strong>下一轮推测。如果预测命中，下一轮推测立即返回，完全消除草稿开销。</p>
+<h3 id="_4">三大挑战与解法</h3>
+<table>
+<thead>
+<tr>
+<th>挑战</th>
+<th>Saguaro 的解法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>预测验证结果</strong>（接受数 + bonus token）</td>
+<td>利用 draft logits 预测 bonus token，准确率高达 90%</td>
+</tr>
+<tr>
+<td><strong>接受率 vs 预测准确率的张力</strong></td>
+<td>采样算法平衡两者，构造可证明加速的场景</td>
+</tr>
+<tr>
+<td><strong>预测失败的回退策略</strong></td>
+<td>最优回退随 batch size 变化；大 batch/高温度下需精细处理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">关键约束</h3>
+<ul>
+<li><strong>SSD 的草稿模型必须在独立硬件上</strong>（如 1×H100 草稿 + 4×H100 目标），因为草稿和验证必须真正并行</li>
+<li><strong>无损保证</strong>：SSD 的输出分布严格等于目标模型分布，与普通推测解码一样</li>
+<li><strong>可与 Tree-based SD 叠加</strong>：SSD 为每个验证结果预推测线性链，可以改为预推测 token tree</li>
+</ul>
+<h3 id="_6">性能数据</h3>
+<ul>
+<li>比<strong>最强推测解码基线</strong>平均快 <strong>30%</strong></li>
+<li>比自回归解码快<strong>最高 5×</strong></li>
+<li>在 Llama-3.1-70B (TP=4 H100) 上验证，跨 HumanEval/GSM8k/AlpacaUltra 四数据集一致加速</li>
+<li>严格改善 throughput-latency Pareto frontier，覆盖各种 batch size</li>
+</ul>
+<hr />
+<h2 id="p-eagle">突破三：P-EAGLE — 并行草稿生成</h2>
+<h3 id="eagle">问题：EAGLE 的串行瓶颈</h3>
+<p>EAGLE-3 虽然是最强的推测解码方法，但草稿生成仍然是<strong>自回归的</strong>——逐层生成 draft token，每层依赖上一层输出。P-EAGLE 将其改造为<strong>并行生成</strong>。</p>
+<h3 id="_7">关键成果</h3>
+<table>
+<thead>
+<tr>
+<th>并发度</th>
+<th>P-EAGLE vs EAGLE-3 加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>c=1</td>
+<td>1.55×</td>
+</tr>
+<tr>
+<td>c=2</td>
+<td>1.29×</td>
+</tr>
+<tr>
+<td>c=4</td>
+<td>1.35×</td>
+</tr>
+<tr>
+<td>c=8</td>
+<td>1.28×</td>
+</tr>
+<tr>
+<td>c=16</td>
+<td>1.27×</td>
+</tr>
+<tr>
+<td>c=32</td>
+<td>1.09×</td>
+</tr>
+<tr>
+<td>c=64</td>
+<td>1.05×</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>B200 GPU 上 GPT-OSS 20B 测试，MT-Bench/HumanEval/SpeedBench</li>
+<li>解耦草稿数量与前向传播次数，可探索更大的草稿架构</li>
+<li>已集成进 vLLM（2026-03-13 发布）</li>
+<li>需要一行 vLLM patch (PR#36684) 支持 GPT-OSS-20B</li>
+</ul>
+<hr />
+<h2 id="2026-benchmark">2026 生产 Benchmark 数据</h2>
+<h3 id="_8">硬件代际对比</h3>
+<table>
+<thead>
+<tr>
+<th>GPU</th>
+<th>HBM 带宽</th>
+<th>EAGLE-3 吞吐</th>
+<th>标准吞吐</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H100</td>
+<td>~3.35 TB/s</td>
+<td>~4,800 tok/s</td>
+<td>~1,500 tok/s</td>
+<td>3.2×</td>
+</tr>
+<tr>
+<td>H200</td>
+<td>4.8 TB/s</td>
+<td>~6,200 tok/s</td>
+<td>~1,700 tok/s</td>
+<td>3.6×</td>
+</tr>
+<tr>
+<td>B200</td>
+<td>~8 TB/s</td>
+<td>更高（线性增长）</td>
+<td>更高</td>
+<td>略降（瓶颈减轻）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：带宽越高，推测解码的加速比略有下降（因为内存瓶颈本身减轻了），但绝对吞吐量仍然更大。</p>
+<h3 id="vllm-2026">vLLM 生产配置（2026 推荐）</h3>
+<pre><code class="language-bash"># EAGLE-3 + Chunked Prefill（生产标配）
+vllm serve meta-llama/Llama-3.1-70B-Instruct \
+  --tensor-parallel-size 4 \
+  --speculative-config '{&quot;method&quot;: &quot;eagle3&quot;, &quot;num_speculative_tokens&quot;: 5}' \
+  --enable-chunked-prefill \
+  --max-num-batched-tokens 4096
+
+# DeepSeek V3 MTP（零额外训练）
+vllm serve deepseek-ai/DeepSeek-V3 \
+  --tensor-parallel-size 8 \
+  --speculative-config '{&quot;method&quot;: &quot;deepseek_mtp&quot;, &quot;num_speculative_tokens&quot;: 1}'
+
+# P-EAGLE（最新）
+vllm serve openai/gpt-oss-20b \
+  --speculative-config '{&quot;method&quot;: &quot;p_eagle&quot;, &quot;num_speculative_tokens&quot;: 4}'
+</code></pre>
+<ul>
+<li><strong>EAGLE-3 单独</strong>：ITL ~0.3ms（Inter-Token Latency），TTFT ~38ms（不变）</li>
+<li><strong>EAGLE-3 + Chunked Prefill</strong>：ITL ~0.3ms，TTFT 降至 <strong>8-12ms</strong></li>
+<li><strong>FP8 是 Hopper GPU 的新默认</strong>：近乎无损 + 30% 以上速度提升</li>
+</ul>
+<hr />
+<h2 id="jetson">对 Jetson 边缘部署的启示</h2>
+<p>Jetson Orin Nano Super (8GB 统一内存) 的约束完全不同：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>云端 (H100)</th>
+<th>边缘 (Jetson Orin)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>内存带宽</td>
+<td>3.35+ TB/s</td>
+<td>~68 GB/s (LPDDR5)</td>
+</tr>
+<tr>
+<td>并发 batch</td>
+<td>大（连续批处理有效）</td>
+<td>1-2（几乎无批处理收益）</td>
+</tr>
+<tr>
+<td>草稿模型内存</td>
+<td>独立 GPU 无压力</td>
+<td>共享统一内存，吃显存</td>
+</tr>
+<tr>
+<td>适用方法</td>
+<td>EAGLE-3 / P-EAGLE / SSD</td>
+<td>小型 draft model (1B → 7B)</td>
+</tr>
+<tr>
+<td>预期加速</td>
+<td>3-5x</td>
+<td>1.5-2x（带宽瓶颈更严重）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>边缘最佳实践</strong>：<br />
+1. 用最小可用草稿模型（如 Qwen-0.5B draft → Qwen-7B target），减少内存占用<br />
+2. 考虑 n-gram 后验解码（零内存开销，结构化文本效果好）<br />
+3. FP8 量化在 Jetson Orin 上支持有限，GGUF Q4_K_M 仍是主力</p>
+<hr />
+<h2 id="_9">内容整理</h2>
+<h3 id="2026_1">推测解码 2026 的三个进化方向</h3>
+<ol>
+<li><strong>融合方向</strong>（SpecSA）：推测解码不再孤立，而是与稀疏注意力、PagedAttention 深度融合，形成统一的推理优化栈</li>
+<li><strong>并行方向</strong>（SSD/P-EAGLE）：打破「推测→验证」的串行链条，草稿模型和目标模型真正并行执行，需要独立硬件但回报巨大</li>
+<li><strong>内置方向</strong>（DeepSeek MTP/Apple ReDrafter）：模型本身内置推测能力（MTP 头/RNN 草稿头），零额外部署成本，适合边缘场景</li>
+</ol>
+<h3 id="_10">技术选型决策树</h3>
+<pre><code>是否需要无损保证？
+├─ 是 → EAGLE-3（最安全，生产标配）
+│       └─ 有独立硬件？ → SSD/Saguaro（+30% over EAGLE-3）
+└─ 否（可接受近似） → SpecSA（最高吞吐，但需精度控制）
+
+边缘部署？
+├─ 模型有 MTP 头？ → DeepSeek MTP（零成本）
+├─ 结构化输出多？ → n-gram/Suffix Decoding（零训练）
+└─ 通用场景 → 小草稿模型 (0.5B→7B)
+</code></pre>
+<hr />
+<h2 id="_11">查询拓展</h2>
+<ul>
+<li><strong>FlashInfer / FlashAttention-3 集成</strong>：推测解码的 kernel 级优化如何与 FlashAttention 协同？</li>
+<li><strong>多模态推测解码</strong>：VLM（如 LLaVA）的视觉 token 如何纳入推测验证？</li>
+<li><strong>推测解码 + 量化叠加</strong>：FP8/INT8 量化后的 acceptance rate 变化？</li>
+<li><strong>continuous batching × speculative decoding</strong>：高并发场景下的 batch size 感知调度</li>
+<li><strong>CUDA graph 集成</strong>：vLLM 的 CUDA graph capture 与推测解码的兼容性</li>
+</ul>
+<hr />
+<h2 id="_12">归纳总结</h2>
+<p>2026 年推测解码从「单一加速技巧」进化为「推理优化体系」：</p>
+<ul>
+<li><strong>基线已确立</strong>：EAGLE-3 是生产标配（2.5-3x），vLLM/SGLang 原生支持，配置仅需一行 JSON</li>
+<li><strong>下一个前沿是并行化</strong>：SSD 和 P-EAGLE 证明草稿生成不必串行，额外 30-69% 加速</li>
+<li><strong>融合是趋势</strong>：SpecSA 证明推测解码 + 稀疏注意力可以协同，3.49x 端到端加速</li>
+<li><strong>边缘仍有空间</strong>：虽然 H100/B200 的绝对增益最大，但 Jetson 上 1.5-2x 加速对实时语音 Agent 仍有实际价值</li>
+<li><strong>模型内置 MTP 是最低门槛路径</strong>：DeepSeek V3 证明了 1.6x 免费加速，未来模型设计可能默认包含 MTP 头</li>
+</ul>
+<hr />
+<h2 id="_13">趋势判断</h2>
+<ol>
+<li><strong>推测解码将成为推理引擎的默认功能</strong>：2026 年 vLLM/SGLang/TensorRT-LLM 均已原生支持，推测解码将从「可选优化」变为「默认开启」</li>
+<li><strong>草稿模型标准化</strong>：每个主流 target model 都会有官方配对的 draft model，类似 EAGLE-3 的训练流程将标准化</li>
+<li><strong>SSD 推动多 GPU 架构变化</strong>：草稿模型放在独立 GPU 的模式可能催生专门的「推测加速卡」产品定位</li>
+<li><strong>与量化的深度耦合</strong>：FP8 量化后的 acceptance rate 建模和自适应草稿长度调优将成为工程热点</li>
+<li><strong>边缘场景的 n-gram 复兴</strong>：对于结构化输出（代码/JSON），n-gram 推测在零训练成本下仍有竞争力</li>
+</ol>
+<hr />
+<h2 id="_14">关联分析</h2>
+<h3 id="_15">与已有笔记/项目的关联</h3>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关联点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>llm-inference-optimization skill</strong></td>
+<td>本笔记的技术选型可直接补充该 skill 的 PagedAttention/量化章节</td>
+</tr>
+<tr>
+<td><strong>llm-inference-deploy skill</strong></td>
+<td>生产 vLLM 配置命令可直接引用</td>
+</tr>
+<tr>
+<td><strong>edge-llm-quantization skill</strong></td>
+<td>Jetson 边缘部署的推测解码可行性分析</td>
+</tr>
+<tr>
+<td><strong>Jetson Orin 平台</strong></td>
+<td>统一内存架构对推测解码的内存占用约束</td>
+</tr>
+<tr>
+<td><strong>语音 Agent 架构</strong></td>
+<td>推测解码降低 TTFT 对实时语音对话体验的直接价值</td>
+</tr>
+<tr>
+<td><strong>2026-06-14-ai-agent-memory-architecture-2026</strong></td>
+<td>推理速度影响记忆检索延迟预算</td>
+</tr>
+</tbody>
+</table>
+<h3 id="hermes-agent">对 Hermes Agent 的改进建议</h3>
+<ol>
+<li><strong>llm-inference-optimization skill 可增强</strong>：补充 EAGLE-3/SSD/P-EAGLE 的 2026 最新对比表和生产配置</li>
+<li><strong>模型选型</strong>：如果部署本地推理，优先选择有 MTP 头的模型（如 DeepSeek V3），零成本获得 1.6x 加速</li>
+<li><strong>语音 Agent 延迟优化</strong>：TTFT 从 38ms 降至 8-12ms（chunked prefill）对语音对话体验有质的提升</li>
+</ol>
+<hr />
+<h2 id="_16">出处</h2>
+<ul>
+<li>SpecSA 论文：<a href="https://arxiv.org/abs/2605.19893">arXiv:2605.19893</a> — Bridging Speculative Decoding and Sparse Attention</li>
+<li>SSD/Saguaro 论文：<a href="https://arxiv.org/abs/2603.03251">arXiv:2603.03251</a> — Speculative Speculative Decoding (Stanford + Together AI)</li>
+<li>P-EAGLE：<a href="https://vllm.ai/blog/2026-03-13-p-eagle">vLLM Blog 2026-03-13</a></li>
+<li>EAGLE-3 生产 Benchmark：<a href="https://www.spheron.network/blog/eagle-3-speculative-decoding-gpu-cloud">Spheron Blog</a></li>
+<li>vLLM 推测解码指南：<a href="https://localaimaster.com/blog/speculative-decoding-guide">Local AI Master</a> / <a href="https://jarvislabs.ai/blog/speculative-decoding-vllm-faster-llm-inference">JarvisLabs</a></li>
+<li>LLM Inference Optimization 2026 综述：<a href="https://zylos.ai/research/2026-01-15-llm-inference-optimization">Zylos Research</a></li>
+<li>SSD 代码：<a href="https://github.com/tanishqkumar/ssd">github.com/tanishqkumar/ssd</a></li>
+</ul>
+<hr />
+<blockquote>
+<p>📅 学习日期：2026-08-10 ｜ 关联技能：llm-inference-optimization, llm-inference-deploy, edge-llm-quantization ｜ 类型：前沿技术综述</p>
+</blockquote>
+</body>
+</html>
