@@ -158,112 +158,128 @@ strong { color: #8b1a1a; }
 </style>
 </head>
 <body>
-<h1 id="apipermission">飞书 API：Permission 权限管理</h1>
+<h1 id="permission-api">飞书云文档 Permission API 深度梳理</h1>
 <blockquote>
-<p>嗅探学习 · 2026-08-09 · auto-explore<br />
-来源：飞书开放平台官方文档 + lark-cli lark-drive skill</p>
+<p>来源：飞书开放平台官方文档 + lark-cli 实际验证<br />
+日期：2026-08-09</p>
 </blockquote>
-<h2 id="_1">摘要</h2>
-<p>飞书云文档权限系统由「权限成员（Members）」和「权限设置（Settings）」两部分组成。权限 API 分为 V1 和 V2 两个版本，支持对协作者（用户/应用/群/部门）进行增删改查、转移所有权，以及对分享、复制、下载、评论等设置进行管控。</p>
-<h2 id="_2">关键发现</h2>
-<h3 id="_3">一、权限模型（两层结构）</h3>
+<h2 id="_1">一、权限模型总览</h2>
+<p>飞书云文档权限由 <strong>权限成员（Who）</strong> + <strong>权限设置（What can do）</strong> 两层组成。</p>
+<h3 id="permission-members">权限成员（Permission Members）</h3>
 <ul>
-<li><strong>权限成员</strong>：文档所有者（owner）+ 协作者（collaborator）</li>
-<li><strong>成员权限等级</strong>：manageable（管理）&gt; editable（编辑）&gt; readable（只读）</li>
-<li><strong>可授权成员类型</strong>：普通用户、文档应用（bot）、群组、部门</li>
+<li><strong>文档所有者（Owner）</strong>：唯一，拥有 full_access，可转让</li>
+<li><strong>协作者（Collaborator）</strong>：可多个，权限分三级：</li>
+<li><code>view</code> — 只读</li>
+<li><code>edit</code> — 可编辑</li>
+<li><code>full_access</code> — 可管理（含权限管理）</li>
 </ul>
-<h3 id="api-permission-members">二、核心 API 清单（permission members）</h3>
-<ul>
-<li><code>POST /drive/v1/permissions/:token/members</code> — 添加协作者</li>
-<li><code>PUT /drive/v1/permissions/:token/members/:member_id</code> — 更新协作者权限</li>
-<li><code>DELETE /drive/v1/permissions/:token/members/:member_id</code> — 移除协作者</li>
-<li><code>POST /drive/permission/member/permitted</code> — 判断协作者是否有某权限</li>
-<li><code>POST /drive/permission/member/list</code> — 获取协作者列表</li>
-<li><code>POST /drive/permission/member/transfer</code> — 转移所有者</li>
-</ul>
-<h3 id="apiv1-vs-v2">三、权限设置 API（V1 vs V2）</h3>
-<p>V1 和 V2 的区别在于管控粒度：</p>
-<ul>
-<li><strong>V1</strong>：<code>GET/PATCH /drive/v1/permissions/:token/public</code></li>
-<li>管控项：外部分享、复制/打印/下载、评论、谁能管理协作者、链接分享</li>
-<li><strong>V2</strong>：<code>GET/PATCH /drive/v2/permissions/:token/public</code></li>
-<li>新增：组织维度 + 协作者维度「谁能管理协作者」分离管控</li>
-</ul>
-<h3 id="lark-cli">四、lark-cli 已封装的命令</h3>
-<table>
-<thead>
-<tr>
-<th>命令</th>
-<th>用途</th>
-<th>所需 scope</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>drive permission.members.create</code></td>
-<td>增加协作者权限</td>
-<td><code>docs:permission.member:create</code></td>
-</tr>
-<tr>
-<td><code>drive permission.members.auth</code></td>
-<td>权限校验</td>
-<td><code>docs:permission.member:auth</code></td>
-</tr>
-<tr>
-<td><code>drive permission.members.transfer_owner</code></td>
-<td>转移所有权</td>
-<td><code>docs:permission.member:transfer</code></td>
-</tr>
-<tr>
-<td><code>drive permission.public.get</code></td>
-<td>读取权限设置</td>
-<td><code>docs:permission.setting:read</code></td>
-</tr>
-<tr>
-<td><code>drive permission.public.patch</code></td>
-<td>修改权限设置</td>
-<td><code>docs:permission.setting:write_only</code></td>
-</tr>
-</tbody>
-</table>
-<h3 id="bot">五、授权 bot 自身访问文档（常用模式）</h3>
-<pre><code class="language-bash"># 1. 获取 bot open_id
-lark-cli api GET /open-apis/bot/v3/info --as bot
+<p>支持的角色实体：用户 / 文档应用 / 群组 / 部门</p>
+<h3 id="permission-settings">权限设置（Permission Settings）</h3>
+<p>分 v1 和 v2 两个版本：</p>
+<p><strong>v1（旧版，仍可用）</strong><br />
+- 是否允许外部分享<br />
+- 是否允许复制/打印/下载<br />
+- 是否允许评论<br />
+- 谁能添加和管理协作者<br />
+- 链接分享设置</p>
+<p><strong>v2（新版，推荐）</strong><br />
+- v1 全部功能 +<br />
+- 协作者维度的「谁能管理协作者」（更细粒度）<br />
+- 组织维度的「谁能管理协作者」</p>
+<h2 id="api">二、核心 API 列表</h2>
+<h3 id="permission-members_1">协作者管理（Permission Members）</h3>
+<ol>
+<li><strong>添加协作者</strong></li>
+<li><code>POST /open-apis/drive/v1/permissions/:token/members</code></li>
+<li>
+<p>lark-cli: <code>lark-cli drive permission.members create</code></p>
+</li>
+<li>
+<p><strong>更新协作者权限</strong></p>
+</li>
+<li>
+<p><code>PUT /open-apis/drive/v1/permissions/:token/members/:member_id</code></p>
+</li>
+<li>
+<p><strong>移除协作者</strong></p>
+</li>
+<li>
+<p><code>DELETE /open-apis/drive/v1/permissions/:token/members/:member_id</code></p>
+</li>
+<li>
+<p><strong>判断是否有某权限</strong></p>
+</li>
+<li><code>POST /open-apis/drive/permission/member/permitted</code></li>
+<li>
+<p>lark-cli: <code>lark-cli drive permission.members auth</code></p>
+</li>
+<li>
+<p><strong>获取协作者列表</strong></p>
+</li>
+<li>
+<p><code>POST /open-apis/drive/permission/member/list</code></p>
+</li>
+<li>
+<p><strong>转移所有者</strong></p>
+</li>
+<li><code>POST /open-apis/drive/permission/member/transfer</code></li>
+<li>lark-cli: <code>lark-cli drive permission.members transfer_owner</code></li>
+</ol>
+<h3 id="permission-public">权限设置（Permission Public）</h3>
+<ol>
+<li><strong>获取权限设置</strong></li>
+<li>v1: <code>GET /open-apis/drive/v1/permissions/:token/public</code></li>
+<li>v2: <code>GET /open-apis/drive/v2/permissions/:token/public</code></li>
+<li>
+<p>lark-cli: <code>lark-cli drive permission.public get</code></p>
+</li>
+<li>
+<p><strong>更新权限设置</strong></p>
+</li>
+<li>v1: <code>PATCH /open-apis/drive/v1/permissions/:token/public</code></li>
+<li>v2: <code>PATCH /open-apis/drive/v2/permissions/:token/public</code></li>
+<li>lark-cli: <code>lark-cli drive permission.public patch</code></li>
+</ol>
+<h2 id="_2">三、关键参数详解（以添加协作者为例）</h2>
+<pre><code>路径参数:
+  token — 云文档 token（与 type 匹配）
+  type  — 文档类型: doc|docx|sheet|file|wiki|bitable|folder|mindnote|minutes|slides
 
-# 2. 授权 bot 访问文档
-lark-cli drive permission.members create \
-  --params '{&quot;token&quot;:&quot;&lt;doc_token&gt;&quot;,&quot;type&quot;:&quot;&lt;resource_type&gt;&quot;}' \
-  --data '{&quot;member_type&quot;:&quot;openid&quot;,&quot;member_id&quot;:&quot;&lt;bot_open_id&gt;&quot;,&quot;perm&quot;:&quot;view&quot;,&quot;type&quot;:&quot;user&quot;}'
+请求体:
+  member_type — ID 类型: email|openid|unionid|openchat|opendepartmentid|userid|groupid|wikispaceid|appid
+  member_id   — 协作者 ID（与 member_type 对应）
+  perm        — 权限级别: view|edit|full_access
+  need_notification — 是否通知对方（仅 user_access_token 有效）
+
+查询参数:
+  need_notification — true/false
 </code></pre>
-<p>resource_type 可选：doc / docx / sheet / bitable / file / folder / wiki / slides</p>
-<h3 id="permissionpublicpatch">六、permission.public.patch 错误码（实战必知）</h3>
+<h2 id="scope">四、所需权限 Scope</h2>
+<p>调用 permission API 需满足以下权限之一（满足即可）：</p>
 <ul>
-<li><code>91009</code>：对外分享被租户安全策略管控 → 联系管理员</li>
-<li><code>91010</code>：文档未打开对外分享 → 先在 UI 开启分享</li>
-<li><code>91011</code>：密级管控拦截对外分享 → 文档内发起密级豁免</li>
-<li><code>91012</code>：密级管控拦截权限设置 → 同上</li>
+<li>查看、评论、编辑和管理云文档</li>
+<li>查看、评论、编辑和管理云空间中所有文件</li>
+<li>上传和下载云空间文件</li>
+<li>查看、评论、编辑和管理电子表格</li>
+<li>查看、编辑和管理知识库</li>
 </ul>
-<h2 id="_4">对工作的价值</h2>
+<p>凭证类型：<code>tenant_access_token</code> 或 <code>user_access_token</code> 均可。</p>
+<h2 id="_3">五、对工作的价值</h2>
 <ol>
-<li><strong>自动化文档权限管理</strong>：批量创建文档时可自动授权协作者，无需手动逐个添加</li>
-<li><strong>bot 访问文档的前置步骤</strong>：bot 操作任何文档前，必须先被授权权限，这是 lark-doc/lark-drive 自动化链路的必备环节</li>
-<li><strong>权限审计能力</strong>：通过 <code>member/list</code> + <code>member/permitted</code> 可批量检查文档权限分布</li>
-<li><strong>密级安全场景</strong>：91011/91012 错误码处理逻辑已内置 lark-drive skill，可直接复用</li>
+<li><strong>批量权限管理自动化</strong> — 可以脚本化处理「给一批人共享文档」「批量调整权限」等重复操作，免去手动逐个设置</li>
+<li><strong>权限审计</strong> — 定期拉取协作者列表，检测是否有离职人员残留权限、外部人员越权访问</li>
+<li><strong>知识库安全治理</strong> — 结合 wiki 节点权限，实现知识库的自动化安全巡检</li>
+<li><strong>与其他 Skill 联动</strong> — 可在创建文档（doc/drive）、发送消息（im）后自动配置权限，形成完整工作流</li>
 </ol>
-<h2 id="_5">行动建议</h2>
+<h2 id="_4">六、行动建议</h2>
 <ol>
-<li><strong>优先使用 lark-cli shortcut</strong>：已有 <code>permission.members.create</code> 等封装，无需手写 HTTP 请求</li>
-<li><strong>bot 授权模式已标准化</strong>：lark-drive skill 中有完整 bot 自授权流程，创建文档后自动执行</li>
-<li><strong>V2 API 是未来方向</strong>：新项目优先使用 V2，组织/协作者维度分离管控更精细</li>
-<li><strong>密级文档处理</strong>：遇到 91011/91012 时需引导用户到文档 UI 操作，API 无法绕过</li>
+<li><strong>立即可用</strong>：lark-cli 已封装全部核心 permission 接口，无需裸调 API</li>
+<li><strong>常用命令速查</strong>：</li>
+<li>查权限设置：<code>lark-cli drive permission.public get --params '{"token":"xxx","type":"docx"}'</code></li>
+<li>加协作者：<code>lark-cli drive permission.members create --params '{"token":"xxx","type":"docx"}' --data '{"member_type":"email","member_id":"a@b.com","perm":"view"}'</code></li>
+<li>查协作者列表：<code>lark-cli drive permission.members auth</code>（判断权限）</li>
+<li><strong>注意 v1 vs v2</strong>：新项目建议直接用 v2，粒度更细。旧文档兼容 v1</li>
+<li><strong>安全提醒</strong>：permission.members create 属于 high-risk-write，需 <code>--yes</code> 确认</li>
 </ol>
-<h2 id="_6">相关笔记</h2>
-<ul>
-<li><a href="./2026-08-08-飞书-API-permission.md">飞书 Permission API (08-08)</a> — 前一篇权限笔记，同主题更早版本</li>
-<li><a href="./2026-08-07-飞书-API-bot.md">飞书 Bot API</a> — Bot 自授权模式与权限体系衔接</li>
-<li><a href="./2026-08-06-飞书-CardKit-v1-cards-api.md">飞书 CardKit API</a> — 卡片交互与文档权限结合使用</li>
-<li><a href="./2026-08-08-飞书-API-card.md">飞书 API Card (08-08)</a> — Card 2.0 回调协议中的权限校验环节</li>
-<li>[飞书权限模型三层审计 (explore)] — OAuth2 scope + 三层权限架构深度分析（~/explore/2026-08-01）</li>
-</ul>
 </body>
 </html>
