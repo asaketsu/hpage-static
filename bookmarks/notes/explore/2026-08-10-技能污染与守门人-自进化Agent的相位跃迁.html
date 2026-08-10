@@ -159,135 +159,93 @@ strong { color: #8b1a1a; }
 </head>
 <body>
 <h1 id="when-self-evolution-backfires-pre-commit-gating-against-skill-contamination-in-llm-agents">When Self-Evolution Backfires: Pre-Commit Gating against Skill Contamination in LLM Agents</h1>
-<h2 id="_1">元数据</h2>
-<ul>
-<li><strong>标题</strong>: When Self-Evolution Backfires: Pre-Commit Gating against Skill Contamination in LLM Agents</li>
-<li><strong>作者</strong>: Linfang Shang, Ming Xu, Yiding Sun, Tianle Xia, Lingxiang Hu, Lan Xu (通讯), Ning Zheng</li>
-<li><strong>arXiv</strong>: 2608.05810 [cs.AI; cs.CL]</li>
-<li><strong>提交日期</strong>: 2026-08-06</li>
-<li><strong>领域</strong>: AI Agent / 自进化系统 / Skill 管理</li>
-<li><strong>关键词</strong>: skill contamination, pre-commit gating, self-evolving agents, progressive trust hierarchy, marginal-gain selection</li>
-</ul>
+<blockquote>
+<p><strong>arXiv</strong>: <a href="https://arxiv.org/abs/2608.05810">2608.05810</a><br />
+<strong>作者</strong>: Linfang Shang, Ming Xu, Yiding Sun, Tianle Xia, Lingxiang Hu, Lan Xu (通讯), Ning Zheng<br />
+<strong>日期</strong>: 2026-08-06<br />
+<strong>领域</strong>: cs.AI / cs.CL<br />
+<strong>精读日期</strong>: 2026-08-10</p>
+</blockquote>
 <hr />
-<h2 id="_2">核心问题与研究动机</h2>
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11">1.1 核心问题与研究动机</h3>
 <p>自进化 Agent（如 Voyager、ExpeL、ACE、AHE）通过从执行轨迹中蒸馏可复用 skill 来积累能力——每完成一轮任务，就提取经验写入持久化 skill 池，注入后续每轮的决策上下文。理论上能力应该单调增长。</p>
 <p><strong>本文发现的反直觉现象</strong>：skill 积累并非单调递增。当 skill 池增长到某个临界规模 k<em> 后，新增的 skill 反而使性能下降——即使每个 skill 都是从 Agent 自己完成的合法轨迹中蒸馏出来的。论文称此为</em><em>「能力-污染相变点」(capability-contamination phase transition)</em>*。</p>
-<p>更关键的是，这种污染是<strong>结构性不可逆的</strong>：事后删除坏 skill 无法恢复大部分性能损失，因为坏 skill 已经作为参考上下文污染了后续蒸馏出的"后代 skill"。</p>
-<hr />
-<h2 id="verifier-as-gatekeeper-vag">方法论：Verifier-as-Gatekeeper (VaG)</h2>
-<h3 id="_3">核心思想</h3>
-<p>将 skill 准入从「写入操作」升级为「晋升决策」。每个新蒸馏的 skill 不会自动进入运行时上下文，而是必须通过一个<strong>渐进式信任层级</strong>的三级过滤。</p>
-<h3 id="_4">三级信任架构</h3>
-<p><strong>Cold 层（冷启动）</strong><br />
-- 所有新蒸馏的 skill 初始进入 Cold 层<br />
-- 被记录但 Agent 看不见<br />
-- 这是最便宜的隔离——缺陷无法传播</p>
-<p><strong>Gate 1（个体安全性检查）—— 三种异质评审器</strong></p>
+<p>更关键的是，这种污染是<strong>结构性不可逆的</strong>：事后删除坏 skill 无法恢复大部分性能损失，因为坏 skill 已经作为参考上下文污染了后续蒸馏出的「后代 skill」。</p>
+<p>现有系统（Voyager、ExpeL、ACE、AHE）共享一个从未被质疑的设计假设：distiller 产出的 skill 无条件准入——最多做去重，没有任何 skill 需要在进入运行时上下文前证明自己的价值。</p>
+<h3 id="12">1.2 方法论（详细）</h3>
+<p><strong>核心思想</strong>：将 skill 准入从「写入操作」升级为「晋升决策」。每个新蒸馏的 skill 不会自动进入运行时上下文，而是必须通过一个<strong>渐进式信任层级 (Progressive Trust Hierarchy)</strong> 的三级过滤。</p>
+<p><strong>三级信任架构</strong>：</p>
+<p><strong>Cold 层（冷启动）</strong>：所有新蒸馏的 skill 初始进入 Cold 层。被记录但 Agent 看不见。缺陷无法传播。这是最便宜的隔离。</p>
+<p><strong>Gate 1（个体安全性检查）—— 三种异质评审器</strong>：</p>
 <p>一个 skill 要离开 Cold 层，必须同时通过三种检查不同属性的评审器。因为三者检查的是正交属性（格式、行为、语义），一个有害 skill 必须同时欺骗全部三者才能通过：</p>
 <ol>
-<li><strong>结构有效性 (Schema Validation)</strong></li>
-<li>确定性 schema 检查（零 LLM 调用）</li>
-<li>验证 skill 格式是否合法：name、trigger condition、body 结构是否完整</li>
 <li>
-<p>最便宜的过滤器，拦截格式错误</p>
+<p><strong>结构有效性 (Schema Validation)</strong>：确定性 schema 检查（零 LLM 调用）。验证 skill 格式是否合法：name、trigger condition、body 结构是否完整。最便宜的过滤器。</p>
 </li>
 <li>
-<p><strong>行为无害性 (Behavioral Harmlessness)</strong></p>
-</li>
-<li>单 skill A-B 回放：在 held-out 任务上对比「注入该 skill」vs「不注入」的成功率</li>
-<li>这是唯一一个经验性测试行为的检查（而非表面形式）</li>
-<li>
-<p>消融实验显示这是最重要的维度（-10pp）</p>
+<p><strong>行为无害性 (Behavioral Harmlessness)</strong>：单 skill A-B 回放——在 held-out 任务上对比「注入该 skill」vs「不注入」的成功率。这是唯一一个经验性测试行为的检查（而非表面形式）。消融实验显示这是最重要的维度（-10pp）。</p>
 </li>
 <li>
-<p><strong>语义一致性 (Semantic Consistency)</strong></p>
+<p><strong>语义一致性 (Semantic Consistency)</strong>：单次 LLM 评审（唯一的 LLM 调用）。检查 skill 是否包含捏造的、自相矛盾的建议。拦截「读起来合理但实际误导」的 skill。</p>
 </li>
-<li>单次 LLM 评审（唯一的 LLM 调用）</li>
-<li>检查 skill 是否包含捏造的、自相矛盾的建议</li>
-<li>拦截「读起来合理但实际误导」的 skill</li>
 </ol>
-<p><strong>Warm 层（预热）</strong><br />
-- 通过 Gate 1 的 skill 进入 Warm 层<br />
-- 个体安全但尚未验证组合安全性</p>
-<p><strong>Gate 2（组合安全性检查）—— 边际增益贪心选择</strong></p>
-<p>核心洞察：skill 效用不是全局单调的——一个 skill 可能降低联合性能。因此 Gate 2 不是逐个判断，而是做子集选择：</p>
+<p>设计哲学：不追求单一最强评审器，而是设计三个检查正交属性的低成本评审器，从信息论角度最大化拦截覆盖。两种便宜检查先做，只有幸存者才消耗 LLM 调用。</p>
+<p><strong>Warm 层（预热）</strong>：通过 Gate 1 的 skill 进入 Warm 层。个体安全但尚未验证组合安全性。</p>
+<p><strong>Gate 2（组合安全性检查）—— 边际增益贪心选择</strong>：</p>
+<p>核心洞察：skill 效用不是全局单调的——一个 skill 可能降低联合性能。Gate 2 不是逐个判断，而是做子集选择：</p>
 <ul>
 <li>目标函数：f(H) = E[R(agent ⊕ H, τ)]，即在 held-out 任务上的联合成功率</li>
 <li>贪心策略：只有当一个候选 skill 能提升当前 Hot 集合的联合性能时才晋升</li>
 <li>直接瞄准 Gate 1 无法检测的组合冲突</li>
 </ul>
-<p><strong>Hot 层（运行时）</strong><br />
-- 只有 Hot 层的 skill 被注入 Agent 的 system prompt<br />
-- 这是 Agent 实际使用的 skill 池</p>
-<h3 id="_5">污染不可逆性的形式化</h3>
-<p>论文给出了严格的数学论证：</p>
-<ul>
-<li>skill 在第 r 轮蒸馏时，其上下文条件是 M_{r-1}（当前活跃 skill 池）</li>
-<li>如果 M_{r-1} 含有缺陷 skill s，则 s 的缺陷被传递给后代 skill desc(s)</li>
-<li>事后删除 s 只能恢复 R(M_r ∖ {s})，但后代中继承的缺陷仍在</li>
-<li>完整恢复需要删除 {s} ∪ desc(s)，但现有 skill 库不记录蒸馏时的上下文血统</li>
-</ul>
-<p><strong>结论</strong>：skill 准入是循环中阻止污染传播的最后节点，验证必须在 skill 进入运行时上下文<strong>之前</strong>完成。</p>
-<hr />
-<h2 id="_6">关键实验结果与数据</h2>
-<h3 id="terminal-bench-2-event-50-50">主实验：Terminal-Bench 2 (Event-50, 50 任务)</h3>
+<p>这引入了经典的弱子模优化 (weak submodularity) 理论，marginal-gain greedy 有理论近似保证。</p>
+<p><strong>Hot 层（运行时）</strong>：只有 Hot 层的 skill 被注入 Agent 的 system prompt。</p>
+<p><strong>污染不可逆性的形式化</strong>：</p>
+<p>论文给出了严格的数学论证。skill 在第 r 轮蒸馏时，其上下文条件是 M_{r-1}（当前活跃 skill 池）。如果 M_{r-1} 含有缺陷 skill s，则 s 的缺陷被传递给后代 skill desc(s)。事后删除 s 只能恢复 R(M_r ∖ {s})，但后代中继承的缺陷仍在。完整恢复需要删除 {s} ∪ desc(s)，但现有 skill 库不记录蒸馏时的上下文血统。因此 skill 准入是循环中阻止污染传播的最后节点，验证必须在 skill 进入运行时上下文之前完成。</p>
+<h3 id="13">1.3 关键实验结果与数据</h3>
+<p><strong>主实验：Terminal-Bench 2 (Event-50, 50 任务)</strong></p>
 <p>对比四种配置，5 轮进化（R1-R5），每任务 k=3 rollouts：</p>
-<p><strong>Ungated（无准入控制）—— 相变确认</strong><br />
+<p>Ungated（无准入控制）—— 相变确认：<br />
 - R1: 48% (35 skills) → R2: 60% (68) → R3: 62% (105, 峰值)<br />
 - R4: 52% (141) → R5: 50% (179)<br />
 - R5 仅比 R1 高 2pp，尽管 skill 池从 35 增长到 179<br />
 - 相变点 k* ≈ R3 (105 skills)，之后性能倒退</p>
-<p><strong>VaG（门控进化）—— 单调递增</strong><br />
+<p>VaG（门控进化）—— 单调递增：<br />
 - R1: 52% (5) → R2: 58% (15) → R3: 62% (25) → R4: 68% (30) → R5: 72% (37)<br />
 - 始终高于 Seed baseline (46%)<br />
 - Hot 池仅 37 个 skill（Ungated 的 1/5）<br />
 - R5 比 Ungated 最佳轮次 (R3, 62%) 高 10pp</p>
-<p><strong>Post-hoc Rollback（事后清理）</strong><br />
-- 在 R5 崩溃后删除有害 skill → 52%（仅恢复 6pp）<br />
-- 验证了不可逆性：事后清理只能恢复 17% 的退化</p>
-<h3 id="_7">难度分层分析</h3>
-<p>污染精准打击最难的任务：<br />
-- Ungated Hard 层：R2 峰值 53% → R5 降至 35%（-18pp）<br />
-- VaG Hard 层：持续提升到 R5 的 59%（比 Ungated 高 24pp）<br />
-- 多步任务中污染链最长，受害最深</p>
-<h3 id="table-2">消融实验 (Table 2)</h3>
-<p>移除任一评审器的代价：<br />
+<p>Post-hoc Rollback（事后清理）：在 R5 崩溃后删除有害 skill → 52%（仅恢复 6pp），验证了不可逆性：事后清理只能恢复 17% 的退化。</p>
+<p><strong>难度分层分析</strong>：</p>
+<p>污染精准打击最难的任务。Ungated Hard 层：R2 峰值 53% → R5 降至 35%（-18pp）。VaG Hard 层：持续提升到 R5 的 59%（比 Ungated 高 24pp）。多步任务中污染链最长，受害最深。</p>
+<p><strong>消融实验 (Table 2)</strong>——移除任一评审器的代价：<br />
 - 移除 Schema validation: -2pp（格式错误大多被 backbone 忽略或修复）<br />
 - 移除 Holdout replay: <strong>-10pp</strong>（最关键——唯一经验性测试行为的检查）<br />
 - 移除 Semantic check: -4pp（捏造/矛盾建议通过行为测试但误导 Agent）<br />
 - 移除 Marginal-gain gate: -8pp，Hot 池从 37 膨胀到 58（组合污染的直接证据）</p>
-<p><strong>三重检查互补性确认</strong>：每种检查拦截不同类型的有害 skill，不可互相替代。</p>
-<h3 id="table-3">跨模型迁移 (Table 3)</h3>
-<p>冻结 VaG 的 Hot skill 池（37 skills，在 Hy3 上进化），在其他 4 个 backbone 上直接推理（不重新进化）：</p>
-<ul>
-<li>Hy3 (原始): 32% → 44% (+12pp)</li>
-<li>DeepSeek-V4-Pro: 32% → 40% (+8pp)</li>
-<li>GPT-5.4: 44% → 56% (+12pp)</li>
-<li>Claude Sonnet 4.5: 48% → 56% (+8pp)</li>
-<li>Qwen3.6-35B-A3B: 36% → 52% (+16pp)</li>
-</ul>
-<p><strong>结论</strong>：门控进化蒸馏出的是模型无关的工程经验，而非 backbone 特定的伪影。</p>
-<h3 id="table-4">跨基准迁移 (Table 4)</h3>
-<p>在 InterCode NL2Bash (200 任务) 上测试：</p>
-<ul>
-<li>Seed (3 skills): 57.5%</li>
-<li>Ungated R5 (179 skills): 65.5% (+8.0pp)</li>
-<li>VaG R5 (37 skills): 69.0% (+11.5pp)</li>
-</ul>
+<p>三重检查互补性确认：每种检查拦截不同类型的有害 skill（格式错误/静默有害/看似合理实则捏造），不可互相替代。</p>
+<p><strong>跨模型迁移 (Table 3)</strong>：</p>
+<p>冻结 VaG 的 Hot skill 池（37 skills，在 Hy3 上进化），在其他 4 个 backbone 上直接推理（不重新进化）：<br />
+- Hy3: 32% → 44% (+12pp)<br />
+- DeepSeek-V4-Pro: 32% → 40% (+8pp)<br />
+- GPT-5.4: 44% → 56% (+12pp)<br />
+- Claude Sonnet 4.5: 48% → 56% (+8pp)<br />
+- Qwen3.6-35B-A3B: 36% → 52% (+16pp)</p>
+<p>结论：门控进化蒸馏出的是模型无关的工程经验，而非 backbone 特定的伪影。</p>
+<p><strong>跨基准迁移 (Table 4)</strong>——在 InterCode NL2Bash (200 任务) 上测试：<br />
+- Seed (3 skills): 57.5%<br />
+- Ungated R5 (179 skills): 65.5% (+8.0pp)<br />
+- VaG R5 (37 skills): 69.0% (+11.5pp)</p>
 <p>VaG 用 1/5 的 skill 池，在完全不同的基准上超越 Ungated。</p>
-<h3 id="token">Token 效率</h3>
-<ul>
-<li>Ungated R5: 1.19M tokens/trial（179 skills 注入上下文的成本）</li>
-<li>VaG R5: 0.94M tokens/trial（37 skills，节省 21%）</li>
-</ul>
-<hr />
-<h2 id="_8">创新点分析</h2>
+<p><strong>Token 效率</strong>：Ungated R5 为 1.19M tokens/trial，VaG R5 为 0.94M tokens/trial（节省 21%）。</p>
+<h3 id="14">1.4 创新点分析</h3>
 <ol>
 <li>
 <p><strong>首次形式化「能力-污染相变」</strong>：将自进化 Agent 的非单调性从经验观察提升为有严格定义的三级分类法（个体/组合/系统污染）</p>
 </li>
 <li>
-<p><strong>不可逆性定理</strong>：证明了 post-hoc 回滚的数学上限——即使知道哪个 skill 有害，也无法完全恢复，因为血统传播是不可逆的。这是对 Voyager 等「先存后筛」范式的根本性挑战</p>
+<p><strong>不可逆性定理</strong>：证明了 post-hoc 回滚的数学上限——即使知道哪个 skill 有害也无法完全恢复，因为血统传播是不可逆的。这是对 Voyager 等「先存后筛」范式的根本性挑战</p>
 </li>
 <li>
 <p><strong>渐进式信任层级</strong>：Cold → Warm → Hot 的三级架构，巧妙利用了「验证成本递增」的设计——便宜检查先做，贵检查只对少量幸存者做</p>
@@ -296,11 +254,10 @@ strong { color: #8b1a1a; }
 <p><strong>组合安全检查引入子模优化</strong>：将 Agent skill 准入问题与经典的弱子模优化理论连接，marginal-gain greedy 有理论近似保证</p>
 </li>
 <li>
-<p><strong>三重异质评审器设计哲学</strong>：不追求单一最强评审器，而是设计三个检查正交属性的低成本评审器，从信息论角度最大化拦截覆盖</p>
+<p><strong>三重异质评审器设计哲学</strong>：不追求单一最强评审器，而是设计三个检查正交属性的低成本评审器</p>
 </li>
 </ol>
-<hr />
-<h2 id="_9">局限性与未来方向</h2>
+<h3 id="15">1.5 局限性与未来方向</h3>
 <ol>
 <li>
 <p><strong>任务域窄</strong>：仅在 Terminal-Bench 2（shell 命令任务）上验证。非终端任务（如多轮对话、代码生成、创意写作）的污染模式可能不同</p>
@@ -309,7 +266,7 @@ strong { color: #8b1a1a; }
 <p><strong>Skill 粒度假设</strong>：假设 skill 是结构化的自然语言单元（name + trigger + body）。对非结构化经验（如隐式策略偏好）不适用</p>
 </li>
 <li>
-<p><strong>A-B 回放成本</strong>：Gate 1 的行为检查需要在 held-out 任务上运行 Agent，对昂贵模型（GPT-5.4 等）可能不划算</p>
+<p><strong>A-B 回放成本</strong>：Gate 1 的行为检查需要在 held-out 任务上运行 Agent，对昂贵模型可能不划算</p>
 </li>
 <li>
 <p><strong>跨模型迁移的 open question</strong>：论文展示了正面迁移，但未讨论负迁移场景（某 skill 在 Hy3 上有益但在 Claude 上有害）</p>
@@ -319,60 +276,53 @@ strong { color: #8b1a1a; }
 </li>
 </ol>
 <hr />
-<h2 id="hermes-agent">借鉴点（关联 Hermes Agent）</h2>
-<h3 id="p0">P0 — 可直接落地</h3>
-<p><strong>1. Skill 准入门控机制</strong></p>
-<p>当前 Hermes 的 skill_manage(action='create') 是无条件写入——只要调用就创建。本文证明这是危险的。建议增加一层「Cold skill」概念：</p>
-<ul>
-<li>新创建的 skill 先标记为 <code>status: cold</code>（在 frontmatter 中）</li>
-<li>不自动注入 system prompt 的 available_skills 列表</li>
-<li>需要通过某种验证后（如 cron 压力测试 skill-stress-test）才升级为 <code>status: hot</code></li>
-<li>这直接对应论文的 Cold → Hot 晋升机制</li>
-</ul>
-<p><strong>2. Skill 血统记录</strong></p>
-<p>论文指出不可逆性的根因是「不知道哪个 skill 在蒸馏时是活跃的」。建议在 skill frontmatter 中增加：</p>
-<pre><code class="language-yaml">distilled_from:
-  source_session: &lt;session_id&gt;
-  active_skills_at_creation:
-    - skill-a
-    - skill-b
-</code></pre>
-<p>这样如果发现 skill-a 有害，可以追踪所有以其为参考上下文蒸馏出的后代 skill。</p>
-<p><strong>3. 三重评审器模板化</strong></p>
-<p>将论文的三种评审器固化为 Hermes skill 审查的标准流程：</p>
-<ul>
-<li>Schema check: 已有 <code>skill_manage</code> 的 frontmatter 验证</li>
-<li>Behavioral replay: 利用已有的 <code>skill-stress-test</code> skill（用 subagent 验证）</li>
-<li>Semantic review: 可在创建后自动触发一次 LLM 评审（类似 content-judge）</li>
-</ul>
-<h3 id="p1">P1 — 需工程改造</h3>
-<p><strong>4. 边际增益 Skill 合并决策</strong></p>
-<p>当前 Hermes 的 skill-review 是逐个评估 skill 质量。但本文证明组合冲突是真实存在的——两个各自无害的 skill 可能冲突。建议 skill-review 增加：</p>
-<ul>
-<li>在批量审查时，不只评估单个 skill 质量</li>
-<li>还要检查 skill 之间的语义冲突（如两个 skill 给出矛盾的 cron 调度策略）</li>
-<li>对已识别冲突的 skill pair，标记「互斥」关系</li>
-</ul>
-<p><strong>5. 污染监控指标</strong></p>
-<p>在 Hermes 的 observability-dashboard 中增加 skill 污染监控：</p>
-<ul>
-<li>追踪每个 skill 创建后的任务成功率变化趋势</li>
-<li>如果某 skill 创建后成功率下降，标记为「污染嫌疑」</li>
-<li>类似论文中的 injection gain g({s}, τ) &lt; 0 检测</li>
-</ul>
-<h3 id="p2">P2 — 长期方向</h3>
-<p><strong>6. Hermes Skill 池大小监控</strong></p>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-submodular-optimization-marginal-gain-greedy">2.1 子模优化与边际增益贪心 (Submodular Optimization &amp; Marginal-Gain Greedy)</h3>
+<p>子模函数是组合优化中的核心概念：一个集合函数 f 满足「添加元素到较小集合的边际收益 ≥ 添加到较大集合」——即边际递减。经典定理（Nemhauser 1978）证明：对单调子模函数在基数约束下，贪心算法（每步选边际增益最大的元素）可达 (1-1/e) ≈ 63.2% 的近似比。本文的 Gate 2 使用弱子模扩展（Das &amp; Kempe 2011），允许函数非完全子模时仍有近似保证。在 Agent skill 场景中，这意味着：即使 skill 之间有复杂交互（非线性），按边际增益排序贪心选择仍能近似最优子集。</p>
+<h3 id="22-capability-contamination">2.2 Capability-Contamination 相变与统计力学类比</h3>
+<p>论文将 skill 积累的非单调性命名为「相变」(phase transition)，借用了统计力学概念。在伊辛模型等物理系统中，相变是指系统参数跨过临界点时宏观行为的突变（如液态→气态）。本文中 k* 是临界 skill 数量——低于它时 skill 积累是建设性的，高于它时变为破坏性的。这种相变思维也可应用于理解 LLM 的涌现能力、context window 的信息密度阈值等现象。</p>
+<h3 id="23-a-b-replay">2.3 A-B Replay 测试范式</h3>
+<p>A-B replay 是软件工程中 A/B 测试的变体：在受控环境中对比「有 vs 无某个变更」的系统行为差异。本文的创新在于将 A-B replay 应用于单个 skill 的行为验证——在 held-out 任务集上，对比注入 vs 不注入某 skill 的成功率差值 g({s}, τ)。这与传统 A/B 测试的区别在于：变更单位不是 UI 变体或推荐策略，而是 Agent 上下文中的一条自然语言经验。该范式可直接迁移到任何「软变更」的效果评估——如 prompt 模板修改、system prompt 微调、memory 条目增删。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-hermes-agent">3.1 借鉴点评估（关联 Hermes Agent）</h3>
+<p><strong>P0 — Skill 准入门控机制（可直接落地）</strong></p>
+<p>当前 Hermes 的 skill_manage(action='create') 是无条件写入——只要调用就创建。本文证明这是危险的。建议增加一层「Cold skill」概念：<br />
+- 新创建的 skill 先标记为 status: cold（在 frontmatter 中）<br />
+- 不自动注入 system prompt 的 available_skills 列表<br />
+- 需要通过验证后（如 cron 压力测试 skill-stress-test）才升级为 status: hot<br />
+- 这直接对应论文的 Cold → Hot 晋升机制</p>
+<p><strong>P0 — Skill 血统记录（可直接落地）</strong></p>
+<p>论文指出不可逆性的根因是「不知道哪个 skill 在蒸馏时是活跃的」。建议在 skill frontmatter 中增加 distilled_from 字段，记录创建时的活跃 skill 列表。这样如果发现某 skill 有害，可以追踪所有以其为参考上下文蒸馏出的后代 skill。</p>
+<p><strong>P0 — 三重评审器模板化（可直接落地）</strong></p>
+<p>将论文的三种评审器固化为 Hermes skill 审查的标准流程：<br />
+- Schema check: 已有 skill_manage 的 frontmatter 验证<br />
+- Behavioral replay: 利用已有的 skill-stress-test skill（用 subagent 验证）<br />
+- Semantic review: 可在创建后自动触发一次 LLM 评审（类似 content-judge）</p>
+<p><strong>P1 — 边际增益 Skill 合并决策（需工程改造）</strong></p>
+<p>当前 Hermes 的 skill-review 是逐个评估 skill 质量。但本文证明组合冲突是真实存在的——两个各自无害的 skill 可能冲突。建议 skill-review 增加：批量审查时检查 skill 之间的语义冲突（如两个 skill 给出矛盾的 cron 调度策略），对已识别冲突的 skill pair 标记互斥关系。</p>
+<p><strong>P1 — 污染监控指标（需工程改造）</strong></p>
+<p>在 Hermes 的 observability-dashboard 中增加 skill 污染监控：追踪每个 skill 创建后的任务成功率变化趋势。如果某 skill 创建后成功率下降，标记为「污染嫌疑」，类似论文中的 injection gain g({s}, τ) &lt; 0 检测。</p>
+<p><strong>P2 — Hermes Skill 池大小监控（长期方向）</strong></p>
 <p>论文发现相变点 k* 的存在。对 Hermes 来说，当前的 400+ skills 是否已越过相变点？这是一个值得用 skill-stress-test 验证的实证问题。建议定期运行「skill 池减半实验」：随机移除 50% skills，看任务完成率是否反而提升。</p>
 <hr />
-<h2 id="_10">关联论文</h2>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41">4.1 从「无条件进化」到「门控进化」的范式转移</h3>
+<p>本文标志着 AI Agent 自进化研究的焦点从「如何更快地蒸馏 skill」（Voyager/ExpeL 时代）转向「如何安全地准入 skill」。这一范式转移的逻辑链是：自进化系统的核心瓶颈不再是蒸馏能力（LLM 已足够强大），而是质量控制——当 skill 池增长到一定规模后，蒸馏的边际产出为负。预计 2026 下半年到 2027 将出现大量跟进工作：不同领域的相变点 k* 测量、更高效的组合冲突检测算法、自动化血统追踪基础设施。对工业级 Agent 系统（如 Hermes、Claude Code、Cursor），门控进化将从「可选优化」变为「必要基础设施」。</p>
+<h3 id="42-agent">4.2 Agent 可靠性工程的数学化</h3>
+<p>本文将污染不可逆性提升为定理（Eq. 5），将组合安全性连接到子模优化理论。这预示着 Agent 可靠性研究正在从「经验工程」（加 retry、加 timeout）走向「形式化保证」（基于优化理论的近似比、基于图论的血统追踪）。未来的 Agent 框架可能像数据库系统一样自带 ACID 性质——其中「Isolation」对应 skill 准入隔离，「Durability」对应 skill 血统持久化。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51">5.1 关联论文</h3>
 <ul>
 <li><strong>Voyager</strong> (Wang et al. 2023) — 开源 skill 库先驱，仅验证 skill 能否完成目标任务就存储，不检查对其他任务的负面影响。本文直接挑战的设计</li>
 <li><strong>ExpeL</strong> (Zhao et al. 2024) — 从执行轨迹蒸馏经验知识，同样是无条件准入</li>
 <li><strong>ACE</strong> (Zhang et al. 2025) — 大规模上下文级进化，继承了无条件准入假设</li>
 <li><strong>AHE</strong> (Lin et al. 2026) — harness 级进化，评估延迟到 harness 层，无法归因到单个 skill</li>
-<li><strong>EvoSOP</strong> (2607.07321) — 之前精读过，消融证明剪枝 &gt; 创建。本文从「准入门控」角度补充了 EvoSOP 的「评估后剪枝」——准入时拦截比事后剪枝更经济</li>
-<li><strong>SPyCE</strong> (2607.13854) — 技能-策略协同进化。本文的 marginal-gain 选择可直接增强 SPyCE 的 merge-or-add 决策</li>
-<li><strong>OpenForgeRL</strong> (2607.21557) — harness-native RL 训练。本文的 VaG 可作为 RL 训练中 skill 质量门控的预处理步骤</li>
+<li><strong>EvoSOP</strong> (2607.07321, 之前精读) — 消融证明剪枝 &gt; 创建。本文从「准入门控」角度补充了 EvoSOP 的「评估后剪枝」——准入时拦截比事后剪枝更经济</li>
+<li><strong>SPyCE</strong> (2607.13854, 之前精读) — 技能-策略协同进化。本文的 marginal-gain 选择可直接增强 SPyCE 的 merge-or-add 决策</li>
+<li><strong>OpenForgeRL</strong> (2607.21557, 之前精读) — harness-native RL 训练。本文的 VaG 可作为 RL 训练中 skill 质量门控的预处理步骤</li>
+<li><strong>Binding Drift</strong> (2607.18316, 之前精读) — 实体绑定漂移。本文的「污染血统传播」与 Binding Drift 的「错误传播放大」在多步 Agent 失败模式上有结构相似性</li>
 </ul>
 </body>
 </html>
