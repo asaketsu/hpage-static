@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026本地大模型部署指南-从8GB到万亿参数</title>
+
+<meta property="og:title" content="2026本地大模型部署指南-从8GB到万亿参数" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="2026-8gb-kimi-k3deepseek-v4">2026 本地大模型部署指南 — 从 8GB 到万亿参数（Kimi K3/DeepSeek V4 实战）</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号文章（爱范子 ifanr）<br />
+<strong>发布时间</strong>：2026-08-09（时间戳 1785910282）<br />
+<strong>标签</strong>：本地部署、Kimi K3、DeepSeek V4、MoE、量化、显存选型</p>
+</blockquote>
+<hr />
+<h2 id="_1">一句话定义</h2>
+<blockquote>
+<p><strong>2026 年本地部署大模型的核心瓶颈已从 GPU 算力转向显存容量和内存带宽。</strong> Kimi K3（2.78T 参数）在 8.24GB 内存上跑通（每 Token 等 32.69 秒），DeepSeek V4 Flash（284B）在 128GB Mac/DGX Spark 上接近可用。MoE 稀疏激活 + 权重流式加载 + 低比特量化正在把万亿模型搬上个人桌面。</p>
+</blockquote>
+<hr />
+<h2 id="_2">完整原文核心内容</h2>
+<h3 id="kimi-k3-8gb">Kimi K3 是怎么在 8GB 跑起来的</h3>
+<p><strong>kimi-k3-in-c 项目</strong>：不到 200KB 的 C 语言代码完成 Kimi K3 的 CPU 推理。无 PyTorch、无 CUDA，只依赖编译器 + OpenMP + 系统数学库。</p>
+<p><strong>内存压缩四层递进</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>大小</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF16 全参数</td>
+<td>5.56TB</td>
+<td>所有参数半精度的理论体积</td>
+</tr>
+<tr>
+<td>MXFP4 权重</td>
+<td>1.56TB</td>
+<td>官方发布的 4-bit 量化权重</td>
+</tr>
+<tr>
+<td>稠密主干</td>
+<td>113.49GB</td>
+<td>专家留磁盘后，需持续参与计算的部分（注意力/路由器/共享专家/Embedding/输出层）</td>
+</tr>
+<tr>
+<td><strong>峰值内存</strong></td>
+<td><strong>8.24GB</strong></td>
+<td>稠密主干也改成逐层读取后的实测峰值</td>
+</tr>
+</tbody>
+</table>
+<p><strong>技术原理</strong>：</p>
+<ol>
+<li><strong>MoE 稀疏激活</strong>：Kimi K3 共 2.8T 参数，每 Token 仅激活 ~104B（3.7%）。每层 896 个专家中只用 16 个</li>
+<li><strong>专家权重留磁盘</strong>：根据路由结果从硬盘读取需要的 16 个专家</li>
+<li><strong>稠密主干流式加载</strong>：93 层稠密权重重新整理为 109GB 连续文件，循环缓冲区逐层读取</li>
+<li><strong>KDA 固定状态</strong>：69 个 KDA 层不需为每个历史 Token 保存 KV Cache，只维护固定大小递归状态</li>
+<li><strong>MLA 压缩</strong>：24 个 MLA 层通过低维表示压缩注意力缓存</li>
+</ol>
+<p><strong>代价</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每 Token 磁盘读取</td>
+<td>~25.83GB 专家 + ~108.81GB 主干 = <strong>~130GB+</strong></td>
+</tr>
+<tr>
+<td>Token 速度</td>
+<td>0.03 Token/s（32.69 秒/Token）</td>
+</tr>
+<tr>
+<td>完整存储要求</td>
+<td><strong>1.7TB NVMe</strong></td>
+</tr>
+<tr>
+<td>测试环境</td>
+<td>双路 AMD EPYC 7763（124 核/228GB RAM/3.2TB NVMe + 4×L40 未用）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>8GB 是通过 Linux cgroup 限制进程内存测得的峰值 RSS。不是普通 8GB 笔记本实测。"One CPU"更准确理解为 CPU-only。</p>
+</blockquote>
+<p><strong>内存阶梯测试</strong>：从 8GB 增加到 224GB，内存扩大 28 倍，速度只提高约 1.7 倍。约 4-6 成时间在等硬盘。<strong>关键硬件已从 GPU 转向 NVMe。</strong></p>
+<hr />
+<h3 id="_3">显存选型指南</h3>
+<h4 id="_4">显存计算公式</h4>
+<pre><code>模型权重(GB) ≈ 参数量(B) × 量化位数 ÷ 8 × 1.15
+总内存需求 ≈ 模型权重 + KV Cache + 1~3GB 运行缓冲
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>量化</th>
+<th>每 1B 参数显存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP16（半精度无损）</td>
+<td>~2GB</td>
+</tr>
+<tr>
+<td>INT8（8-bit）</td>
+<td>~1GB</td>
+</tr>
+<tr>
+<td><strong>INT4/Q4_K_M（主流）</strong></td>
+<td><strong>~0.5-0.6GB</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>MoE 模型注意：虽然每 Token 只激活部分专家，但<strong>全部专家权重都必须完整加载到内存/显存</strong>。</p>
+</blockquote>
+<h4 id="vs-q4-8k-16k">显存 vs 模型规模对照（Q4 量化，8K-16K 上下文）</h4>
+<table>
+<thead>
+<tr>
+<th>显存</th>
+<th>可运行模型</th>
+<th>代表模型</th>
+<th>显卡推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>8GB</strong></td>
+<td>4B-7B</td>
+<td>Phi-4 Mini 3.8B, Qwen3.5 4B</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>16GB</strong></td>
+<td>9B-14B</td>
+<td>Qwen3.5 9B, Gemma 4 12B</td>
+<td>RTX 5060 Ti 16GB（¥5100-5300）</td>
+</tr>
+<tr>
+<td><strong>24GB</strong></td>
+<td>24B-27B</td>
+<td>Devstral Small 2 24B, Qwen3.8 27B</td>
+<td>二手 RTX 3090（¥5000-8000）</td>
+</tr>
+<tr>
+<td><strong>32GB</strong></td>
+<td>35B MoE</td>
+<td>Qwen3.5-35B-A3B（激活 3B）</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>80-128GB</strong></td>
+<td>120B+</td>
+<td>gpt-oss-120b</td>
+<td>大容量统一内存工作站</td>
+</tr>
+</tbody>
+</table>
+<h4 id="_5">系统配置建议</h4>
+<table>
+<thead>
+<tr>
+<th>显卡</th>
+<th>建议系统内存</th>
+<th>CPU</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>8-16GB 显卡</td>
+<td>32GB</td>
+<td>6-8 核够用</td>
+</tr>
+<tr>
+<td>24-32GB 显卡</td>
+<td>64GB</td>
+<td>6-8 核</td>
+</tr>
+<tr>
+<td>混合卸载 70B</td>
+<td>128GB</td>
+<td>更多核心</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>硬盘从 1TB NVMe 起步，长期推荐 2TB。</p>
+</blockquote>
+<hr />
+<h3 id="_6">统一内存设备（无独立显卡方案）</h3>
+<table>
+<thead>
+<tr>
+<th>设备</th>
+<th>内存</th>
+<th>可运行</th>
+<th>价格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mac Mini M4 Pro</td>
+<td>64GB 统一内存</td>
+<td>部分 70B Q4</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Mac Studio M4 Max</td>
+<td>128GB 统一内存</td>
+<td>70B/109B/部分 120B Q4</td>
+<td>高</td>
+</tr>
+<tr>
+<td>Ryzen AI Max+ 395</td>
+<td>大容量统一内存</td>
+<td>同上</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>DGX Spark</strong></td>
+<td>128GB 统一显存</td>
+<td>DeepSeek V4 Flash 量化版</td>
+<td>$4699（涨价 $700）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="deepseek-v4-flash">DeepSeek V4 Flash：前沿模型上桌面</h3>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>完整验证方案</strong></td>
+<td>4×GB300（每张 288GB，合计 1.15TB 显存）</td>
+</tr>
+<tr>
+<td><strong>168GB RAM</strong></td>
+<td>无损 4-bit 量化运行</td>
+</tr>
+<tr>
+<td><strong>110GB RAM</strong></td>
+<td>3-bit 运行</td>
+</tr>
+<tr>
+<td><strong>128GB Mac / DGX Spark</strong></td>
+<td>量化后接近可用范围</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>DeepSeek V4 Flash（284B）+ 量化 + 统一内存设备 = 前沿闭源模型能力进入个人桌面。</p>
+</blockquote>
+<hr />
+<h3 id="_7">运行工具选择</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>适合</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>LM Studio</strong></td>
+<td>新手</td>
+<td>GUI 界面，搜索/下载/切换模型，<code>lms load --estimate-only</code> 估算内存</td>
+</tr>
+<tr>
+<td><strong>Ollama</strong></td>
+<td>开发者</td>
+<td><code>ollama run</code> 启动，OpenAI 兼容 API。⚠️ cloud 标记的模型会上云</td>
+</tr>
+<tr>
+<td><strong>llama.cpp</strong></td>
+<td>压榨硬件</td>
+<td>精确设置 GPU 卸载层数/上下文/KV Cache 量化/线程数，CUDA/ROCm/Metal/Vulkan/SYCL/CPU</td>
+</tr>
+<tr>
+<td><strong>MLX-LM</strong></td>
+<td>Mac 用户</td>
+<td>Apple Silicon 优化，支持量化/微调/分布式</td>
+</tr>
+<tr>
+<td><strong>vLLM</strong></td>
+<td>多人服务</td>
+<td>连续批处理，高并发吞吐，Linux 服务器</td>
+</tr>
+<tr>
+<td><strong>SGLang</strong></td>
+<td>多人服务</td>
+<td>同 vLLM</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>常见误区：Open WebUI / Cherry Studio 是界面层，仍需连接 Ollama/llama.cpp/vLLM 推理后端。</p>
+</blockquote>
+<hr />
+<h3 id="_8">"能跑≠能用≠值得部署"三层判断</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>能跑</strong></td>
+<td>权重可装进显存，或从硬盘逐层读取</td>
+</tr>
+<tr>
+<td><strong>能用</strong></td>
+<td>速度/上下文/模型能力足以完成任务</td>
+</tr>
+<tr>
+<td><strong>值得部署</strong></td>
+<td>省下的 API 费用或获得的隐私/稳定性/控制权覆盖硬件+电费+维护成本</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>DeepSeek V4 Flash 的出现让这三者开始重合——接近前沿模型能力 + 量化后 110-168GB 可运行 + Mac/DGX Spark 可触及。</p>
+</blockquote>
+<hr />
+<h2 id="_9">结合最新研究与技术变化</h2>
+<h3 id="1-ai">1. 与本地 AI 七层堆栈笔记的关联</h3>
+<p>本文是七层堆栈中<strong>硬件层（第一层）和运行时层（第二层）</strong>的 2026 实战选型指南。Kimi K3 的 8GB 实验证明了"能跑"的下限，DeepSeek V4 Flash 的量化方案展示了"值得部署"的上限。</p>
+<h3 id="2-lfm25-26b">2. 与 LFM2.5-2.6B 的关联</h3>
+<p>LFM2.5-2.6B（&lt; 2.5GB 内存）对应本文的"8GB 能跑 4B-7B"档位——但 LFM2.5 专门优化了 Agent 工作流，手机 CPU 30 tok/s，是"能跑且能用"的代表。</p>
+<h3 id="3">3. 与注意力机制全景笔记的关联</h3>
+<p>Kimi K3 的 69 KDA 层 + 24 MLA 层正是上一篇注意力机制笔记中的"3:1 KDA+MLA 混合"架构——KDA 的固定状态特性让 Kimi K3 的 KV Cache 不随生成长度失控，这是 8GB 能跑的关键前提。</p>
+<h3 id="4-adb">4. 与 ADB 本地算力机笔记的关联</h3>
+<p>ADB 方案的 AIPC（Mini PC）运行本地模型正是本文讨论的场景。结合本文的选型指南，AIPC 的硬件选择有了明确参考。</p>
+<h3 id="5-jetson-orin">5. 与 Jetson Orin 平台的关联</h3>
+<p>Jetson Orin Nano 8GB 属于本文的"8GB"档位——可以跑 4B-7B 模型（如 LFM2.5-2.6B/Qwen3.5-4B），适合端侧 Agent 任务。</p>
+<hr />
+<h2 id="_10">学习进化借鉴点</h2>
+<table>
+<thead>
+<tr>
+<th>洞察</th>
+<th>可借鉴到 Hermes/Jetson</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MoE 稀疏激活降低部署门槛</strong></td>
+<td>万亿模型也能小内存跑（但慢）</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>权重流式加载</strong></td>
+<td>从硬盘逐层读取打破显存限制</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>显存计算公式</strong></td>
+<td>硬件选型第一公式</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>"能跑≠能用≠值得部署"</strong></td>
+<td>部署决策三层判断</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>NVMe 成为关键硬件</strong></td>
+<td>从 GPU 瓶颈转向存储瓶颈</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>统一内存 vs 独立显存</strong></td>
+<td>Mac/DGX Spark 路线</td>
+<td>中</td>
+</tr>
+<tr>
+<td><strong>DGX Spark 涨价 $700</strong></td>
+<td>市场需求验证</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_11">趋势判断</h2>
+<ol>
+<li><strong>MoE + 量化 + 流式加载 = 万亿模型上桌面</strong>——三技术叠加持续降低部署门槛</li>
+<li><strong>NVMe 成为新的关键硬件</strong>——从 GPU 瓶颈转向存储带宽瓶颈</li>
+<li><strong>DeepSeek V4 Flash 正在填平"能跑/能用/值得部署"三角</strong>——接近前沿能力 + 可量化 + 个人设备可达</li>
+<li><strong>统一内存设备（Mac/DGX Spark）成为本地部署主力</strong>——不需要专业计算卡</li>
+<li><strong>DGX Spark 涨价验证市场需求</strong>——$3999→$4699，苹果 Mac 涨价断货</li>
+<li><strong>KDA/MLA 等注意力创新直接降低 KV Cache</strong>——架构创新和部署优化协同</li>
+<li><strong>Ollama cloud 标记需警惕</strong>——不是所有"本地"模型都在本地跑</li>
+</ol>
+<hr />
+<h2 id="_12">关联分析</h2>
+<ul>
+<li><strong>与本地 AI 七层堆栈</strong>：硬件层 + 运行时层选型指南</li>
+<li><strong>与 LFM2.5-2.6B</strong>：8GB 档位的"能跑且能用"代表</li>
+<li><strong>与注意力机制全景</strong>：KDA+MLA 混合 = Kimi K3 低内存的关键</li>
+<li><strong>与 Jetson Orin</strong>：8GB 适合 4B-7B 端侧模型</li>
+<li><strong>与 ADB 本地算力机</strong>：AIPC 硬件选型参考</li>
+<li><strong>与 AIPC 未来</strong>：统一内存设备是方向</li>
+</ul>
+<hr />
+<p><em>笔记创建：2026-08-10 · 来源：爱范子 2026 本地大模型部署指南</em></p>
+</body>
+</html>
