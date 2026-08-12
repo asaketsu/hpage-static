@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现</title>
+
+<meta property="og:title" content="DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-25-DoRA%E9%87%8F%E5%8C%96RL%E8%AE%AD%E7%BB%83-%E6%96%B9%E5%90%91%E5%B9%85%E5%BA%A6%E5%88%86%E8%A7%A3%E5%9C%A8%E4%BD%8E%E7%B2%BE%E5%BA%A6%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0%E4%B8%AD%E7%9A%84%E8%A1%A8%E7%8E%B0.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="dora-rl-">DoRA + 量化 + RL 训练：方向-幅度分解在低精度强化学习中的表现</h1>
+<blockquote>
+<p>夜学深度笔记 | 聚焦 DoRA（Weight-Decomposed LoRA）在量化基座 + RL 训练双重压力下的可行性分析<br />
+日期：2026-05-25 | 关联：[[2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析]] 中待深入问题 "DoRA + FP8/INT4 量化兼容性"<br />
+标签：#DoRA #QLoRA #RL训练 #量化 #方向幅度分解 #GRPO #FP8</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="1-dora">1. DoRA 归一化在量化基座上的数值不稳定性是真实存在的风险</h3>
+<p>DoRA 的核心操作是对更新后的方向矩阵做列归一化：<code>V' = (W₀ + BA) / ||W₀ + BA||_c</code>，然后用可训练的幅度向量 m 重缩放。当 W₀ 是量化权重（NF4/FP8）时：</p>
+<ul>
+<li><strong>量化误差注入归一化</strong>：W₀ 的量化误差（NF4 ~0.3-0.5 相对误差）直接进入归一化的分母。对于某些列，量化后 ||col||_2 可能接近 0 或异常大，导致归一化结果不稳定</li>
+<li><strong>梯度路径变长</strong>：DoRA 的梯度需要穿过归一化操作 → 比标准 LoRA 多一次 Jacobian 计算。RL 场景中梯度本身就不稳定（advantage 估计方差高），额外的不稳定来源可能被放大</li>
+<li><strong>实测证据</strong>：NVIDIA 的 QDoRA 实践表明，在 4-bit 量化基座上 DoRA 可以工作，但需要特别处理归一化步骤（使用 FP32 做归一化计算，即使权重是 4-bit），否则训练会出现 NaN</li>
+</ul>
+<h3 id="2-dora">2. 三种替代方案可绕过 DoRA 的归一化问题</h3>
+<p><strong>EDoRA（arXiv 2501.12067）</strong> — 用 SVD 替代归一化：<br />
+- 将预训练权重 W₀ 做 SVD 分解：W₀ = UΣVᵀ<br />
+- 冻结 A 和 B 矩阵（来自 SVD 的高秩分量），只训练中间的可学习矩阵<br />
+- <strong>30x 更少参数</strong>达到 DoRA 的效果<br />
+- 关键优势：<strong>完全不需要归一化操作</strong>，不存在量化基座上的数值稳定性问题<br />
+- 在 GLUE 基准上与 DoRA 和 LoRA 竞争或超越</p>
+<p><strong>MAP（arXiv 2505.23094）</strong> — 两个标量系数：<br />
+- 将权重视为高维向量，严格分解为方向和幅度<br />
+- 引入两个标量系数 λ_base 和 λ_update，独立缩放基向量和新方向<br />
+- 比 DoRA <strong>更简洁</strong>：不需要逐列归一化，只需两个全局标量<br />
+- 低精度下更友好：标量运算在任意精度下都稳定</p>
+<p><strong>Dual LoRA（arXiv 2512.03402，AMD）</strong> — ReLU + sign：<br />
+- 将 LoRA 矩阵分为幅度组（ReLU 控制"是否更新"和"多大幅度"）和方向组（sign 函数控制"向前还是向后"）<br />
+- <strong>无需归一化</strong>，使用简单的 ReLU 和 sign 函数<br />
+- 天然适合量化场景：ReLU 和 sign 在低精度下仍然定义良好<br />
+- 在 NLU 和常识推理任务上一致超越 LoRA 及其 SOTA 变体</p>
+<h3 id="3-fp8-rl-">3. FP8-RL 验证了统一低精度训练的可行性，但未探索方向-幅度分解</h3>
+<p><strong>FP8-RL（arXiv 2601.18150）</strong> — InfiXAI/Ant Group/SGLang/Miles 联合工作：<br />
+- 在 veRL 生态中实现端到端 FP8 RL 训练<br />
+- 三个关键组件：(i) blockwise FP8 W8A8 rollout，(ii) FP8 KV cache + per-step QKV scale 重校准，(iii) importance sampling rollout correction（TIS/MIS）<br />
+- Dense（Qwen3-8B）和 MoE（Qwen3-30B-A3B）模型上验证<br />
+- <strong>44% rollout 加速</strong>，学习行为与 BF16 基线相当<br />
+- <strong>关键缺失</strong>：仅用标准 LoRA 做 RL 适配，未测试 DoRA/EDoRA/MAP 等方向-幅度分解方法</p>
+<p><strong>统一 FP8 消除 train-inference mismatch</strong>（LMSYS Blog 2025-11）：<br />
+- 发现 MoE 模型越大，BF16 训练 + FP8 rollout 的 train-inference 不一致越严重<br />
+- 解决方案：训练和 rollout 都用 FP8（统一精度），消除不一致<br />
+- 启示：DoRA + 量化 RL 的理想方案应该是"统一低精度"，而非混合精度</p>
+<h3 id="4-rl-dora-sft">4. RL 梯度特性使 DoRA 的幅度分量可能比 SFT 中更关键</h3>
+<p><strong>Imbalanced Gradients in RL Post-Training（EACL 2026，Meta AI）</strong>：<br />
+- 多任务 RL 后训练中，不同任务的梯度量级差异巨大（跨任务梯度冲突）<br />
+- 梯度量级与学习收益相关性被验证：大梯度任务获得更多增益<br />
+- <strong>与 DoRA 的交互</strong>：DoRA 的幅度向量 m 本质上是层级的"缩放器"。在 RL 场景中，如果某些层的梯度被 advantage 信号大幅放大，DoRA 的 m 向量可以通过独立调整每列的幅度来<strong>吸收</strong>部分梯度方差<br />
+- 理论上，DoRA 的幅度分量在 RL 中扮演"自适应 gradient clipper"的角色 — 这可能是它在 RL 场景的潜在优势</p>
+<h3 id="5-coa-lora-lora">5. CoA-LoRA：量化配置感知的 LoRA 动态调整</h3>
+<p><strong>CoA-LoRA（arXiv 2509.25214）</strong>：<br />
+- 核心问题：不同层的量化配置（per-layer bit-width）不同时，LoRA 适配器如何动态调整？<br />
+- 方案：轻量映射网络，将每层的量化配置映射到紧凑的低秩调整<br />
+- 配置集搜索基于 Pareto 高斯过程，优化训练配置集<br />
+- <strong>启示</strong>：如果 DoRA + 量化 RL 要实现，需要类似 CoA-LoRA 的机制来处理不同层量化精度对方向-幅度分解的影响</p>
+<hr />
+<h2 id="_2">二、技术原理解析</h2>
+<h3 id="21-dora">2.1 DoRA 归一化的数学风险分析</h3>
+<p>DoRA 的前向传播：</p>
+<pre><code>W' = m · (W₀ + BA) / ||W₀ + BA||_c
+</code></pre>
+<p>其中 ||·||_c 是逐列 L2 范数。梯度：</p>
+<pre><code>∂L/∂m = ∂L/∂W' · (W₀ + BA) / ||W₀ + BA||_c     # 幅度梯度
+∂L/∂B = (m/||V||_c) · ∂L/∂W' · Aᵀ - m·V/||V||_c³ · (∂L/∂W')ᵀ · V · Aᵀ  # 方向梯度（含归一化项）
+</code></pre>
+<p>当 W₀ 是量化权重时：<br />
+- W₀ = Quantize(W₀_full) = W₀_full + ε_q<br />
+- ε_q 对 NF4 约 0.3-0.5 相对误差<br />
+- ||W₀ + BA + ε_q||_c 的稳定性取决于量化误差与 BA 更新的相对大小<br />
+- RL 早期训练中 BA 很小（初始化接近零），||W₀ + ε_q||_c ≈ ||W₀||_c + ε_q 的影响更大<br />
+- <strong>结论</strong>：RL 训练初期（BA 小）DoRA 最不稳定，中后期（BA 大）量化噪声被稀释</p>
+<h3 id="22-rl-advantage">2.2 方向-幅度分解与 RL Advantage 的交互</h3>
+<p>GRPO 的策略梯度：</p>
+<pre><code>∇θ J = E[Σ_t Â_t · ∇θ log πθ(o_t|q, o_{&lt;t})]
+</code></pre>
+<p>DoRA 参数 θ = {m, A, B}，梯度链：</p>
+<pre><code>∇_m J = Σ_t Â_t · (∂ log π / ∂W') · (W₀+BA)/||W₀+BA||_c
+∇_B J = Σ_t Â_t · (∂ log π / ∂W') · (∂W'/∂B)
+</code></pre>
+<p>关键观察：<br />
+1. <strong>幅度梯度直接正比于 (W₀+BA)/||V||_c</strong> — 不受 advantage 方差影响<br />
+2. <strong>方向梯度穿过归一化 Jacobian</strong> — 被 advantage 方差放大<br />
+3. 在 RL 中 advantage Â_t 的方差通常远高于 SFT 中的标签梯度<br />
+4. 因此 <strong>DoRA 的方向梯度在 RL 中的不稳定性比 SFT 中更严重</strong><br />
+5. 但幅度 m 的梯度相对稳定，可以作为"锚点"</p>
+<h3 id="23-rl">2.3 各方法在量化 RL 场景的适配性矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>归一化需求</th>
+<th>参数效率</th>
+<th>量化兼容性</th>
+<th>RL 适配潜力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DoRA</td>
+<td>逐列 L2 归一化</td>
+<td>+5-10% VRAM</td>
+<td>⚠️ 需 FP32 归一化</td>
+<td>⭐⭐ 方向梯度不稳定</td>
+</tr>
+<tr>
+<td>EDoRA</td>
+<td>无（SVD 替代）</td>
+<td>30x 更少参数</td>
+<td>✅ 无归一化风险</td>
+<td>⭐⭐⭐⭐ 高度推荐</td>
+</tr>
+<tr>
+<td>MAP</td>
+<td>两个标量系数</td>
+<td>略少于 DoRA</td>
+<td>✅ 标量运算稳定</td>
+<td>⭐⭐⭐⭐ 简洁高效</td>
+</tr>
+<tr>
+<td>Dual LoRA</td>
+<td>无（ReLU+sign）</td>
+<td>同 LoRA</td>
+<td>✅ 天然低精度友好</td>
+<td>⭐⭐⭐ 需验证 RL 场景</td>
+</tr>
+<tr>
+<td>标准 QLoRA</td>
+<td>无</td>
+<td>基准</td>
+<td>✅ 已验证</td>
+<td>⭐⭐⭐ QeRL 已证明有效</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">三、知识关联</h2>
+<ul>
+<li>[[2026-05-17-LoRA高效微调前沿技术全景]] → 本次深入了 DoRA 家族的量化兼容性细节，补充了 EDoRA/MAP/Dual LoRA 在低精度下的理论分析</li>
+<li>[[2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析]] → 本次从 QLoRA-RL 基础出发，探索了方向-幅度分解是否能缓解量化噪声，结论是"可以但需选对方法"</li>
+<li>[[2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数]] → 本次回答了该笔记的待深入问题 #1：DoRA 方向-幅度分解在 RL 下的表现</li>
+<li>[[2026-05-24-VLM强化学习RL训练-视觉编码器与LoRA配置前沿]] → VLM RL 中 VoRA 用 rank-1024 视觉 LoRA，如果改用 DoRA/EDoRA 方向-幅度分解可能更高效</li>
+<li>obs_notes: [[LoRA]]、[[量化]] → 已有基础概念，本次补充了方向-幅度分解在量化+RL 双重压力下的理论分析</li>
+<li>[[2026-05-10-蒸馏+量化联合策略]] → QAD 用 KL 散度蒸馏恢复 NVFP4 精度，与 DoRA 幅度分量恢复量化损失有互补潜力</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">四、Actionable Insights</h2>
+<ol>
+<li><strong>Hermes Agent 的 LoRA Skill 可更新</strong>：如果未来做 LoRA 微调任务，优先推荐 EDoRA 或 MAP 而非原始 DoRA，特别是在量化基座上</li>
+<li><strong>RL 训练框架选型参考</strong>：veRL 已支持 FP8-RL，配合 EDoRA（无需归一化）可能是量化 RL 训练的最优组合</li>
+<li><strong>方向-幅度分解的"自适应 gradient clipper"假说</strong>值得验证 — 可作为后续实验方向</li>
+<li><strong>CoA-LoRA 的"配置感知"思路</strong>可借鉴到 Hermes 的模型适配层 — 不同精度配置自动调整 LoRA</li>
+</ol>
+<hr />
+<h2 id="_4">五、待深入的问题</h2>
+<ol>
+<li>EDoRA 在 RL 训练中的实证验证 — SVD 分解在 MoE 模型上的效果如何？专家路由是否影响 SVD 的质量？</li>
+<li>MAP 的两个标量系数在 GRPO 下的梯度行为 — RL advantage 方差是否导致 λ_base 和 λ_update 振荡？</li>
+<li>Dual LoRA 的 sign 函数在 RL 中是否导致梯度"闪烁"（方向频繁翻转）？</li>
+<li>DoRA + FP8-RL 的联合实验 — 统一 FP8 精度下 DoRA 归一化是否比 NF4 更稳定？</li>
+<li>QeRL（NVFP4 + LoRA）+ EDoRA 联合 — 量化噪声增强探索 + 方向-幅度分离，效果是否叠加？</li>
+<li>MoE 模型的 DoRA 适配 — 不同专家的幅度向量 m 是否需要独立？还是共享？</li>
+<li>VLM RL 场景中 DoRA vs EDoRA — 视觉编码器冻结 + LLM 方向-幅度分解，ViT 层是否需要特殊处理？</li>
+</ol>
+<hr />
+<h2 id="_5">参考资料</h2>
+<ol>
+<li>DoRA: Weight-Decomposed Low-Rank Adaptation (arXiv 2402.09353, ICML 2024)</li>
+<li>EDoRA: Efficient Weight-Decomposed Low-Rank Adaptation via SVD (arXiv 2501.12067)</li>
+<li>MAP: Revisiting Weight Decomposition for Low-Rank Adaptation (arXiv 2505.23094)</li>
+<li>Dual LoRA: Enhancing LoRA with Magnitude and Direction Updates (arXiv 2512.03402, AMD)</li>
+<li>FP8-RL: A Practical and Stable Low-Precision Stack for LLM RL (arXiv 2601.18150)</li>
+<li>QeRL: Beyond Efficiency -- Quantization-enhanced RL for LLMs (arXiv 2510.11696, ICLR 2026)</li>
+<li>CoA-LoRA: Configuration-Aware LoRA for Quantized LLMs (arXiv 2509.25214)</li>
+<li>IR-QLoRA: Accurate LoRA-Finetuning Quantization via Information Retention (arXiv 2402.05445, ICML 2024)</li>
+<li>Imbalanced Gradients in RL Post-Training of Multi-Task LLMs (EACL 2026, Meta AI)</li>
+<li>The Impact of Quantization on Large Reasoning Model RL (arXiv 2511.15694, NeurIPS 2025 Workshop)</li>
+</ol>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li>[[2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析]] — 量化基座 + RL 训练的精度影响前置分析</li>
+</ul>
+</body>
+</html>

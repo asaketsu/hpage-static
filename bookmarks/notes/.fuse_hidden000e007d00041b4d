@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM对齐训练范式RLHF-DPO-GRPO-DAPO</title>
+
+<meta property="og:title" content="LLM对齐训练范式RLHF-DPO-GRPO-DAPO" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-04-LLM%E5%AF%B9%E9%BD%90%E8%AE%AD%E7%BB%83%E8%8C%83%E5%BC%8FRLHF-DPO-GRPO-DAPO.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-rlhf-grpodaporlvr">LLM 对齐训练范式全景：从 RLHF 到 GRPO/DAPO/RLVR</h1>
+<blockquote>
+<p>📅 2026-05-04 | 夜间自学习 | 深度 L3<br />
+🏷️ #RLHF #DPO #GRPO #DAPO #RLVR #对齐训练 #后训练 #DeepSeek #强化学习</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="14rlhf1grpo">发现1：后训练范式已从「4模型RLHF」进化到「1模型GRPO」</h3>
+<p>从 2022 年 RLHF 需要同时维护 4 个神经网络（Actor/Critic/Reference/Reward Model），到 2026 年 GRPO 只需 1 个 policy model + 规则验证器，训练成本降低约 60%，效果反而提升了 20 个百分点。</p>
+<p><strong>架构演进路线</strong>：<br />
+- <strong>RLHF/PPO</strong>（2022）：Actor + Critic + Reference + Reward Model = 4 模型<br />
+- <strong>DPO</strong>（2023）：Policy + Reference = 2 模型，消除 Reward Model 和 Critic<br />
+- <strong>GRPO</strong>（2024，DeepSeekMath）：Policy + Reference = 2 模型，用组内统计替代 Critic<br />
+- <strong>RLVR</strong>（2025，DeepSeek-R1）：Policy + 规则验证器 = 1 模型（无 Reference 也无 Reward Model）</p>
+<p><strong>关键洞察</strong>：GRPO 的核心创新在于用「组内相对优势」替代「Critic 预测价值」，这是一个 Z-score 标准化过程——对同一个 question 采样 G 个输出，计算每个输出的 reward，然后用 <code>(r_i - mean(r)) / std(r)</code> 得到 advantage。不需要训练额外的 value network。</p>
+<h3 id="2grpo">发现2：GRPO 的数学本质——组相对策略优化</h3>
+<p><strong>GRPO 目标函数</strong>：</p>
+<pre><code>J_GRPO(θ) = E_{q,{o_i}}[1/G * Σ_{i=1}^{G} 1/|o_i| * Σ_{t=1}^{|o_i|} (
+    min(r_{i,t}(θ) * A_i, clip(r_{i,t}(θ), 1-ε, 1+ε) * A_i)
+    - β * D_KL(π_θ || π_ref)
+)]
+</code></pre>
+<p>其中：<br />
+- <code>r_{i,t}(θ) = π_θ(o_{i,t}|q,o_{i,&lt;t}) / π_{θ_old}(o_{i,t}|q,o_{i,&lt;t})</code> 是重要性采样比率<br />
+- <code>A_i = (r_i - mean(r_1,...,r_G)) / std(r_1,...,r_G)</code> 是组内标准化优势（Z-score）<br />
+- <code>β * D_KL</code> 是 KL 散度惩罚，防止偏离参考策略太远<br />
+- <code>ε</code> 是 PPO 风格的裁剪范围</p>
+<p><strong>与 PPO 的关键区别</strong>：<br />
+1. <strong>无 Critic</strong>：PPO 用 Value Network 预测 baseline，GRPO 用组内均值<br />
+2. <strong>组内标准化</strong>：A_i 不是绝对优势，而是相对同组的优势<br />
+3. <strong>Token 级求和</strong>：对每个 token 的概率比进行裁剪更新</p>
+<h3 id="3dapo-grpo">发现3：DAPO 在 GRPO 基础上的关键改进</h3>
+<p><strong>DAPO（Decoupled Clip and Dynamic sAmpling Policy Optimization）</strong> 针对 GRPO 的三个问题：</p>
+<ol>
+<li><strong>非对称裁剪</strong>：GRPO 用 <code>(1-ε, 1+ε)</code> 对称裁剪，DAPO 改为 <code>(1-ε_low, 1+ε_high)</code> 非对称裁剪，对负优势样本允许更大的更新幅度</li>
+<li><strong>动态采样</strong>：GRPO 保留所有 G 个样本（包括 reward 全相同的无效组），DAPO 过滤掉全正确/全错误的组，只保留有信息量的样本</li>
+<li><strong>序列级归一化</strong>：GRPO 按 <code>1/|o_i|</code> 加权每个 token，DAPO 改为 <code>1/Σ|o_i|</code> 全局归一化，减少长度偏差</li>
+</ol>
+<p><strong>DAPO 目标函数</strong>：</p>
+<pre><code>J_DAPO(θ) = E_{q,{o_i}}[1/Σ|o_i| * Σ_i Σ_t min(
+    r_{i,t}(θ) * A_i,
+    clip(r_{i,t}(θ), 1-ε_low, 1+ε_high) * A_i
+)]
+</code></pre>
+<p>注意 DAPO 去掉了 KL 惩罚项，进一步简化。</p>
+<h3 id="4grpo-dpo-your-grpo-is-secretly-dpo">发现4：GRPO 与 DPO 的隐含等价关系——"Your GRPO Is Secretly DPO"</h3>
+<p>论文《It Takes Two: Your GRPO Is Secretly DPO》（OpenReview 2025）揭示了重要发现：</p>
+<ul>
+<li>当 GRPO 的组大小 G=2 时，其目标函数<strong>数学等价于 DPO</strong></li>
+<li>GRPO 本质上是 DPO 从「一对比较」到「组内多路比较」的泛化</li>
+<li>这意味着 DPO 的很多理论分析可以直接迁移到 GRPO</li>
+</ul>
+<p><strong>实战基准对比</strong>（来自 arXiv:2512.22631）：<br />
+- GRPO 在大模型（7B+）上表现更优，推理类任务提升显著<br />
+- DPO 在小模型（1.5B-3B）上更稳定，跨任务一致性更好<br />
+- 最佳实践：先用 DPO 做对齐，再用 GRPO 做推理强化</p>
+<h3 id="52026-rlvr-grpotraining-free-grpo">发现5：2026 年后训练前沿——RLVR、λ-GRPO、Training-Free GRPO</h3>
+<p><strong>RLVR（Reinforcement Learning with Verifiable Rewards）</strong>：<br />
+- DeepSeek-R1 的核心范式：用规则验证器（代码执行、数学验算）替代 Reward Model<br />
+- 在可验证任务上（数学/编程/逻辑推理）效果惊人<br />
+- 局限：开放性生成任务（创意写作、对话）缺乏可定义的验证器</p>
+<p><strong>λ-GRPO（ICLR 2026 Under Review）</strong>：<br />
+- 解决 GRPO 的长度偏差问题：同一个 A_i 均匀分配给所有 token，导致模型偏好生成长输出<br />
+- 引入可学习参数 λ 控制Token级权重：长输出的每个token权重更低<br />
+- 在 Qwen2.5 的 1.5B/3B/7B 上，比 GRPO 分别提升 +1.9%/+1.0%/+1.7%<br />
+- 统一了 GRPO/DAPO/Dr.GRPO 等变体</p>
+<p><strong>Training-Free GRPO（ICLR 2026）</strong>：<br />
+- 不更新模型参数！用冻结的 LLM + 可变的经验上下文（experiential context）来优化<br />
+- 将优化从参数空间转移到上下文空间<br />
+- 在数学推理和 Web 搜索任务上建立了「性能-成本」新 Pareto 前沿<br />
+- 对 Agent 场景特别有意义：可以动态调整 prompt/context 来优化策略</p>
+<h3 id="62026">发现6：生产级后训练流水线（2026 最佳实践）</h3>
+<p>来自 Zylos 等生产系统的经验，当前最佳三阶段流水线：</p>
+<pre><code>Stage 1: SFT（冷启动）
+  ↓ 格式化工具调用、基础指令遵循
+Stage 2: DPO/SimPO（对齐）
+  ↓ 偏好学习、人类价值观对齐
+Stage 3: GRPO/DAPO（推理强化）
+  ↓ 可验证任务上的 RL 训练
+  ↓ 输出：部署就绪的模型
+</code></pre>
+<p><strong>关键技术选择</strong>：<br />
+- RL 框架：verl（字节）、OpenRLHF、Meituan DORA<br />
+- 同步 RL 在长序列 Agent 任务中会崩，需要异步 rollout<br />
+- Prompt Augmentation（arXiv:2602.03190）可以提升 GRPO 的 rollout 多样性</p>
+<hr />
+<h2 id="_2">二、技术原理解析</h2>
+<h3 id="21-grpo">2.1 从策略梯度到 GRPO 的完整推导链</h3>
+<p><strong>第一性原理：策略梯度定理</strong></p>
+<pre><code>∇_θ J(θ) = E_{τ~π_θ}[∇_θ log π_θ(τ) * R(τ)]
+</code></pre>
+<p>问题：方差太大。</p>
+<p><strong>改进1：REINFORCE with Baseline</strong></p>
+<pre><code>∇_θ J(θ) = E[∇_θ log π_θ(τ) * (R(τ) - b)]
+</code></pre>
+<p>用 baseline b 降低方差，但需要一个准确的价值函数。</p>
+<p><strong>改进2：PPO（Proximal Policy Optimization）</strong></p>
+<pre><code>L_PPO = E[min(ratio * A, clip(ratio, 1-ε, 1+ε) * A)]
+</code></pre>
+<p>裁剪防止过大更新，但需要 Critic 网络估计 A（Advantage = R - V(s)）。</p>
+<p><strong>改进3：GRPO</strong></p>
+<pre><code>A_i = (r_i - mean(group_rewards)) / std(group_rewards)
+</code></pre>
+<p>用组内统计替代 Critic，本质上是用「同伴对比」来定义什么是「好」。这是一个非常优雅的设计：<br />
+- 不需要额外的价值网络训练<br />
+- 组内自动归一化，不需要全局 reward scale 调参<br />
+- 隐含了「相对排序」信息，比绝对分数更鲁棒</p>
+<h3 id="22-dpo">2.2 DPO 的隐式奖励机制</h3>
+<p>DPO 的核心洞察：RLHF 的最优策略可以用隐式奖励函数表示。</p>
+<pre><code>π*(y|x) ∝ π_ref(y|x) * exp(r(x,y)/β)
+</code></pre>
+<p>DPO 目标：</p>
+<pre><code>L_DPO = -E[log σ(β * log(π_θ(y_w|x)/π_ref(y_w|x)) - β * log(π_θ(y_l|x)/π_ref(y_l|x)))]
+</code></pre>
+<p>其中 y_w &gt; y_l 是偏好对。本质上是让模型直接学习「好输出比坏输出的概率高多少」。</p>
+<p><strong>DPO vs GRPO 的关键区别</strong>：<br />
+| 维度 | DPO | GRPO |<br />
+|------|-----|------|<br />
+| 训练数据 | 离线偏好对 (y_w, y_l) | 在线生成 + 规则验证 |<br />
+| 奖励来源 | 人类标注 | 程序验证器 |<br />
+| 模型数量 | 2（policy + ref） | 2（policy + ref），但 ref 可去 |<br />
+| 是否需要采样 | 否（离线） | 是（在线 G 个样本） |<br />
+| 长处 | 对齐人类偏好 | 推理能力强化 |<br />
+| 短处 | 依赖标注质量 | 需要可验证的任务 |</p>
+<h3 id="23-grpo">2.3 GRPO 训练的工程细节</h3>
+<p><strong>关键超参数</strong>：<br />
+- <strong>组大小 G</strong>：通常 8-16，越大 advantage 估计越准但计算成本越高<br />
+- <strong>KL 惩罚 β</strong>：0.01-0.1，太小模型会 drift，太大学不动<br />
+- <strong>裁剪 ε</strong>：0.2（标准 PPO 值）<br />
+- <strong>学习率</strong>：通常 1e-6 到 5e-7，比 SFT 小一个数量级</p>
+<p><strong>训练流程</strong>：<br />
+1. 对每个 question q，从 π_θ_old 采样 G 个 completion<br />
+2. 用验证器给每个 completion 打分（0/1 或连续分数）<br />
+3. 计算组内 Z-score advantage<br />
+4. 用 PPO 风格裁剪目标更新 π_θ<br />
+5. 每隔 N 步更新 π_θ_old（on-policy 的保证）</p>
+<p><strong>显存管理</strong>：<br />
+- GRPO 不需要 Critic，省约 50% 显存<br />
+- 但需要存 G 个样本的 log_probs，G=16 时开销不小<br />
+- 实战建议：用 Gradient Checkpointing + LoRA 做 GRPO</p>
+<hr />
+<h2 id="_3">三、知识关联</h2>
+<ul>
+<li><a href="2026-04-28-LLM推理优化前沿技术2026.md">2026-04-28-LLM推理优化前沿技术2026</a> → 推理优化关注的是部署后的加速，本篇关注训练阶段的优化。两者共同决定最终用户体验。量化（GPTQ/AWQ）通常在 GRPO 训练后进行。</li>
+<li><a href="2026-05-01-deepseek-agent-ecosystem.md">2026-05-01-deepseek-agent-ecosystem</a> → DeepSeek 生态的 Agent 工具（Deep Code、Reasonix）背后正是 GRPO 训练的模型。DeepSeek-R1 的推理能力源于 RLVR + GRPO。</li>
+<li><a href="2026-05-01-AI-Agent记忆架构前沿学习.md">2026-05-01-AI-Agent记忆架构前沿学习</a> → Agent 的记忆系统（长期记忆、RAG 增强）与 GRPO 的在线采样有交叉：Agent 在推理时的轨迹可以作为 GRPO 的训练数据。</li>
+<li><a href="2026-05-03-AI-Agent-Protocol-Ecosystem-2026-学习.md">2026-05-03-AI-Agent-Protocol-Ecosystem-2026-学习</a> → Agent 协议（A2A/MCP）定义了工具调用规范，而 GRPO 训练的 Agent 需要遵循这些协议。Tool-using Agent 的后训练流水线是 2026 年的热点。</li>
+<li><a href="2026-04-05-Google-Gemma4-open-source.md">2026-04-05-Google-Gemma4-open-source</a> → Gemma 等开源模型通常经过 DPO 对齐，了解 GRPO 可以帮助理解为什么某些开源模型推理能力更强。</li>
+<li>obs_notes: [[大模型核心术语]] → 已有 RLHF/DPO/PEFT 的基础概念定义，本篇补充了数学推导和工程细节</li>
+<li>obs_notes: [[大模型核心术语]] 中的「人类反馈强化学习 (RLHF)」「知识蒸馏」条目 → 本篇是这些概念的深度展开</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">四、Actionable Insights</h2>
+<ol>
+<li><strong>Skill 更新</strong>：<code>grpo-rl-training</code> skill 应更新，加入 DAPO/RLVR/λ-GRPO 的最新内容</li>
+<li><strong>量化交易模型微调</strong>：如果用 Kronos 金融模型做推理任务，GRPO + 规则验证器（回测收益作为 reward）可能比 DPO 更有效</li>
+<li><strong>Agent 自进化</strong>：Hermes 的自进化机制可以借鉴 Training-Free GRPO 的思路——不修改模型参数，通过优化上下文/prompt 来改进策略</li>
+<li><strong>开放问题</strong>：对于 Hermes 的 Skill 自动生成/优化，可以考虑用 DPO 做偏好对齐（人类评估 Skill 质量），用 GRPO 做推理强化（可验证任务成功率）</li>
+<li><strong>Cron Job 优化</strong>：当前 nightly-auto-learn 的学习结果用 DPO 思路——选最好的笔记存档。可以引入 GRPO 思路——生成多个版本，组内比较选最优</li>
+</ol>
+<hr />
+<h2 id="_4">五、待深入的问题清单</h2>
+<ol>
+<li><strong>GRPO 在非推理任务上的适用性</strong>：创意写作、多轮对话等没有明确验证器的任务，GRPO 如何适配？</li>
+<li><strong>多目标优化</strong>：GDPO（Group reward-Decoupled Normalization Policy Optimization）如何处理多个冲突的 reward signal？</li>
+<li><strong>GRPO + MoE</strong>：MoE 架构下 GRPO 的路由策略如何优化？专家选择是否也需要 RL？</li>
+<li><strong>分布式 GRPO 训练</strong>：verl/OpenRLHF 框架在大规模 GRPO 训练中的工程优化细节</li>
+<li><strong>Training-Free GRPO 的上下文优化</strong>：具体用什么形式的 experiential context？few-shot examples？retrieved passages？</li>
+<li><strong>ShapE-GRPO</strong>（arXiv:2603.29871）：用 Shapley 值做奖励分配的多候选训练，如何理解？</li>
+<li><strong>GIFT</strong>（arXiv:2510.23868）：将 GRPO 与 DPO 隐式融合，收敛更快、泛化更好，具体机制？</li>
+</ol>
+<hr />
+<h2 id="_5">六、参考来源</h2>
+<ol>
+<li>DeepSeekMath: GRPO 原始论文（Shao et al., 2024）</li>
+<li>DeepSeek-R1: RLVR 范式的规模化验证（Guo et al., 2025）</li>
+<li>λ-GRPO: Unifying the GRPO Frameworks with Learnable Token Preferences（arXiv:2510.06870, ICLR 2026 Under Review）</li>
+<li>Training-Free GRPO（arXiv:2510.08191, ICLR 2026）</li>
+<li>It Takes Two: Your GRPO Is Secretly DPO（OpenReview 2025）</li>
+<li>GIFT: Group-relative Implicit Fine Tuning（arXiv:2510.23868）</li>
+<li>Prompt Augmentation Scales up GRPO Training（arXiv:2602.03190）</li>
+<li>Cameron Wolfe: GRPO Deep (Learning) Focus 博客</li>
+<li>HuggingFace LLM Course Chapter 12: GRPO 详解</li>
+<li>Stanford CS224N 2026 Lecture 8: Post-training</li>
+</ol>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="2026-04-18-Hermes-LLM-Wiki-学习笔记.md">Hermes-LLM-Wiki-学习笔记</a></li>
+<li><a href="2026-04-23-MCP协议与Agentic-LLM-2025趋势.md">MCP协议与Agentic-LLM-2025趋势</a></li>
+<li><a href="2026-04-27-垂域LLM指导航空结构设计.md">垂域LLM指导航空结构设计</a></li>
+<li><a href="2026-04-28-LLM推理优化前沿技术2026.md">LLM推理优化前沿技术2026</a></li>
+<li><a href="2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="2026-04-30-边缘AI与On-Device-LLM前沿学习.md">边缘AI与On-Device-LLM前沿学习</a></li>
+<li><a href="2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="2026-05-05-Awesome-LLM-Apps-109K星应用模板库.md">Awesome-LLM-Apps-109K星应用模板库</a></li>
+<li><a href="2026-05-05-开源AI模型2025-DeepSeek-Qwen新格局.md">开源AI模型2025-DeepSeek-Qwen新格局</a></li>
+<li><a href="2026-05-07-PageIndex-无向量推理式RAG.md">PageIndex-无向量推理式RAG</a></li>
+<li><a href="2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet.md">大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet</a></li>
+<li><a href="2026-05-08-ollama-vllm-llamacpp-deploy-comparison.md">ollama-vllm-llamacpp-deploy-comparison</a></li>
+<li><a href="2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理.md">推理加速深度解析-投机解码-KVCache-连续批处理</a></li>
+<li><a href="2026-05-09-LLM知识蒸馏技术全景.md">LLM知识蒸馏技术全景</a></li>
+<li><a href="2026-05-10-DeepSeek-V4-开源模型新格局.md">DeepSeek-V4-开源模型新格局</a></li>
+<li><a href="2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="2026-05-11-5月AI模型大战-GPT55-DeepSeekV4.md">5月AI模型大战-GPT55-DeepSeekV4</a></li>
+<li><a href="2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="2026-05-11-LLM冲击下PINN应用变化与发展.md">LLM冲击下PINN应用变化与发展</a></li>
+<li><a href="2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理.md">MoE蒸馏与压缩-专家路由迁移-稀疏结构处理</a></li>
+<li><a href="2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析.md">MoE投机解码-稀疏激活与推理加速深度解析</a></li>
+<li><a href="2026-05-13-从零训练GPT完整指南.md">从零训练GPT完整指南</a></li>
+<li><a href="2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案.md">JAX-NVIDIA-GPU-微调Llama3.1实战方案</a></li>
+<li><a href="2026-05-15-序列并行与上下文并行-长上下文训练的第四维并行.md">序列并行与上下文并行-长上下文训练的第四维并行</a></li>
+<li><a href="2026-05-17-LoRA高效微调前沿技术全景.md">LoRA高效微调前沿技术全景</a></li>
+<li>[[2026-05-18-Fine-Tuning理论与实践-从理论基础到2026全景]] (关键词: Fine-Tuning, 全景综述)</li>
+<li><a href="20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化.md">20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化</a></li>
+<li><a href="AutoSearch 自主训练任务.md">AutoSearch 自主训练任务</a></li>
+<li><a href="explore/2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="explore/2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="explore/2026-05-13-2026年5月AI模型大战-GPT5.5-Grok4.3-DeepSeekV4.md">2026年5月AI模型大战-GPT5.5-Grok4.3-DeepSeekV4</a></li>
+<li><a href="explore/2026-05-13-开源AI模型新格局-DeepSeek冲击波.md">开源AI模型新格局-DeepSeek冲击波</a></li>
+<li><a href="explore/2026-05-16-LLM推理优化-MoE量化加速全景.md">LLM推理优化-MoE量化加速全景</a></li>
+<li><a href="explore/2026-05-16-LLM推理优化技术.md">LLM推理优化技术</a></li>
+<li><a href="llm-pid-tuner.md">llm-pid-tuner</a></li>
+<li><a href="llm-wiki-gbrain-agent-evolution_33aa818c.md">llm-wiki-gbrain-agent-evolution_33aa818c</a></li>
+<li><a href="orphan/2026-05-05-分布式训练技术全景-FSDP-DeepSpeed-Megatron.md">分布式训练技术全景-FSDP-DeepSpeed-Megatron</a></li>
+<li><a href="orphan/2026-05-06-MoE混合专家模型-路由策略-负载均衡-训练稳定性.md">MoE混合专家模型-路由策略-负载均衡-训练稳定性</a></li>
+<li><a href="orphan/2026-05-14-多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解.md">多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解</a></li>
+<li><a href="orphan/2026-05-16-MegatronCore模块化重构与MoE训练前沿.md">MegatronCore模块化重构与MoE训练前沿</a></li>
+<li><a href="orphan/2026-05-16-表达清晰的5个训练.md">表达清晰的5个训练</a></li>
+<li><a href="tinyedge-lora.md">tinyedge-lora</a></li>
+<li><a href="前瞻性问题-AI垂域LLM载具设计.md">前瞻性问题-AI垂域LLM载具设计</a></li>
+</ul>
+</body>
+</html>

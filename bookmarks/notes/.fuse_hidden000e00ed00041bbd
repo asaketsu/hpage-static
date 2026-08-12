@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>高德OPC自主增长系统-Harness多Agent架构</title>
+
+<meta property="og:title" content="高德OPC自主增长系统-Harness多Agent架构" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-25-%E9%AB%98%E5%BE%B7OPC%E8%87%AA%E4%B8%BB%E5%A2%9E%E9%95%BF%E7%B3%BB%E7%BB%9F-Harness%E5%A4%9AAgent%E6%9E%B6%E6%9E%84.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="aiopcharness">让AI自己做增长：基于OPC和Harness思想的自主增长系统探索</h1>
+<blockquote>
+<p><strong>来源</strong>: 阿里云开发者（高德PC站SEO团队）/ 曼行<br />
+<strong>链接</strong>: https://mp.weixin.qq.com/s/sZm-KDM7NoITchuhpbJkJQ<br />
+<strong>日期</strong>: 2026-05-25<br />
+<strong>关联</strong>: [[2026-05-07-Harness-Engineering-AI-Coding-90%-实战.md]] [[2026-05-06-harness-engineering-落地实践.md]] [[2026-04-30-Harness-Engineering即控制论.md]] [[垂域模型.md]]</p>
+</blockquote>
+<hr />
+<h2 id="_1">摘要</h2>
+<p>高德PC站SEO团队基于OPC（One Person Company）理念 + Harness Engineering思想，构建了一套多Agent自主增长系统。系统从发现增长机会、生成提案、PRD编写、代码实现到部署上线，全程0人为干预。以"路书"功能验证，连续运行4小时，主流程无P0 Bug。</p>
+<hr />
+<h2 id="_2">一、核心架构</h2>
+<h3 id="11">1.1 设计理念</h3>
+<ul>
+<li><strong>OPC（一人公司）</strong>: AI Agent独立完成发现需求→设计方案→编写代码→测试上线全链路</li>
+<li><strong>Harness Engineering</strong>: 围绕AI Agent构建约束机制、反馈回路、工作流控制和持续改进循环</li>
+<li><strong>总控Agent（Orchestrator）</strong>: 状态机派发 + 心跳监控 + 超时恢复</li>
+</ul>
+<h3 id="12-agent">1.2 Agent拆分</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>Agent</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>产品</td>
+<td>product_agent</td>
+<td>需求→结构化PRD</td>
+</tr>
+<tr>
+<td>设计</td>
+<td>design_agent</td>
+<td>UI/UX设计规格</td>
+</tr>
+<tr>
+<td>架构</td>
+<td>arch_agent</td>
+<td>技术架构、API设计、Sprint分解</td>
+</tr>
+<tr>
+<td>测试</td>
+<td>testcase_agent</td>
+<td>测试用例设计</td>
+</tr>
+<tr>
+<td>实现</td>
+<td>builder_agent</td>
+<td>功能代码实现</td>
+</tr>
+<tr>
+<td>评审</td>
+<td>6个独立reviewer</td>
+<td>proposal/prd/contract/testcase/impl/frontend_design</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13-memory">1.3 Memory系统（文件系统即记忆）</h3>
+<table>
+<thead>
+<tr>
+<th>分类</th>
+<th>目录</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>定义产物</td>
+<td>prds/, designs/, architectures/, contracts/</td>
+<td>各阶段产出</td>
+</tr>
+<tr>
+<td>评审记录</td>
+<td>evaluations/</td>
+<td>评审报告 + E2E证据</td>
+</tr>
+<tr>
+<td>运行记录</td>
+<td>runs/</td>
+<td>Agent生命周期状态</td>
+</tr>
+<tr>
+<td>决策记录</td>
+<td>decisions/</td>
+<td>总控派发决策</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">二、关键设计模式</h2>
+<h3 id="21">2.1 状态机 + 心跳 + 超时恢复</h3>
+<pre><code>DISPATCHED → ACKED → RUNNING → SUCCEEDED / FAILED
+                         ↓
+               TIMED_OUT / STALLED / BLOCKED
+</code></pre>
+<ul>
+<li>心跳监控：每60秒</li>
+<li>ACK超时：300秒 → TIMED_OUT</li>
+<li>执行超时：1200秒 → STALLED</li>
+<li>每个Agent有进入条件（condition），防止跳过必要环节</li>
+</ul>
+<h3 id="22">2.2 上下文隔离</h3>
+<ul>
+<li>Planner拆分为product/design/arch三个Agent</li>
+<li>Builder拆分为testcase/builder两个Agent</li>
+<li><strong>每次执行完一轮后强制开新SubAgent</strong>，避免上下文污染</li>
+<li>实验验证：同一Agent在同一上下文做多件事，记忆混乱，质量快速下降</li>
+</ul>
+<h3 id="23">2.3 零信任评估三原则</h3>
+<ol>
+<li><strong>评审与生成彻底分离</strong> — 同一个AI既写又审，给自己打满分太容易</li>
+<li><strong>零信任</strong> — Builder说"测试通过了"，Evaluator得自己跑一遍验证</li>
+<li><strong>零Broken Feature</strong> — Evaluator是最后防线，不能因为"只差一点点"就放水</li>
+</ol>
+<h3 id="24">2.4 三层评审 + 快速失败优先</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>内容</th>
+<th>成本</th>
+<th>退出条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L1 代码质量</td>
+<td>类型安全、命名规范、错误处理</td>
+<td>秒级</td>
+<td>编译失败 → 立即终止</td>
+</tr>
+<tr>
+<td>L2 静态质量</td>
+<td>架构合规、安全实践</td>
+<td>分钟级</td>
+<td>漏洞/违规 → 终止</td>
+</tr>
+<tr>
+<td>L3 动态运行</td>
+<td>E2E测试、Playwright</td>
+<td>2-5分钟</td>
+<td>P0失败 → 终止</td>
+</tr>
+</tbody>
+</table>
+<p><strong>快速失败6步</strong>: 环境变量(&lt;1s) → 依赖安装(5-10s) → 编译(10-30s) → 服务器启动(15-30s) → 静态分析(30-60s) → 动态验证(2-5min)</p>
+<p><strong>实战数据</strong>: .env.local缺失导致E2E 215个测试全挂，评审4分钟。引入快速失败后Step 1就拦住，1秒退回。</p>
+<h3 id="25-benchmark">2.5 Benchmark元评估</h3>
+<p>评估的不是代码质量，而是Evaluator"评得准不准"：</p>
+<ul>
+<li><strong>code snippets层</strong>: 评测代码规范检出能力（good/bad example + Golden Answer）</li>
+<li><strong>project层</strong>: 评测功能完整性（todo简单/博客中等/电商复杂，OWASP植入bug）</li>
+<li><strong>三维度</strong>: 精确匹配率、误报率、CRITICAL漏检率</li>
+<li><strong>三轮迭代</strong>: 64.5% → 67.5% → 83.4%</li>
+</ul>
+<h3 id="26-agent">2.6 Agent自进化闭环</h3>
+<pre><code>Evaluator找问题 → 分析根因 → 优化Prompt/Skill → Benchmark复测验证 → 持续循环
+</code></pre>
+<p>常见进化场景：<br />
+- builder卡点不严 → 强化条件检查<br />
+- design丢失维度 → 维度完整性校验<br />
+- arch未执行superpower skill → 强制skill注入</p>
+<hr />
+<h2 id="_4">三、踩坑与经验</h2>
+<h3 id="31">3.1 环境工具化</h3>
+<ul>
+<li>能工具化的底层工具都要面向AI工具化</li>
+<li>封装好的SDK比让AI自己实现成功率高10倍</li>
+<li>本地和云端环境统一是基础</li>
+</ul>
+<h3 id="32">3.2 端到端自动化的隐性成本</h3>
+<ol>
+<li><strong>状态管理</strong>: 部分成功怎么办？产出是否满足下游输入？</li>
+<li><strong>超时和资源管理</strong>: 5-6个Agent串联 + 门禁 + 重试，总耗时十几分钟</li>
+<li><strong>环境一致性</strong>: 构建、依赖、测试隔离</li>
+<li><strong>可追溯日志</strong>: 失败发生在哪、什么时间、为什么</li>
+</ol>
+<h3 id="33">3.3 对"完全无人干预"的重新理解</h3>
+<p>不是0/1状态，而是把人工干预频率降到一个人可同时监护几十个并行任务。日常环境全自动，线上保留人工确认。</p>
+<h3 id="34">3.4 小步快跑</h3>
+<p>不要追求一步到位的全自动化。每次循环只解决一个Agent的一个问题。保证当前版本基线可信，新问题一定出在新加部分。</p>
+<h3 id="35">3.5 长链路稳定性</h3>
+<p>90%单节点成功率 × 8-10节点 → 端到端一次通过率极低。靠重试+门禁回退兜底，基本上需要1-3次循环才能修掉P0问题。</p>
+<hr />
+<h2 id="_5">四、借鉴学习进化点</h2>
+<table>
+<thead>
+<tr>
+<th>档次</th>
+<th>借鉴点</th>
+<th>落实动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①有利进化</td>
+<td>状态机+心跳+超时恢复模式</td>
+<td>✅ 已patch到 <code>harness-architecture</code> skill</td>
+</tr>
+<tr>
+<td>①有利进化</td>
+<td>三层评审+快速失败优先</td>
+<td>✅ 已patch到 <code>harness-architecture</code> skill</td>
+</tr>
+<tr>
+<td>②有价值</td>
+<td>Benchmark元评估概念</td>
+<td>✅ 已写入Memory</td>
+</tr>
+<tr>
+<td>②有价值</td>
+<td>OPC+AI Agent扩产模式</td>
+<td>✅ 已写入Memory</td>
+</tr>
+<tr>
+<td>③知识库</td>
+<td>Memory系统4类目录结构</td>
+<td>仅笔记</td>
+</tr>
+<tr>
+<td>③知识库</td>
+<td>零信任评估三原则</td>
+<td>仅笔记，harness已有类似思想</td>
+</tr>
+<tr>
+<td>③知识库</td>
+<td>上下文隔离(每次新SubAgent)</td>
+<td>仅笔记，Hermes delegate_task已自动隔离</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">自检三问</h3>
+<ol>
+<li><strong>可复用方法</strong>: 状态机编排+快速失败评审，可直接用于Hermes多步骤任务编排</li>
+<li><strong>可优化配置</strong>: harness-architecture已补充两节实战模式</li>
+<li><strong>关键事实</strong>: Benchmark元评估是评估"裁判员能力"而非"代码质量"——这个视角转变很关键</li>
+</ol>
+<hr />
+<h2 id="_7">✅ 落实情况</h2>
+<pre><code>📋 借鉴点落实审计
+├── ①有利进化 项：2个
+│   ├── 状态机+心跳+超时 → skill_manage(patch harness-architecture) ✅
+│   └── 三层评审+快速失败 → skill_manage(patch harness-architecture) ✅
+├── ②有价值 项：2个 → memory add ✅
+└── ③知识库 项：3个 → 仅笔记 ✅
+</code></pre>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="2026-04-02-Agent Skills才是关键抽象层.md">Agent Skills才是关键抽象层</a></li>
+<li><a href="2026-04-03-Claude-Code四层记忆架构.md">Claude-Code四层记忆架构</a></li>
+<li><a href="2026-04-04-Claude-Code-324-prompts-analysis.md">Claude-Code-324-prompts-analysis</a></li>
+<li><a href="2026-05-22-Hermes-Agent四层记忆架构深度分析.md">Hermes-Agent四层记忆架构深度分析</a></li>
+<li><a href="2026-05-22-OpenClaw日常聊天黑化Agent-ULSPB安全研究.md">OpenClaw日常聊天黑化Agent-ULSPB安全研究</a></li>
+<li><a href="2026-05-23-Domain-Camouflaged-Injection-Attacks-域伪装注入绕过多Agent检测.md">Domain-Camouflaged-Injection-Attacks-域伪装注入绕过多Agent检测</a></li>
+<li><a href="2026-05-23-Microsoft取消ClaudeCode许可-AI编码战企业政治.md">Microsoft取消ClaudeCode许可-AI编码战企业政治</a></li>
+<li><a href="2026-05-23-Superset-YC-P26-AI-Agent-IDE.md">Superset-YC-P26-AI-Agent-IDE</a></li>
+<li><a href="2026-05-24-AI编码工具战争-CodexClaudeCodeCursor收敛为分层架构.md">AI编码工具战争-CodexClaudeCodeCursor收敛为分层架构</a></li>
+<li><a href="2026-05-24-Cloudflare-Agents-Week-2026-Agentic-Cloud全栈基础设施.md">Cloudflare-Agents-Week-2026-Agentic-Cloud全栈基础设施</a></li>
+<li><a href="2026-05-24-PiAgent深度分析.md">PiAgent深度分析</a></li>
+<li><a href="2026-05-25-Claude-Code之父Boris-Cherny-编程已死千级Agent夜间打工.md">Claude-Code之父Boris-Cherny-编程已死千级Agent夜间打工</a></li>
+<li><a href="2026-05-25-浅浅走入Hermes-Agent的记忆-毛毛MA.md">浅浅走入Hermes-Agent的记忆-毛毛MA</a></li>
+<li><a href="explore/2026-05-21-零信任安全2026-Agent系统新攻击面与安全基线-深度蒸馏.md">零信任安全2026-Agent系统新攻击面与安全基线-深度蒸馏</a></li>
+<li><a href="explore/2026-05-22-GROW开放世界VLM-Agent强化学习框架.md">GROW开放世界VLM-Agent强化学习框架</a></li>
+<li><a href="explore/2026-05-23-agent-evolution-rag.md">agent-evolution-rag</a></li>
+<li><a href="explore/2026-05-24-Harness-工程-AI-编程智能体成功率从20%到100%.md">Harness-工程-AI-编程智能体成功率从20%到100%</a></li>
+<li><a href="explore/2026-05-24-MOSS自主Agent源码级自进化.md">MOSS自主Agent源码级自进化</a></li>
+</ul>
+</body>
+</html>

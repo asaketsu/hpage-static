@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQLite足以支撑持久化工作流-Agent时代的极简基础设施</title>
+
+<meta property="og:title" content="SQLite足以支撑持久化工作流-Agent时代的极简基础设施" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-30-SQLite%E8%B6%B3%E4%BB%A5%E6%94%AF%E6%92%91%E6%8C%81%E4%B9%85%E5%8C%96%E5%B7%A5%E4%BD%9C%E6%B5%81-Agent%E6%97%B6%E4%BB%A3%E7%9A%84%E6%9E%81%E7%AE%80%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="sqlite-agent">SQLite 足以支撑持久化工作流：Agent 时代的极简基础设施</h1>
+<blockquote>
+<p><strong>来源</strong>：Obelisk Blog · 2026-05-29<br />
+<strong>原文</strong>：https://obeli.sk/blog/sqlite-is-all-you-need-for-durable-workflows/<br />
+<strong>HN</strong>：#4, 381 pts<br />
+<strong>标签</strong>：#SQLite #工作流引擎 #Agent基础设施 #Litestream #Obelisk<br />
+<strong>关联</strong>：<a href="2026-05-24-Cloudflare-Agents-Week-2026-Agentic-Cloud全栈基础设施.html">Cloudflare Agentic Cloud</a> <a href="2026-05-24-AI编码工具战争-CodexClaudeCodeCursor收敛为分层架构.html">AI 编码工具分层架构</a></p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>Obelisk 框架提出一个大胆论点：对于大量持久化工作流场景（尤其是 AI Agent），SQLite + Litestream 异步备份到 S3 就够了，不需要 Postgres 或独立编排层。核心思路是"持久化的是工作流状态，计算可以廉价且可丢弃"。每个 Agent/租户拥有独立的 SQLite 文件，配合微 VM 容器部署，实现故障隔离、低成本、易调试的 Agent 运行时。HN 381 pts 说明社区强烈共鸣。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1">1. "持久化的是状态，不是基础设施"</h3>
+<p>传统持久化执行假设需要持久化的基础设施（数据库集群、消息队列、编排引擎）。Obelisk 认为这是过度设计——真正需要持久化的只有工作流状态（执行日志、重放历史、活动重试记录），计算层可以是廉价的一次性容器。</p>
+<h3 id="2-sqlite">2. SQLite 的三个天然优势</h3>
+<ol>
+<li><strong>事务性持久状态</strong>：无需额外数据库服务，无网络跳转，无额外控制面</li>
+<li><strong>零运维</strong>：没有单独的数据库进程要管，就是一个文件</li>
+<li><strong>可检查</strong>：SQLite 文件可以复制出来，用任何工具查看 Agent 实际做了什么</li>
+</ol>
+<h3 id="3-litestream-sqlite">3. Litestream 让 SQLite 变便携</h3>
+<p>Litestream 异步流式复制 SQLite 变更到 S3 兼容对象存储。这意味着：<br />
+- 本地状态靠近运行时，延迟极低<br />
+- 远程备份保证数据不丢<br />
+- 任何 observer 可拉取有趣的数据库做分析</p>
+<p>注意：Litestream 是异步的，如果 SQLite 卷在复制前消失，最新写入可能丢失。对 AI 实验工作流可接受，但不等于高可用。</p>
+<h3 id="4-agent">4. Agent 运行时的理想形状</h3>
+<p>每个 Agent/租户一个小型服务器（微 VM 或容器）+ 独立 SQLite + 对象存储备份。这比"一个大共享系统"更好：<br />
+- 更简单：每个 Agent 自包含<br />
+- 更便宜：按需启动/关闭<br />
+- 更好故障隔离：一个 Agent 挂不影响其他<br />
+- 更易调试：拉出 SQLite 文件即可回放</p>
+<h3 id="5-postgres">5. 何时仍需 Postgres</h3>
+<p>需要更高可用性、共享可扩展性、或同步复制保证的场景。但很多工作流系统 Day 1 不需要这些。</p>
+<h2 id="_3">关键概念</h2>
+<ol>
+<li><strong>Durable Execution</strong>：工作流的状态被持久化，即使计算节点挂了也能从断点恢复</li>
+<li><strong>Execution Log</strong>：Obelisk 用执行日志记录工作流进度，支持从持久化历史重放</li>
+<li><strong>Litestream</strong>：SQLite 的异步 WAL 流式复制工具，将变更实时推送到 S3</li>
+<li><strong>微 VM 隔离</strong>：每个 Agent 独立轻量虚拟机，共享内核但文件系统隔离</li>
+</ol>
+<h2 id="_4">能力边界</h2>
+<ul>
+<li>异步复制有数据丢失窗口（不适合金融级事务）</li>
+<li>单 Agent 单文件，不适合需要跨 Agent 共享状态的场景</li>
+<li>高并发写入场景 SQLite 不如 Postgres</li>
+<li>没有内置的分布式协调</li>
+</ul>
+<h2 id="_5">最佳实践</h2>
+<ul>
+<li>AI Agent 和实验性工作流优先考虑 SQLite + Litestream</li>
+<li>为每个 Agent/租户创建独立 SQLite 文件</li>
+<li>使用 Obelisk 的执行日志 + 重放机制保证工作流可持续</li>
+<li>调试时直接拷贝 SQLite 文件到本地分析</li>
+</ul>
+<h2 id="_6">🔍 借鉴学习进化点（必填）</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Agent 隔离部署</td>
+<td>每个 Agent 独立 SQLite + 微 VM，故障隔离</td>
+<td>Hermes 的 subtask 系统可借鉴——每个子任务独立状态文件，挂了不影响主任务</td>
+<td>为 subtask-lifecycle skill 增加状态持久化层（SQLite）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Litestream 异步备份</td>
+<td>SQLite WAL 流式推 S3，零停机备份</td>
+<td>笔记/记忆的增量备份可用同样模式替代全量 cron 备份</td>
+<td>评估 Litestream 替代当前 cp 式备份方案</td>
+</tr>
+<tr>
+<td>3</td>
+<td>执行日志重放</td>
+<td>工作流状态存执行日志，支持从断点恢复</td>
+<td>harness-checkpoint skill 的检查点机制可借鉴此模式——不是存快照而是存事件流</td>
+<td>改进 checkpoint 机制为 append-only event log + replay</td>
+</tr>
+<tr>
+<td>4</td>
+<td>极简基础设施</td>
+<td>"不需要比状态要求更多的基础设施"</td>
+<td>Hermes 系统可精简——很多模块可能不需要独立服务，SQLite 文件即可</td>
+<td>审计当前依赖的独立服务，识别可降级为 SQLite 的场景</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_7">当前状态</h3>
+<ul>
+<li>记忆系统用文件系统存储</li>
+<li>备份用 cron 全量复制</li>
+<li>知识库索引用 JSON 文件</li>
+</ul>
+<h3 id="_8">改进方案</h3>
+<ol>
+<li>考虑将 ubot-topics-index.json 迁移为 SQLite，支持事务性更新和复杂查询</li>
+<li>记忆写入可改用 SQLite + WAL 模式，配合 Litestream 远程备份</li>
+<li>Agent 子任务状态改用 SQLite event log 模式</li>
+</ol>
+<h3 id="_9">已执行操作</h3>
+<ul>
+<li>✅ 笔记已写入 bookmarks/notes</li>
+<li>⏳ 待评估 SQLite 化方案</li>
+</ul>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="2026-05-27-45个HermesAgent自动化案例（上）.md">45个HermesAgent自动化案例（上）</a></li>
+<li><a href="2026-05-27-ai-agent-2026-deep-dive.md">ai-agent-2026-deep-dive</a></li>
+<li><a href="2026-05-27-ai-agent-quant-trading-trends.md">ai-agent-quant-trading-trends</a></li>
+<li><a href="2026-05-27-ai-agent-quant-trends.md">ai-agent-quant-trends</a></li>
+<li><a href="2026-05-27-mem0-agent-memory-deep-dive.md">mem0-agent-memory-deep-dive</a></li>
+<li><a href="2026-05-28-AI-Coding-Agents-GitHub-蔓延-开发范式被改写.md">AI-Coding-Agents-GitHub-蔓延-开发范式被改写</a></li>
+<li><a href="2026-05-28-Agent需要RAG吗-协同vs高可信.md">Agent需要RAG吗-协同vs高可信</a></li>
+<li><a href="2026-05-28-George-Hotz-警告-Coding-Agents-是昂贵错误.md">George-Hotz-警告-Coding-Agents-是昂贵错误</a></li>
+<li><a href="2026-05-28-ai-agent-trends.md">ai-agent-trends</a></li>
+<li><a href="2026-05-28-五大LLM在67%事实上有分歧-Agent可靠性警钟.md">五大LLM在67%事实上有分歧-Agent可靠性警钟</a></li>
+<li><a href="2026-05-29-AI-Agent-Quant-2026-Trends.md">AI-Agent-Quant-2026-Trends</a></li>
+<li><a href="2026-05-29-AI-Agent自进化系统2026-闭环设计-记忆架构与工程实践.md">AI-Agent自进化系统2026-闭环设计-记忆架构与工程实践</a></li>
+<li><a href="2026-05-29-LLM-Agent组合一致性边界研究.md">LLM-Agent组合一致性边界研究</a></li>
+<li><a href="2026-ai-agent-structured-output-multi-agent-alpha-research.md">nt-structured-output-multi-agent-alpha-research</a></li>
+<li><a href="X推文分析-Hermes多智能体群聊协作配置.md">X推文分析-Hermes多智能体群聊协作配置</a></li>
+<li><a href="ai-agent-2026-trends-learning.md">ai-agent-2026-trends-learning</a></li>
+<li><a href="explore/2026-05-27-ai-agent-quant-trading-2026-trends.md">ai-agent-quant-trading-2026-trends</a></li>
+<li><a href="explore/2026-05-29-AI-Agent动态推理成本分析.md">AI-Agent动态推理成本分析</a></li>
+<li><a href="proactive-learn-2026-05-27-ai-agent-quant.md">proactive-learn-2026-05-27-ai-agent-quant</a></li>
+</ul>
+</body>
+</html>
