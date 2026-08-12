@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How-LLMs-Actually-Work-Transformer架构从Token到生成</title>
+
+<meta property="og:title" content="How-LLMs-Actually-Work-Transformer架构从Token到生成" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-06-How-LLMs-Actually-Work-Transformer%E6%9E%B6%E6%9E%84%E4%BB%8EToken%E5%88%B0%E7%94%9F%E6%88%90.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="how-llms-actually-worktransformer-token">How LLMs Actually Work：Transformer 架构从 Token 到生成的完整路径</h1>
+<blockquote>
+<p><strong>来源</strong>：0xkato · 0xkato.xyz · 2026-06-01<br />
+<strong>原文</strong>：https://www.0xkato.xyz/how-llms-actually-work/<br />
+<strong>笔记ID</strong>：sniff-20260606-how-llms-work<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含借鉴进化点 · RAG/wiki联动</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>这是一篇面向工程师的 LLM 架构深度解析，从 Token 化开始，逐步讲解 Embedding、位置编码（RoPE）、Self-Attention、Multi-Head Attention、Feed-Forward Network、Residual Stream 等核心组件，最终到 next-token prediction 的生成循环。文章特点是「去数学化」但保留精确性——用直觉和类比解释每个模块的工程意义，让读者能直接读懂现代 LLM 论文和模型卡。HN 570 pts，26 分钟长文，质量极高。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1-tokenization">1. Tokenization：文本→整数的桥梁</h3>
+<p>现代 LLM 使用子词分词（subword tokenization），而非整词或字符级。BPE（Byte Pair Encoding）是 GPT 系列的标准，SentencePiece 在 LLaMA 系中常见。</p>
+<p>关键洞察：<br />
+- 「strawberry 有几个 R」的失败不是模型能力问题，而是 token 边界不对应字母边界<br />
+- 分词效率直接影响计算量：更少的 token = 更少的 FLOPs<br />
+- 不同模型家族的分词器不互通，这是迁移成本的一部分</p>
+<h3 id="2-embedding">2. Embedding：从整数到语义空间</h3>
+<p>Embedding Matrix 是 vocab_size × hidden_dim 的查找表。7B 模型通常 hidden_dim=4096。</p>
+<p>关键性质：<br />
+- 语义相近的 token 在向量空间中距离近（king ≈ queen）<br />
+- 向量算术有效：king - man + woman ≈ queen<br />
+- 这些性质从训练中涌现，非硬编码</p>
+<h3 id="3-positional-encoding-sinusoidal-rope">3. Positional Encoding：从 Sinusoidal 到 RoPE</h3>
+<p>位置编码的演进：<br />
+- Vaswani 2017：Sin/Cos 绝对位置，加到 embedding 上<br />
+- 问题：训练长度外的位置泛化差，且 embedding 同时承载语义和位置<br />
+- RoPE（2021）：旋转位置编码，通过旋转向量编码相对距离<br />
+- RoPE 优势：相对位置自然编码、长上下文泛化更好、不增加参数</p>
+<h3 id="4-attentiontoken">4. Attention：Token 间的信息共享</h3>
+<p>Self-Attention 的核心公式 QKV：<br />
+- Q（Query）：当前 token 想知道什么<br />
+- K（Key）：每个 token 能提供什么信息<br />
+- V（Value）：实际传递的信息内容</p>
+<p>注意力模式（Attention Pattern）的可解释性：可以可视化 token 间的信息流向。</p>
+<h3 id="5-multi-head-attention">5. Multi-Head Attention：并行多维度关系追踪</h3>
+<p>每个 head 独立学习不同类型的关系：语法、语义、指代、位置等。Head 数量和维度是架构选择的关键超参。</p>
+<h3 id="6-feed-forward-network">6. Feed-Forward Network：模型存储结构的主要容器</h3>
+<p>FFN 是 2 层 MLP，hidden 维度通常是 model dim 的 4 倍。文章指出 FFN 存储了模型大部分的「结构化知识」——这呼应了 recent research on knowledge neurons。</p>
+<h3 id="7-residual-stream-layernorm">7. Residual Stream + LayerNorm：深度堆叠的可训练性</h3>
+<p>Residual connection 让梯度可以直接回传到任意浅层。LayerNorm 稳定训练。Pre-norm vs Post-norm 的选择影响训练稳定性。</p>
+<h3 id="8-next-token-prediction-generation-loop">8. Next-Token Prediction + Generation Loop</h3>
+<p>模型输出的是 vocab_size 维的 logits，经 softmax 变概率分布。生成策略（temperature、top-k、top-p）控制采样随机性。</p>
+<h2 id="_3">关键概念</h2>
+<ul>
+<li><strong>RoPE</strong>：Rotary Position Embeddings，旋转位置编码，当前主流方案</li>
+<li><strong>Attention Pattern</strong>：注意力权重矩阵，可视化 token 间信息流</li>
+<li><strong>Residual Stream</strong>：残差流，Transformer 各层的共享信息通道</li>
+<li><strong>FFN as Memory</strong>：前馈网络作为知识存储的核心载体</li>
+</ul>
+<h2 id="_4">能力边界</h2>
+<ul>
+<li>文章不涉及训练细节（loss function、optimizer、数据配比）</li>
+<li>未讨论 MoE、GQA、KV Cache 等现代优化</li>
+<li>对 inference 优化（speculative decoding、continuous batching）未提及</li>
+</ul>
+<h2 id="_5">最佳实践</h2>
+<ul>
+<li>理解架构有助于读懂模型卡和论文的 architecture section</li>
+<li>RoPE 是理解长上下文扩展技术（如 YaRN、LongRoPE）的基础</li>
+<li>Residual stream 视角有助于理解 mechanistic interpretability 工作</li>
+</ul>
+<h2 id="_6">🔍 借鉴学习进化点（必填）</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Tokenization 影响 Agent 行为</td>
+<td>「strawberry」失败是 token 边界问题，非推理能力问题</td>
+<td>Hermes Agent 处理文本时需注意分词边界对 LLM 计数/字符串操作的影响，在 skill 中添加分词陷阱提示</td>
+<td>在 agent-health-check skill 中增加「LLM 字符/单词计数不可靠」的已知限制说明</td>
+</tr>
+<tr>
+<td>2</td>
+<td>RoPE 长上下文扩展</td>
+<td>RoPE 通过旋转编码相对位置，天然支持外推</td>
+<td>理解 RoPE 有助于评估不同模型的长上下文能力，指导 model-adapter skill 的模型选择逻辑</td>
+<td>在 model-adapter skill 中添加「RoPE-based 模型通常长上下文表现更好」的选择指引</td>
+</tr>
+<tr>
+<td>3</td>
+<td>FFN 存储结构化知识</td>
+<td>FFN 是模型「记忆」的主要载体，非 attention</td>
+<td>理解这一点有助于设计 knowledge injection 策略——修改 FFN 权重可能比修改 attention 更直接影响知识</td>
+<td>在 RAG/wiki-knowledge-base 的知识注入策略中考虑 FFN 层面</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Residual Stream 作为信息总线</td>
+<td>各层读写同一个 residual stream，类似总线架构</td>
+<td>Hermes Agent 的 MEMORY.md 设计可类比：多层 skill 读写同一记忆流，需确保不互相覆盖</td>
+<td>在 memory-system skill 中明确「记忆写入需幂等，避免 skill 间覆盖」原则</td>
+</tr>
+<tr>
+<td>5</td>
+<td>去数学化的技术写作范式</td>
+<td>文章用直觉+类比替代公式，26 分钟读完且精确</td>
+<td>我们的 skill 文档和笔记也可采用这种风格：先给直觉再给细节</td>
+<td>在 skill-doc-standard skill 中增加「直觉优先」写作指引</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动（必填）</h2>
+<h3 id="_7">当前状态</h3>
+<ul>
+<li>wiki-kb: PageIndex + RAG 双引擎运行中</li>
+<li>RAG: 关键词+语义向量混合检索</li>
+<li>Memory: 三层分离（SOUL/MEMORY/USER）</li>
+</ul>
+<h3 id="_8">改进方案</h3>
+<ol>
+<li>将本文的 Transformer 架构知识结构化为 wiki 页面，包含各组件的精确定义</li>
+<li>在 RAG 索引中增加「LLM 架构」主题向量，提升相关查询命中率</li>
+</ol>
+<h3 id="_9">已执行操作</h3>
+<ul>
+<li>✅ 笔记已写入 bookmarks/notes/</li>
+<li>⏳ wiki 页面待下次会话创建</li>
+</ul>
+<h2 id="_10">关联</h2>
+<p><a href="2026-06-06-How-LLMs-Actually-Work-Transformer架构从Token到生成_tech-blue.html">How LLMs Actually Work</a><br />
+<a href="2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型.md">Multi-Stream LLMs</a><br />
+<a href="2026-05-23-Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力.md">Antigravity 2.0</a></p>
+<h2 id="_11">相关笔记</h2>
+<ul>
+<li><a href="2026-05-16-LLM推理优化-MoE量化加速全景.md">2026-05-16-LLM推理优化-MoE量化加速全景</a> (关键词: LLM, 推理优化)</li>
+<li><a href="2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型.md">2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型</a> (关键词: LLM, 语言模型)</li>
+<li><a href="2026-04-28-LLM推理优化前沿技术2026.md">2026-04-28-LLM推理优化前沿技术2026</a> (关键词: LLM, 推理优化)</li>
+<li><a href="2026-06-06-Gemma4-QAT量化感知训练-移动端推理优化.md">2026-06-06-Gemma4-QAT量化感知训练-移动端推理优化</a> (关键词: 推理优化)</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RD-Agent-Quant-multi-agent-quant-framework-deep-dive</title>
+
+<meta property="og:title" content="RD-Agent-Quant-multi-agent-quant-framework-deep-dive" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-18-RD-Agent-Quant-multi-agent-quant-framework-deep-dive.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="rd-agent-quant">微软 R&amp;D-Agent-Quant 多智能体量化研发框架深度研究</h1>
+<blockquote>
+<p>📅 2026-05-18 | 🏷️ 量化交易/AI Agent/多智能体<br />
+📎 来源: Microsoft Research NeurIPS 2025 | arXiv:2505.15155 | GitHub: microsoft/RD-Agent</p>
+</blockquote>
+<h2 id="3">一、核心发现（≥3个）</h2>
+<h3 id="11-">1.1 因子-模型联合优化是量化研发的核心突破</h3>
+<p>传统量化研发流程中，因子挖掘和模型训练是割裂的两个阶段。R&amp;D-Agent(Q) 首次实现了<strong>因子-模型协同进化</strong>——因子生成 Agent 和模型构建 Agent 共享反馈回路，一方的输出动态调整另一方的搜索方向。</p>
+<p><strong>实验数据（沪深300数据集）：</strong><br />
+| 指标 | R&amp;D-Factor（仅因子优化） | R&amp;D-Agent(Q)（联合优化） | 基线对比 |<br />
+|------|------------------------|------------------------|---------|<br />
+| IC（信息系数） | 提升显著 | <strong>0.0532</strong> | 优于多数基线 |<br />
+| ARR（年化收益率） | - | <strong>14.21%</strong> | - |<br />
+| IR（信息比率） | - | <strong>1.74</strong> | - |<br />
+| 因子数量 | 减少70%+ | 减少70%+ | 传统因子库 |</p>
+<p><strong>关键洞察</strong>：因子数量减少70%但性能提升，说明大量传统因子是冗余的。联合优化能自动发现高信息密度因子。</p>
+<h3 id="12">1.2 五大功能单元构成完整研发闭环</h3>
+<p>R&amp;D-Agent(Q) 将量化研发拆解为 <strong>Research（探索）</strong> 和 <strong>Development（开发）</strong> 两个阶段，细化为五个功能单元：</p>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    R&amp;D-Agent(Q) 架构                        │
+├─────────────────────────────────────────────────────────────┤
+│  Research Phase（探索阶段）                                  │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │ Hypothesis   │───▶│ Knowledge    │───▶│ Proposal     │  │
+│  │ Generator    │    │ Forest       │    │ Generator    │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│         │                                        │          │
+│         ▼                                        ▼          │
+│  Development Phase（开发阶段）                               │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+│  │ CoSTEER      │───▶│ Runner       │───▶│ Feedback     │  │
+│  │ Coder        │    │ (Qlib)       │    │ Analyzer     │  │
+│  └──────────────┘    └──────────────┘    └──────────────┘  │
+│         ▲                                        │          │
+│         └──────────── 反馈回路 ──────────────────┘          │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>五个核心单元：</strong><br />
+1. <strong>Hypothesis Generator</strong>：从金融文献、研报、历史反馈中生成因子/模型假设<br />
+2. <strong>Knowledge Forest</strong>：构建知识图谱，管理已发现的因子模式和模型结构<br />
+3. <strong>Proposal Generator</strong>：基于知识森林生成新的实验提案<br />
+4. <strong>CoSTEER Coder</strong>：将假设转化为可执行代码（因子计算/模型结构）<br />
+5. <strong>Runner + Feedback</strong>：通过 Qlib 回测引擎执行，分析 IC/ARR/MDD 等指标</p>
+<h3 id="13-costeer">1.3 CoSTEER 是代码生成的核心创新</h3>
+<p>CoSTEER（<strong>Co</strong>ntextualized <strong>S</strong>equential <strong>T</strong>ask <strong>E</strong>xecution with <strong>E</strong>volutionary <strong>R</strong>efinement）是 RD-Agent 的核心代码生成引擎：</p>
+<ul>
+<li><strong>上下文感知编码</strong>：不是从零生成代码，而是基于知识森林中的历史成功模式</li>
+<li><strong>渐进式精化</strong>：先生成骨架代码，再逐步完善细节</li>
+<li><strong>错误驱动学习</strong>：编译错误和回测反馈自动融入下一轮迭代</li>
+<li><strong>知识向量化</strong>：成功/失败的代码模式被向量化存储，支持语义检索</li>
+</ul>
+<pre><code class="language-python"># CoSTEER 核心流程（简化示意）
+class CoSTEER:
+    def develop(self, hypothesis, knowledge_base):
+        # 1. 检索相似历史任务
+        similar_tasks = knowledge_base.search(hypothesis.embedding)
+
+        # 2. 基于上下文生成初始代码
+        code = llm.generate(
+            prompt=hypothesis.to_prompt(),
+            context=similar_tasks.top(k=5),
+            template=load_template(hypothesis.type)  # factor or model
+        )
+
+        # 3. 编译检查 + 回测验证
+        result = runner.execute(code)
+
+        # 4. 反馈分析 → 更新知识库
+        if result.passed:
+            knowledge_base.add_success(hypothesis, code, result.metrics)
+        else:
+            knowledge_base.add_failure(hypothesis, code, result.error)
+
+        return result
+</code></pre>
+<h3 id="14-10">1.4 端到端成本极低，&lt;10美元完成一次完整实验</h3>
+<p>论文数据显示，在标准实验设置下：<br />
+- 单次因子演化实验成本：<strong>约 2-5 美元</strong><br />
+- 完整因子-模型联合优化：<strong>低于 10 美元</strong><br />
+- 支持多种 LLM 后端（GPT-4、Claude、本地模型），性能表现稳定</p>
+<p>这意味着个人量化研究者也能负担得起 AI 驱动的自动化研发。</p>
+<h2 id="_1">二、技术细节与架构</h2>
+<h3 id="21-qlib">2.1 与 Qlib 的深度集成</h3>
+<p>R&amp;D-Agent(Q) 构建在微软开源的 Qlib 量化平台之上：</p>
+<pre><code class="language-yaml"># RD-Agent(Q) 配置示例
+factor_coder: rdagent.scenarios.qlib.developer.factor_coder.QlibFactorCoSTEER
+factor_runner: rdagent.scenarios.qlib.developer.factor_runner.QlibFactorRunner
+model_coder: rdagent.scenarios.qlib.developer.model_coder.QlibModelCoSTEER
+model_runner: rdagent.scenarios.qlib.developer.model_runner.QlibModelRunner
+
+# 回测配置
+fit_start_time: 2008-01-01
+fit_end_time: 2016-12-31
+test_start_time: 2017-01-01
+test_end_time: 2020-08-01
+</code></pre>
+<p><strong>Qlib 提供的核心能力：</strong><br />
+- Alpha158/Alpha360 因子库（158个/360个预定义因子）<br />
+- 高性能数据引擎（自研 <code>.bin</code> 格式）<br />
+- 20+ 预置模型（LightGBM、LSTM、Transformer 等）<br />
+- 组合优化与回测引擎</p>
+<h3 id="22">2.2 多智能体协作模式</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    多智能体协作流程                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌─────────┐    假设    ┌─────────┐    代码    ┌────────┐  │
+│  │Research │──────────▶│Developer│──────────▶│Runner  │  │
+│  │  Agent  │           │  Agent  │           │(Qlib)  │  │
+│  └────┬────┘           └────┬────┘           └───┬────┘  │
+│       │                     │                    │        │
+│       │    ┌────────────────┘                    │        │
+│       │    │  知识共享                            │        │
+│       ▼    ▼                                     ▼        │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Knowledge Forest（知识森林）             │   │
+│  │  • 成功因子模式（向量化存储）                         │   │
+│  │  • 失败模式（避免重复犯错）                           │   │
+│  │  • 模型结构模板                                      │   │
+│  │  • 超参数经验分布                                    │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                           │                                 │
+│                           ▼                                 │
+│                    ┌─────────────┐                          │
+│                    │  Feedback   │                          │
+│                    │  Analyzer   │                          │
+│                    │  IC/ARR/IR  │                          │
+│                    └─────────────┘                          │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="23">2.3 因子工厂自动化</h3>
+<p>R&amp;D-Agent(Q) 的"因子工厂"能力：</p>
+<ol>
+<li><strong>文献驱动因子发现</strong>：读取金融研报、学术论文，提取因子公式</li>
+<li><strong>组合因子生成</strong>：基于基础因子自动生成组合因子（如动量+波动率）</li>
+<li><strong>自动去重</strong>：语义相似度检测，避免生成重复因子</li>
+<li><strong>有效性校验</strong>：IC 检验、分层回测、换手率分析</li>
+</ol>
+<pre><code class="language-python"># 因子演化命令
+rdagent fin_factor  # 仅优化因子
+rdagent fin_model   # 仅优化模型
+rdagent fin_quant   # 因子-模型联合优化
+rdagent fin_factor_report  # 从研报提取因子
+</code></pre>
+<h3 id="24">2.4 与同类框架对比</h3>
+<table>
+<thead>
+<tr>
+<th>框架</th>
+<th>机构</th>
+<th>核心能力</th>
+<th>因子-模型联合优化</th>
+<th>开源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>R&amp;D-Agent(Q)</strong></td>
+<td>微软</td>
+<td>多智能体因子-模型协同</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AlphaAgent</td>
+<td>未知</td>
+<td>多智能体因子挖掘</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>QuantaAlpha</td>
+<td>社区</td>
+<td>LLM自进化框架</td>
+<td>部分</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Qlib</td>
+<td>全流程平台</td>
+<td>数据+模型+回测</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">三、实践启发</h2>
+<h3 id="31">3.1 对量化研发的启示</h3>
+<ol>
+<li><strong>因子冗余是普遍问题</strong>：70%的因子可以被精简，联合优化能找到更高效的因子组合</li>
+<li><strong>研发流程自动化是趋势</strong>：从假设生成到代码实现到回测反馈的全栈自动化</li>
+<li><strong>知识管理是关键</strong>：成功/失败经验的系统化积累比单次实验结果更重要</li>
+<li><strong>成本门槛已降低</strong>：&lt;10美元的实验成本使个人研究者也能使用 AI 驱动研发</li>
+</ol>
+<h3 id="32-ai-agent">3.2 对 AI Agent 架构的启示</h3>
+<ol>
+<li><strong>CoSTEER 模式可迁移</strong>：上下文感知 + 知识检索 + 渐进式精化的代码生成模式适用于任何领域</li>
+<li><strong>知识森林是 Agent 记忆的高级形态</strong>：比简单的 RAG 更结构化，支持模式匹配和经验复用</li>
+<li><strong>反馈回路设计</strong>：IC/ARR 等量化指标作为 Agent 的"奖励信号"，类似 RL 中的 reward shaping</li>
+</ol>
+<h3 id="33">3.3 潜在改进方向</h3>
+<ol>
+<li><strong>实时数据支持</strong>：当前主要基于历史数据回测，可扩展到实时流数据</li>
+<li><strong>多市场适配</strong>：论文仅验证了 A 股，可扩展至美股、加密货币等</li>
+<li><strong>风控集成</strong>：最大回撤、VaR 等风险指标应作为硬约束而非软优化目标</li>
+<li><strong>可解释性增强</strong>：因子经济含义的自动解释，提升实盘可信度</li>
+</ol>
+<h2 id="_3">四、知识缺口</h2>
+<h3 id="41">4.1 待深入研究</h3>
+<ol>
+<li><strong>CoSTEER 的具体实现细节</strong>：知识向量的构建方式、检索策略、上下文窗口管理</li>
+<li><strong>因子有效性的统计检验</strong>：IC=0.0532 在 A 股的统计显著性水平，样本外稳定性</li>
+<li><strong>LLM 后端差异</strong>：不同 LLM（GPT-4 vs Claude vs 本地模型）对因子发现质量的影响</li>
+<li><strong>实盘部署路径</strong>：从回测到实盘的 gap 如何弥合，滑点和延迟的影响</li>
+</ol>
+<h3 id="42">4.2 与现有系统的集成可能性</h3>
+<ul>
+<li><strong>与 QMT/miniQMT 集成</strong>：RD-Agent(Q) 生成的因子可通过 miniQMT 的 xtquant 接口实盘执行</li>
+<li><strong>与 easytrader 集成</strong>：通过 easytrader 的 UI 自动化接口执行 RD-Agent 生成的交易信号</li>
+<li><strong>与 vnpy 集成</strong>：vnpy 的 CTA 策略框架可作为 RD-Agent 的执行层</li>
+</ul>
+<h2 id="_4">五、总结</h2>
+<p>R&amp;D-Agent(Q) 代表了量化研发自动化的一个重要里程碑。它不是简单的"用 LLM 生成交易信号"，而是构建了一个完整的、数据驱动的研发自动化体系。其核心价值在于：</p>
+<ol>
+<li><strong>因子-模型联合优化</strong>：打破了传统割裂的研发流程</li>
+<li><strong>知识森林</strong>：实现了研发经验的系统化积累和复用</li>
+<li><strong>极低成本</strong>：&lt;10美元的实验成本使 AI 量化研发民主化</li>
+<li><strong>完全开源</strong>：GitHub 上可获取完整代码，支持本地部署</li>
+</ol>
+<p>对于个人量化研究者和小型团队，这是一个值得深入研究和实践的方向。</p>
+<hr />
+<p><em>笔记字数: ~3500字 | 深度: ⭐⭐⭐⭐⭐</em></p>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-02-Agent Skills才是关键抽象层.md">Agent Skills才是关键抽象层</a></li>
+<li><a href="../2026-04-03-Claude-Code四层记忆架构.md">Claude-Code四层记忆架构</a></li>
+<li><a href="../2026-04-04-Claude-Code-324-prompts-analysis.md">Claude-Code-324-prompts-analysis</a></li>
+<li><a href="../2026-04-05-SelfImproving-Agent-CLI-infra.md">SelfImproving-Agent-CLI-infra</a></li>
+<li><a href="../2026-04-05-spatial-intelligence-agent-action.md">spatial-intelligence-agent-action</a></li>
+<li><a href="../2026-04-07-agent-loop-core-scheduling.md">agent-loop-core-scheduling</a></li>
+<li><a href="../2026-04-07-email-not-revival-agent-needs-it.md">email-not-revival-agent-needs-it</a></li>
+<li><a href="../2026-04-07-hermes-agent-deep-dive-evolution-roadmap.md">hermes-agent-deep-dive-evolution-roadmap</a></li>
+<li><a href="../2026-04-08-claude-code-tool-execution-orchestration.md">claude-code-tool-execution-orchestration</a></li>
+<li><a href="../2026-04-09-SKILL-md-ai-agent-skills.md">SKILL-md-ai-agent-skills</a></li>
+<li><a href="../2026-04-11-gbrain-hybrid-search-proposal.md">gbrain-hybrid-search-proposal</a></li>
+<li><a href="../2026-04-13-hermes-agent-vs-openclaw.md">hermes-agent-vs-openclaw</a></li>
+<li><a href="../2026-04-14-Cloudflare-EmDash-AI-Agent-CMS.md">Cloudflare-EmDash-AI-Agent-CMS</a></li>
+<li><a href="../2026-04-18-Hermes-Agent-v0.10.0-release-analysis.md">Hermes-Agent-v0.10.0-release-analysis</a></li>
+<li><a href="../2026-04-20-Claude-Opus4.7-Claude-Code-最佳实践.md">Claude-Opus4.7-Claude-Code-最佳实践</a></li>
+<li><a href="../2026-04-23-深入源码-Hermes-Agent-如何实现Self-Improving.md">深入源码-Hermes-Agent-如何实现Self-Improving</a></li>
+<li><a href="../2026-04-23-深入源码Hermes-Agent-Self-Improving.md">深入源码Hermes-Agent-Self-Improving</a></li>
+<li><a href="../2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md">MCP协议生态与Agentic-RAG架构深度学习</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-04-30-Meta-Hyperagents自适应Agent框架.md">Meta-Hyperagents自适应Agent框架</a></li>
+<li><a href="../2026-05-01-AI-Agent记忆架构前沿学习.md">AI-Agent记忆架构前沿学习</a></li>
+<li><a href="../2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="../2026-05-03-AI-Agent-Protocol-Ecosystem-2026-学习.md">AI-Agent-Protocol-Ecosystem-2026-学习</a></li>
+<li><a href="../2026-05-03-ai-agent-resources-ecosystem.md">ai-agent-resources-ecosystem</a></li>
+<li><a href="../2026-05-03-智能教育-自适应评估.md">智能教育-自适应评估</a></li>
+<li><a href="../2026-05-04-Agent协议生态2026最新进展-MCP-A2A深度融合.md">Agent协议生态2026最新进展-MCP-A2A深度融合</a></li>
+<li><a href="../2026-05-04-个人Agent自进化五步闭环.md">个人Agent自进化五步闭环</a></li>
+<li><a href="../2026-05-05-tradingagents-deep-analysis.md">tradingagents-deep-analysis</a></li>
+<li><a href="../2026-05-07-SOUL-md-Agent-Partner-Transformation.md">SOUL-md-Agent-Partner-Transformation</a></li>
+<li><a href="../2026-05-08-AI-Agent控制流.md">AI-Agent控制流</a></li>
+<li><a href="../2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="../2026-05-11-具身智能2026-世界模型VLA车企入局.md">具身智能2026-世界模型VLA车企入局</a></li>
+<li><a href="../2026-05-11-具身智能2026从实验到实战.md">具身智能2026从实验到实战</a></li>
+<li><a href="../2026-05-16-OpenHuman-记忆树AI智能体-i龙虾.md">OpenHuman-记忆树AI智能体-i龙虾</a></li>
+<li><a href="../2026-05-16-PicoClaw-超轻量AI-Agent框架.md">PicoClaw-超轻量AI-Agent框架</a></li>
+<li><a href="../2026-05-17-具身智能前沿学习.md">具身智能前沿学习</a></li>
+<li><a href="../2026-05-18-Agent元认知-LLM不确定性感知.md">Agent元认知-LLM不确定性感知</a></li>
+<li><a href="../2026-05-18-SmallRustHermes-Agent自我进化三个闭环.md">SmallRustHermes-Agent自我进化三个闭环</a></li>
+<li><a href="../2026-05-18-agent-memory-systems-comparison.md">agent-memory-systems-comparison</a></li>
+<li><a href="../2026-05-18-具身智能机器人2025十大趋势.md">具身智能机器人2025十大趋势</a></li>
+<li><a href="../anthropic-managed-agents-dreaming-outcomes.md">anthropic-managed-agents-dreaming-outcomes</a></li>
+<li><a href="2026-05-05-智能教育-AI-tutoring.md">智能教育-AI-tutoring</a></li>
+<li><a href="2026-05-06-ai-agent-protocol-stack-2026.md">ai-agent-protocol-stack-2026</a></li>
+<li><a href="2026-05-08-ai-agent-protocol-wars-a2a-mcp.md">ai-agent-protocol-wars-a2a-mcp</a></li>
+<li><a href="2026-05-08-ai-coding-agent-competition-landscape.md">ai-coding-agent-competition-landscape</a></li>
+<li><a href="2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="2026-05-09-ai-agent-protocols-mcp-a2a-acp.md">ai-agent-protocols-mcp-a2a-acp</a></li>
+<li><a href="2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="2026-05-10-mcp-a2a-agent-ecosystem.md">mcp-a2a-agent-ecosystem</a></li>
+<li><a href="2026-05-11-ai-agent-protocols-mcp-a2a.md">ai-agent-protocols-mcp-a2a</a></li>
+<li><a href="2026-05-16-AI-Agent-协议生态-深度整合学习.md">AI-Agent-协议生态-深度整合学习</a></li>
+<li><a href="2026-05-16-Agentic-AI元年-智能体全面落地趋势.md">Agentic-AI元年-智能体全面落地趋势</a></li>
+<li><a href="2026-05-16-HuggingFace-Spring2026-开源生态报告.md">HuggingFace-Spring2026-开源生态报告</a></li>
+<li><a href="2026-05-16-具身智能-从造产品到抢落地六大趋势.md">具身智能-从造产品到抢落地六大趋势</a></li>
+<li><a href="2026-05-17-agent-collaboration-self-evolution.md">agent-collaboration-self-evolution</a></li>
+<li><a href="2026-05-17-具身智能2026数据规模化元年.md">具身智能2026数据规模化元年</a></li>
+<li><a href="2026-05-18-agent-self-evolution-quant-trading.md">agent-self-evolution-quant-trading</a></li>
+<li><a href="2026-05-18-多模态Agent框架对比2026-深度探索.md">多模态Agent框架对比2026-深度探索</a></li>
+<li><a href="2026-05-19-IBM2026多智能体趋势.md">IBM2026多智能体趋势</a></li>
+<li><a href="2026-05-19-agent-self-evolution-reflexion-metacognition.md">agent-self-evolution-reflexion-metacognition</a></li>
+<li><a href="2026-05-20-AgentSelfEvolution-LearningSystem-深度探索.md">AgentSelfEvolution-LearningSystem-深度探索</a></li>
+<li><a href="agent-capability-boundary-detection-20260518.md">agent-capability-boundary-detection-20260518</a></li>
+<li><a href="agent-drift-stability-degradation-20260518.md">agent-drift-stability-degradation-20260518</a></li>
+<li><a href="agent-stability-degradation-drift-detection.md">agent-stability-degradation-drift-detection</a></li>
+<li><a href="../google-a2a-protocol-multi-agent-2026-05-19.md">google-a2a-protocol-multi-agent-2026-05-19</a></li>
+<li><a href="../hermes-agent-arxiv-search.md">hermes-agent-arxiv-search</a></li>
+<li><a href="../hermes-agent-源码拆解自我进化机制.md">hermes-agent-源码拆解自我进化机制</a></li>
+<li><a href="../orphan/2026-04-15-不管用ClaudeCode还是OpenClaw先记住这12个知识.md">不管用ClaudeCode还是OpenClaw先记住这12个知识</a></li>
+<li><a href="../orphan/2026-04-19-AI幻觉案例分析-Hermes-Agent不实报道.md">AI幻觉案例分析-Hermes-Agent不实报道</a></li>
+<li><a href="../orphan/2026-05-04-智能教育-personalized-learning.md">智能教育-personalized-learning</a></li>
+<li><a href="../orphan/2026-05-05-具身智能机器人2025年终盘点.md">具身智能机器人2025年终盘点</a></li>
+<li><a href="../orphan/2026-05-09-具身智能机器人2025-商业化元年.md">具身智能机器人2025-商业化元年</a></li>
+<li><a href="../orphan/2026-05-10-claude-learning-roadmap.md">claude-learning-roadmap</a></li>
+<li><a href="../orphan/2026-05-11-0元打通Claude-Codex-OpenCode免费模型6入口.md">0元打通Claude-Codex-OpenCode免费模型6入口</a></li>
+<li><a href="../orphan/2026-05-16-HTML的不合理有效性-Claude-Code-团队.md">HTML的不合理有效性-Claude-Code-团队</a></li>
+<li><a href="../orphan/GenericAgent.md">GenericAgent</a></li>
+<li><a href="../skills-autonomous-ai-agents.md">skills-autonomous-ai-agents</a></li>
+<li><a href="../竞品吸收笔记_GenericAgent.md">竞品吸收笔记_GenericAgent</a></li>
+</ul>
+</body>
+</html>

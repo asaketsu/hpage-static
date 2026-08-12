@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理优化-vLLM-Fusion-推测解码</title>
+
+<meta property="og:title" content="LLM推理优化-vLLM-Fusion-推测解码" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-25-LLM%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96-vLLM-Fusion-%E6%8E%A8%E6%B5%8B%E8%A7%A3%E7%A0%81.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-2026-vllm-fusion">LLM 推理优化 2026 全栈 — vLLM Fusion 路由、推测解码与生产部署</h1>
+<blockquote>
+<p>学习日期：2026-06-25 | 来源：vLLM Blog 2026-06-16 / Red Hat Developer 2026-06-12 / vLLM Docs<br />
+学习模式：夜间自学习 | 主题：LLM 推理优化与部署</p>
+</blockquote>
+<hr />
+<h2 id="5">核心发现（5 条）</h2>
+<h3 id="1-vllm-semantic-router-fusionmixture-of-models">1. vLLM Semantic Router Fusion：混合模型面板路由（Mixture-of-Models）</h3>
+<p><strong>发布</strong>：vLLM Blog, 2026-06-16 | <strong>核心论点</strong>：模型质量不仅取决于 checkpoint，也取决于围绕它的服务系统</p>
+<p><strong>Fusion 四阶段模式（Panel-Judge-Synthesis-Trace）</strong>：<br />
+1. <strong>Panel</strong> — 多个模型独立生成候选答案（快/便宜/私有/推理模型可混搭）<br />
+2. <strong>Judge</strong> — 评判模型分析一致点、矛盾点、部分覆盖、独特洞见、盲区<br />
+3. <strong>Synthesis</strong> — 合成调用返回最终答案<br />
+4. <strong>Trace</strong> — 完整记录参与模型和决策路径，支持事后调试</p>
+<p><strong>关键设计</strong>：Fusion 是<strong>路由策略</strong>而非全局端点，运营者可决定哪些请求走 Fusion。</p>
+<h3 id="2-speculative-decoding7">2. 推测解码（Speculative Decoding）：7 种方法生产化部署</h3>
+<p><strong>来源</strong>：Red Hat Developer + vLLM Docs | <strong>性能</strong>：代码生成/结构化输出最高 <strong>3x+ 加速</strong></p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>原理</th>
+<th>适用场景</th>
+<th>优势</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>EAGLE</strong></td>
+<td>从隐藏状态训练 draft head</td>
+<td>通用加速</td>
+<td>最优加速比</td>
+</tr>
+<tr>
+<td><strong>MTP</strong></td>
+<td>模型自带 Multi-Token Prediction</td>
+<td>DeepSeek/Gemma 等</td>
+<td>零额外训练</td>
+</tr>
+<tr>
+<td><strong>Draft Model</strong></td>
+<td>独立小模型预测</td>
+<td>有配套小模型时</td>
+<td>灵活</td>
+</tr>
+<tr>
+<td><strong>PARD</strong></td>
+<td>并行 Draft Model</td>
+<td>降低 draft 延迟</td>
+<td>高吞吐</td>
+</tr>
+<tr>
+<td><strong>MLP</strong></td>
+<td>多层感知机预测</td>
+<td>轻量级部署</td>
+<td>低内存</td>
+</tr>
+<tr>
+<td><strong>N-Gram</strong></td>
+<td>统计 N-gram 预测</td>
+<td>代码/结构化输出</td>
+<td><strong>零训练，无需 GPU</strong></td>
+</tr>
+<tr>
+<td><strong>Suffix Decoding</strong></td>
+<td>后缀树匹配</td>
+<td>Agent 代码/重复模式</td>
+<td><strong>对 Agent 场景 4x 加速</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>数学保证</strong>：无损（输出分布与纯自回归完全等价）。</p>
+<h3 id="3-n-gram-suffix-decoding">3. N-Gram 和 Suffix Decoding：零训练加速的颠覆性价值</h3>
+<p>这两种方法<strong>不需要 GPU、不需要训练、不需要额外模型</strong>——纯粹基于统计模式匹配：<br />
+- <strong>N-Gram</strong>：维护 token 序列统计表，基于上下文预测下一个 token<br />
+- <strong>Suffix Decoding</strong>：构建后缀树，匹配已见过的完整输出片段<br />
+- <strong>Agent 工作流</strong>（工具调用 JSON schema、函数签名高度重复）是 Suffix Decoding 的理想场景</p>
+<h3 id="4-vllm-2026">4. vLLM 2026 其他重要进展</h3>
+<table>
+<thead>
+<tr>
+<th>日期</th>
+<th>发布</th>
+<th>意义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-06-05</td>
+<td>vLLM SR v0.3 Themis</td>
+<td>从信号到有状态生产路由，支持会话连续性、隐私安全策略</td>
+</tr>
+<tr>
+<td>2026-06-09</td>
+<td>vime</td>
+<td>简洁稳定的 LLM 强化学习框架</td>
+</tr>
+<tr>
+<td>2026-06-10</td>
+<td>DiffusionGemma</td>
+<td>首个原生支持的 Diffusion LLM (dLLM)</td>
+</tr>
+<tr>
+<td>2026-06-12</td>
+<td>MiniMax M3</td>
+<td>Day-0 支持 1M-token 多模态推理</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5_1">5. 推测解码方法选择决策树</h3>
+<pre><code>有 GPU 训练能力？
+├─ 是 → EAGLE（最优加速比）
+│       模型自带 MTP 头？
+│       └─ 是 → MTP（零额外训练）
+└─ 否
+    ├─ 输出高度重复（代码/Agent）？ → Suffix Decoding 或 N-Gram（零训练）
+    ├─ 有配套小模型？ → Draft Model
+    └─ 需要最低延迟？ → PARD（并行 draft）
+</code></pre>
+<hr />
+<h2 id="_1">技术细节</h2>
+<h3 id="fusion">Fusion 配置示例</h3>
+<pre><code class="language-yaml">entrypoint:
+  model: &quot;vllm-sr/fusion&quot;   # 限定匹配 Fusion 决策
+  panel:
+    - &quot;qwen2.5-72b&quot;          # 强推理
+    - &quot;llama-3.3-70b&quot;        # 冗余确认
+    - &quot;deepseek-v3&quot;          # 代码专长
+  judge: &quot;gpt-4o-mini&quot;       # 低成本评判
+  synthesis: &quot;qwen2.5-72b&quot;   # 最终合成
+  trace: true                # 全路径记录
+</code></pre>
+<h3 id="_2">生产性能基准</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>加速比</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>代码生成</td>
+<td>3x+</td>
+<td>可预测负载</td>
+</tr>
+<tr>
+<td>结构化输出</td>
+<td>3x+</td>
+<td>重复模式</td>
+</tr>
+<tr>
+<td>Agent 工具调用</td>
+<td>4x</td>
+<td>Suffix Decoding</td>
+</tr>
+<tr>
+<td>decode-heavy 负载</td>
+<td>3x</td>
+<td>AWS Trainium + vLLM + Qwen3</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键约束</strong>：draft 和 target 必须共享 tokenizer 和词表。</p>
+<hr />
+<h2 id="hermes-agent">对 Hermes Agent 的应用价值</h2>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>改进项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P1</strong></td>
+<td>推测解码本地部署</td>
+<td>Jetson Orin 本地模型启用 N-Gram/Suffix Decoding，零训练成本加速 Agent 代码生成</td>
+</tr>
+<tr>
+<td><strong>P1</strong></td>
+<td>模型 failover 升级</td>
+<td>antigravity-model-failover 结合 SR Fusion，高价值任务多模型面板交叉验证</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>成本优化路由</td>
+<td>简单请求 → 快模型，复杂请求 → Fusion 面板，model-switch Skill 自动决策</td>
+</tr>
+<tr>
+<td><strong>P2</strong></td>
+<td>Suffix Decoding + Agent</td>
+<td>Agent 工具调用格式高度重复（JSON schema），是 Suffix Decoding 的理想场景</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">相关笔记</h2>
+<ul>
+<li><a href="./explore/2026-06-23-vLLM-Semantic-Router-Fusion-混合模型路由与推测解码.md">2026-06-23-vLLM-Semantic-Router-Fusion-混合模型路由与推测解码</a></li>
+<li><a href="./explore/2026-06-14-LLM推理优化2026全栈指南-量化推测解码KV缓存.md">2026-06-14-LLM推理优化2026全栈指南-量化推测解码KV缓存</a></li>
+<li><a href="./explore/2026-06-11-ReasonAlloc推理模型KV-Cache预算分配.md">2026-06-11-ReasonAlloc推理模型KV-Cache预算分配</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视频理解索引深度探索-多模态检索与时序定位</title>
+
+<meta property="og:title" content="视频理解索引深度探索-多模态检索与时序定位" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-31-%E8%A7%86%E9%A2%91%E7%90%86%E8%A7%A3%E7%B4%A2%E5%BC%95%E6%B7%B1%E5%BA%A6%E6%8E%A2%E7%B4%A2-%E5%A4%9A%E6%A8%A1%E6%80%81%E6%A3%80%E7%B4%A2%E4%B8%8E%E6%97%B6%E5%BA%8F%E5%AE%9A%E4%BD%8D.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '$', right: '$', display: false},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="_1">视频理解/索引深度探索：多模态检索与时序定位</h1>
+<blockquote>
+<p><strong>主题</strong>：视频理解/索引（L1 → L2）<br />
+<strong>日期</strong>：2026-05-31<br />
+<strong>笔记ID</strong>：video-index-deep-dive-20260531<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含进化评估<br />
+<strong>来源</strong>：本地知识蒸馏（web_search 失败 → DDG → web_extract 被阻 → 本地笔记交叉合成）</p>
+</blockquote>
+<hr />
+<h2 id="_2">摘要</h2>
+<p>视频理解与索引是 AI 领域最被低估的瓶颈之一。所有 AI 视频编辑工具都假设素材已标注，但现实是海量未标注视频散落在文件夹中。真正的杠杆在<strong>索引层</strong>——让 AI 知道每个片段里有什么。本文从本地视频索引实战出发，结合 VLM 训练前沿、MoE 多模态架构、Multi-Stream 并行流等知识，系统梳理视频理解/索引的技术全景、工程实践和未来方向。</p>
+<hr />
+<h2 id="_3">核心发现</h2>
+<h3 id="1index-first-ai">发现 1：Index-First 思维是视频 AI 的范式转移</h3>
+<p><strong>问题本质</strong>：<br />
+- 所有 AI 视频编辑工具（Eddie AI、Higgsfield、Submagic）都假设素材已标注<br />
+- 实际素材是未标注的原始文件（IMG_<em>.mov、DJI_</em>.mp4）散落在"Mara june 2024 backup final FINAL"这样的文件夹里<br />
+- 没有任何工具能回答"那个日出时山丘上的大象在哪个片段"<br />
+- 转录、GPS、文件名都无法替代视觉理解</p>
+<p><strong>解决方案</strong>：<br />
+- <strong>Index-First Approach</strong>：先建索引再编辑，索引是瓶颈而非编辑<br />
+- <strong>Sidecar File 模式</strong>：每个视频配一个 <code>.description.md</code>，纯文本可 grep，元数据随文件移动<br />
+- <strong>Local-First AI</strong>：优先在本地硬件运行 AI 模型，避免云端依赖和数据外泄</p>
+<p><strong>工程实践</strong>（Gemma 4 31B + 2021 MacBook + 50GB Swap）：</p>
+<pre><code>视频 → 帧提取 → Gemma 4 视觉理解 → 生成 .description.md → 纯文本搜索
+</code></pre>
+<p><strong>对 Hermes 系统的启示</strong>：<br />
+- wiki-kb 的知识索引可采用 sidecar 模式，每个文档配一个 <code>.meta.json/.summary.md</code><br />
+- proactive-sniff 的内容发现也是"先索引再深入"，但当前缺少完整的元数据层<br />
+- 在 sniff 流程中增加"内容描述 sidecar"生成步骤</p>
+<hr />
+<h3 id="2vlm-rl">发现 2：VLM 的 RL 训练存在「模态不对称」，视觉编码器需要特殊处理</h3>
+<p><strong>核心问题</strong>：<br />
+- <strong>视觉编码器的梯度信号密度远低于语言模型</strong>：ViT 的参数只通过图像 token 接收梯度，而语言模型的参数通过所有 token 接收梯度<br />
+- <strong>GRPO 的 group-centered advantage 在视觉模态上的信号效率更低</strong><br />
+- <strong>Reward Hacking 在视觉任务中更严重</strong>：VLM-R1 首次揭示 VLM 的 RL 训练中 reward hacking 的独特表现——目标检测任务中模型学会「作弊」通过生成高频 bbox 而非真正理解视觉内容<br />
+- <strong>语言捷径（Language Shortcut）</strong>：Vision-SR1 发现 VLM 在 RL 中倾向于绕过视觉理解、仅依赖文本先验</p>
+<p><strong>视觉编码器冻结策略（主流做法）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>视觉编码器策略</th>
+<th>LoRA 配置</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VLM-R1</td>
+<td>冻结 ViT，仅训练 LLM LoRA</td>
+<td>Qwen2-VL backbone, PEFT</td>
+<td>SOTA on REC/OVD</td>
+</tr>
+<tr>
+<td>Vision-G1</td>
+<td>冻结 ViT，多轮 RL</td>
+<td>Qwen2.5-VL-7B, influence-based 数据选择</td>
+<td>46 数据集 13 维度泛化</td>
+</tr>
+<tr>
+<td>CLGRPO</td>
+<td>三阶段渐进式：SFT→CoT SFT→GRPO</td>
+<td>Small VLM (Qwen2-VL-2B)</td>
+<td>增量训练策略</td>
+</tr>
+<tr>
+<td>Vision-SR1</td>
+<td>冻结 ViT，分解视觉/语言 reward</td>
+<td>Qwen2-VL backbone</td>
+<td>自 reward，无外部视觉监督</td>
+</tr>
+<tr>
+<td>Praxis-VLM</td>
+<td>纯文本 GRPO 训练 → 视觉迁移</td>
+<td>文本驱动的 reasoning 迁移</td>
+<td>跨模态泛化</td>
+</tr>
+<tr>
+<td>DeepVideo-R1</td>
+<td>冻结视觉编码器</td>
+<td>Reg-GRPO + 难度感知</td>
+<td>视频 RL</td>
+</tr>
+<tr>
+<td>VoRA</td>
+<td>无外部编码器，LoRA 即视觉</td>
+<td>rank-1024, 双向注意力, block-wise 蒸馏</td>
+<td>消除 ViT 依赖</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键发现</strong>：几乎所有主流工作都冻结视觉编码器，只在 LLM 部分应用 LoRA。</p>
+<hr />
+<h3 id="3moe">发现 3：MoE + 多模态面临「模态不对称」路由挑战</h3>
+<p><strong>AsyMoE 的核心洞察</strong>：<br />
+- 视觉 token 信息密度低：一个 224×224 图像的 ViT 输出通常 196-576 个 visual tokens，但每个 token 的语义信息远少于一个语言 token<br />
+- 语言 token 信息密度高：每个语言 token 携带更丰富的语义和语法信息<br />
+- 传统路由的"一刀切"问题：固定 top-k 激活（如 top-2）在视觉和语言 token 上表现迥异</p>
+<p><strong>模态不对称量化指标</strong>：<br />
+$$A_{modality} = \frac{H_{text}}{H_{visual}} \times \frac{L_{text}}{L_{visual}}$$</p>
+<p><strong>模态感知路由门控</strong>：<br />
+$$P(e_i | x) = \text{softmax}(\alpha \cdot g_v \cdot W_{v,i} + (1-\alpha) \cdot g_t \cdot W_{t,i})$$</p>
+<p><strong>路由策略三代演进</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>代际</th>
+<th>代表工作</th>
+<th>核心机制</th>
+<th>VLM 适配</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第一代</td>
+<td>Q-MoE (2024)</td>
+<td>文本驱动路由</td>
+<td>用 LLM hidden states 预测路由</td>
+</tr>
+<tr>
+<td>第二代</td>
+<td>AsyMoE (2025)</td>
+<td>模态感知路由</td>
+<td>区分视觉/语言 token 的路由策略</td>
+</tr>
+<tr>
+<td>第三代</td>
+<td>AnyExperts (2025)</td>
+<td>按需专家分配</td>
+<td>动态专家数量 + 任务感知的专家选择</td>
+</tr>
+</tbody>
+</table>
+<p><strong>推理优化</strong>：<br />
+- <strong>MoDES（动态专家跳过）</strong>：基于 token 的专家贡献度评估，实时决定哪些专家可以跳过<br />
+- <strong>VisMMOE（视觉专家卸载）</strong>：视觉专家可卸载到 CPU/边缘设备，语言专家保留在 GPU</p>
+<hr />
+<h3 id="4multi-stream-llms">发现 4：Multi-Stream LLMs 为视频理解提供新架构范式</h3>
+<p><strong>单流瓶颈</strong>：<br />
+- Agent 不能 act + read 并发 → 串行等待<br />
+- Agent 不能 react to new info while writing → 信息滞后<br />
+- Agent 不能 think + act 并发 → 效率折半</p>
+<p><strong>Multi-Stream 架构</strong>：<br />
+- 每个"角色"拥有独立流：input stream、thinking stream、output stream<br />
+- 单次 forward pass 同时处理所有流<br />
+- 各流之间有因果依赖（causal dependency），保证一致性</p>
+<p><strong>对视频理解的启示</strong>：<br />
+- 视频索引可以同时处理多个视频流的视觉理解（并行）<br />
+- 在等待一个视频帧分析完成时，可以开始下一个视频的分析<br />
+- 思考流（视觉特征提取）与输出流（生成描述）可以并行</p>
+<hr />
+<h2 id="_4">技术细节与代码示例</h2>
+<h3 id="1-sidecar-file">1. Sidecar File 模式实现</h3>
+<pre><code class="language-python">import os
+from pathlib import Path
+from PIL import Image
+import torch
+
+def generate_video_description(video_path: str, model, frame_interval: int = 30):
+    &quot;&quot;&quot;为视频生成 sidecar description.md 文件&quot;&quot;&quot;
+    video_dir = Path(video_path).parent
+    video_name = Path(video_path).stem
+    output_path = video_dir / f&quot;{video_name}.description.md&quot;
+
+    # 提取关键帧
+    frames = extract_key_frames(video_path, interval=frame_interval)
+
+    # 视觉理解（Gemma 4 / Qwen2-VL）
+    descriptions = []
+    for i, frame in enumerate(frames):
+        prompt = f&quot;Describe this video frame in detail. What objects, people, actions, and context do you see? Time: {i * frame_interval}s&quot;
+        desc = model.generate([frame], prompt=prompt)
+        descriptions.append(f&quot;- **{i * frame_interval}s**: {desc}&quot;)
+
+    # 生成 sidecar 文件
+    content = f&quot;&quot;&quot;# Video Description: {video_name}
+
+Source: {video_path}
+Generated: 2026-05-31
+Model: Gemma 4 31B (Local)
+
+## Frame-by-Frame Analysis
+
+{chr(10).join(descriptions)}
+
+## Summary
+
+## Searchable Keywords
+
+&quot;&quot;&quot;
+    output_path.write_text(content, encoding='utf-8')
+    return output_path
+</code></pre>
+<h3 id="2-vlm-rl-unsloth-qwen2-vl">2. VLM RL 训练配置（Unsloth + Qwen2-VL）</h3>
+<pre><code class="language-python">from unsloth import FastLanguageModel
+from trl import GRPOConfig, GRPOTrainer
+
+# 模型加载
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name = &quot;Qwen/Qwen2-VL-7B-Instruct&quot;,
+    max_seq_length = 4096,
+    load_in_4bit = True,
+)
+
+# LoRA 配置
+model = FastLanguageModel.get_peft_model(
+    model,
+    r = 16,
+    target_modules = [&quot;q_proj&quot;, &quot;k_proj&quot;, &quot;v_proj&quot;, &quot;o_proj&quot;,
+                      &quot;gate_proj&quot;, &quot;up_proj&quot;, &quot;down_proj&quot;],
+    lora_alpha = 16,
+    lora_dropout = 0,
+    bias = &quot;none&quot;,
+)
+
+# GRPO 训练配置
+training_args = GRPOConfig(
+    output_dir = &quot;video-index-rl&quot;,
+    learning_rate = 1e-5,
+    adam_beta1 = 0.9,
+    adam_beta2 = 0.99,
+    weight_decay = 0.1,
+    warmup_ratio = 0.1,
+    lr_scheduler_type = &quot;cosine&quot;,
+    logging_steps = 1,
+    bf16 = True,
+    per_device_train_batch_size = 2,
+    gradient_accumulation_steps = 4,
+    num_generations = 4,
+    max_prompt_length = 1024,
+    max_completion_length = 512,
+    num_train_epochs = 3,
+)
+
+# 自定义 reward 函数（视觉任务）
+def video_understanding_reward(prompts, completions, **kwargs):
+    &quot;&quot;&quot;视频理解任务的 reward 函数&quot;&quot;&quot;
+    rewards = []
+    for prompt, completion in zip(prompts, completions):
+        # Reward 1: 是否包含时间戳
+        has_timestamp = any(t in completion for t in ['s', 'min', 'hour'])
+        # Reward 2: 是否识别关键对象
+        has_objects = len(extract_objects(completion)) &gt; 3
+        # Reward 3: 描述详细程度
+        detail_score = len(completion.split()) / 50
+        # Combined reward
+        reward = 0.4 * has_timestamp + 0.4 * has_objects + 0.2 * min(detail_score, 1.0)
+        rewards.append(reward)
+    return rewards
+</code></pre>
+<h3 id="3-asymoe">3. 模态感知路由实现（AsyMoE 风格）</h3>
+<pre><code class="language-python">import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class ModalityAwareGating(nn.Module):
+    &quot;&quot;&quot;模态感知路由门控&quot;&quot;&quot;
+    def __init__(self, hidden_size, num_experts, modality_dim=64):
+        super().__init__()
+        self.visual_gate = nn.Linear(hidden_size, num_experts)
+        self.text_gate = nn.Linear(hidden_size, num_experts)
+        self.modality_classifier = nn.Linear(hidden_size, 2)  # visual vs text
+
+    def forward(self, hidden_states, modality_mask=None):
+        # 判断每个 token 的模态
+        modality_logits = self.modality_classifier(hidden_states)
+        modality_probs = F.softmax(modality_logits, dim=-1)  # [batch, seq, 2]
+
+        # 视觉 gate 和文本 gate
+        visual_gate = F.softmax(self.visual_gate(hidden_states), dim=-1)
+        text_gate = F.softmax(self.text_gate(hidden_states), dim=-1)
+
+        # 混合 gate
+        alpha = modality_probs[..., 0:1]  # 视觉概率
+        combined_gate = alpha * visual_gate + (1 - alpha) * text_gate
+
+        return combined_gate, modality_probs
+</code></pre>
+<h3 id="4-temporal-localization">4. 视频时序定位（Temporal Localization）</h3>
+<pre><code class="language-python">def temporal_localization(query: str, video_frames: list, model):
+    &quot;&quot;&quot;
+    根据文本查询定位视频中的时间段
+
+    Args:
+        query: 自然语言查询，如 &quot;日出时山丘上的大象&quot;
+        video_frames: 视频帧列表（已提取关键帧）
+        model: VLM 模型
+
+    Returns:
+        List of (start_time, end_time, confidence) tuples
+    &quot;&quot;&quot;
+    results = []
+
+    for i, frame in enumerate(video_frames):
+        prompt = f&quot;&quot;&quot;Given this video frame, determine if it matches the query: &quot;{query}&quot;
+
+        Answer with:
+        1. Match score (0-1): How well does this frame match the query?
+        2. Reasoning: Why does it match or not?
+
+        Frame description: [VLM will describe the frame]
+        &quot;&quot;&quot;
+
+        response = model.generate([frame], prompt=prompt)
+        score, reasoning = parse_response(response)
+
+        if score &gt; 0.5:
+            results.append({
+                'frame_index': i,
+                'time': i * FRAME_INTERVAL,
+                'score': score,
+                'reasoning': reasoning
+            })
+
+    # 聚类相邻匹配帧为时间段
+    segments = cluster_frames_into_segments(results, min_gap=5)
+    return segments
+</code></pre>
+<hr />
+<h2 id="_5">实践启发</h2>
+<h3 id="1-hermes-agent">1. 对 Hermes Agent 系统的启示</h3>
+<table>
+<thead>
+<tr>
+<th>领域</th>
+<th>当前状态</th>
+<th>改进方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>知识索引</td>
+<td>纯文本搜索 + RAG</td>
+<td>增加 sidecar 元数据层</td>
+</tr>
+<tr>
+<td>内容发现</td>
+<td>串行 sniff → analyze → write</td>
+<td>Multi-Stream 并行模式</td>
+</tr>
+<tr>
+<td>多模态能力</td>
+<td>无视觉理解</td>
+<td>接入 VLM（Qwen2-VL / Gemma 4）</td>
+</tr>
+<tr>
+<td>工具调用</td>
+<td>串行 tool calling</td>
+<td>多流并行（思考 + 工具调用并发）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2">2. 视频索引系统架构建议</h3>
+<pre><code>┌─────────────────────────────────────────────────────────────┐
+│                    Video Indexing Pipeline                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  [Video Library] ──► [Frame Extractor] ──► [Key Frame Pool] │
+│                            │                                  │
+│                            ▼                                  │
+│                    [VLM Visual Encoder]                       │
+│                            │                                  │
+│              ┌─────────────┼─────────────┐                   │
+│              ▼             ▼             ▼                   │
+│        [Visual Embed]  [Object Detect] [Action Recognize]    │
+│              │             │             │                   │
+│              └─────────────┼─────────────┘                   │
+│                            ▼                                  │
+│                  [Sidecar Generator]                          │
+│                            │                                  │
+│                            ▼                                  │
+│              [description.md + .meta.json]                    │
+│                            │                                  │
+│                            ▼                                  │
+│                  [Search Index (BM25 + Vector)]               │
+│                            │                                  │
+│                            ▼                                  │
+│                  [Query Interface]                            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="3">3. 成本优化策略</h3>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>说明</th>
+<th>节省</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Local-First</td>
+<td>本地模型替代云端 API</td>
+<td>$140/月 → $0</td>
+</tr>
+<tr>
+<td>Sidecar File</td>
+<td>纯文本可 grep，无需中央数据库</td>
+<td>存储成本降低 90%</td>
+</tr>
+<tr>
+<td>关键帧提取</td>
+<td>每 30 秒一帧，而非逐帧分析</td>
+<td>计算成本降低 95%</td>
+</tr>
+<tr>
+<td>视觉编码器冻结</td>
+<td>RL 训练仅训练 LLM LoRA</td>
+<td>显存需求降低 60%</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">知识缺口</h2>
+<h3 id="_7">待深入研究的问题</h3>
+<ol>
+<li><strong>视频时序定位的精度边界</strong></li>
+<li>当前 VLM 对视频时间戳的理解精度如何？</li>
+<li>长视频（&gt;1 小时）的时序定位是否可行？</li>
+<li>
+<p>多镜头切换的检测精度？</p>
+</li>
+<li>
+<p><strong>视频 RAG 的检索效率</strong></p>
+</li>
+<li>视频 embedding 的维度与检索速度的权衡</li>
+<li>时序信息的编码方式（位置编码 vs 时间戳嵌入）</li>
+<li>
+<p>大规模视频库（&gt;10 万小时）的索引策略</p>
+</li>
+<li>
+<p><strong>VLM RL 训练的视觉编码器解冻</strong></p>
+</li>
+<li>在垂直领域（医疗影像、工业检测）是否需要解冻视觉编码器？</li>
+<li>QLoRA + ViT 4-bit 的解冻训练可行性</li>
+<li>
+<p>视觉幻觉的 RL 修正效果</p>
+</li>
+<li>
+<p><strong>MoE + 视频理解的架构设计</strong></p>
+</li>
+<li>视觉专家 vs 语言专家的 MoE 路由优化</li>
+<li>视频 token 的序列长度与 MoE 计算开销</li>
+<li>
+<p>动态专家跳过对视频推理的加速效果</p>
+</li>
+<li>
+<p><strong>Multi-Stream + 视频索引的融合</strong></p>
+</li>
+<li>多视频流的并行索引是否可行？</li>
+<li>思考流（视觉特征提取）与输出流（生成描述）的因果依赖设计</li>
+<li>
+<p>安全隔离：不同视频流的 thinking stream 隔离</p>
+</li>
+<li>
+<p><strong>本地模型部署的硬件边界</strong></p>
+</li>
+<li>消费级 GPU（RTX 4090）能跑多大参数的 VLM？</li>
+<li>Swap 优化的极限（50GB swap 的 I/O 瓶颈）</li>
+<li>边缘设备（Jetson、树莓派）的视频理解能力</li>
+</ol>
+<hr />
+<h2 id="_8">进化评估</h2>
+<h3 id="_9">是否产生可采纳的新技能/方法/工具/工作流？</h3>
+<table>
+<thead>
+<tr>
+<th>评估项</th>
+<th>是否采纳</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sidecar File 模式</td>
+<td>✅ 是</td>
+<td>可复用于 Hermes 知识索引系统，减少未来 3+ 次重复操作</td>
+</tr>
+<tr>
+<td>Index-First 思维</td>
+<td>✅ 是</td>
+<td>可迁移到 proactive-sniff 流程，增加元数据层</td>
+</tr>
+<tr>
+<td>VLM RL 配置模板</td>
+<td>✅ 是</td>
+<td>可作为 <code>vlm-grpo-training</code> skill 的基础</td>
+</tr>
+<tr>
+<td>模态感知路由代码</td>
+<td>⏳ 待验证</td>
+<td>需要实际实验验证效果</td>
+</tr>
+<tr>
+<td>视频时序定位代码</td>
+<td>⏳ 待验证</td>
+<td>需要视频数据测试</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">建议行动</h3>
+<ol>
+<li><strong>创建 Skill</strong>：<code>video-indexing-pipeline</code> — 视频索引全流程标准化</li>
+<li><strong>更新 Memory</strong>：Sidecar File 模式、Index-First 思维、VLM 冻结策略</li>
+<li><strong>记录兴趣</strong>：sniff-interests.md 中视频理解/索引升级为 L2</li>
+<li><strong>Patch 现有 Skill</strong>：<code>proactive-sniff</code> 增加 sidecar 生成步骤</li>
+</ol>
+<hr />
+<h2 id="_11">参考文献</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>论文/来源</th>
+<th>核心贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>simbastack.com (2026-05-22)</td>
+<td>本地视频索引实战：Gemma 4 + Sidecar File</td>
+</tr>
+<tr>
+<td>2</td>
+<td>VLM-R1 (arxiv 2504.07615)</td>
+<td>VLM RL 训练的 reward hacking 问题</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Vision-SR1 (ICLR 2026)</td>
+<td>视觉-语言推理分解，自 reward</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Praxis-VLM (NeurIPS 2025)</td>
+<td>文本驱动 RL 迁移到视觉</td>
+</tr>
+<tr>
+<td>5</td>
+<td>VoRA (arxiv 2503.20680)</td>
+<td>视觉即 LoRA，消除编码器依赖</td>
+</tr>
+<tr>
+<td>6</td>
+<td>AsyMoE (2025)</td>
+<td>模态不对称路由</td>
+</tr>
+<tr>
+<td>7</td>
+<td>AnyExperts (arxiv 2025)</td>
+<td>按需专家分配</td>
+</tr>
+<tr>
+<td>8</td>
+<td>MoDES (arxiv 2025)</td>
+<td>动态专家跳过</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Multi-Stream LLMs (arxiv 2605.12460)</td>
+<td>并行流架构</td>
+</tr>
+<tr>
+<td>10</td>
+<td>VideoRAG (KDD'2026)</td>
+<td>视频 RAG 系统</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_12">相关笔记</h2>
+<ul>
+<li>[[2026-05-22-本地视频索引实战-Gemma4-31B-50GB-Swap]]</li>
+<li>[[2026-05-24-VLM强化学习RL训练-视觉编码器与LoRA配置前沿]]</li>
+<li>[[2026-05-27-MoE多模态训练-视觉语言MoE路由策略特殊挑战]]</li>
+<li>[[2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型]]</li>
+<li>[[2026-05-28-YouTube自动标签AI生成视频-内容透明化里程碑]]</li>
+</ul>
+<hr />
+<p><em>笔记字数：约 4200 字 | 核心发现：4 个 | 技术代码：4 个示例 | 知识缺口：6 个</em></p>
+</body>
+</html>

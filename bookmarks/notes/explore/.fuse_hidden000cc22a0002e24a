@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SubQ-1M-Preview-深度分析</title>
+
+<meta property="og:title" content="SubQ-1M-Preview-深度分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-20-SubQ-1M-Preview-%E6%B7%B1%E5%BA%A6%E5%88%86%E6%9E%90.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="subq-1m-preview-llm">SubQ 1M-Preview：首个商用亚二次复杂度 LLM 深度分析</h1>
+<blockquote>
+<p>📅 2026-05-20 | 🏷️ LLM架构, 长上下文, 亚二次复杂度, SSA, 效率革命<br />
+来源：VentureBeat, DataCamp, 新浪科技, 网易, Reddit, subq.ai</p>
+</blockquote>
+<hr />
+<h2 id="_1">摘要</h2>
+<p>2026年5月5日，迈阿密初创公司 Subquadratic 走出隐身模式，发布全球首个商用亚二次复杂度 LLM——<strong>SubQ 1M-Preview</strong>。该模型声称拥有<strong>1200万 token 原生上下文窗口</strong>，采用全新的<strong>SSA（Subquadratic Sparse Attention，亚二次稀疏注意力）架构</strong>，在1M token场景下比 FlashAttention 快 52 倍，成本不到 Claude Opus 的 5%。同日公司完成 2900 万美元种子轮，估值 5 亿美元。</p>
+<p>这一发布标志着 LLM 行业从"规模竞赛"向"效率竞赛"的关键转折点。但社区对其技术宣称存在显著质疑，需要独立验证。</p>
+<hr />
+<h2 id="_2">核心发现</h2>
+<h3 id="1-ssa">1. SSA 架构：重新定义注意力计算</h3>
+<p><strong>传统 Transformer 的痛点</strong>：<br />
+- 稠密注意力（Dense Attention）假设"任意一对 token 都可能重要"<br />
+- 每个 token 都要与其他所有 token 进行比较<br />
+- 注意力计算量随序列长度呈<strong>二次方增长</strong> O(n²)<br />
+- 128K token 已是工程极限，1M token 成本高昂</p>
+<p><strong>SSA 的创新</strong>：<br />
+- 去除"任意对都重要"的假设<br />
+- 通过<strong>内容相关的选择机制</strong>，将注意力路由到真正重要的位置<br />
+- 只在有信息量的位置上计算注意力，其余直接跳过<br />
+- 计算复杂度从 O(n²) 降至<strong>线性 O(n)</strong><br />
+- 12M token 时注意力 FLOPs 降低近 <strong>1000 倍</strong></p>
+<h3 id="2">2. 性能基准：亮眼但需验证</h3>
+<table>
+<thead>
+<tr>
+<th>基准测试</th>
+<th>SubQ 1M-Preview</th>
+<th>Claude Opus 4.7</th>
+<th>GPT-5.5</th>
+<th>Gemini 3.1 Pro</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RULER 128K</td>
+<td>95.0%</td>
+<td>94.8%</td>
+<td>-</td>
+<td>-</td>
+</tr>
+<tr>
+<td>SWE-Bench Verified</td>
+<td>81.8%</td>
+<td>80.8%</td>
+<td>-</td>
+<td>80.6%</td>
+</tr>
+<tr>
+<td>MRCR v2 (研究版)</td>
+<td>83</td>
+<td>32.2</td>
+<td>74.0</td>
+<td>26.3</td>
+</tr>
+<tr>
+<td>MRCR v2 (生产版)</td>
+<td>65.9</td>
+<td>-</td>
+<td>-</td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键解读</strong>：<br />
+- RULER 128K 与 Opus 4.6 几乎打平，证明长上下文基础能力达标<br />
+- SWE-Bench 超过 Opus 4.6，显示代码理解能力<br />
+- MRCR v2 是<strong>最关键测试</strong>：考察长上下文多源证据检索整合能力<br />
+  - 研究版 83 远超 Opus 4.7 的 32.2<br />
+  - 生产版 65.9 仍显著领先<br />
+  - 但生产版与研究版差距较大（65.9 vs 83），需关注</p>
+<h3 id="3">3. 实际速度优势</h3>
+<table>
+<thead>
+<tr>
+<th>上下文长度</th>
+<th>相对 FlashAttention-2 加速</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>128K</td>
+<td>7.2×</td>
+</tr>
+<tr>
+<td>256K</td>
+<td>13.2×</td>
+</tr>
+<tr>
+<td>512K</td>
+<td>23×</td>
+</tr>
+<tr>
+<td>1M</td>
+<td>52.2×</td>
+</tr>
+</tbody>
+</table>
+<p><strong>吞吐反转现象</strong>：随着上下文长度增加，稠密注意力相对 SSA 会变得更慢。SSA 的优势在长上下文工作负载最有价值的区间内不断扩大。</p>
+<h3 id="4">4. 商业模式与生态</h3>
+<ul>
+<li><strong>基于开源模型微调</strong>：CTO 确认不从头训练，而是基于 DeepSeek 或 Kimi 等开源模型</li>
+<li><strong>种子轮 2900 万美元，估值 5 亿美元</strong>：资本看好长上下文赛道</li>
+<li><strong>API 可用</strong>：声称成本仅为前沿模型的 1/5</li>
+</ul>
+<hr />
+<h2 id="_3">技术细节</h2>
+<h3 id="ssa">SSA 工作原理</h3>
+<pre><code>传统 Dense Attention:
+  每个 token → 与所有其他 token 比较 → 计算注意力权重 → 聚合
+  复杂度: O(n²)
+
+SSA Subquadratic Sparse Attention:
+  每个 token → 内容相关路由 → 选择关键位置 → 仅计算重要交互
+  复杂度: O(n)
+</code></pre>
+<p><strong>关键设计</strong>：<br />
+1. <strong>基于内容的路由能力</strong>：模型根据语义决定"去哪里看"，不依赖位置模式<br />
+2. <strong>检索能力</strong>：无论关键信息出现在何处，都能被检索到<br />
+3. <strong>线性扩展</strong>：上下文翻倍 → 计算成本仅翻倍，而非四倍</p>
+<h3 id="_4">与现有技术的对比</h3>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>内存复杂度</th>
+<th>计算复杂度</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准 Dense Attention</td>
+<td>O(n²)</td>
+<td>O(n²)</td>
+<td>原始 Transformer</td>
+</tr>
+<tr>
+<td>FlashAttention</td>
+<td>O(n)</td>
+<td>O(n²)</td>
+<td>线性内存但计算仍二次</td>
+</tr>
+<tr>
+<td>FlashAttention-2</td>
+<td>O(n)</td>
+<td>O(n²)</td>
+<td>优化实现</td>
+</tr>
+<tr>
+<td>FlashAttention-3</td>
+<td>O(n)</td>
+<td>O(n²)</td>
+<td>B200 优化，无额外加速</td>
+</tr>
+<tr>
+<td>SSA (SubQ)</td>
+<td>O(n)</td>
+<td>O(n)</td>
+<td>真正线性</td>
+</tr>
+</tbody>
+</table>
+<p><strong>重要澄清</strong>：清华大学交叉信息研究院博士指出，"计算和内存上都是线性扩展"这一特性并非 SSA 独有——FlashAttention 早已实现线性内存，是业界标配。SubQ 的真正创新在于<strong>计算复杂度</strong>的线性化。</p>
+<hr />
+<h2 id="_5">疑点与争议</h2>
+<h3 id="1">1. 技术来源质疑</h3>
+<p>前 OpenAI Sora 团队成员 Will Depue 质疑：</p>
+<blockquote>
+<p>"SubQ 几乎可以肯定是对 Kimi 或 DeepSeek 稀疏注意力（sparse attention）的微调。"</p>
+</blockquote>
+<p>CTO 随后部分证实：</p>
+<blockquote>
+<p>"我们确实将开源模型的权重作为起点，这是基于我们目前的资金规模和公司发展阶段做出的选择。"</p>
+</blockquote>
+<p><strong>这意味着</strong>：SSA 可能是对现有稀疏注意力机制的改进，而非完全原创架构。</p>
+<h3 id="2-magicdev-ltm-2-mini">2. 历史教训：Magic.dev 的 LTM-2-mini</h3>
+<p>2024年8月，旧金山公司 Magic.dev 发布 LTM-2-mini：<br />
+- 宣称 1 亿 token 上下文窗口<br />
+- 声称相对标准注意力 1000 倍效率优势<br />
+- 累计融资超过 5 亿美元</p>
+<p><strong>但到 2026 年初</strong>：<br />
+- 没有任何 Magic 之外的开发者或企业公开使用记录<br />
+- 技术报告没出<br />
+- 模型没开源<br />
+- Benchmark 没有第三方复现</p>
+<p><strong>警示</strong>：长上下文赛道存在"PPT 发布→融资→无人使用"的风险模式。</p>
+<h3 id="3_1">3. 需要独立验证的关键宣称</h3>
+<table>
+<thead>
+<tr>
+<th>宣称</th>
+<th>验证状态</th>
+<th>风险等级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>12M token 原生上下文</td>
+<td>未独立验证</td>
+<td>🔴 高</td>
+</tr>
+<tr>
+<td>1M token 52× 加速</td>
+<td>未独立验证</td>
+<td>🔴 高</td>
+</tr>
+<tr>
+<td>成本为 Opus 的 5%</td>
+<td>未独立验证</td>
+<td>🟡 中</td>
+</tr>
+<tr>
+<td>MRCR v2 65.9</td>
+<td>第三方验证（生产版）</td>
+<td>🟢 低</td>
+</tr>
+<tr>
+<td>RULER 128K 95.0%</td>
+<td>第三方验证</td>
+<td>🟢 低</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">对工作的价值</h2>
+<h3 id="1_1">1. 长期文档处理的可能性</h3>
+<p>如果 SSA 技术得到验证，将彻底改变：<br />
+- <strong>代码库分析</strong>：整个项目代码库作为上下文<br />
+- <strong>法律文档</strong>：完整合同、法规文本一次性处理<br />
+- <strong>科研文献</strong>：整本书籍、论文合集作为输入<br />
+- <strong>日志分析</strong>：TB 级系统日志统一分析</p>
+<h3 id="2_1">2. 成本优化方向</h3>
+<p>当前长上下文成本结构：</p>
+<pre><code>1M token 稠密注意力 ≈ Claude Opus 价格
+1M token SSA (SubQ) ≈ Opus 价格的 5%
+</code></pre>
+<p>对于 Hermes Agent 的长文档处理场景，如果 API 可用，可大幅降低：<br />
+- 知识库检索成本<br />
+- 长文档摘要成本<br />
+- 多文档对比分析成本</p>
+<h3 id="3_2">3. 技术借鉴</h3>
+<p>SSA 的核心思想——<strong>内容相关的路由机制</strong>——可迁移到：<br />
+- <strong>Agent 工具选择</strong>：根据任务语义路由到最合适的工具<br />
+- <strong>上下文压缩</strong>：识别并保留关键信息，跳过冗余<br />
+- <strong>技能调度</strong>：动态选择最相关的 Skill 而非全量加载</p>
+<hr />
+<h2 id="_7">行动建议</h2>
+<h3 id="1-2">短期（1-2 周）</h3>
+<ol>
+<li><strong>关注 API 可用性</strong>：等待 SubQ API 开放，申请测试额度</li>
+<li><strong>验证宣称</strong>：用已知长文档测试集验证 RULER/MRCR 分数</li>
+<li><strong>对比测试</strong>：与现有长上下文方案（Kimi、DeepSeek）对比</li>
+</ol>
+<h3 id="1-3">中期（1-3 月）</h3>
+<ol>
+<li><strong>技术调研</strong>：深入研究 SSA 论文（如有发布）</li>
+<li><strong>开源追踪</strong>：关注是否有开源版本或权重泄露</li>
+<li><strong>竞品监控</strong>：跟踪其他公司对亚二次架构的跟进</li>
+</ol>
+<h3 id="3-6">长期（3-6 月）</h3>
+<ol>
+<li><strong>架构借鉴</strong>：将 SSA 的"内容路由"思想应用到 Agent 系统</li>
+<li><strong>成本评估</strong>：如果验证成功，规划长上下文工作流重构</li>
+<li><strong>生态参与</strong>：关注 Subquadratic 社区，参与早期采用</li>
+</ol>
+<hr />
+<h2 id="_8">知识缺口</h2>
+<table>
+<thead>
+<tr>
+<th>缺口</th>
+<th>获取方式</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SSA 技术论文</td>
+<td>等待官方发布</td>
+<td>🔴 高</td>
+</tr>
+<tr>
+<td>独立第三方基准</td>
+<td>关注 HuggingFace/OpenCompass</td>
+<td>🔴 高</td>
+</tr>
+<tr>
+<td>API 定价与限流</td>
+<td>等待官方文档</td>
+<td>🟡 中</td>
+</tr>
+<tr>
+<td>开源权重</td>
+<td>关注 HuggingFace</td>
+<td>🟡 中</td>
+</tr>
+<tr>
+<td>实际生产案例</td>
+<td>等待用户反馈</td>
+<td>🟢 低</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_9">参考来源</h2>
+<ul>
+<li><a href="https://venturebeat.com/technology/miami-startup-subquadratic-claims-1-000x-ai-efficiency-gain-with-subq-model-researchers-demand-independent-proof">VentureBeat: SubQ claims 1,000x efficiency gain</a></li>
+<li><a href="https://subq.ai/introducing-subq">SubQ 官方博客: Introducing SubQ</a></li>
+<li><a href="https://www.datacamp.com/blog/subq-ai-explained">DataCamp: SubQ AI Explained</a></li>
+<li><a href="https://finance.sina.com.cn/tech/roll/2026-05-06/doc-inhwxtah8384329.shtml">新浪科技: 领先于Transformer！新架构首个1200万上下文模型</a></li>
+<li><a href="https://www.163.com/dy/article/KS9AJL5P05119734.html">网易: 号称1200万token上下文的模型来了，数据亮眼但疑点重重</a></li>
+<li><a href="https://www.reddit.com/r/ArtificialInteligence/comments/1t4nxcd/subq_just_blew_my_mind_12m_token_context_with/">Reddit 讨论</a></li>
+</ul>
+<hr />
+<h2 id="_10">进化标记</h2>
+<ul>
+<li><strong>新工具/API</strong>：SubQ API（待验证）→ 标记为 L4 探索</li>
+<li><strong>新技术</strong>：SSA 亚二次稀疏注意力 → 需深入理解</li>
+<li><strong>风险模式</strong>：长上下文"PPT 发布"陷阱 → 需警惕</li>
+<li><strong>可借鉴思路</strong>：内容相关路由机制 → 可迁移到 Agent 系统</li>
+</ul>
+<h2 id="_11">相关笔记</h2>
+<ul>
+<li><a href="explore/2026-05-17-2026年5月AI模型密集发布.md">2026年5月AI模型密集发布</a></li>
+</ul>
+</body>
+</html>

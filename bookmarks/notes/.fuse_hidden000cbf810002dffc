@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ML因子选股-XGBoost-LightGBM实战</title>
+
+<meta property="og:title" content="ML因子选股-XGBoost-LightGBM实战" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="xgboost-lightgbm">机器学习因子选股：XGBoost / LightGBM 实战指南</h1>
+<h2 id="_1">核心概念</h2>
+<h3 id="_2">什么是因子选股</h3>
+<p>因子选股（Factor-based Stock Selection）是量化投资的核心方法。通过提取股票的多维度特征（因子），利用统计或机器学习模型预测未来收益，构建投资组合。</p>
+<h3 id="vs-ml">传统 vs ML 方法对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>传统多因子</th>
+<th>ML因子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>因子合成</td>
+<td>线性加权 (IC加权/等权)</td>
+<td>非线性组合</td>
+</tr>
+<tr>
+<td>因子挖掘</td>
+<td>人工设计</td>
+<td>自动发现交互效应</td>
+</tr>
+<tr>
+<td>过拟合风险</td>
+<td>低</td>
+<td>高（需要严格验证）</td>
+</tr>
+<tr>
+<td>表达能力</td>
+<td>线性关系</td>
+<td>非线性 + 交互</td>
+</tr>
+<tr>
+<td>可解释性</td>
+<td>高</td>
+<td>中等（SHAP可补救）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="a">A股常用因子分类</h3>
+<ul>
+<li><strong>价值因子</strong>: PE、PB、PS、EV/EBITDA</li>
+<li><strong>成长因子</strong>: ROE同比、营收增速、净利润增速</li>
+<li><strong>技术因子</strong>: 动量、反转、波动率、换手率</li>
+<li><strong>质量因子</strong>: 资产负债率、现金流/净利润、应收账款周转</li>
+<li><strong>情绪因子</strong>: 北向资金、融资融券余额、分析师评级调整</li>
+<li><strong>另类因子</strong>: 龙虎榜、大宗交易、限售解禁</li>
+</ul>
+<h2 id="xgboost">XGBoost 因子选股实战</h2>
+<h3 id="_3">数据准备流水线</h3>
+<pre><code>原始行情 → 因子计算 → 标准化 → 去极值 → 缺失值处理 → 标签生成
+</code></pre>
+<h3 id="_4">关键步骤</h3>
+<h4 id="1">1. 标签构造（最关键）</h4>
+<pre><code class="language-python"># 方式一：收益率分类
+labels = (future_return &gt; median_return).astype(int)  # 二分类
+labels = pd.qcut(future_return, 5, labels=False)      # 5分类
+
+# 方式二：超额收益
+excess_return = stock_return - benchmark_return
+labels = (excess_return &gt; 0).astype(int)
+</code></pre>
+<h4 id="2">2. 特征工程</h4>
+<pre><code class="language-python">import pandas as pd
+import numpy as np
+
+def compute_factors(df):
+    &quot;&quot;&quot;计算常用因子&quot;&quot;&quot;
+    factors = pd.DataFrame()
+
+    # 价值因子
+    factors['pe_ttm'] = df['market_cap'] / df['net_profit_ttm']
+    factors['pb'] = df['market_cap'] / df['net_asset']
+
+    # 动量因子（过去N日收益率）
+    for period in [5, 10, 20, 60]:
+        factors[f'mom_{period}'] = df['close'].pct_change(period)
+
+    # 波动率因子
+    factors['vol_20'] = df['close'].pct_change().rolling(20).std()
+    factors['vol_60'] = df['close'].pct_change().rolling(60).std()
+
+    # 换手率因子
+    factors['turnover_20'] = df['turnover'].rolling(20).mean()
+    factors['turnover_ratio'] = df['turnover'] / df['turnover'].rolling(20).mean()
+
+    # 量价背离
+    factors['price_vol_corr'] = df['close'].rolling(20).corr(df['volume'])
+
+    return factors
+</code></pre>
+<h4 id="3-xgboost">3. XGBoost 模型训练</h4>
+<pre><code class="language-python">import xgboost as xgb
+from sklearn.model_selection import TimeSeriesSplit
+
+# 时间序列交叉验证（不能用普通CV！）
+tscv = TimeSeriesSplit(n_splits=5)
+
+params = {
+    'objective': 'binary:logistic',  # 或 'multi:softprob'
+    'max_depth': 6,                   # 控制过拟合
+    'learning_rate': 0.05,
+    'n_estimators': 500,
+    'subsample': 0.8,                 # 行采样
+    'colsample_bytree': 0.8,          # 列采样
+    'reg_alpha': 0.1,                 # L1正则
+    'reg_lambda': 1.0,                # L2正则
+    'min_child_weight': 50,           # 防止过拟合关键参数
+    'early_stopping_rounds': 50,
+}
+
+model = xgb.XGBClassifier(**params)
+model.fit(X_train, y_train, 
+          eval_set=[(X_val, y_val)],
+          verbose=False)
+</code></pre>
+<h4 id="4-lightgbm">4. LightGBM 优势</h4>
+<pre><code class="language-python">import lightgbm as lgb
+
+params = {
+    'objective': 'binary',
+    'metric': 'auc',
+    'max_depth': 6,
+    'num_leaves': 31,
+    'learning_rate': 0.05,
+    'feature_fraction': 0.8,
+    'bagging_fraction': 0.8,
+    'bagging_freq': 5,
+    'min_data_in_leaf': 50,
+    'lambda_l1': 0.1,
+    'lambda_l2': 1.0,
+}
+
+# LightGBM 优势：
+# 1. 训练速度快 3-5x（直方图加速）
+# 2. 内存占用少
+# 3. 类别特征原生支持（行业、板块）
+# 4. 更好的并行效率
+</code></pre>
+<h3 id="_5">模型评估指标</h3>
+<pre><code class="language-python"># IC (Information Coefficient) — 因子预测力核心指标
+def calc_ic(predictions, actual_returns):
+    &quot;&quot;&quot;计算Rank IC（Spearman相关系数）&quot;&quot;&quot;
+    from scipy.stats import spearmanr
+    ic, pvalue = spearmanr(predictions, actual_returns)
+    return ic
+
+# ICIR = IC均值 / IC标准差（越大越好，&gt;0.5 为优秀）
+# 分层回测：将股票按预测分5组，看多空收益差
+</code></pre>
+<h2 id="_6">⚠️ 实战避坑指南</h2>
+<h3 id="_7">常见过拟合陷阱</h3>
+<ol>
+<li><strong>未来数据泄漏</strong>: 因子计算时用了未来数据（最致命）</li>
+<li><strong>标签与特征重叠</strong>: 动量因子和标签使用了重叠时间窗口</li>
+<li><strong>幸存者偏差</strong>: 只用了当前存续的股票，忽略已退市</li>
+<li><strong>时序交叉验证错误</strong>: 用了随机打乱的 CV（必须用 TimeSeriesSplit）</li>
+<li><strong>特征数量过多</strong>: &gt;100个特征几乎必过拟合</li>
+</ol>
+<h3 id="checklist">防过拟合 Checklist</h3>
+<ul>
+<li>[ ] 所有因子计算只用历史数据</li>
+<li>[ ] 严格时间序列切分（train/val/test）</li>
+<li>[ ] 测试集完全不可见，只最后评估一次</li>
+<li>[ ] IC 月度序列稳定性检查（不能忽高忽低）</li>
+<li>[ ] 分层回测每组单调递增/递减</li>
+<li>[ ] 换仓成本模拟（A股双边千三+冲击成本）</li>
+<li>[ ] 样本外走查至少 1 年</li>
+</ul>
+<h3 id="ths-auto-trader">与 ths-auto-trader 集成思路</h3>
+<ol>
+<li><strong>因子计算层</strong>: 独立模块，从同花顺获取行情数据计算因子</li>
+<li><strong>模型预测层</strong>: 每日收盘后批量预测，输出 Top-N 股票池</li>
+<li><strong>信号输出层</strong>: 将预测结果转为买入/卖出信号</li>
+<li><strong>风控层</strong>: 仓位控制、止损、最大回撤限制</li>
+<li><strong>执行层</strong>: 通过 xdotool 自动下单</li>
+</ol>
+<h2 id="_8">技术栈推荐</h2>
+<pre><code>数据源: 同花顺 iFinD / Tushare / AKShare
+因子计算: Alphalens / 自研
+模型: LightGBM（首选）/ XGBoost
+回测: backtrader / 自研轻量框架
+部署: ths-auto-trader 内嵌
+</code></pre>
+<h2 id="_9">参考</h2>
+<ul>
+<li>《主动投资组合管理》— Grinold &amp; Kahn</li>
+<li>《量化投资：策略与技术》— 丁鹏</li>
+<li>WorldQuant Alpha 101 因子库</li>
+<li>OpenAlpha: 开源 A 股因子挖掘框架</li>
+</ul>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li>[[2026-04-02-股票投资GitHub投研工作流]]</li>
+<li>[[2026-03-31-张雪峰推荐的6个计算机专业]]</li>
+</ul>
+</body>
+</html>

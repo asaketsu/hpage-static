@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>深入源码-Hermes-Agent-如何实现Self-Improving</title>
+
+<meta property="og:title" content="深入源码-Hermes-Agent-如何实现Self-Improving" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-04-23-%E6%B7%B1%E5%85%A5%E6%BA%90%E7%A0%81-Hermes-Agent-%E5%A6%82%E4%BD%95%E5%AE%9E%E7%8E%B0Self-Improving.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="hermes-agent-self-improving">深入源码：Hermes Agent 如何实现 Self-Improving</h1>
+<blockquote>
+<p>来源：微信公众号 | 2026-04-23<br />
+链接：https://mp.weixin.qq.com/s/Qi68ptxQRyiA932JU49SYQ</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>Hermes Agent 通过三大子系统实现自进化闭环：<strong>Memory</strong>（记住你是谁）+ <strong>Skill</strong>（记住怎么做事）+ <strong>Nudge Engine</strong>（定时触发反思）。用得越久能力越强，与 OpenClaw 的"手写 Skill + 纯追加记忆"形成代际差异。</p>
+<hr />
+<h2 id="_2">一、三大子系统架构</h2>
+<h3 id="1-memory">1. Memory — 越用越懂你</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>存储</td>
+<td>两个文件：<code>MEMORY.md</code>(2200 chars) + <code>USER.md</code>(1375 chars)</td>
+</tr>
+<tr>
+<td>容量策略</td>
+<td>严格上限，超限返回错误+现有条目，<strong>引导模型主动做信息压缩</strong></td>
+</tr>
+<tr>
+<td>冻结快照</td>
+<td>会话启动时捕获，系统提示词不变→共享前缀缓存省 token</td>
+</tr>
+<tr>
+<td>写入规范</td>
+<td>声明式事实（"User prefers X"）而非命令式指令（"Always do X"）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：容量有限倒逼信息压缩，过时内容自然被挤掉，留下高密度事实。对比 OpenClaw 的纯追加模式（用几个月膨胀成几万行），这是本质差异。</p>
+<h3 id="2-skill">2. Skill — 把做过的事变成会做的事</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>结构</td>
+<td><code>~/.hermes/skills/</code> 下目录，核心 <code>SKILL.md</code> + YAML frontmatter</td>
+</tr>
+<tr>
+<td>创建触发</td>
+<td>工具调用&gt;5次 + 踩过坑 + 用户纠正过</td>
+</tr>
+<tr>
+<td>修补机制</td>
+<td><code>fuzzy_find_and_replace</code> 局部 patch，非全量重写</td>
+</tr>
+<tr>
+<td>安全</td>
+<td>修改后自动 <code>_security_scan_skill()</code>，不通过就回滚</td>
+</tr>
+<tr>
+<td>加载策略</td>
+<td>轻量索引（名字+一句话描述）→ 按需 <code>skill_view</code> 加载全文</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：OpenClaw 的 Skill 是静态配置文件，用一年还是那份文件；Hermes 的 Skill 是越用越厚的经验资产。</p>
+<h3 id="3-nudge-engine">3. Nudge Engine — 谁来提醒"该学习了"</h3>
+<table>
+<thead>
+<tr>
+<th>计数器</th>
+<th>粒度</th>
+<th>默认阈值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory Nudge</td>
+<td>按用户回合</td>
+<td>10 回合</td>
+</tr>
+<tr>
+<td>Skill Nudge</td>
+<td>按工具迭代</td>
+<td>10 迭代</td>
+</tr>
+</tbody>
+</table>
+<p><strong>后台 fork 机制</strong>：<br />
+- 触发后在后台 fork 独立 Agent 实例<br />
+- 输出重定向到 <code>/dev/null</code>，用户完全无感知<br />
+- review agent 最多 8 次工具调用<br />
+- 自身 nudge 被禁用，防止无限递归<br />
+- 共享同一份 Memory，写入直接生效</p>
+<hr />
+<h2 id="_3">二、完整案例：三次会话的进化过程</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>会话1(冷启动)</th>
+<th>会话2(Skill复用)</th>
+<th>会话3(全协同)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工具调用</td>
+<td>12次</td>
+<td>9次</td>
+<td>6次</td>
+</tr>
+<tr>
+<td>错误数</td>
+<td>2</td>
+<td>1</td>
+<td>0</td>
+</tr>
+<tr>
+<td>Memory</td>
+<td>无</td>
+<td>触发写入</td>
+<td>系统提示词注入</td>
+</tr>
+<tr>
+<td>Skill</td>
+<td>触发创建</td>
+<td>复用+自我修补</td>
+<td>复用已修补版本</td>
+</tr>
+</tbody>
+</table>
+<p><strong>进化路径</strong>：踩坑→提炼→复用→修补→零错误</p>
+<hr />
+<h2 id="_4">三、安全机制</h2>
+<ul>
+<li><strong>Memory 扫描</strong>：检测 prompt injection、欺骗隐藏、系统提示词覆盖、凭证泄露等模式</li>
+<li><strong>Skill 扫描</strong>：自创和 Hub 安装走同一套扫描，不通过就回滚</li>
+<li><strong>RDSHermes 增强</strong>：AK/SK 加密托管，网关代理鉴权，密钥不落盘</li>
+</ul>
+<hr />
+<h2 id="_5">四、设计取舍</h2>
+<table>
+<thead>
+<tr>
+<th>设计决策</th>
+<th>考量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory 限 2200 chars</td>
+<td>低质量 Memory = 每次 API 调用都带噪声</td>
+</tr>
+<tr>
+<td>事实 vs 步骤分离</td>
+<td>更新频率、触发条件、安全风险完全不同</td>
+</tr>
+<tr>
+<td>冻结快照</td>
+<td>保护前缀缓存，避免重复计费</td>
+</tr>
+<tr>
+<td>后台 fork 审查</td>
+<td>自省不应占用用户 attention budget</td>
+</tr>
+<tr>
+<td>patch 优先于重写</td>
+<td>保留已验证部分，只改需要改的</td>
+</tr>
+<tr>
+<td>Nudge 默认10</td>
+<td>太频繁浪费成本，太稀疏错过学习</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="skill">五、Skill 自动进化的下一步方向</h2>
+<ol>
+<li><strong>生命周期管理</strong>：加 <code>last_used</code>/<code>use_count</code>/<code>success_rate</code>，自动降权归档</li>
+<li><strong>技能组合</strong>：识别经常一起用的 Skill 合成工作流</li>
+<li><strong>创建透明度</strong>：创建后给用户简短通知，支持审核纠正</li>
+<li><strong>团队治理</strong>：写操作需二次确认，全链路审计</li>
+</ol>
+<hr />
+<h2 id="_6">🔗 借鉴点（可执行）</h2>
+<ol>
+<li><strong>Memory 容量压缩策略</strong> → 我们系统的 MEMORY 2200/USER 1375 限制已经在用，但可以加"自动合并相似条目"逻辑</li>
+<li><strong>Nudge 后台 fork 机制</strong> → 我们的 cron evolver/auto-dream 已经在做类似的事，但可以考虑用后台线程做更细粒度的回合级触发</li>
+<li><strong>Skill fuzzy patch</strong> → 我们的 <code>skill_manage(action='patch')</code> 已经实现了模糊匹配，继续保持</li>
+<li><strong>安全扫描模式</strong> → 我们的 <code>_MEMORY_THREAT_PATTERNS</code> 已覆盖，可考虑加"凭证泄露检测"</li>
+<li><strong>Skill 生命周期管理</strong> → 可以为 SKILL.md frontmatter 加 <code>last_used</code>/<code>use_count</code>，实现自动归档</li>
+</ol>
+<h2 id="_7">🧠 启发（超越原文）</h2>
+<ul>
+<li><strong>"Data Is the Final Moat"</strong>：模型智能被商品化后，真正的护城河是 Agent 在工作中积累的领域知识。这验证了我们 evolver + auto-learner + skill-pipeline 的自进化体系方向是对的。</li>
+<li><strong>声明式 vs 命令式 Memory</strong>：这个区分很精妙——前者可被上下文覆盖（灵活），后者是死命令（僵化）。我们的 memory 写入规范应该强化这一点。</li>
+<li><strong>"Skills that aren't maintained become liabilities"</strong>：这也是我们的技能审计 cron 的核心理念，但可以更激进——给每个 skill 加"健康度"评分。</li>
+</ul>
+<h2 id="_8">📊 预判</h2>
+<ul>
+<li><strong>趋势</strong>：Agent 自进化将从"单点学习"走向"组织级共享"（RDSHermes 已验证），团队级 Skill Hub 会成为标配</li>
+<li><strong>行动</strong>：持续完善我们的自进化体系，重点关注 Skill 生命周期管理和跨 session 经验共享</li>
+</ul>
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="2026-04-03-Claude-Code四层记忆架构.md">Claude-Code四层记忆架构</a></li>
+<li><a href="2026-04-05-Hermes-Agent-competitor-analysis.md">Hermes-Agent-competitor-analysis</a></li>
+<li><a href="2026-04-13-4-ai-agent-frameworks-comparison.md">4-ai-agent-frameworks-comparison</a></li>
+<li><a href="2026-04-16-Gemini3-AI-Agent-competition.md">Gemini3-AI-Agent-competition</a></li>
+<li><a href="2026-04-18-Hermes-Agent-v0.10.0-insight.md">Hermes-Agent-v0.10.0-insight</a></li>
+<li><a href="2026-04-18-Hermes-Agent-v0.10.0-release-analysis.md">Hermes-Agent-v0.10.0-release-analysis</a></li>
+<li><a href="2026-04-20-Claude-Opus4.7-Claude-Code-最佳实践.md">Claude-Opus4.7-Claude-Code-最佳实践</a></li>
+<li><a href="2026-04-22-ESP-Claw扩展分析-NeuroClaw边缘AI-Agent.md">ESP-Claw扩展分析-NeuroClaw边缘AI-Agent</a></li>
+<li><a href="2026-04-23-MCP协议与Agentic-LLM-2025趋势.md">MCP协议与Agentic-LLM-2025趋势</a></li>
+<li><a href="2026-04-23-深入源码Hermes-Agent-Self-Improving.md">深入源码Hermes-Agent-Self-Improving</a></li>
+<li><a href="2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md">MCP协议生态与Agentic-RAG架构深度学习</a></li>
+<li><a href="2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="2026-04-30-Meta-Hyperagents自适应Agent框架.md">Meta-Hyperagents自适应Agent框架</a></li>
+<li><a href="2026-04-30-stoc蒸馏-AI-Agent自学习量化交易系统.md">stoc蒸馏-AI-Agent自学习量化交易系统</a></li>
+<li><a href="2026-05-01-AI-Agent记忆架构前沿学习.md">AI-Agent记忆架构前沿学习</a></li>
+<li><a href="2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="2026-05-03-AI-Agent-Protocol-Ecosystem-2026-学习.md">AI-Agent-Protocol-Ecosystem-2026-学习</a></li>
+<li><a href="2026-05-03-ai-agent-resources-ecosystem.md">ai-agent-resources-ecosystem</a></li>
+<li><a href="2026-05-03-智能教育-自适应评估.md">智能教育-自适应评估</a></li>
+<li><a href="2026-05-04-Agent协议生态2026最新进展-MCP-A2A深度融合.md">Agent协议生态2026最新进展-MCP-A2A深度融合</a></li>
+<li><a href="2026-05-04-个人Agent自进化五步闭环.md">个人Agent自进化五步闭环</a></li>
+<li><a href="2026-05-05-Claude-MCP直连Fusion-Blender-AI操控工业设计.md">Claude-MCP直连Fusion-Blender-AI操控工业设计</a></li>
+<li><a href="2026-05-05-Claude创意连接器9大工具-Blender-MCP深度解析.md">Claude创意连接器9大工具-Blender-MCP深度解析</a></li>
+<li><a href="2026-05-05-Zero-to-CAD-Agent闭环合成百万级可执行CAD程序.md">Zero-to-CAD-Agent闭环合成百万级可执行CAD程序</a></li>
+<li><a href="2026-05-05-tradingagents-deep-analysis.md">tradingagents-deep-analysis</a></li>
+<li><a href="2026-05-07-SOUL-md-Agent-Partner-Transformation.md">SOUL-md-Agent-Partner-Transformation</a></li>
+<li><a href="2026-05-07-Superpowers-Agentic技能框架.md">Superpowers-Agentic技能框架</a></li>
+<li><a href="2026-05-08-AI-Agent控制流.md">AI-Agent控制流</a></li>
+<li><a href="2026-05-08-addyosmani-agent-skills生产级Agent技能包.md">addyosmani-agent-skills生产级Agent技能包</a></li>
+<li><a href="2026-05-08-企业AI转型三步法-知识库技能化智能体.md">企业AI转型三步法-知识库技能化智能体</a></li>
+<li><a href="2026-05-09-AG-UI-AI-Agent前端标准.md">AG-UI-AI-Agent前端标准</a></li>
+<li><a href="2026-05-09-Agent-native-PM方法论.md">Agent-native-PM方法论</a></li>
+<li><a href="2026-05-09-Claude-Code工程师放弃Markdown转HTML.md">Claude-Code工程师放弃Markdown转HTML</a></li>
+<li><a href="2026-05-09-OfficeCLI-AI-Agent的Office工具.md">OfficeCLI-AI-Agent的Office工具</a></li>
+<li><a href="2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="2026-05-11-具身智能2026-世界模型VLA车企入局.md">具身智能2026-世界模型VLA车企入局</a></li>
+<li><a href="2026-05-11-具身智能2026从实验到实战.md">具身智能2026从实验到实战</a></li>
+<li><a href="2026-05-13-Claude-3D-CAD-创意连接器深度分析.md">Claude-3D-CAD-创意连接器深度分析</a></li>
+<li><a href="2026-05-14-Agent工程4月实践-不要一上来就做Agent.md">Agent工程4月实践-不要一上来就做Agent</a></li>
+<li><a href="2026-05-14-HTML-Anything-Agent驱动HTML编辑器.md">HTML-Anything-Agent驱动HTML编辑器</a></li>
+<li><a href="2026-05-14-MATLAB-Agentic-Toolkit分析.md">MATLAB-Agentic-Toolkit分析</a></li>
+<li><a href="2026-05-14-手撸Agent-ReAct-Loop从零实现.md">手撸Agent-ReAct-Loop从零实现</a></li>
+<li><a href="2026-05-15-上下文才是Agent的命门-QClaw上下文竞争论.md">上下文才是Agent的命门-QClaw上下文竞争论</a></li>
+<li><a href="2026-05-16-OpenHuman-记忆树AI智能体-i龙虾.md">OpenHuman-记忆树AI智能体-i龙虾</a></li>
+<li><a href="2026-05-16-PicoClaw-超轻量AI-Agent框架.md">PicoClaw-超轻量AI-Agent框架</a></li>
+<li><a href="2026-05-17-具身智能前沿学习.md">具身智能前沿学习</a></li>
+<li><a href="20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化.md">20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化</a></li>
+<li><a href="anthropic-managed-agents-dreaming-outcomes.md">anthropic-managed-agents-dreaming-outcomes</a></li>
+<li><a href="explore/2026-05-05-智能教育-AI-tutoring.md">智能教育-AI-tutoring</a></li>
+<li><a href="explore/2026-05-06-ai-agent-protocol-stack-2026.md">ai-agent-protocol-stack-2026</a></li>
+<li><a href="explore/2026-05-08-ai-agent-protocol-wars-a2a-mcp.md">ai-agent-protocol-wars-a2a-mcp</a></li>
+<li><a href="explore/2026-05-08-ai-coding-agent-competition-landscape.md">ai-coding-agent-competition-landscape</a></li>
+<li><a href="explore/2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="explore/2026-05-09-ai-agent-protocols-mcp-a2a-acp.md">ai-agent-protocols-mcp-a2a-acp</a></li>
+<li><a href="explore/2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="explore/2026-05-10-mcp-a2a-agent-ecosystem.md">mcp-a2a-agent-ecosystem</a></li>
+<li><a href="explore/2026-05-11-ai-agent-protocols-mcp-a2a.md">ai-agent-protocols-mcp-a2a</a></li>
+<li><a href="explore/2026-05-13-AI-Agent架构-MCP-A2A协议栈.md">AI-Agent架构-MCP-A2A协议栈</a></li>
+<li><a href="explore/2026-05-13-Agentic-SOC-安全自动化的范式转变.md">Agentic-SOC-安全自动化的范式转变</a></li>
+<li><a href="explore/2026-05-14-Agentic-Engineering-从Vibe-Coding到Agent工程.md">Agentic-Engineering-从Vibe-Coding到Agent工程</a></li>
+<li><a href="explore/2026-05-15-ai-agent-architecture.md">ai-agent-architecture</a></li>
+<li><a href="explore/2026-05-15-ai开源生态-huggingface春季.md">ai开源生态-huggingface春季</a></li>
+<li><a href="explore/2026-05-16-AI-Agent-协议生态-深度整合学习.md">AI-Agent-协议生态-深度整合学习</a></li>
+<li><a href="explore/2026-05-16-Agentic-AI元年-智能体全面落地趋势.md">Agentic-AI元年-智能体全面落地趋势</a></li>
+<li><a href="explore/2026-05-16-HuggingFace-Spring2026-开源生态报告.md">HuggingFace-Spring2026-开源生态报告</a></li>
+<li><a href="explore/2026-05-16-qclaw-上下文四层模型.md">qclaw-上下文四层模型</a></li>
+<li><a href="explore/2026-05-16-具身智能-从造产品到抢落地六大趋势.md">具身智能-从造产品到抢落地六大趋势</a></li>
+<li><a href="explore/2026-05-16-竞品动态-Agentic-Engineering范式转变.md">竞品动态-Agentic-Engineering范式转变</a></li>
+<li><a href="explore/2026-05-17-agent-collaboration-self-evolution.md">agent-collaboration-self-evolution</a></li>
+<li><a href="explore/2026-05-17-具身智能2026数据规模化元年.md">具身智能2026数据规模化元年</a></li>
+<li><a href="hermes-agent-源码拆解自我进化机制.md">hermes-agent-源码拆解自我进化机制</a></li>
+<li><a href="llm-wiki-gbrain-agent-evolution_33aa818c.md">llm-wiki-gbrain-agent-evolution_33aa818c</a></li>
+<li><a href="orphan/2026-04-19-AI幻觉案例分析-Hermes-Agent不实报道.md">AI幻觉案例分析-Hermes-Agent不实报道</a></li>
+<li><a href="orphan/2026-04-24-深入源码-Hermes-Agent-Self-Improving源码拆解.md">深入源码-Hermes-Agent-Self-Improving源码拆解</a></li>
+<li><a href="orphan/2026-05-04-智能教育-personalized-learning.md">智能教育-personalized-learning</a></li>
+<li><a href="orphan/2026-05-05-agent-coding-playbook-analysis.md">agent-coding-playbook-analysis</a></li>
+<li><a href="orphan/2026-05-05-具身智能机器人2025年终盘点.md">具身智能机器人2025年终盘点</a></li>
+<li><a href="orphan/2026-05-09-具身智能机器人2025-商业化元年.md">具身智能机器人2025-商业化元年</a></li>
+<li><a href="orphan/2026-05-10-claude-learning-roadmap.md">claude-learning-roadmap</a></li>
+<li><a href="orphan/2026-05-11-0元打通Claude-Codex-OpenCode免费模型6入口.md">0元打通Claude-Codex-OpenCode免费模型6入口</a></li>
+<li><a href="orphan/2026-05-13-HuggingFace-春季生态-Agentic-World-Modeling.md">HuggingFace-春季生态-Agentic-World-Modeling</a></li>
+<li><a href="orphan/2026-05-15-具身智能量产关键年.md">具身智能量产关键年</a></li>
+<li><a href="orphan/2026-05-16-HTML的不合理有效性-Claude-Code-团队.md">HTML的不合理有效性-Claude-Code-团队</a></li>
+<li><a href="orphan/GenericAgent.md">GenericAgent</a></li>
+<li><a href="skills-autonomous-ai-agents.md">skills-autonomous-ai-agents</a></li>
+<li><a href="竞品吸收笔记_GenericAgent.md">竞品吸收笔记_GenericAgent</a></li>
+</ul>
+</body>
+</html>
