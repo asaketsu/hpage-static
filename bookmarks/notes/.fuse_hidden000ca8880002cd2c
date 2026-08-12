@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoE模型QLoRA-RL训练-专家路由量化噪声叠加效应深度解析</title>
+
+<meta property="og:title" content="MoE模型QLoRA-RL训练-专家路由量化噪声叠加效应深度解析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="moe-qlora-rl">MoE 模型 QLoRA-RL 训练：专家路由不均 + 量化噪声叠加效应深度解析</h1>
+<blockquote>
+<p>夜学深度笔记 | 聚焦 MoE 架构上量化 + LoRA + RL 训练三重叠加的理论与实践挑战<br />
+日期：2026-05-28 | 关联：[[2026-05-23-QLoRA在RL训练中的精度影响]] 待深入 "MoE 模型的 QLoRA RL 训练"<br />
+标签：#MoE #QLoRA #RL #量化 #专家路由 #梯度不均 #GRPO #FP8</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="1moe-rl">发现 1：MoE 三重叠加困境 — 稀疏梯度 × 量化噪声 × RL 方差的三维交叉</h3>
+<p>MoE 模型做 QLoRA-RL 训练时面临三维问题空间，每维都会放大其他维度的负面效应：</p>
+<p><strong>维度 1：稀疏梯度不均</strong>（来自 MoE 架构）<br />
+- MoE-Sieve 路由画像数据：top-25% 专家处理 80%+ token，底部 50% 专家仅处理 &lt;5% token<br />
+- 不同专家的 LoRA 梯度更新频率差异巨大（热专家：每步都更新；冷专家：可能 10 步更新 1 次）<br />
+- 结果：热专家的 LoRA 收敛快，冷专家的 LoRA 几乎不学习</p>
+<p><strong>维度 2：量化噪声注入</strong>（来自 QLoRA）<br />
+- 4-bit NF4 量化对权重引入 ~0.3-0.5 相对误差（QLoRA 论文原始数据）<br />
+- MoE 不同专家的权重分布不同 → 量化误差分布不均匀<br />
+- QuantMoE-Bench（arXiv:2406.08155）首次系统性揭示：共享专家 vs 路由专家的量化需求完全不同</p>
+<p><strong>维度 3：RL 梯度方差</strong>（来自 RL 训练）<br />
+- GRPO 的 advantage 估计本身方差大（比 SFT 梯度方差高 2-3 倍，见 05-22 笔记）<br />
+- 推理链（CoT）对数值精度极度敏感（MATH 任务上 QLoRA 精度损失 12-17%）<br />
+- QeRL 发现量化噪声可增强探索，但这在 MoE 上效果未知</p>
+<p><strong>叠加效应</strong>：热专家接收高频 RL 梯度 + 低量化噪声（因为频繁更新权重分布稳定），冷专家接收低频 RL 梯度 + 高量化噪声（因为权重分布漂移），最终冷专家的 LoRA 适配器几乎无效。</p>
+<h3 id="2quantmoe-bench-moe">发现 2：QuantMoE-Bench — MoE 量化需要结构感知的混合精度</h3>
+<p><strong>QuantMoE-Bench（arXiv:2406.08155）</strong> 是第一个系统研究 MoE 量化中结构差异的 benchmark：</p>
+<ul>
+<li><strong>核心发现</strong>：MoE 的稀疏路由导致不同结构组件的激活模式完全不同</li>
+<li>共享专家（如 DeepSeek-V3）：所有 token 都经过 → 激活分布稳定 → 可以用更低精度（W4A16 即可）</li>
+<li>路由专家：仅部分 token 经过 → 激活分布稀疏且多变 → 需要更高精度（W8A16 或混合精度）</li>
+<li>
+<p>路由器（gate 网络）：决定 token 路由，量化误差直接影响路由决策 → 对精度最敏感</p>
+</li>
+<li>
+<p><strong>混合精度策略</strong>：基于 MoE 结构的细粒度量化</p>
+</li>
+<li>粗粒度：MoE 层用 W8，非 MoE 层用 W4 → 平均性能 64.0%</li>
+<li>细粒度：共享专家 W4、路由专家 W8、路由器 W16 → 平均性能 <strong>65.35%</strong>（超越 GPTQ 均匀量化的 64.30%）</li>
+<li>
+<p>关键：outlier-aware 线性层评分器 + MoE block 重要性预测器指导 bit 分配</p>
+</li>
+<li>
+<p><strong>对 RL 训练的启示</strong>：QuantMoE-Bench 虽然只研究推理场景，但量化精度差异在 RL rollout 和梯度计算中同样存在。路由专家的量化误差会直接影响 RL 中 token 的 expert selection，进而影响 reward signal 的质量。</p>
+</li>
+</ul>
+<h3 id="3fp8-flow-moe-671b-moe-fp8">发现 3：FP8-Flow-MoE — 671B MoE 的 FP8 训练终于可行</h3>
+<p><strong>FP8-Flow-MoE（arXiv:2511.02302）</strong> 解决了 MoE FP8 训练的核心技术障碍：</p>
+<ul>
+<li><strong>问题</strong>：现有 FP8 实现依赖频繁的 quantize-dequantize（Q/DQ）转换（MoE 中达 12 次），理论效率被侵蚀</li>
+<li><strong>双重量化误差</strong>：张量沿不同维度量化时，缩放因子不一致，累积导致数值不稳定</li>
+<li><strong>解决方案</strong>：</li>
+<li>Scaling-aware transpose：消除转置操作的精度损失</li>
+<li>Fused FP8 operators：将 12 个 cast 操作减少到 2 个</li>
+<li>量化一致的 FP8-centric 数据流</li>
+<li><strong>效果</strong>：671B MoE 模型上，throughput 提升 21%，显存降低 16.5 GB/GPU，收敛稳定</li>
+<li><strong>工程意义</strong>：这直接验证了 MoE 可以端到端 FP8 训练，包括 RL 训练阶段</li>
+</ul>
+<p><strong>与 FP8-RL 的关系</strong>：FP8-RL（arXiv:2601.18150）在 Qwen3-30B-A3B（MoE）上验证了 FP8 RL 训练的可行性（44% rollout 加速），但只用了标准 LoRA。FP8-Flow-MoE 则解决了 MoE 训练的 FP8 工程障碍。两者的结合是 MoE QLoRA-RL 的理想方案。</p>
+<h3 id="4guilomo-lora-moe-rank">发现 4：GuiLoMo — LoRA-MoE 的专家数和 rank 应该联合优化</h3>
+<p><strong>GuiLoMo（arXiv:2506.14646）</strong> 提出双层优化来同时确定每层的专家数量和 rank：</p>
+<ul>
+<li><strong>GuidedSelection Vectors（GSVs）</strong>：通过预训练 bilevel optimization 学习的向量，编码模型和任务的双重需求</li>
+<li><strong>核心创新</strong>：不是简单的"均匀分配"，而是：</li>
+<li>某些层需要更多专家但低 rank（如浅层 attention）</li>
+<li>某些层需要少量专家但高 rank（如深层 MLP）</li>
+<li>不同任务的最优配置不同</li>
+<li><strong>与 RL 的关联</strong>：GRPO 中不同层的梯度重要性不同（MLP 层 &gt;&gt; Attention 层，见 05-22 笔记）。GuiLoMo 的层自适应分配可能需要根据 RL 梯度重要性重新调整，因为 RL 的梯度模式与 SFT 完全不同。</li>
+</ul>
+<h3 id="5lora-smoe">发现 5：LoRA-SMoE — 参数敏感度驱动的快速专家分配</h3>
+<p><strong>LoRA-SMoE（arXiv:2505.06272）</strong> 用梯度信息快速评估参数敏感度：</p>
+<ul>
+<li><strong>方法</strong>：采样少量数据 → 计算梯度 → 评估不同参数区域的敏感度 → 自适应分配专家数量</li>
+<li><strong>关键优势</strong>：计算开销极低（一次小批量前向+反向传播即可）</li>
+<li><strong>与 MoE-RL 的适配</strong>：在 RL 训练前，可以用 GRPO 的初始 reward 信号做一次敏感度评估，确定哪些专家值得用量化 LoRA 训练。这与 MoE-Sieve 的路由画像思路互补：MoE-Sieve 用路由频率筛选，LoRA-SMoE 用梯度敏感度筛选。</li>
+</ul>
+<hr />
+<h2 id="_2">二、技术原理解析</h2>
+<h3 id="21-moe-qlora-rl">2.1 MoE-QLoRA-RL 的数学框架</h3>
+<p>标准 GRPO 的策略梯度：</p>
+<pre><code>∇J(θ) = E[Σ_t A_t · ∇log π_θ(a_t|s_t)]
+</code></pre>
+<p>在 MoE + QLoRA 场景中，策略参数 θ 被分解为：<br />
+- θ = {W_quant, A_1, B_1, ..., A_N, B_N, router}（N 个专家，每个有 LoRA A、B 矩阵）<br />
+- W_quant = Quant(W; bits, group_size)（量化基座权重）</p>
+<p>梯度更新只作用于 LoRA 参数 {A_i, B_i}，但：<br />
+1. <strong>不同专家的梯度频率</strong>：梯度 ∇_Ai J 取决于 token 是否被路由到专家 i<br />
+<code>∇_{A_i} J = Σ_{t: router(x_t)=i} A_t · ∇_{A_i} log π(x_t)</code><br />
+   热专家的梯度累加频率是冷专家的 10-100 倍</p>
+<ol>
+<li>
+<p><strong>量化噪声通过基座权重传播</strong>：前向传播中 W_quant 引入噪声 ε_q<br />
+<code>h = W_quant · x + BA · x = (W + ε_q) · x + BA · x</code><br />
+   反向传播时 ε_q 不直接参与梯度计算（冻结），但影响激活值 → 间接影响 advantage 估计</p>
+</li>
+<li>
+<p><strong>RL advantage 估计的方差放大</strong>：<br />
+<code>Var(∇_{A_i} J) ∝ Var(A_t) × freq_i × (1 + σ_ε²)</code><br />
+   freq_i 是路由频率，σ_ε² 是量化噪声方差。三维方差乘积导致冷专家+高量化噪声的梯度几乎被噪声淹没。</p>
+</li>
+</ol>
+<h3 id="22-qlora-moe-rl">2.2 为什么均匀 QLoRA 在 MoE-RL 上必然失败</h3>
+<p>基于已有数据的推导：</p>
+<ol>
+<li><strong>LoRA-GRPO 研究结论</strong>（05-22 笔记）：最优 rank = 1（Schulman 信息论论证），uniform rank=16 在 GRPO 下最优</li>
+<li><strong>MoE-Sieve 数据</strong>：75% 专家的 LoRA 参数梯度更新频率 &lt;5%</li>
+<li><strong>QLoRA-RL 精度损失</strong>（05-23 笔记）：推理任务 4-17% 损失</li>
+</ol>
+<p>联合推导：<br />
+- 对冷专家（频率 &lt;5%）应用 rank=16 QLoRA → 梯度更新极少 + 量化噪声 &gt;&gt; 有效梯度信号 → LoRA 参数几乎随机游走<br />
+- 对热专家应用 rank=16 QLoRA → 梯度更新充分 → 但量化噪声在 RL 场景下仍导致 4-17% 性能损失<br />
+- <strong>结论</strong>：MoE-QLoRA-RL 需要差异化策略 — 热专家用标准 LoRA（甚至 Full FT），冷专家跳过 LoRA 或用极低 rank</p>
+<h3 id="23-fp8-vs-nf4-moe-rl">2.3 FP8 vs NF4 在 MoE-RL 中的适用性对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>NF4 (BitsAndBytes)</th>
+<th>FP8 (E4M3/E5M2)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>量化精度</td>
+<td>信息论最优 4-bit（正态权重）</td>
+<td>硬件原生支持（Hopper+）</td>
+</tr>
+<tr>
+<td>训练集成</td>
+<td>QLoRA：冻结基座 + 4-bit</td>
+<td>FP8-RL：端到端训练 + rollout</td>
+</tr>
+<tr>
+<td>MoE 适配</td>
+<td>无 MoE 特殊处理</td>
+<td>FP8-Flow-MoE：融合算子减少 cast</td>
+</tr>
+<tr>
+<td>RL rollout 加速</td>
+<td>依赖推理框架</td>
+<td>44% 加速（FP8-RL 验证）</td>
+</tr>
+<tr>
+<td>MoE 路由器精度</td>
+<td>未特殊处理</td>
+<td>需 FP16（QuantMoE-Bench 结论）</td>
+</tr>
+<tr>
+<td>梯度计算精度</td>
+<td>LoRA 参数用 BF16/FP16</td>
+<td>统一 FP8（消除 train-inference mismatch）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：MoE-RL 场景下 FP8 方案优于 NF4 QLoRA，因为：<br />
+1. 统一精度消除 train-inference mismatch<br />
+2. FP8-Flow-MoE 已验证 671B 规模可行性<br />
+3. FP8-RL 已验证 MoE（Qwen3-30B-A3B）RL 可行性<br />
+4. 量化噪声可控（scaling-aware transpose）</p>
+<h3 id="24">2.4 路由器量化 — 隐藏的精度杀手</h3>
+<p>QuantMoE-Bench 的关键发现：路由器（gate 网络）对量化最敏感。</p>
+<p>路由器的输出决定 token 分配到哪个专家：</p>
+<pre><code>g(x) = softmax(TopK(x · W_gate))
+</code></pre>
+<p>量化 W_gate → 路由决策改变 → 某些专家可能被跳过或被错误激活 → reward signal 的 expert attribution 错乱。</p>
+<p>在 RL 训练中，这导致：<br />
+1. <strong>Expert credit assignment 错乱</strong>：GRPO 的 advantage 信号基于完整 forward pass，如果路由器量化导致路由变化，某个 token 的 reward 被错误归因到不同专家<br />
+2. <strong>训练-推理不一致</strong>：训练时路由器用高精度，推理时量化 → 路由分布漂移</p>
+<p><strong>解决方案</strong>：路由器必须保持 FP16/BF16，只对专家权重和 KV Cache 做 FP8/INT4 量化。</p>
+<hr />
+<h2 id="_3">三、知识关联</h2>
+<ul>
+<li>[[2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析]] → 本次将 QLoRA-RL 的结论扩展到 MoE 场景，补充了稀疏梯度对量化精度的放大效应</li>
+<li>[[2026-05-18-MoE模型LoRA微调最佳实践]] → MoE-Sieve/DR-LoRA/DMEP 的路由不均分析是本次三重叠加分析的基础</li>
+<li>[[2026-05-25-DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现]] → DoRA 归一化在 MoE 冷专家上更加不稳定（归一化分母的量化误差 × 稀疏激活 → 某些列 ||col||_2 ≈ 0）</li>
+<li>[[2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数]] → Schulman r=1 论证在 MoE 上需要修正：热专家可遵循 r=1，冷专家 r=0（跳过）</li>
+<li>[[2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet]] → QuantMoE-Bench 补充了 MoE 结构感知量化的实战数据</li>
+<li>[[2026-05-06-MoE混合专家模型-路由策略-负载均衡-训练稳定性]] → 路由器量化敏感性与 MoE 训练稳定性相关</li>
+<li>obs_notes: [[RLHF]]、[[GRPO]]、[[量化]] → 已有基础概念，本次补充了 MoE-RL-量化交叉领域的前沿研究</li>
+<li>[[2026-05-26-投机解码与量化模型兼容性-交叉加速的冲突与融合]] → QuantMoE-Bench 的混合精度策略与投机解码的量化兼容性有交叉</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">四、Actionable Insights</h2>
+<ol>
+<li>
+<p><strong>MoE-RL 训练框架优化</strong>：在 veRL/OpenRLHF 中实现 MoE 感知的量化策略 — 路由器 FP16 + 共享专家 FP8 + 路由专家混合精度。可参考 FP8-Flow-MoE 的 fused operator 方案。</p>
+</li>
+<li>
+<p><strong>MoE-Sieve + QeRL 联合方案</strong>：先做路由画像（MoE-Sieve）识别热/冷专家 → 热专家用 QeRL 的 NVFP4 + LoRA（量化噪声增强探索） → 冷专家跳过 LoRA 或冻结。这与 Hermes Agent 的 experiential context 思路类似 — 不是所有参数都需要适配。</p>
+</li>
+<li>
+<p><strong>量化配置感知的 RL 训练</strong>：CoA-LoRA（05-25 笔记）的配置映射网络可以扩展到 MoE 场景 — 将每层的路由频率 + 量化精度映射到 LoRA rank 分配。</p>
+</li>
+<li>
+<p><strong>对 Hermes 系统的启示</strong>：如果未来用 MoE 模型做 Agent 训练，需要注意路由器不能量化。Agent 的工具调用/规划能力高度依赖路由决策质量，量化路由器可能导致工具选择错误。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_4">五、待深入的问题清单</h2>
+<ol>
+<li>
+<p><strong>FP8-RL × MoE-Sieve 联合实验</strong>：在 DeepSeek-V3（671B MoE）上，先用 MoE-Sieve 筛选热专家，再对热专家用 FP8-RL 训练，冷专家冻结。需要 veRL + TransformerEngine 集成。</p>
+</li>
+<li>
+<p><strong>路由器量化对 RL reward 归因的影响量化</strong>：量化路由器后，GRPO 的 expert-level credit assignment 误差有多大？是否需要 expert-aware advantage 计算？</p>
+</li>
+<li>
+<p><strong>冷专家的 LoRA 是否应该完全关闭</strong>：MoE-Sieve 证明 top-25% 专家 ≈ 全专家效果，但这在 SFT 场景。RL 场景中冷专家可能提供"探索性"输出，完全关闭是否损害 RL 的探索？</p>
+</li>
+<li>
+<p><strong>NVFP4 vs FP8 在 MoE-RL 中的精确对比</strong>：QeRL 用 NVFP4 优异，FP8-RL 用 FP8 优异。两者在 MoE（路由专家 + 共享专家）上的对比尚未有文献覆盖。</p>
+</li>
+<li>
+<p><strong>QuantMoE-Bench 混合精度 + RL 训练</strong>：推理场景的混合精度策略（共享专家 W4、路由专家 W8）是否直接适用于 RL rollout？RL rollout 的 token 分布与推理不同。</p>
+</li>
+<li>
+<p><strong>DeepSeek-V4 shared expert 在 RL 中的特殊角色</strong>：共享专家是所有 token 的"基础能力"，在 RL 中是否应该用更高精度训练（类似 SFT），而路由专家用 FP8？</p>
+</li>
+<li>
+<p><strong>LoRA-SMoE 敏感度评估 + GRPO reward 联合</strong>：用 GRPO 初始 reward 信号代替 SFT 梯度做敏感度评估，是否更准确地反映 RL 训练中的专家重要性？</p>
+</li>
+</ol>
+<hr />
+<h2 id="_5">六、参考论文</h2>
+<ol>
+<li>FP8-Flow-MoE: Casting-Free FP8 Recipe for MoE Training (arXiv:2511.02302)</li>
+<li>FP8-RL: Practical and Stable Low-Precision Stack for LLM RL (arXiv:2601.18150)</li>
+<li>QuantMoE-Bench: Examining Post-Training Quantization for MoE (arXiv:2406.08155)</li>
+<li>MoE-Sieve: Routing-Guided LoRA for Efficient MoE Fine-Tuning (arXiv:2603.24044)</li>
+<li>GuiLoMo: Allocating Expert Number and Rank for LoRA-MoE via Bilevel Optimization (arXiv:2506.14646)</li>
+<li>LoRA-SMoE: Sensitivity-Driven Expert Allocation Method (arXiv:2505.06272)</li>
+<li>DMEP: Dynamic Module-wise Expert Pruning for LoRA-MoE (arXiv:2604.26340)</li>
+<li>MobileMoE: Scaling On-Device Mixture of Experts (arXiv:2605.27358)</li>
+<li>EDoRA: Efficient Weight-Decomposed Low-Rank Adaptation via SVD (arXiv:2501.12067)</li>
+</ol>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li>[[2026-05-24-VLM强化学习RL训练-视觉编码器与LoRA配置前沿.md]] (关键词: RL, LoRA, 强化学习)</li>
+<li>[[2026-05-17-LoRA高效微调前沿技术全景.md]] (关键词: LoRA, 量化)</li>
+<li>[[2026-05-18-MoE模型LoRA微调最佳实践.md]] (关键词: MoE, LoRA)</li>
+<li>[[2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析.md]] (关键词: QLoRA, RL, 量化)</li>
+<li>[[2026-05-25-DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现.md]] (关键词: RL, 量化)</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llama-cpp预编译二进制与本地LLM推理</title>
+
+<meta property="og:title" content="llama-cpp预编译二进制与本地LLM推理" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '$', right: '$', display: false},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llamacpp-b9245">llama.cpp b9245 — 从「开发者工具」到「所有人的工具」</h1>
+<blockquote>
+<p>来源：<a href="https://mp.weixin.qq.com/s/HLPwDd9TgEbW4jZZ0-Q3Ow">AI赋能说 - 微信公众号</a> | 2026-05-22</p>
+</blockquote>
+<hr />
+<h2 id="llamacpp">一、事件：llama.cpp 发布预编译二进制</h2>
+<p>llama.cpp b9245 版本在 Release 页面直接提供预编译好的可执行文件，覆盖全平台：</p>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th>后端</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows x64</td>
+<td>CPU / CUDA 12 / CUDA 13 / Vulkan</td>
+</tr>
+<tr>
+<td>Windows arm64</td>
+<td>CPU</td>
+</tr>
+<tr>
+<td>macOS</td>
+<td>Metal (Apple Silicon)</td>
+</tr>
+<tr>
+<td>Linux</td>
+<td>CPU / CUDA</td>
+</tr>
+<tr>
+<td>Android</td>
+<td>CPU / GPU</td>
+</tr>
+</tbody>
+</table>
+<p><strong>用户体验</strong>：下载 zip → 解压 → 双击 <code>llama-cli.exe</code> 或 <code>llama-server.exe</code> → 就能跑。</p>
+<p>不用装编译器。不用配环境变量。不用敲 cmake。</p>
+<hr />
+<h2 id="llamacpp_1">二、llama.cpp 是什么</h2>
+<p><strong>背景</strong>：2023 年 3 月，保加利亚程序员 Georgi Gerganov 用纯 C/C++ 重写了 Meta 的 LLaMA 模型推理代码。</p>
+<ul>
+<li>不依赖 PyTorch、不依赖 Python</li>
+<li>目标：让大语言模型在普通电脑上跑起来</li>
+<li>不需要 A100，不需要云服务器，笔记本就行</li>
+<li>GitHub <strong>11 万颗星</strong></li>
+</ul>
+<p><strong>核心贡献</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>技术点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GGUF 格式</td>
+<td>把几十 GB 的模型压缩到几个 GB</td>
+</tr>
+<tr>
+<td>CPU 推理</td>
+<td>塞进内存就能跑，有显卡更快，没显卡也能用</td>
+</tr>
+<tr>
+<td>生态地位</td>
+<td>Ollama、LM Studio、GPT4All 底层跑的都是它</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">三、以前的门槛在哪里</h2>
+<p>"能下载代码"和"能用起来"之间，隔着一道墙 → <strong>编译</strong>。</p>
+<pre><code>旧路径（开发者路径）：
+  装 Visual Studio → 装 CUDA Toolkit → 配 CMake → 处理各种报错 → 环境变量设错就卡住
+</code></pre>
+<ul>
+<li>对程序员 → 日常</li>
+<li>对普通人 → 劝退</li>
+</ul>
+<p>所以大多数人选择了 Ollama 或 LM Studio（把 llama.cpp 包了一层壳），代价是失去了一些控制权。</p>
+<hr />
+<h2 id="_2">四、为什么这件事重要</h2>
+<h3 id="41">4.1 拿回控制权</h3>
+<table>
+<thead>
+<tr>
+<th>对比维度</th>
+<th>Ollama/LM Studio</th>
+<th>llama.cpp 原生</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>模型加载</td>
+<td>自动处理</td>
+<td>手动指定，完全可控</td>
+</tr>
+<tr>
+<td>参数调节</td>
+<td>封装后有限</td>
+<td>所有参数可调</td>
+</tr>
+<tr>
+<td>上下文长度</td>
+<td>预设</td>
+<td>自由设置</td>
+</tr>
+<tr>
+<td>线程数</td>
+<td>自动</td>
+<td>手动优化</td>
+</tr>
+<tr>
+<td>GPU 层数</td>
+<td>自动分配</td>
+<td>精确控制</td>
+</tr>
+<tr>
+<td>采样策略</td>
+<td>封装</td>
+<td>全部开放</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-openai-api">4.2 兼容 OpenAI API</h3>
+<p><code>llama-server</code> 启动后在本地开 HTTP 服务，接口格式与 OpenAI API 完全一致：</p>
+<pre><code class="language-python"># 只需改 base_url
+client = OpenAI(base_url=&quot;http://localhost:8080/v1&quot;)
+</code></pre>
+<ul>
+<li>不花钱</li>
+<li>不限速</li>
+<li>数据不出本机</li>
+</ul>
+<h3 id="43">4.3 门槛降到最低</h3>
+<pre><code>旧路径：学编程 → 装环境 → 编译 → 跑模型
+新路径：下载 → 解压 → 跑模型
+</code></pre>
+<p>一个从来没碰过命令行的人，十分钟就能在电脑上跑起一个大语言模型。</p>
+<blockquote>
+<p><strong>技术的普及从来不是靠技术本身变简单。是靠有人把复杂的部分提前做好，打包好，递到你手里。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_3">五、适合谁用</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>用过 ChatGPT，想本地跑一个不花钱的</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>开发者，想要本地 OpenAI 兼容 API</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>在意隐私，不想对话数据传云端</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>想折腾，了解大模型推理原理</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>用过 Ollama，想要更多控制权</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>只想聊天，不想折腾</td>
+<td>❌ 用 Ollama/LM Studio 更省心</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="jetson-llamacpp">六、Jetson 实战：直接用 llama.cpp 跑模型</h2>
+<p>Jetson Orin 上已验证 CUDA + PyTorch 可用，llama.cpp 同样可以利用 CUDA 加速。</p>
+<h3 id="61">6.1 快速上手</h3>
+<pre><code class="language-bash"># 下载预编译版（Linux aarch64 + CUDA）
+# 或从源码编译（Jetson 推荐，可针对 Jetson CUDA 优化）
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+mkdir build &amp;&amp; cd build
+cmake .. -DGGML_CUDA=ON
+cmake --build . --config Release -j$(nproc)
+
+# 下载 GGUF 模型（如 Qwen2.5-1.5B）
+# 从 HuggingFace 下载 .gguf 文件
+
+# 启动本地 OpenAI 兼容 API 服务
+./llama-server -m models/qwen2.5-1.5b-instruct-q8_0.gguf \
+  --host 0.0.0.0 --port 8080 \
+  -ngl 99 -c 4096
+</code></pre>
+<h3 id="62-jetson-8gb">6.2 Jetson 上可跑的模型（8GB 统一内存）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>量化</th>
+<th>大小</th>
+<th>内存占用</th>
+<th>推理速度（估计）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-1.5B-Instruct</td>
+<td>Q8_0</td>
+<td>~1.5 GB</td>
+<td>~2.5 GB</td>
+<td>~30-50 tok/s</td>
+</tr>
+<tr>
+<td>Gemma3-1B-IT</td>
+<td>Q8_0</td>
+<td>~1.1 GB</td>
+<td>~2 GB</td>
+<td>~40-60 tok/s</td>
+</tr>
+<tr>
+<td>Qwen2.5-3B-Instruct</td>
+<td>Q4_K_M</td>
+<td>~2 GB</td>
+<td>~3.5 GB</td>
+<td>~15-25 tok/s</td>
+</tr>
+<tr>
+<td>Phi-3.5-mini-3.8B</td>
+<td>Q4_K_M</td>
+<td>~2.3 GB</td>
+<td>~4 GB</td>
+<td>~12-20 tok/s</td>
+</tr>
+</tbody>
+</table>
+<h3 id="63">6.3 关键参数说明</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>含义</th>
+<th>Jetson 建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-ngl N</code></td>
+<td>GPU 卸载层数</td>
+<td>99（全部卸载到 GPU）</td>
+</tr>
+<tr>
+<td><code>-c N</code></td>
+<td>上下文长度</td>
+<td>2048-4096（受内存限制）</td>
+</tr>
+<tr>
+<td><code>-t N</code></td>
+<td>线程数</td>
+<td>4-6（Orin Nano 6 核）</td>
+</tr>
+<tr>
+<td><code>-b N</code></td>
+<td>batch size</td>
+<td>512</td>
+</tr>
+<tr>
+<td><code>--mlock</code></td>
+<td>锁定内存，防止交换</td>
+<td>建议开启</td>
+</tr>
+</tbody>
+</table>
+<h3 id="64">6.4 与现有工具对比</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>优势</th>
+<th>劣势</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>llama.cpp + CUDA</strong></td>
+<td>原生控制，参数全开放</td>
+<td>需命令行操作</td>
+</tr>
+<tr>
+<td><strong>Ollama</strong></td>
+<td>易用，自动管理模型</td>
+<td>额外抽象层</td>
+</tr>
+<tr>
+<td><strong>PyTorch + Transformers</strong></td>
+<td>灵活，可训练</td>
+<td>更重，内存占用更大</td>
+</tr>
+<tr>
+<td><strong>TensorRT</strong></td>
+<td>最快推理速度</td>
+<td>编译复杂，需 ONNX 转换</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">七、核心洞察</h2>
+<ol>
+<li>
+<p><strong>"从能用到好用，中间差的不是代码，是一个 zip 包"</strong> — 开源社区最有价值的工作，往往不是写出最厉害的算法，而是把算法装进普通人能打开的盒子里</p>
+</li>
+<li>
+<p><strong>llama.cpp 定义了本地 LLM 推理的事实标准</strong> — GGUF 格式 + OpenAI 兼容 API，整个生态围绕它构建</p>
+</li>
+<li>
+<p><strong>预编译二进制的意义 &gt; 新功能</strong> — 从"开发者工具"变成"所有人的工具"，这才是真正的民主化</p>
+</li>
+<li>
+<p><strong>Jetson 是天然的本地方案</strong> — 8GB 统一内存 + CUDA，比大多数笔记本更适合跑本地模型，配合 TensorRT 还有额外加速空间</p>
+</li>
+</ol>
+<hr />
+<p><em>Created: 2026-05-22 | Source: AI赋能说微信公众号 | Device: Jetson Orin Nano</em></p>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-05-Karpathy-LLM-Wiki-second-brain.md">Karpathy-LLM-Wiki-second-brain</a></li>
+<li><a href="../2026-04-18-Hermes-LLM-Wiki-学习笔记.md">Hermes-LLM-Wiki-学习笔记</a></li>
+<li><a href="../2026-04-23-MCP协议与Agentic-LLM-2025趋势.md">MCP协议与Agentic-LLM-2025趋势</a></li>
+<li><a href="../2026-04-27-垂域LLM指导航空结构设计.md">垂域LLM指导航空结构设计</a></li>
+<li><a href="../2026-04-28-LLM推理优化前沿技术2026.md">LLM推理优化前沿技术2026</a></li>
+<li><a href="../2026-04-29-LLM-Agent驱动量化交易系统前沿学习.md">LLM-Agent驱动量化交易系统前沿学习</a></li>
+<li><a href="../2026-04-30-边缘AI与On-Device-LLM前沿学习.md">边缘AI与On-Device-LLM前沿学习</a></li>
+<li><a href="../2026-05-01-deepseek-agent-ecosystem.md">deepseek-agent-ecosystem</a></li>
+<li><a href="../2026-05-04-LLM对齐训练范式RLHF-DPO-GRPO-DAPO.md">LLM对齐训练范式RLHF-DPO-GRPO-DAPO</a></li>
+<li><a href="../2026-05-05-Awesome-LLM-Apps-109K星应用模板库.md">Awesome-LLM-Apps-109K星应用模板库</a></li>
+<li><a href="../2026-05-05-开源AI模型2025-DeepSeek-Qwen新格局.md">开源AI模型2025-DeepSeek-Qwen新格局</a></li>
+<li><a href="../2026-05-07-PageIndex-无向量推理式RAG.md">PageIndex-无向量推理式RAG</a></li>
+<li><a href="../2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet.md">大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet</a></li>
+<li><a href="../2026-05-08-ollama-vllm-llamacpp-deploy-comparison.md">ollama-vllm-llamacpp-deploy-comparison</a></li>
+<li><a href="../2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理.md">推理加速深度解析-投机解码-KVCache-连续批处理</a></li>
+<li><a href="../2026-05-09-LLM知识蒸馏技术全景.md">LLM知识蒸馏技术全景</a></li>
+<li><a href="../2026-05-10-DeepSeek-V4-开源模型新格局.md">DeepSeek-V4-开源模型新格局</a></li>
+<li><a href="../2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap.md">蒸馏量化联合策略-QAD-LBLLM-CapacityGap</a></li>
+<li><a href="../2026-05-11-5月AI模型大战-GPT55-DeepSeekV4.md">5月AI模型大战-GPT55-DeepSeekV4</a></li>
+<li><a href="../2026-05-11-AI趋势2026-推理时计算与反思Agent.md">AI趋势2026-推理时计算与反思Agent</a></li>
+<li><a href="../2026-05-11-LLM冲击下PINN应用变化与发展.md">LLM冲击下PINN应用变化与发展</a></li>
+<li><a href="../2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理.md">MoE蒸馏与压缩-专家路由迁移-稀疏结构处理</a></li>
+<li><a href="../2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析.md">MoE投机解码-稀疏激活与推理加速深度解析</a></li>
+<li><a href="../2026-05-13-从零训练GPT完整指南.md">从零训练GPT完整指南</a></li>
+<li><a href="../2026-05-15-JAX-NVIDIA-GPU-微调Llama3.1实战方案.md">JAX-NVIDIA-GPU-微调Llama3.1实战方案</a></li>
+<li><a href="../2026-05-15-序列并行与上下文并行-长上下文训练的第四维并行.md">序列并行与上下文并行-长上下文训练的第四维并行</a></li>
+<li><a href="../2026-05-17-LoRA高效微调前沿技术全景.md">LoRA高效微调前沿技术全景</a></li>
+<li><a href="../2026-05-17-SGLang高性能LLM推理框架深度分析.md">SGLang高性能LLM推理框架深度分析</a></li>
+<li><a href="../2026-05-18-Agent元认知-LLM不确定性感知.md">Agent元认知-LLM不确定性感知</a></li>
+<li><a href="../2026-05-18-MoE模型LoRA微调最佳实践.md">MoE模型LoRA微调最佳实践</a></li>
+<li><a href="../2026-05-19-蒸馏量化RL三联流水线-后训练范式统一.md">蒸馏量化RL三联流水线-后训练范式统一</a></li>
+<li><a href="../2026-05-20-Active-Data-Selection-LLM训练动态数据选择前沿.md">Active-Data-Selection-LLM训练动态数据选择前沿</a></li>
+<li><a href="../2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化.md">MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化</a></li>
+<li><a href="../2026-05-21-llm-finetune-dataflow-dataflex-pipeline.md">llm-finetune-dataflow-dataflex-pipeline</a></li>
+<li><a href="../2026-05-21-react-agent-llm-agentic-training-research.md">react-agent-llm-agentic-training-research</a></li>
+<li><a href="../20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化.md">20260513-llm-wiki-obsidian-gbrain-知识自组织与自进化</a></li>
+<li><a href="../AutoSearch 自主训练任务.md">AutoSearch 自主训练任务</a></li>
+<li><a href="../ai-agent/2026-05-14-多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解.md">多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解</a></li>
+<li><a href="../ai-agent/2026-05-16-MegatronCore模块化重构与MoE训练前沿.md">MegatronCore模块化重构与MoE训练前沿</a></li>
+<li><a href="../ai-agent/2026-05-16-表达清晰的5个训练.md">表达清晰的5个训练</a></li>
+<li><a href="2026-05-09-2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1.md">2025年5月AI大爆发-Claude4-Qwen3-DeepSeek-R1</a></li>
+<li><a href="2026-05-09-开源AI春季爆发-模型推理Agent.md">开源AI春季爆发-模型推理Agent</a></li>
+<li><a href="2026-05-13-2026年5月AI模型大战-GPT5.5-Grok4.3-DeepSeekV4.md">2026年5月AI模型大战-GPT5.5-Grok4.3-DeepSeekV4</a></li>
+<li><a href="2026-05-13-开源AI模型新格局-DeepSeek冲击波.md">开源AI模型新格局-DeepSeek冲击波</a></li>
+<li><a href="2026-05-16-LLM推理优化-MoE量化加速全景.md">LLM推理优化-MoE量化加速全景</a></li>
+<li><a href="2026-05-16-LLM推理优化技术.md">LLM推理优化技术</a></li>
+<li><a href="2026-05-18-llm-inference-opt-incremental2.md">llm-inference-opt-incremental2</a></li>
+<li><a href="2026-05-18-llm-inference-opt-update.md">llm-inference-opt-update</a></li>
+<li><a href="2026-05-18-llm-self-prompt-optimization.md">llm-self-prompt-optimization</a></li>
+<li><a href="2026-05-19-MoE-稀疏激活微调工程实践.md">MoE-稀疏激活微调工程实践</a></li>
+<li><a href="2026-05-19-SGLang-vs-vLLM-推理引擎对比.md">SGLang-vs-vLLM-推理引擎对比</a></li>
+<li><a href="2026-05-20-llm_wiki分析与Skill进化.md">llm_wiki分析与Skill进化</a></li>
+<li><a href="2026-05-21-边缘AI推理优化-Jetson平台深度研究.md">边缘AI推理优化-Jetson平台深度研究</a></li>
+<li><a href="llm-inference-opt-2026-05-17.md">llm-inference-opt-2026-05-17</a></li>
+<li><a href="llm-inference-opt-deep-dive.md">llm-inference-opt-deep-dive</a></li>
+<li><a href="llm-inference-opt-incremental-20260517.md">llm-inference-opt-incremental-20260517</a></li>
+<li><a href="../llm-pid-tuner.md">llm-pid-tuner</a></li>
+<li><a href="../llm-wiki-gbrain-agent-evolution_33aa818c.md">llm-wiki-gbrain-agent-evolution_33aa818c</a></li>
+<li><a href="../orphan/2026-05-05-分布式训练技术全景-FSDP-DeepSpeed-Megatron.md">分布式训练技术全景-FSDP-DeepSpeed-Megatron</a></li>
+<li><a href="../orphan/2026-05-06-MoE混合专家模型-路由策略-负载均衡-训练稳定性.md">MoE混合专家模型-路由策略-负载均衡-训练稳定性</a></li>
+<li><a href="../tinyedge-lora.md">tinyedge-lora</a></li>
+<li><a href="../前瞻性问题-AI垂域LLM载具设计.md">前瞻性问题-AI垂域LLM载具设计</a></li>
+</ul>
+</body>
+</html>

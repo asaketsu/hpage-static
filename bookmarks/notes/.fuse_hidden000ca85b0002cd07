@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeek-Reasonix-成本优化架构解析</title>
+
+<meta property="og:title" content="DeepSeek-Reasonix-成本优化架构解析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="deepseek-reasonix-agent">DeepSeek Reasonix：成本优化驱动的终端编程 Agent 架构解析</h1>
+<ul>
+<li>📅 2026-05-26</li>
+<li>⭐ 4/5 — 把 API 前缀缓存机制做到极致工程化的优秀案例，方法论可复用</li>
+<li>🏷️ #AI编程Agent #DeepSeek #成本优化 #前缀缓存 #Agent架构</li>
+<li>📰 微信公众号（来源链接如下）</li>
+<li>🔗 https://mp.weixin.qq.com/s/DVTs_pkZgo0IqyMsjvHO2g</li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>DeepSeek 开源的终端编程 Agent Reasonix（8.1k Star），核心壁垒不是 AI 能力而是"极致成本优化工程"。通过将 DeepSeek API 的前缀缓存（Prefix Cache）机制作为架构第一性原理——前缀一致时缓存部分只收 ~10% 费用——实现了 5 倍成本优势。单日实测：4.35 亿 input tokens，99.82% 缓存命中，花费 ~$12（无缓存需 ~$61）。其上下文三分区（Immutable/Append-Only/Volatile）、工具调用修复四 Pass、flash-first 自动升级策略，均为 Agent 工程化提供了可复用的方法论。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1">1. 缓存优先循环：上下文三分区</h3>
+<p>将上下文切成三块，严格保证缓存命中：</p>
+<ul>
+<li><strong>Immutable Prefix</strong>（system prompt + tool specs）：整个 session 只算一次，哈希钉死</li>
+<li><strong>Append-Only Log</strong>（对话历史）：只能追加，禁止改写（不支持编辑历史消息是缓存不变量要求）</li>
+<li><strong>Volatile Scratch</strong>（R1 思考/临时计划）：每轮重置，不发送 API，蒸馏后才进 Log</li>
+</ul>
+<p>关键洞察：保证 Prefix 和 Log 前缀不变 → 同一 session 内所有请求的前 N 字节完全一致 → 缓存命中率趋近 100%。</p>
+<h3 id="2-pass">2. 工具调用修复：四个 Pass</h3>
+<p>针对 DeepSeek API 常见工具调用问题的系统化修复：</p>
+<ul>
+<li><strong>flatten</strong>：深层嵌套 JSON schema（&gt;10 参数或 &gt;2 层嵌套）自动扁平化</li>
+<li><strong>scavenge</strong>：正则 + JSON parser 从 reasoning_content 捞出遗漏的 tool call</li>
+<li><strong>truncation</strong>：检测不完整 JSON，补括号或请求 continuation</li>
+<li><strong>storm</strong>：滑动窗口检测完全相同的 (tool, args) 重复调用，抑制并注入反思轮</li>
+</ul>
+<p>四个 pass 让 DeepSeek V4-Flash 在工具调用场景可靠性与 V4-Pro 打平。</p>
+<h3 id="3">3. 成本控制系统</h3>
+<ul>
+<li><strong>层级默认（flash-first）</strong>：默认 v4-flash → 失败自动升级 v4-pro</li>
+<li><strong>辅助调用硬编码 flash + effort=high</strong>：摘要、subagent、截断修复全部低成本模型</li>
+<li><strong>故障信号自动升级</strong>：edit_file SEARCH 找不到、tool-call repair 触发，攒够 3 个信号切 pro</li>
+<li><strong>轮末自动压缩</strong>：工具结果 &gt;3000 token 在轮次结束时压缩，后续轮次只看摘要</li>
+</ul>
+<h3 id="4">4. 横向对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Reasonix</th>
+<th>Claude Code</th>
+<th>Cursor</th>
+<th>Aider</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>后端</td>
+<td>DeepSeek 独占</td>
+<td>Anthropic 独占</td>
+<td>多模型</td>
+<td>任意</td>
+</tr>
+<tr>
+<td>协议</td>
+<td>MIT 开源</td>
+<td>闭源</td>
+<td>闭源</td>
+<td>Apache 2</td>
+</tr>
+<tr>
+<td>日均成本</td>
+<td>$5-15 | $15-40</td>
+<td>订阅+用量</td>
+<td>不一</td>
+<td></td>
+</tr>
+<tr>
+<td>前缀缓存</td>
+<td>专门工程化</td>
+<td>不适用</td>
+<td>不适用</td>
+<td>偶发命中</td>
+</tr>
+<tr>
+<td>终端原生</td>
+<td>✓</td>
+<td>✓</td>
+<td>✗ (IDE)</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5">5. 独特功能</h3>
+<ul>
+<li>桌面客户端（Tauri，预发布）：多标签页 + 实时成本/token 显示</li>
+<li>QQ 通道：session 延伸到 QQ，手机消息继续交互</li>
+<li>内嵌 Web Dashboard：实时缓存命中率、成本曲线、session 摘要</li>
+</ul>
+<h2 id="_3">🔍 借鉴点</h2>
+<h3 id="1_1">① 有利进化（已落实）</h3>
+<ul>
+<li><strong>上下文三分区模式</strong> → 已融合到 <code>llm-inference-optimization</code> skill，作为 API 层缓存优化实战案例</li>
+<li><strong>工具调用修复四 Pass</strong> → 已记录到 memory，适用于所有 LLM Agent 的工具调用可靠性提升</li>
+<li><strong>flash-first + 故障信号自动升级</strong> → 已记录到 memory，与 Hermes 的 antigravity-model-failover 形成互补（Antigravity 是账号池级 failover，Reasonix 是模型级智能路由）</li>
+</ul>
+<h3 id="2-memory">② 有价值（已记录到 memory）</h3>
+<ul>
+<li>轮末压缩策略（&gt;3000 token 工具结果压缩为摘要）→ 与 Hermes 的 context-compressor skill 理念一致，可参考阈值设定</li>
+<li>parallelSafe 并行工具派发 → Hermes 的 delegate_task 已有类似能力，但缺少只读工具并行声明机制</li>
+</ul>
+<h3 id="3_1">③ 知识库（仅笔记）</h3>
+<ul>
+<li>横向对比数据（Reasonix vs Claude Code vs Cursor vs Aider）</li>
+<li>QQ 通道 / Tauri 桌面客户端等扩展功能</li>
+</ul>
+<h2 id="_4">🔗 关联性</h2>
+<ul>
+<li><a href="2026-05-17-LLM推理优化技术深度研究.md">LLM推理优化技能</a> — 已融合 Reasonix 前缀缓存工程化模式</li>
+<li><a href="antigravity-model-failover">Antigravity模型自动切换</a> — 账号池级 failover，Reasonix 的 flash-first 是模型级智能路由，两者互补</li>
+<li><a href="hermes-agent">Hermes Agent</a> — Reasonix 的上下文分区和工具修复模式可直接应用于 Hermes 架构优化</li>
+</ul>
+<h2 id="_5">💡 启发</h2>
+<ul>
+<li><strong>成本优化的本质是确定性工程</strong>：不是用更便宜的模型，而是通过架构保证"同一笔钱买到更多有效工作时间"</li>
+<li><strong>"不支持编辑历史消息"不是缺陷，而是设计选择</strong>：为了维护缓存不变量，牺牲了灵活性换取成本优势</li>
+<li><strong>工具调用可靠性可以通过后处理修复</strong>：不需要更强模型，四 pass 修复让 flash 达到 pro 水平</li>
+</ul>
+<h2 id="_6">🔮 预判</h2>
+<ul>
+<li><strong>短期</strong>：更多 Agent 框架会采用上下文分区 + 前缀缓存优化策略，成为行业标准</li>
+<li><strong>中期</strong>：AI 编程工具竞争从"谁更强"转向"谁更便宜"，成本效率成为核心差异化</li>
+<li><strong>长期</strong>：开源 Agent（Reasonix/Aider）凭借成本透明度和可控性，将逐步蚕食闭源工具（Claude Code/Cursor）的市场</li>
+</ul>
+<h2 id="_7">✅ 落实情况</h2>
+<pre><code>📋 借鉴点落实审计
+├── ①有利进化 项：3 个
+│   ├── 上下文三分区模式 → skill_manage(patch llm-inference-optimization) ✅
+│   ├── 工具调用修复四 Pass → memory add ✅
+│   └── flash-first + 故障信号自动升级 → memory add ✅
+├── ②有价值 项：2 个 → memory 记录 ✅
+└── ③知识库 项：3 个 → 仅笔记 ✅
+</code></pre>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="2026-05-19-蒸馏量化RL三联流水线-后训练范式统一.md">蒸馏量化RL三联流水线-后训练范式统一</a></li>
+<li><a href="2026-05-20-Active-Data-Selection-LLM训练动态数据选择前沿.md">Active-Data-Selection-LLM训练动态数据选择前沿</a></li>
+<li><a href="2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化.md">MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化</a></li>
+<li><a href="2026-05-21-llm-finetune-dataflow-dataflex-pipeline.md">llm-finetune-dataflow-dataflex-pipeline</a></li>
+<li><a href="2026-05-21-react-agent-llm-agentic-training-research.md">react-agent-llm-agentic-training-research</a></li>
+<li><a href="2026-05-22-If-youre-an-LLM-please-read-this-Anna-Archive-LLM伦理契约.md">If-youre-an-LLM-please-read-this-Anna-Archive-LLM伦理契约</a></li>
+<li><a href="2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数.md">LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数</a></li>
+<li><a href="2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型.md">Multi-Stream-LLMs-并行流解锁语言模型</a></li>
+<li><a href="2026-05-23-Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力.md">Antigravity2.0-OpenSCAD-LLM-Benchmark-AI编程3D建模能力</a></li>
+<li><a href="2026-05-23-OpenAI后训练团队Yann-Dubois深度访谈.md">OpenAI后训练团队Yann-Dubois深度访谈</a></li>
+<li><a href="2026-05-23-QLoRA在RL训练中的精度影响-量化与强化学习深度解析.md">QLoRA在RL训练中的精度影响-量化与强化学习深度解析</a></li>
+<li><a href="2026-05-24-VLM强化学习RL训练-视觉编码器与LoRA配置前沿.md">VLM强化学习RL训练-视觉编码器与LoRA配置前沿</a></li>
+<li><a href="2026-05-24-nashsu-llm_wiki项目分析_deep-blue.md">nashsu-llm_wiki项目分析_deep-blue</a></li>
+<li><a href="2026-05-25-DeepSeek-Reasonix-开源省钱Agent.md">DeepSeek-Reasonix-开源省钱Agent</a></li>
+<li><a href="2026-05-25-DeepSeek-V4-Pro永久降价75-AI价格战新阶段.md">DeepSeek-V4-Pro永久降价75-AI价格战新阶段</a></li>
+<li><a href="2026-05-25-DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现.md">DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现</a></li>
+<li><a href="2026-05-26-挪威2PB-Huawei闪存-LLM训练-主权AI基础设施案例.md">挪威2PB-Huawei闪存-LLM训练-主权AI基础设施案例</a></li>
+<li><a href="explore/2026-05-18-llm-inference-opt-incremental2.md">llm-inference-opt-incremental2</a></li>
+<li><a href="explore/2026-05-18-llm-inference-opt-update.md">llm-inference-opt-update</a></li>
+<li><a href="explore/2026-05-18-llm-self-prompt-optimization.md">llm-self-prompt-optimization</a></li>
+<li><a href="explore/2026-05-19-MoE-稀疏激活微调工程实践.md">MoE-稀疏激活微调工程实践</a></li>
+<li><a href="explore/2026-05-19-SGLang-vs-vLLM-推理引擎对比.md">SGLang-vs-vLLM-推理引擎对比</a></li>
+<li><a href="explore/2026-05-20-llm_wiki分析与Skill进化.md">llm_wiki分析与Skill进化</a></li>
+<li><a href="explore/2026-05-21-边缘AI推理优化-Jetson平台深度研究.md">边缘AI推理优化-Jetson平台深度研究</a></li>
+<li><a href="explore/2026-05-22-llama-cpp预编译二进制与本地LLM推理.md">llama-cpp预编译二进制与本地LLM推理</a></li>
+<li><a href="explore/2026-05-23-VPO向量策略优化多样性训练提升推理搜索.md">VPO向量策略优化多样性训练提升推理搜索</a></li>
+<li><a href="explore/edge-llm-quantization-deploy-deep-20260524.md">antization-deploy-deep-20260524</a></li>
+<li><a href="explore/llm-inference-opt-2026-05-17.md">llm-inference-opt-2026-05-17</a></li>
+<li><a href="explore/llm-inference-opt-2026-05-20-supplement.md">llm-inference-opt-2026-05-20-supplement</a></li>
+<li><a href="explore/llm-inference-opt-deep-dive.md">llm-inference-opt-deep-dive</a></li>
+<li><a href="explore/llm-inference-opt-incremental-20260517.md">llm-inference-opt-incremental-20260517</a></li>
+<li><a href="explore/llm-inference-optimization-2026.md">llm-inference-optimization-2026</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>极简参数PEFT与GRPO推理训练-从TinyLoRA到VeFA实证前沿</title>
+
+<meta property="og:title" content="极简参数PEFT与GRPO推理训练-从TinyLoRA到VeFA实证前沿" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="peft-grpo-tinylora13-vefa-2026-06-02">极简参数 PEFT + GRPO 推理训练前沿：从 TinyLoRA(13参数) 到 VeFA 实证全景（2026-06-02）</h1>
+<blockquote>
+<p>夜学深度笔记 | 深入分析"RL 训练到底需要多少参数"这一核心问题。覆盖 TinyLoRA（Meta FAIR, arXiv 2602.04118, 13参数91%GSM8K）、VeFA 特征空间适配、Evolution Strategies（ES, arXiv 2509.24372）、Hybrid-LoRA（arXiv 2605.18822）的实证数据，以及 GTPO/CEPO/TEPO/DGPO 四种最新的 token 级 credit assignment GRPO 变体。建立"极简参数 RL"的方法谱系与 VeFA 定位分析。<br />
+日期：2026-06-02</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="1-tinylora13-meta-fair-arxiv-260204118-feb-2026">1. TinyLoRA：13 个参数足以推理（Meta FAIR, arXiv 2602.04118, Feb 2026）</h3>
+<p><strong>这是 2026 年以来对"RL 训练参数需求"最有颠覆性的发现</strong>：</p>
+<p>核心机制：<br />
+- TinyLoRA 基于 LoRA-XS，将可训练低秩矩阵 R 替换为固定随机投影矩阵的加权和：R = Σᵢ vᵢ Pᵢ<br />
+- v ∈ R^u 是极小的可训练向量（u 可低至 1），Pᵢ 是固定的随机矩阵<br />
+- 关键创新：<strong>全权重绑定（full weight tying）</strong> — 所有模块、所有层共享同一组 v<br />
+- 整个模型的更新量压缩到 u 个参数（u=13 时仅 26 bytes）</p>
+<p>关键实验数据（Qwen2.5-7B-Instruct, GRPO）：<br />
+- <strong>13 个参数 → GSM8K 91%</strong>（基线 76%，+15 个百分点）<br />
+- 在 AIME/AMC/MATH500 上恢复 90% 的性能提升，仅用 <strong>1000x 更少参数</strong><br />
+- <strong>RL 远比 SFT 高效</strong>：相同参数预算下，SFT 需要 100-1000x 更多参数才能匹配 RL<br />
+- <strong>规模趋势</strong>：模型越大，达到 FullFT 95% 性能所需的参数越少 → 万亿模型可能只需几个参数</p>
+<p><strong>与 VeFA 的关系</strong>：TinyLoRA 的 v 向量在概念上与 VeFA 的 diag(v) 缩放向量极其相似——都是极小参数集通过固定结构扩展到完整权重更新。但 TinyLoRA 通过随机投影 Pᵢ 引入新的方向信息（超越 W₀ 列空间），而 VeFA 严格限制在 W₀ 的列空间内。这直接回答了我们之前的问题：<strong>RL 确实只需要极少的参数维度，但方向多样性（而非仅幅度调整）仍然重要</strong>。</p>
+<h3 id="2-evolution-strategies-rl-grpoarxiv-250924372-updated-2026">2. Evolution Strategies：无梯度 RL 超越 GRPO（arXiv 2509.24372, Updated 2026）</h3>
+<p><strong>ES 在 LLM 后训练中的首次成功规模化</strong>，提出了一种全新的 backpropagation-free 范式：</p>
+<p>核心机制：<br />
+- ES 直接对所有模型参数添加高斯噪声，保留性能更好的版本<br />
+- 不需要策略梯度、不需要价值函数、不需要 KL 惩罚<br />
+- 完全免反传（backpropagation-free）</p>
+<p>关键发现：<br />
+- <strong>Countdown 推理任务</strong>：ES 在所有测试模型（Qwen/Llama 3B）上大幅超越 GRPO/PPO<br />
+- <strong>15x 更低的结果方差</strong>：跨 run 稳定性远超 GRPO<br />
+- <strong>同一超参数跨模型适用</strong>：GRPO 需要为每个模型单独调参，ES 不需要<br />
+- <strong>更好的 reward-KL tradeoff</strong>：简洁响应任务上 ES 无需 KL 惩罚系数即超越 GRPO<br />
+- <strong>对长 horizon reward 更鲁棒</strong><br />
+- <strong>更不容易 reward hacking</strong></p>
+<p><strong>与 VeFA 的关系</strong>：ES 的成功暗示 RL 训练中参数空间的搜索可能比精确的梯度方向更重要。VeFA 限制了搜索空间（仅幅度调整），而 ES 在全参数空间搜索但用极其简单的信号（标量 reward + 噪声）。两者都指向同一结论：<strong>RL 需要的信息量远比我们想象的少</strong>。</p>
+<p><strong>局限性</strong>：ES 目前在符号推理等结构化任务上验证，多目标对齐等复杂场景的适用性尚未验证。</p>
+<h3 id="3-grpo-token-credit-assignment-2026-h1">3. GRPO Token 级 Credit Assignment 爆发（2026 H1 四大新方法）</h3>
+<p>标准 GRPO 的关键缺陷：同一序列中所有 token 收到相同的 reward — 推理关键步骤和语法填充词获得相同信号。2026 上半年至少四种方法独立解决这个问题：</p>
+<p><strong>GTPO/GRPO-S（ICML 2026, arXiv 2508.04349）</strong>：<br />
+- Dynamic Entropy Weighting — 用策略熵 H_{i,t} 作为"认知努力"的代理<br />
+- 高熵 token = 推理关键节点 → 获得更大 reward 权重<br />
+- 在 AIME 和 MATH500 上显著超越 DAPO 基线<br />
+- Token 级（GTPO）和序列级（GRPO-S）两个变体</p>
+<p><strong>CEPO（arXiv 2605.19436）</strong>：<br />
+- Contrastive Evidence Policy Optimization<br />
+- 对比正/负答案条件下的 token 概率比：P_T+(y_t) / P_T-(y_t)<br />
+- 正确答案支持 + 错误答案反对 → 真正的推理步骤<br />
+- 仅利用训练 batch 中已有的拒绝 rollout，无额外计算</p>
+<p><strong>TEPO（arXiv 2604.12736）</strong>：<br />
+- Token-Level Policy Optimization — 通过序列级似然将组级 reward 传播到 token 级<br />
+- 引入 token 级 KL 散度掩码约束，仅对正 advantage + 熵递减的 token 施加约束<br />
+- 解决 GRPO 的熵坍塌问题</p>
+<p><strong>DGPO（arXiv 2605.03327）</strong>：<br />
+- Distribution Guided Policy Optimization<br />
+- 用有界 Hellinger Distance 替代无界 KL 散度<br />
+- 熵门控机制重分配序列级 advantage 到 token 级<br />
+- AIME2024/2025 SOTA，计算效率与 GRPO 相当</p>
+<h3 id="4-hybrid-lora-arxiv-260518822-may-2026">4. Hybrid-LoRA 后训练实证（arXiv 2605.18822, May 2026）— 补充数据</h3>
+<p>之前笔记已覆盖核心内容，补充新发现：<br />
+- <strong>Hybrid-Score 的梯度加权敏感度</strong> s = (1/r) ||e ⊙ g||₁ 与 VeFA 的 diag(v) · W₀ 存在数学对偶<br />
+- Hybrid-LoRA 在 Qwen-2.5 全系列（1.5B/3B/7B）上验证，平均优于最佳基线 4.36%<br />
+- <strong>关键数据更新</strong>：10% FFT 模块 = 93% 参数减少，性能接近 FullFT</p>
+<h3 id="5-hard-samples-grpo-arxiv-260406298">5. Hard Samples 在 GRPO 小模型上的收益递减（arXiv 2604.06298）</h3>
+<ul>
+<li>GRPO + LoRA 在 SLM（0.5B-3B）上训练数学推理</li>
+<li>在 GSM8K 和 MATH 上测试困难样本缩放</li>
+<li><strong>发现</strong>：超过一定难度阈值后，增加训练数据难度对 SLM 收益递减</li>
+<li>对我们的启示：小模型 GRPO 训练中数据难度需要匹配模型容量，而非一味追求困难</li>
+</ul>
+<hr />
+<h2 id="_2">二、技术原理解析</h2>
+<h3 id="21-tinylora">2.1 TinyLoRA 的极简参数化数学</h3>
+<p><strong>LoRA → LoRA-XS → TinyLoRA 的演化路径</strong>：</p>
+<p>LoRA: ΔW = BA（r×d 参数）<br />
+LoRA-XS: ΔW = BRS（利用 W₀ 的 SVD 分解 U Σ V^T，R 在奇异子空间中学习）<br />
+TinyLoRA: R = Σᵢ vᵢ Pᵢ（随机投影加权和，仅 u 个参数）</p>
+<p><strong>全权重绑定的关键假设</strong>：<br />
+- 不同层/模块的最优更新方向虽不同，但可以通过共享的 v 和不同的 Pᵢ 自动适配<br />
+- 本质是一种元学习：v 学习"全局信号强度"，Pᵢ 负责"局部方向翻译"<br />
+- 这与 Schulman 的 O(1) bits/episode 信息论论证完美吻合：13 个 bf16 参数 = 208 bits，远超每轮 RL 所需</p>
+<p><strong>为什么 RL 比 SFT 更适合极简参数</strong>：<br />
+1. RL 的信号是标量 advantage → 信息量极低，13 参数足够承载<br />
+2. SFT 的信号是逐 token 梯度 → 信息量大，需要更高秩<br />
+3. RL 本质是"解锁"已有能力，而非"注入"新知识 → 幅度调整 &gt; 方向学习</p>
+<h3 id="22-vefa-vs-tinylora">2.2 VeFA vs TinyLoRA 的精确对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>VeFA</th>
+<th>TinyLoRA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>参数化</td>
+<td>W_eff = diag(v) · W₀</td>
+<td>ΔW = B(Σᵢ vᵢ Pᵢ)S</td>
+</tr>
+<tr>
+<td>可训练参数</td>
+<td>d（hidden_size 量级）</td>
+<td>u（可低至 1）</td>
+</tr>
+<tr>
+<td>方向自由度</td>
+<td>0（严格限制在 W₀ 列空间）</td>
+<td>u 个随机投影方向（可超越 W₀）</td>
+</tr>
+<tr>
+<td>权重绑定</td>
+<td>每层独立 v</td>
+<td>全模型共享 v</td>
+</tr>
+<tr>
+<td>信息容量</td>
+<td>d 个自由度</td>
+<td>u × 随机投影数量</td>
+</tr>
+<tr>
+<td>分布鲁棒性</td>
+<td>数学保证（列空间不变）</td>
+<td>依赖随机投影质量</td>
+</tr>
+<tr>
+<td>RL 理论兼容性</td>
+<td>完美（O(1) bits &lt;&lt; d）</td>
+<td>超越理论需求（u=13 &gt;&gt; 1 bit/episode）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键结论</strong>：TinyLoRA 的 u=13 &gt;&gt; VeFA 的 d=4096 是因为 TinyLoRA 需要学习"选择哪些随机投影方向"（离散选择），而 VeFA 的 d 个参数都是连续缩放（更信息密集）。但从 RL 信号匹配角度，VeFA 的 d 个参数完全足够。</p>
+<p><strong>预测</strong>：VeFA (d=4096 自由度) 在 RL 场景中应该不逊于 TinyLoRA (u=13)，因为 RL 的标量 advantage 可以通过 VeFA 的连续缩放精确传播。VeFA 的优势在于分布鲁棒性，TinyLoRA 的优势在于极致参数效率。</p>
+<h3 id="23-es">2.3 ES 的"零信息理论"解释</h3>
+<p>ES 的成功可以用信息论重新理解：<br />
+- ES 的每次参数扰动 = 对整个参数空间的一次随机探测<br />
+- reward 信号 = 标量，O(1) bits<br />
+- 但 ES 利用了整个参数空间的<strong>结构</strong>：预训练已经将"好方向"编码在权重中<br />
+- 高斯噪声探索的是权重的邻域，而预训练已经确保邻域内有大量有用方向<br />
+- 这与 VeFA 的"幅度调整"和 TinyLoRA 的"随机投影"殊途同归：<strong>预训练模型已经包含了足够的先验，RL 只需极小扰动</strong></p>
+<h3 id="24-token-credit-assignment">2.4 Token 级 Credit Assignment 的统一视角</h3>
+<p>四种方法可以统一为对 GRPO advantage 的 token 级调制：</p>
+<p>GRPO 原始: A_{k,t} = r_k（所有 token 相同）<br />
+GTPO: A_{k,t} = r_k × (H_{i,t} / ΣH)（熵加权）<br />
+CEPO: A_{k,t} = r_k × (P_T+(y_t) / P_T-(y_t))（对比证据）<br />
+TEPO: A_{k,t} = Σ_{s≤t} w_s · r_k（似然传播）<br />
+DGPO: A_{k,t} = r_k × gate(H_{i,t}) × D_H(p_t, p_ref)（Hellinger 门控）</p>
+<p><strong>共同模式</strong>：都用一个 token 级权重 w_t 调制原始 GRPO advantage，区别在于 w_t 的计算方式。这对 VeFA 有重要启示——VeFA 的逐元素缩放 v 实际上等价于一种隐式的 token 级权重调制（通过 W₀ 的列空间结构）。</p>
+<hr />
+<h2 id="_3">三、知识关联</h2>
+<ul>
+<li>[[2026-06-01-VeFA与RL训练交叉-特征空间适配在强化学习中的适用性]] → 本篇是其「待深入问题 #1: VeFA 在 GRPO 上的实证对比」的完整回答。通过 TinyLoRA 的 u=13 实证和 ES 的全参数搜索结果，从正反两面论证了 VeFA 在 RL 中的定位</li>
+<li>[[2026-05-31-LoRA侵入维度消除策略-从发现到系统性解决方案]] → VeFA 的无侵入维度保证在 ES 和 TinyLoRA 的背景下获得新意义：侵入维度可能对 RL 训练无关紧要（13 参数也能 work），但分布鲁棒性是 VeFA 的独特价值</li>
+<li>[[2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数]] → Schulman 的 r=1 信息论论证被 TinyLoRA 进一步推向极端（u=13），但 Schulman 论证的"RL 不需要新方向"被 TinyLoRA 的随机投影部分修正</li>
+<li>[[2026-05-25-DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现]] → TinyLoRA 的随机投影方向 + VeFA 的幅度缩放 ≈ 退化的 DoRA，DoRA 的归一化不稳定问题在极简参数场景中自动消失</li>
+<li>[[2026-05-17-LoRA高效微调前沿技术全景]] → 补充 TinyLoRA/ES/GTPO/CEPO/TEPO/DGPO 六种新方法到谱系</li>
+<li>[[2026-05-14-多目标GRPO-GDPO-ShapE-GRPO-AW-GRPO-RACO-OSPO-ARPO]] → GTPO/CEPO/TEPO/DGPO 是与多目标 GRPO 正交的维度（token 级 vs 目标级），可以叠加</li>
+<li>[[2026-05-23-QLoRA在RL训练中的精度影响-QeRL-NVFP4量化]] → QeRL 在 7B 上 90.8% GSM8K（NVFP4+LoRA），TinyLoRA 91%（13 参数纯 bf16）— 极端效率方向一致</li>
+<li>[[2026-05-29-NVFP4-vs-FP8在MoE-RL训练中的精确对比]] → ES 的无梯度特性可能绕过量化-RL 交互问题，值得在量化模型上测试 ES</li>
+<li>[[2026-05-04-GRPO-RLHF-DPO训练范式对比与实战]] → ES 代表了 RL 训练范式的新选择（ES vs PPO vs GRPO 三足鼎立）</li>
+<li>obs_notes: [[大模型核心术语]] → 补充了 TinyLoRA/ES/GTPO 等新概念</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">四、Actionable Insights</h2>
+<ol>
+<li>
+<p><strong>VeFA-FFN + TinyLoRA-Attention 的混合方案</strong>：基于 Hybrid-LoRA 发现 FFN 层 LoRA 足够，而 TinyLoRA 证明极简参数在 RL 中有效。建议 FFN 层用 VeFA（分布鲁棒性 + 无侵入维度），Attention 层用 TinyLoRA（方向灵活性）。参数预算：FFN 层 d=4096 个 v 参数，Attention 层 u=32 个 v 参数。</p>
+</li>
+<li>
+<p><strong>veRL + TinyLoRA 集成</strong>：TinyLoRA 已被 HuggingFace PEFT 库原生支持（TinyLoraConfig），可以直接通过 veRL 的 PEFT 集成使用。先用 u=32 在 GSM8K 上跑 baseline，再尝试 VeFA 对比。</p>
+</li>
+<li>
+<p><strong>ES 作为 VeFA 的上界参考</strong>：在做 VeFA 实证实验时，ES 应作为另一个 baseline。如果 VeFA 接近 ES 性能 → 说明 VeFA 的参数效率足够；如果 VeFA 远低于 ES → 说明方向多样性确实重要。</p>
+</li>
+<li>
+<p><strong>Token 级 Credit Assignment 与 VeFA 的天然兼容</strong>：VeFA 的 diag(v)·W₀ 在 token 级产生隐式的 attention 权重调制。GTPO 的熵加权或 CEPO 的对比证据可以直接叠加到 VeFA 训练中，不需要修改 VeFA 的参数化。</p>
+</li>
+<li>
+<p><strong>Hermes Agent RL 自进化</strong>：如果给 Hermes 加 RL 自进化能力，TinyLoRA 的 13 参数方案意味着几乎零存储成本。每次 skill 学习可以只存储 26 bytes 的 adapter diff。</p>
+</li>
+<li>
+<p><strong>Hard Samples 收益递减的实践指导</strong>：小模型 GRPO 训练中，数据难度应匹配模型容量。我们用 Qwen-2.5-1.5B/3B 做实验时，不应盲目追求 AIME 级别的困难数据。</p>
+</li>
+</ol>
+<hr />
+<h2 id="_4">五、待深入问题</h2>
+<ol>
+<li><strong>VeFA + TinyLoRA 精确对比实验设计</strong>：在 Qwen2.5-7B 上，VeFA(d=4096) vs TinyLoRA(u=13) vs LoRA(r=16) 三组 GRPO 实验，benchmark: GSM8K/MATH500/AIME</li>
+<li><strong>VeFA + GTPO 熵加权联合</strong>：VeFA 的逐元素缩放 + GTPO 的 token 级熵加权是否能叠加收益</li>
+<li><strong>ES + VeFA 混合</strong>：ES 在 VeFA 缩放向量 v 空间做搜索（而非全参数空间），是否兼具两者优势</li>
+<li><strong>TinyLoRA 的 MoE 适配</strong>：全权重绑定在 MoE 模型上是否仍然有效（不同专家可能需要不同的 v）</li>
+<li><strong>ES 在量化模型上的 RL 训练</strong>：无梯度 ES 是否绕过量化-RL 交互问题</li>
+<li><strong>Token 级 Credit Assignment 对 LoRA rank 需求的影响</strong>：更精细的 credit 是否降低 rank 需求</li>
+<li><strong>TinyLoRA 全权重绑定的理论极限</strong>：13 参数 vs 1 参数的性能差距有多大</li>
+<li><strong>ES + QeRL 联合</strong>：ES 在 NVFP4 量化模型上做 RL 训练的可行性</li>
+<li><strong>DGPO Hellinger Distance 在 VeFA 训练中的应用</strong>：有界距离替代 KL 是否缓解 VeFA 的梯度受限问题</li>
+</ol>
+<hr />
+<h2 id="_5">六、参考文献</h2>
+<ol>
+<li>Moriss et al. (2026). "Learning to Reason in 13 Parameters." Meta FAIR/Cornell/CMU. arXiv:2602.04118.</li>
+<li>Novak et al. (2026). "Evolution Strategies at Scale: LLM Fine-Tuning Beyond Reinforcement Learning." arXiv:2509.24372v2.</li>
+<li>Hybrid-LoRA Team (2026). "Hybrid-LoRA: Bridging Full Fine-Tuning and Low-Rank Adaptation for Post-Training." arXiv:2605.18822.</li>
+<li>Tan &amp; Pan (2026). "GTPO and GRPO-S: Token and Sequence-Level Reward Shaping with Policy Entropy." ICML 2026. arXiv:2508.04349.</li>
+<li>CEPO Team (2026). "CEPO: RLVR Self-Distillation using Contrastive Evidence Policy Optimization." arXiv:2605.19436.</li>
+<li>TEPO Team (2026). "Token-Level Policy Optimization: Linking Group-Level Rewards to Token-Level Aggregation via Sequence-Level Likelihood." arXiv:2604.12736.</li>
+<li>DGPO Team (2026). "DGPO: Distribution Guided Policy Optimization for Fine Grained Credit Assignment." arXiv:2605.03327.</li>
+<li>Hard Samples Team (2026). "Limits of Difficulty Scaling: Hard Samples Yield Diminishing Returns in GRPO-Tuned SLMs." arXiv:2604.06298.</li>
+<li>Wang, Gu, Huang (2025). "VeFA: Vector-Based Feature Space Adaptation for Robust Model Fine-Tuning." arXiv:2510.19155.</li>
+<li>Schulman et al. (2025). "LoRA Without Regret." Thinking Machines Lab.</li>
+<li>Shao et al. (2024). "DeepSeekMath: GRPO." (GRPO 原始论文)</li>
+<li>AlphaXiv Blog. "Evolution Strategies vs GRPO for LLM Fine-Tuning." https://alphaxiv.org/blog/es-for-fine-tuning-llms</li>
+</ol>
+<hr />
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="./2026-06-01-VeFA与RL训练交叉-特征空间适配在强化学习中的适用性.md">2026-06-01-VeFA与RL训练交叉</a></li>
+<li><a href="./2026-05-31-LoRA侵入维度消除策略-从发现到系统性解决方案.md">2026-05-31-LoRA侵入维度消除策略</a></li>
+<li><a href="./2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数.md">2026-05-22-LoRA-GRPO最优配置实证</a></li>
+<li><a href="./2026-05-25-DoRA量化RL训练-方向幅度分解在低精度强化学习中的表现.md">2026-05-25-DoRA量化RL训练</a></li>
+<li><a href="./2026-05-17-LoRA高效微调前沿技术全景.md">2026-05-17-LoRA高效微调前沿技术全景</a></li>
+<li><a href="./2026-05-14-多目标GRPO-GDPO与ShapE-GRPO-多reward融合与冲突消解.md">2026-05-14-多目标GRPO</a></li>
+<li><a href="./2026-05-23-QLoRA在RL训练中的精度影响.md">2026-05-23-QLoRA在RL训练中的精度影响</a></li>
+<li><a href="./2026-05-04-GRPO-RLHF-DPO训练范式对比与实战.md">2026-05-04-GRPO训练范式对比</a></li>
+</ul>
+</body>
+</html>

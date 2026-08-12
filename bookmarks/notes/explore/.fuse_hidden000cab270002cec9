@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>simulated-vs-live-trading-differences</title>
+
+<meta property="og:title" content="simulated-vs-live-trading-differences" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="vs">实盘模拟 vs 真实交易的技术差异（滑点、延迟、熔断）</h1>
+<blockquote>
+<p><strong>摘要</strong>：量化策略从回测/模拟走向实盘，最大的鸿沟不是策略本身，而是<strong>市场环境、执行机制和系统约束</strong>的根本性差异。本文系统梳理滑点、延迟、熔断三大核心差异维度，结合 A 股实盘场景，给出从模拟到实盘的渐进式验证路径。</p>
+<p>⚠️ <strong>来源说明</strong>：本文基于本地已有项目文档（ths-auto-trader 回测框架、通达信 tdxquant 模拟交易、TradingAgents 研究）和领域知识整合，未能实时搜索验证（Tavily/DDG 均故障）。关键结论需后续联网验证。</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="1slippage">发现 1：滑点（Slippage）是回测与实盘最大偏差来源，固定滑点模型严重低估真实损耗</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>回测/模拟</th>
+<th>实盘</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>滑点模型</strong></td>
+<td>固定百分比（如 0.1%）或零滑点</td>
+<td>动态、非对称、依赖流动性</td>
+</tr>
+<tr>
+<td><strong>买入滑点</strong></td>
+<td>通常忽略或低估</td>
+<td>实际成交价往往<strong>高于</strong>信号价（追单效应）</td>
+</tr>
+<tr>
+<td><strong>卖出滑点</strong></td>
+<td>通常忽略或低估</td>
+<td>实际成交价往往<strong>低于</strong>信号价（恐慌性抛售）</td>
+</tr>
+<tr>
+<td><strong>极端行情</strong></td>
+<td>无法模拟</td>
+<td>流动性枯竭时滑点可达 3-5% 甚至更多</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键细节</strong>：<br />
+- 回测引擎（如 ths-auto-trader 的 <code>BacktestEngine</code>）使用固定滑点 0.1%（买卖各 0.1%），这在震荡市中尚可接受，但在<strong>开盘集合竞价、尾盘抢筹、涨跌停附近</strong>等场景完全失效<br />
+- A 股实盘滑点的三大驱动因素：<br />
+  1. <strong>买卖盘口深度</strong>：买一/卖一挂单量不足时，市价单会"吃穿"多个价位<br />
+  2. <strong>信号触发时机</strong>：策略在收盘前发出信号，但实际委托到达交易所时价格已跳变<br />
+  3. <strong>T+1 约束</strong>：当日买入无法当日卖出，回测中若忽略此约束会严重高估策略收益</p>
+<p><strong>改进建议</strong>：<br />
+- 回测滑点模型应从"固定百分比"升级为"<strong>盘口深度感知滑点模型</strong>"：根据历史 Level-2 数据模拟不同委托量下的实际成交价位<br />
+- 引入"<strong>冲击成本曲线</strong>"：委托量越大，单位滑点越高（非线性）<br />
+- 实盘前必须做 <strong>Paper Trade（纸面交易）</strong> 至少 1-2 周，对比信号价与实际成交价的偏差</p>
+<hr />
+<h3 id="2latencyui">发现 2：延迟（Latency）在高频/日内策略中是生死线，UI 自动化方案天然处于劣势</h3>
+<table>
+<thead>
+<tr>
+<th>延迟环节</th>
+<th>UI 自动化（xdotool/easytrader）</th>
+<th>券商 API（QMT/PTrade）</th>
+<th>穿透式接口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>行情获取</strong></td>
+<td>秒级（GUI 渲染后读取）</td>
+<td>毫秒级（WebSocket 推送）</td>
+<td>微秒级（交易所直连）</td>
+</tr>
+<tr>
+<td><strong>信号生成</strong></td>
+<td>取决于策略复杂度</td>
+<td>同左</td>
+<td>同左</td>
+</tr>
+<tr>
+<td><strong>委托发送</strong></td>
+<td>秒级（模拟鼠标点击）</td>
+<td>毫秒级（HTTP/gRPC）</td>
+<td>微秒级</td>
+</tr>
+<tr>
+<td><strong>成交回报</strong></td>
+<td>秒级（轮询 GUI）</td>
+<td>实时推送</td>
+<td>实时推送</td>
+</tr>
+<tr>
+<td><strong>端到端延迟</strong></td>
+<td><strong>2-10 秒</strong></td>
+<td><strong>50-200ms</strong></td>
+<td><strong>&lt;1ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键细节</strong>：<br />
+- 对于<strong>日线级别趋势跟踪策略</strong>（如 ths-auto-trader 的策略 A/B/C），2-10 秒延迟影响不大，因为信号本身基于日线/小时线，价格变动相对缓慢<br />
+- 但对于<strong>分钟级/秒级策略</strong>（如 60 分钟布林带均值回归），延迟会导致：<br />
+  - 信号触发时价格已偏离，实际入场价比回测差 0.5-2%<br />
+  - 止损信号发出后，价格可能已跌破止损线 1-2 个价位<br />
+  - 撤单操作来不及执行，已成交的委托无法撤回<br />
+- <strong>同花顺 xdotool 自动化</strong>的窗口定位、坐标漂移问题（已在本地笔记中详细分析）进一步放大了延迟不确定性</p>
+<p><strong>改进建议</strong>：<br />
+- 日线/波段策略：UI 自动化方案可接受，但需增加<strong>委托超时熔断</strong>（如 60 秒未成交自动撤单）<br />
+- 分钟级策略：必须升级到 <strong>QMT/PTrade 等券商量化接口</strong><br />
+- 任何自动化系统都必须有<strong>心跳检测 + 自动降级机制</strong>（如 ths-auto-trader 设计的 10s 心跳，超时 30s 自动降级）</p>
+<hr />
+<h3 id="3">发现 3：熔断机制在模拟与实盘中的"真实性"差异巨大</h3>
+<table>
+<thead>
+<tr>
+<th>熔断类型</th>
+<th>模拟环境</th>
+<th>实盘环境</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>涨跌停限制</strong></td>
+<td>可模拟（代码拦截）</td>
+<td>真实存在，但<strong>涨停板封单量</strong>无法模拟</td>
+</tr>
+<tr>
+<td><strong>账户级熔断</strong></td>
+<td>可模拟（如单日亏损&gt;3% 清仓）</td>
+<td>真实执行，但可能触发<strong>流动性危机</strong>（大量抛售导致进一步下跌）</td>
+</tr>
+<tr>
+<td><strong>交易所熔断</strong></td>
+<td>通常不模拟</td>
+<td>沪深 300 指数跌幅&gt;7% 时全市场停牌</td>
+</tr>
+<tr>
+<td><strong>券商风控拦截</strong></td>
+<td>无法模拟</td>
+<td>券商系统会拦截异常委托（如价格偏离&gt;2%、数量超限）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键细节</strong>：<br />
+- 模拟环境中，"涨停不买、跌停不卖"只是代码逻辑，但实盘中：<br />
+  - <strong>涨停板封单量</strong>决定了你是否有机会买入（可能封单 100 万手，你排队永远排不到）<br />
+  - <strong>跌停板抛压</strong>决定了你能否卖出（可能无人接盘，挂跌停也卖不出去）<br />
+- 实盘中的<strong>券商风控拦截</strong>是模拟环境完全缺失的一环：<br />
+  - 同花顺/券商客户端会拦截异常价格委托（偏离现价&gt;2%）<br />
+  - 单笔委托数量超过阈值会被拒绝<br />
+  - 频繁撤单可能被认定为"异常交易"而受到监管关注<br />
+- <strong>账户级熔断的连锁反应</strong>：模拟中清仓只是数字变化，实盘中大量抛售可能：<br />
+  - 触发个股跌停<br />
+  - 引发其他量化策略的连锁止损<br />
+  - 在极端行情下造成"踩踏"</p>
+<p><strong>改进建议</strong>：<br />
+- 回测中必须加入"<strong>涨停板不可买入、跌停板不可卖出</strong>"的硬性约束（ths-auto-trader 已实现）<br />
+- 实盘前进行"<strong>压力测试</strong>"：在历史极端行情（如 2015 年股灾、2024 年 2 月微盘股崩盘）中回测，观察熔断触发后的策略表现<br />
+- 设计<strong>分级熔断</strong>（ths-auto-trader 五层风控架构）：<br />
+  - Layer 5: 账户级 — 单日亏损&gt;3% → 全部清仓 + 锁定系统<br />
+  - Layer 4: 策略级 — 单策略连续亏损 3 次 → 暂停该策略<br />
+  - Layer 3: 持仓级 — 单票仓位&lt;20%，总仓位&lt;80%<br />
+  - Layer 2: 委托级 — 价格偏离、数量异常、涨跌停拦截<br />
+  - Layer 1: 实时监控 — 账户资产波动、网络状态、客户端存活</p>
+<hr />
+<h2 id="_2">二、技术细节</h2>
+<h3 id="21">2.1 滑点建模的进阶方法</h3>
+<pre><code class="language-python"># 固定滑点模型（回测常用，过于简化）
+slippage = 0.001  # 0.1%
+
+# 盘口深度感知滑点模型（推荐）
+def estimate_slippage(order_size, bid_depth, ask_depth, avg_volume):
+    &quot;&quot;&quot;
+    根据委托量与盘口深度估算滑点
+    order_size: 委托数量
+    bid_depth: 买一~买五的挂单总量
+    ask_depth: 卖一~卖五的挂单总量
+    avg_volume: 近 20 日均成交量
+    &quot;&quot;&quot;
+    # 委托量占日均成交量比例
+    volume_ratio = order_size / avg_volume
+
+    # 委托量占盘口深度比例
+    depth_ratio = order_size / min(bid_depth, ask_depth)
+
+    # 基础滑点 + 冲击成本
+    base_slippage = 0.0005  # 0.05%
+    impact_cost = 0.002 * (volume_ratio ** 0.5) + 0.01 * (depth_ratio ** 1.5)
+
+    return base_slippage + impact_cost
+</code></pre>
+<h3 id="22">2.2 延迟敏感型策略的延迟预算</h3>
+<pre><code>策略类型          最大可容忍延迟    推荐通道
+─────────────────────────────────────────
+日线趋势跟踪        &gt;10 秒          UI 自动化 (xdotool)
+小时线均值回归       1-5 秒          UI 自动化 + 超时熔断
+分钟线动量          200-500ms       券商 API (QMT/PTrade)
+秒线/Tick 级        &lt;50ms           穿透式接口
+</code></pre>
+<h3 id="23">2.3 实盘验证的渐进式路径</h3>
+<pre><code>回测 (历史数据) → 样本外测试 → Walk-Forward → Paper Trade (1-2 周) → 
+小资金实盘 (1-3 个月) → 逐步放量
+    ↑                                              │
+    └──── 任一环节不达标则返回调参/优化 ←────────────┘
+</code></pre>
+<p><strong>关键门槛</strong>（ths-auto-trader 标准）：<br />
+- 样本内夏普 &gt; 1.0，样本外夏普 &gt; 0.8<br />
+- 最大回撤 &lt; 15%<br />
+- 至少 3 年历史数据回测<br />
+- Walk-Forward 衰减 &lt; 30%<br />
+- Paper Trade 实际收益率与回测偏差 &lt; 20%</p>
+<hr />
+<h2 id="_3">三、实践启发</h2>
+<h3 id="31-ths-auto-trader">3.1 对 ths-auto-trader 项目的直接影响</h3>
+<table>
+<thead>
+<tr>
+<th>现有设计</th>
+<th>问题</th>
+<th>改进方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>回测滑点固定 0.1%</td>
+<td>严重低估极端行情损耗</td>
+<td>升级为盘口深度感知模型</td>
+</tr>
+<tr>
+<td>UI 自动化延迟 2-10 秒</td>
+<td>分钟级策略不可用</td>
+<td>增加 QMT/PTrade 通道适配层</td>
+</tr>
+<tr>
+<td>五层风控架构</td>
+<td>设计完善但未实盘验证</td>
+<td>Paper Trade 期间重点监控熔断触发率</td>
+</tr>
+<tr>
+<td>无涨停板封单模拟</td>
+<td>无法评估"买不到/卖不出"风险</td>
+<td>引入历史 Level-2 封单数据回测</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32">3.2 通用建议</h3>
+<ol>
+<li><strong>永远不要相信回测结果</strong>：回测是"理想世界"，实盘是"现实世界"，两者差距可能高达 30-50% 的收益衰减</li>
+<li><strong>Paper Trade 是必经之路</strong>：至少 1-2 周，覆盖不同市场状态（震荡、上涨、下跌）</li>
+<li><strong>从小资金开始</strong>：实盘初期用 1-5% 资金测试，确认系统稳定后再逐步放量</li>
+<li><strong>建立"实盘偏差日志"</strong>：记录每次信号价与实际成交价的差异，累积数据后可优化滑点模型</li>
+<li><strong>熔断机制宁可过度设计</strong>：实盘中一次"意外"可能导致重大损失，多层熔断是保险丝</li>
+</ol>
+<hr />
+<h2 id="_4">四、知识缺口与后续验证</h2>
+<table>
+<thead>
+<tr>
+<th>缺口</th>
+<th>说明</th>
+<th>验证方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A 股实盘滑点统计数据</td>
+<td>缺乏真实成交数据验证滑点模型</td>
+<td>收集 100+ 笔实盘成交记录，对比信号价与成交价</td>
+</tr>
+<tr>
+<td>QMT/PTrade 接口性能实测</td>
+<td>未实际测试券商 API 延迟</td>
+<td>申请 QMT 测试账户，实测端到端延迟</td>
+</tr>
+<tr>
+<td>极端行情熔断触发案例</td>
+<td>缺乏真实熔断数据</td>
+<td>研究 2015 年股灾、2024 年 2 月微盘股崩盘的熔断记录</td>
+</tr>
+<tr>
+<td>券商风控拦截规则</td>
+<td>各券商规则不透明</td>
+<td>咨询券商客户经理或实测异常委托</td>
+</tr>
+<tr>
+<td>Level-2 盘口数据获取</td>
+<td>历史 Level-2 数据成本高</td>
+<td>评估 tushare/pro 等数据源的成本效益</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><em>📅 2026-05-16 | 来源：本地知识整合（ths-auto-trader 项目文档 + TradingAgents 研究 + 通达信 tdxquant 模拟交易）</em><br />
+<em>⚠️ 网络受限，Tavily/DDG 搜索均失败，关键结论需联网验证</em></p>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="explore/2026-05-17-实盘模拟vs真实交易技术差异.md">实盘模拟vs真实交易技术差异</a></li>
+</ul>
+</body>
+</html>

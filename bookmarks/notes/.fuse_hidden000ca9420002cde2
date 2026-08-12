@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent-Harness自我修复架构-四层自动闭环</title>
+
+<meta property="og:title" content="Agent-Harness自我修复架构-四层自动闭环" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-harness">Agent Harness 自我修复架构：四层自动闭环</h1>
+<blockquote>
+<p>来源：AI 极未来（微信公众号）| 原文主题：Opik 开源平台的四层自动闭环架构<br />
+核心论点：可观测性止步于"发生了什么"，真正的瓶颈是 trace 之后的一切——诊断、修复、验证、防复发。这四步必须自动化形成飞轮。</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、问题定义：为什么可观测性在规模化时失效</h2>
+<p>当前大多数 Agent 可观测性平台的局限：</p>
+<table>
+<thead>
+<tr>
+<th>层面</th>
+<th>谁做</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>发生了什么</td>
+<td>平台自动</td>
+<td>Trace/span/指标</td>
+</tr>
+<tr>
+<td>为什么发生</td>
+<td>👤 手动</td>
+<td>翻 trace、形成假设</td>
+</tr>
+<tr>
+<td>怎么修</td>
+<td>👤 手动</td>
+<td>写补丁、祈祷不搞坏</td>
+</tr>
+<tr>
+<td>怎么防</td>
+<td>👤 手动</td>
+<td>加测试、回归检查</td>
+</tr>
+</tbody>
+</table>
+<p><strong>瓶颈不在可观测性本身</strong>，而是 trace 出现后必须发生的一切。虚线左边自动运行，虚线右边消耗人力——这才是生产环境 debug 的真正痛点。</p>
+<p>每次模型升级引入新故障模式，每个新工具增加新边界情况，harness 复杂度增长速度<strong>远超任何团队手动修复的能力</strong>。</p>
+<hr />
+<h2 id="_2">二、四层自动闭环架构</h2>
+<blockquote>
+<p>来源平台：Opik（开源），核心理念：循环应被自动化。</p>
+</blockquote>
+<h3 id="21-tracing">2.1 第一层：Tracing（埋点）</h3>
+<ul>
+<li>每次 LLM 调用、工具执行、检索步骤通过装饰器自动埋点</li>
+<li>开箱支持 50+ 框架</li>
+<li>每条 trace 记录<strong>当时活跃的 Agent 配置</strong>，保证完全可复现</li>
+</ul>
+<h3 id="22-trace">2.2 第二层：Trace → 修复代码</h3>
+<p>其他平台止步于"给你看 trace"。Opik 的关键差异：</p>
+<ol>
+<li>内置编程 Agent 读取 span 树</li>
+<li>识别故障模式、解释因果链</li>
+<li>连接代码仓库后升级为完整修复模式：</li>
+<li>读源码 → 定位问题行 → 提出 diff → <strong>你批准</strong> → 用原始失败输入重跑验证 → 锁定为回归测试</li>
+</ol>
+<p><strong>人的参与被压缩到"审批"这一个动作</strong>——从诊断者变成审核者。</p>
+<h3 id="23">2.3 第三层：自然语言测试套件</h3>
+<p>传统评估：标注数据集 + 数值指标 + 浮点数比较 → 符合研究员思维，不符合工程师思维。</p>
+<p>替代方案——用自然语言写断言：</p>
+<pre><code class="language-python">suite = opik.TestSuite(&quot;agent-v2&quot;)
+suite.add_assertion(&quot;响应必须包含具体交易细节，不能只给数量&quot;)
+suite.add_assertion(&quot;响应绝不能暴露未授权信息&quot;)
+suite.run_tests()
+</code></pre>
+<p>底层转换为 <strong>LLM-as-Judge</strong> 检查，清晰的通过/失败。</p>
+<p><strong>关键变化</strong>：每个调试过的失败 trace <strong>自动变成新的测试用例</strong>。测试套件从真实生产故障中增长。</p>
+<h3 id="24-agent-sandbox">2.4 第四层：Agent Sandbox</h3>
+<ul>
+<li>不是 prompt playground（只改系统提示词重跑一次 LLM 调用）</li>
+<li><strong>端到端运行完整埋点的 Agent</strong></li>
+<li>换模型、改提示词、加工具，观察整个系统在完整 span 树上的响应</li>
+<li>非开发人员也能安全测试配置</li>
+</ul>
+<hr />
+<h2 id="_3">三、飞轮效应</h2>
+<p>四层拼在一起形成一个自强化循环：</p>
+<pre><code>埋点 → 生产失败 → 自动诊断 → 提出修复 → 人工批准
+  ↑                                         ↓
+  ← 回归测试锁定 ← 验证通过 ← Sandbox 重跑 ←
+</code></pre>
+<p><strong>每个周期，harness 都变得更难被打破。</strong> 这是复利效应——不是线性改善，而是指数级加固。</p>
+<hr />
+<h2 id="_4">四、五条核心启示</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>启示</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>可观测性 ≠ 可修复性</td>
+<td>知道发生了什么 ≠ 知道怎么修</td>
+</tr>
+<tr>
+<td>2</td>
+<td>写代码的 Agent 不应该给自己打分</td>
+<td>诊断和修复需要独立视角</td>
+</tr>
+<tr>
+<td>3</td>
+<td>每次失败都应该变成防御</td>
+<td>回归测试从真实故障生长，不是合成数据</td>
+</tr>
+<tr>
+<td>4</td>
+<td>人的瓶颈在审批而非诊断</td>
+<td>把人从"找问题"中解放，聚焦"判断修复方案是否正确"</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Harness 是活的工程制品</td>
+<td>不是部署完就不动的配置文件，随每次生产失败变强</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="hermes-vs">五、差距分析：Hermes vs 四层架构</h2>
+<table>
+<thead>
+<tr>
+<th>我们的实践</th>
+<th>对应文中概念</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>evolver SCAN→FIX→VERIFY</td>
+<td>Trace→诊断→修复→验证</td>
+<td>⚠️ 已有核心循环，缺回归锁定</td>
+</tr>
+<tr>
+<td>error-case-library + Eval Loop</td>
+<td>自然语言测试套件</td>
+<td>⚠️ 有 eval 回写，缺回归断言机制</td>
+</tr>
+<tr>
+<td>skill-ab-testing</td>
+<td>Agent Sandbox</td>
+<td>⚠️ 有 A/B 测试但非完整沙箱</td>
+</tr>
+<tr>
+<td>session_search</td>
+<td>Trace 可复现</td>
+<td>⚠️ 有历史回放但缺配置快照</td>
+</tr>
+<tr>
+<td>content-judge (LLM-as-Judge)</td>
+<td>自然语言断言</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td>PRM 多数投票评分</td>
+<td>质量评估</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td>执行/评判分离原则</td>
+<td>"Agent 不应给自己打分"</td>
+<td>✅ 已有（evolver Constraints）</td>
+</tr>
+<tr>
+<td>反馈驱动规则自适应</td>
+<td>Harness 自我修复</td>
+<td>⚠️ 有反馈链但缺自动 diff 生成</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最大差距</strong>：缺少从"修复完成"到"回归锁定"的自动化闭环。修复了但不防复发 = 半途而废。</p>
+<hr />
+<h2 id="_5">六、借鉴落实情况</h2>
+<h3 id="1">① 有利进化（已落实）</h3>
+<table>
+<thead>
+<tr>
+<th>借鉴点</th>
+<th>落实动作</th>
+<th>验证</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trace→修复→回归测试飞轮</td>
+<td>patch evolver VERIFY 阶段：增加回归锁定步骤 + regression-tests.jsonl 格式</td>
+<td><code>grep -c "回归锁定" evolver/SKILL.md</code> = 4 ✅</td>
+</tr>
+<tr>
+<td>每次失败变防御</td>
+<td>patch error-case-library：增加回归锁定机制 + 飞轮检查 + 复利指标</td>
+<td><code>grep -c "回归锁定" error-case-library/SKILL.md</code> = 2 ✅</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2-memory">② 有价值（Memory 记录）</h3>
+<ul>
+<li>Opik 开源平台（github.com/comet-ml/opik）：四层自动闭环 Agent 可观测性，50+ 框架支持</li>
+</ul>
+<h3 id="3">③ 知识库（仅笔记）</h3>
+<ul>
+<li>四层架构参考框架</li>
+<li>Cursor harness 工程投入经验</li>
+<li>"Harness 是活的工程制品"理念</li>
+</ul>
+<hr />
+<p><em>关联：[[2026-06-11-Jim-Fan机器人终局-VLA与遥操作的路线图]] · [[evolver]] · [[error-case-library]] · [[content-judge]]</em></p>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="2026-05-26-Agent架构关键变化-Harness成为新后端.md">Agent 架构关键变化：Harness 正在成为新后端</a> (关键词: agent, harness)</li>
+<li><a href="2026-05-25-高德OPC自主增长系统-Harness多Agent架构.md">让AI自己做增长：基于OPC和Harness思想的自主增长系统探索</a> (关键词: agent, harness)</li>
+<li><a href="2026-05-25-Agent-Harness-Engineering-从Prompt到Harness的范式跃迁.md">Agent Harness Engineering：从 Prompt 到 Harness 的范式跃迁</a> (关键词: agent, harness)</li>
+<li><a href="2026-05-31-agent两条路线-harness-vs-protocol.md">Agent 两条路线：Harness vs Protocol-Native</a> (关键词: agent, harness)</li>
+</ul>
+</body>
+</html>

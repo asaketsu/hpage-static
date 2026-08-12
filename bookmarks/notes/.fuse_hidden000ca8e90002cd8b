@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YOLO部署到STM32可行性分析</title>
+
+<meta property="og:title" content="YOLO部署到STM32可行性分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="yolo-stm32">YOLO 部署到 STM32：不是"能不能"，而是"哪颗芯片、哪个模型"</h1>
+<ul>
+<li>📅 2026-06-03</li>
+<li>⭐ 3/5 — STM32 各系列 YOLO 部署可行性对照表实用，部署链路清晰</li>
+<li>🏷️ #YOLO #STM32 #嵌入式AI #目标检测 #模型部署</li>
+<li>📰 玩转单片机与嵌入式 · 子衡（贺老师）</li>
+<li>🔗 https://mp.weixin.qq.com/s/VdYq6rPOj426MrlqZshwcQ</li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>嵌入式 AI 工程师子衡的实战文章，解答"YOLO 能否部署到 STM32"。核心结论：取决于具体芯片——STM32N6（带 NPU）可行，F103/F4 基本不现实。文章给出完整的 6 步部署链路和 4 档 STM32 对照表。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="yolo-vs">YOLO vs 分类模型</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>图像分类</th>
+<th>YOLO 目标检测</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>输出</td>
+<td>1 个类别标签</td>
+<td>N 个检测框（坐标+类别+置信度）</td>
+</tr>
+<tr>
+<td>计算量</td>
+<td>低</td>
+<td>高（特征提取+定位+分类）</td>
+</tr>
+<tr>
+<td>MCU 压力</td>
+<td>RAM/Flash 可控</td>
+<td>图像尺寸、卷积、中间特征图、后处理都是瓶颈</td>
+</tr>
+</tbody>
+</table>
+<h3 id="6">6 步部署链路</h3>
+<pre><code>选择轻量 YOLO (YOLOv8n/Tiny YOLO)
+    ↓ 裁剪类别 / 降低输入尺寸
+    ↓ 导出 ONNX 或 TFLite
+    ↓ 量化为 int8
+    ↓ STM32Cube.AI / ST Edge AI 转换
+    ↓ 部署到目标板卡
+    ↓ 摄像头 + 预处理 + NMS 后处理 + 显示
+</code></pre>
+<h3 id="4-stm32">4 档 STM32 可行性对照（核心价值）</h3>
+<table>
+<thead>
+<tr>
+<th>STM32 系列</th>
+<th>YOLO 结论</th>
+<th>原因</th>
+<th>现实替代</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>F103</strong> 入门</td>
+<td>❌ 基本不现实</td>
+<td>RAM/Flash/主频全不够</td>
+<td>正弦波模型、简单传感器分类</td>
+</tr>
+<tr>
+<td><strong>F4/F7</strong> 中端</td>
+<td>⚠️ 极小型也要谨慎</td>
+<td>算力和 RAM 压力大</td>
+<td>小输入分类、音频关键词检测</td>
+</tr>
+<tr>
+<td><strong>H7</strong> 高性能</td>
+<td>🔶 可尝试极轻量</td>
+<td>无专用 NPU，实时压力仍大</td>
+<td>低分辨率+少类别+低帧率</td>
+</tr>
+<tr>
+<td><strong>N6</strong> 边缘AI</td>
+<td>✅ 适合部署</td>
+<td>带 Neural-ART NPU</td>
+<td>YOLOv8n、Tiny YOLO、Model Zoo</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">关键约束因素</h3>
+<ul>
+<li><strong>输入尺寸</strong>：直接决定计算量和 RAM 占用</li>
+<li><strong>类别数量</strong>：影响输出层规模和 NMS 后处理开销</li>
+<li><strong>量化精度</strong>：int8 量化是 MCU 端必须，但需评估精度损失</li>
+<li><strong>算子支持</strong>：卷积、激活、上采样、后处理需工具链全部支持</li>
+<li><strong>NMS 后处理</strong>：容易被忽略但耗时占比大</li>
+</ul>
+<h2 id="_4">💡 笔记者批注</h2>
+<ol>
+<li><strong>与我们体系的对照</strong>：Jetson Orin（238TOPS）跑 YOLO 毫无压力，ESP32（0.0002TOPS）跑 TinyML Dense 模型，STM32N6（0.8TOPS NPU）正好在中间——说明嵌入式 AI 硬件三档清晰：无NPU(MCU) → 轻量NPU(STM32N6) → 重算力(Jetson)</li>
+<li><strong>实战指导价值</strong>：4 档对照表可直接用于项目选型决策</li>
+<li><strong>"哪颗 STM32"的思维方式</strong>值得推广——任何"X 能否部署到 Y"的问题都应该拆解为具体型号+具体模型+具体参数</li>
+<li>STM32N6 的 Neural-ART NPU 是新信息点，值得关注其生态成熟度</li>
+</ol>
+<hr />
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="./2026-06-03-禅定修习-紧盯与觉知的根本区别.md">2026-06-03-禅定修习-紧盯与觉知的根本区别</a></li>
+<li><a href="./2026-06-03-六祖坛经禅定-外离相内不乱.md">2026-06-03-六祖坛经禅定-外离相内不乱</a></li>
+<li><a href="./2026-06-03-Beetle-OS-ESP32智能设备Agent系统.md">2026-06-03-Beetle-OS-ESP32智能设备Agent系统</a></li>
+</ul>
+</body>
+</html>

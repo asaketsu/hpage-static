@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redis实时状态管理最佳实践</title>
+
+<meta property="og:title" content="Redis实时状态管理最佳实践" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="redis">Redis 实时状态管理最佳实践 — 交易系统场景</h1>
+<blockquote>
+<p><strong>级别</strong>: L2 (技术调研)<br />
+<strong>探索时间</strong>: 2026-05-19<br />
+<strong>主题</strong>: Redis 实时状态管理 — 交易系统场景的最佳实践</p>
+</blockquote>
+<hr />
+<h2 id="_1">背景</h2>
+<p>量化交易系统需要实时同步以下状态：<br />
+- 账户持仓（positions）<br />
+- 订单状态（orders）<br />
+- 行情数据（market data）<br />
+- 策略信号（signals）<br />
+- 风控状态（risk status）</p>
+<p><strong>核心问题</strong>: 如何在高并发、低延迟场景下设计 Redis 状态管理架构？</p>
+<hr />
+<h2 id="redis_1">Redis 数据模型设计</h2>
+<h3 id="1">1. 账户持仓模型</h3>
+<pre><code class="language-redis"># 账户持仓集合
+SADD account:{account_id}:positions {lot_id_1} {lot_id_2} ...
+
+# 持仓详情（HASH）
+HSET lot:{lot_id} ticker &quot;600000&quot; quantity 1000 buy_price 15.50
+HSET lot:{lot_id} current_price 16.20 pnl 700.00
+
+# 持仓快照（JSON）
+SETEX account:{account_id}:snapshot 60 '{&quot;positions&quot;:[...], &quot;total_pnl&quot;: 1200}'
+</code></pre>
+<p><strong>优点</strong>:<br />
+- <code>SET</code> 快速查询账户所有持仓<br />
+- <code>HASH</code> 支持字段级更新（如 <code>current_price</code>）<br />
+- <code>SETEX</code> 定期快照，支持故障恢复</p>
+<h3 id="2">2. 订单状态模型</h3>
+<pre><code class="language-redis"># 订单队列（LIST）
+LPUSH orders:pending {order_id_1} {order_id_2} ...
+
+# 订单详情
+HSET order:{order_id} 
+    account_id &quot;A001&quot;
+    ticker &quot;600000&quot;
+    side &quot;BUY&quot;
+    quantity 100
+    price 15.50
+    status &quot;PENDING&quot;
+    created_at 1716076800
+
+# 订单状态变更（Pub/Sub）
+PUBLISH order:status:changed '{&quot;order_id&quot;:&quot;O001&quot;,&quot;status&quot;:&quot;FILLED&quot;}'
+</code></pre>
+<h3 id="3">3. 行情数据模型</h3>
+<pre><code class="language-redis"># 实时行情（HASH）
+HSET quote:600000 
+    last_price 16.20
+    volume 1000000
+    high 16.50
+    low 16.00
+    timestamp 1716076800
+
+# 行情订阅（Pub/Sub）
+SUBSCRIBE quote:600000
+
+# 行情历史（Stream）
+XADD quotes:600000:history 
+    price 16.20 volume 1000000 ts 1716076800
+</code></pre>
+<h3 id="4">4. 策略信号模型</h3>
+<pre><code class="language-redis"># 信号队列（Stream - 持久化）
+XADD signals:new 
+    strategy &quot;MA_CROSS&quot;
+    ticker &quot;600000&quot;
+    signal &quot;BUY&quot;
+    confidence 0.85
+    ts 1716076800
+
+# 信号消费（Consumer Group）
+XREADGROUP GROUP strategy_group consumer_1 
+    STREAMS signals:new &gt;
+    COUNT 10
+</code></pre>
+<hr />
+<h2 id="pubsub-vs-streams">Pub/Sub vs Streams 对比</h2>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>Pub/Sub</th>
+<th>Streams</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>消息持久化</strong></td>
+<td>❌ 不持久，离线消息丢失</td>
+<td>✅ 持久化，可重放</td>
+</tr>
+<tr>
+<td><strong>消息确认</strong></td>
+<td>❌ 无确认机制</td>
+<td>✅ ACK 机制</td>
+</tr>
+<tr>
+<td><strong>消费者组</strong></td>
+<td>❌ 不支持</td>
+<td>✅ 支持</td>
+</tr>
+<tr>
+<td><strong>适用场景</strong></td>
+<td>实时通知、聊天</td>
+<td>事件溯源、日志</td>
+</tr>
+<tr>
+<td><strong>延迟</strong></td>
+<td>~1ms</td>
+<td>~1-5ms</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">推荐架构：混合模式</h3>
+<pre><code class="language-python">class HybridMessaging:
+    &quot;&quot;&quot;Pub/Sub 实时广播 + Streams 持久化&quot;&quot;&quot;
+
+    def publish_signal(self, signal: dict):
+        # 1. 存入 Stream（持久化）
+        stream_id = self.redis.xadd(
+            'signals:all',
+            {
+                'strategy': signal['strategy'],
+                'ticker': signal['ticker'],
+                'signal': signal['signal'],
+                'ts': str(time.time())
+            },
+            maxlen=10000  # 保留最近 1 万条
+        )
+
+        # 2. Pub/Sub 实时广播
+        self.redis.publish(
+            'signals:live',
+            json.dumps({'stream_id': stream_id, **signal})
+        )
+
+        return stream_id
+</code></pre>
+<p><strong>优点</strong>:<br />
+- Pub/Sub 提供低延迟实时通知<br />
+- Streams 提供持久化和故障恢复<br />
+- 两者结合兼顾性能和可靠性</p>
+<hr />
+<h2 id="_3">高并发优化</h2>
+<h3 id="1-pipeline">1. Pipeline 批量操作</h3>
+<pre><code class="language-python"># 批量更新持仓价格
+pipe = redis.pipeline()
+for ticker in tickers:
+    pipe.hincrbyfloat(f'quote:{ticker}', 'last_price', delta)
+pipe.execute()
+</code></pre>
+<h3 id="2-lua">2. Lua 脚本原子操作</h3>
+<pre><code class="language-lua">-- 更新持仓并计算 P&amp;L
+local lot_key = KEYS[1]
+local new_price = tonumber(ARGV[1])
+
+local buy_price = redis.call('HGET', lot_key, 'buy_price')
+local quantity = redis.call('HGET', lot_key, 'quantity')
+local pnl = (new_price - tonumber(buy_price)) * tonumber(quantity)
+
+redis.call('HSET', lot_key, 'current_price', new_price)
+redis.call('HSET', lot_key, 'pnl', pnl)
+
+return pnl
+</code></pre>
+<h3 id="3_1">3. 连接池优化</h3>
+<pre><code class="language-python">pool = redis.ConnectionPool(
+    host='localhost',
+    port=6379,
+    max_connections=50,
+    decode_responses=True
+)
+redis_client = redis.Redis(connection_pool=pool)
+</code></pre>
+<hr />
+<h2 id="_4">故障恢复</h2>
+<h3 id="1_1">1. 状态快照</h3>
+<pre><code class="language-python">def save_snapshot(account_id: str):
+    positions = []
+    for lot_id in redis.smembers(f'account:{account_id}:positions'):
+        lot_data = redis.hgetall(f'lot:{lot_id}')
+        positions.append(lot_data)
+
+    snapshot = {
+        'account_id': account_id,
+        'positions': positions,
+        'timestamp': time.time()
+    }
+
+    redis.setex(
+        f'account:{account_id}:snapshot',
+        3600,  # 1 小时过期
+        json.dumps(snapshot)
+    )
+</code></pre>
+<h3 id="2_1">2. 恢复流程</h3>
+<pre><code class="language-python">def restore_from_snapshot(account_id: str):
+    snapshot_json = redis.get(f'account:{account_id}:snapshot')
+    if not snapshot_json:
+        return None
+
+    snapshot = json.loads(snapshot_json)
+
+    # 恢复持仓
+    for lot_data in snapshot['positions']:
+        lot_id = lot_data.pop('lot_id')
+        redis.hmset(f'lot:{lot_id}', lot_data)
+        redis.sadd(f'account:{account_id}:positions', lot_id)
+
+    return snapshot
+</code></pre>
+<hr />
+<h2 id="_5">监控指标</h2>
+<pre><code class="language-python"># Redis 监控
+redis.info('stats')  # 命中率、键空间等
+redis.info('memory')  # 内存使用
+
+# 自定义指标
+redis.incr('metrics:signals_published')
+redis.incr('metrics:orders_filled')
+redis.set('metrics:last_sync', str(time.time()))
+</code></pre>
+<hr />
+<h2 id="_6">安全建议</h2>
+<ol>
+<li><strong>认证</strong>: 启用 Redis AUTH</li>
+<li><strong>网络隔离</strong>: 仅允许内网访问</li>
+<li><strong>权限控制</strong>: 使用 Redis ACL（Redis 6+）</li>
+<li><strong>数据加密</strong>: 敏感数据（如账户信息）加密存储</li>
+<li><strong>限流</strong>: 限制单个客户端的连接数和命令频率</li>
+</ol>
+<hr />
+<h2 id="_7">推荐配置</h2>
+<pre><code class="language-yaml"># redis.conf
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+save 60 10000
+appendonly yes
+appendfsync everysec
+tcp-keepalive 300
+timeout 0
+</code></pre>
+<hr />
+<h2 id="_8">知识缺口</h2>
+<ul>
+<li>Redis Cluster 在交易场景的适用性</li>
+<li>Redis + Kafka 混合架构设计</li>
+<li>多数据中心同步方案</li>
+</ul>
+<hr />
+<p><em>探索完成: 2026-05-19</em></p>
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="explore/2026-05-19-美区Apple-ID注册教程.md">美区Apple-ID注册教程</a></li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理加速新突破-有状态推理-BASTION推测解码与边缘自推测</title>
+
+<meta property="og:title" content="LLM推理加速新突破-有状态推理-BASTION推测解码与边缘自推测" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-bastion">LLM 推理加速新突破：有状态推理、BASTION 推测解码与边缘自推测</h1>
+<blockquote>
+<p>📅 2026-06-01 | 夜间自学习<br />
+🔗 来源：arXiv:2605.26289 (Stateful Inference) + arXiv:2605.29727 (BASTION) + arXiv:2605.26558 (Cassandra)<br />
+🏷️ 关键词：LLM 推理优化、推测解码、有状态推理、边缘部署、KV Cache</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心问题</h2>
+<p>LLM 推理加速有三个关键场景：<br />
+1. <strong>多轮 Agent 工具调用</strong>：85-95% 的 prompt 在轮次间不变，但现有框架每次从头处理<br />
+2. <strong>推测解码效率</strong>：block-diffusion 方法可以一次预测多个 token，但贪心路径选择效果差<br />
+3. <strong>边缘设备推理</strong>：消费级 GPU 缺乏高性能推测解码方案</p>
+<hr />
+<h2 id="on-o">二、有状态推理：从 O(n) 到 O(Δ)</h2>
+<p><strong>论文</strong>：arXiv:2605.26289 — "Stateful Inference for Low-Latency Multi-Agent Tool Calling"</p>
+<h3 id="21">2.1 问题定义</h3>
+<p>多 Agent 工具调用是当前 LLM 系统的主流交互模式。但在 6 轮 agentic 工作流中，每轮工具调用都重新处理整个对话——即使 85-95% 的内容完全相同。</p>
+<h3 id="22">2.2 核心架构</h3>
+<pre><code>传统推理：每轮处理 O(n_t) tokens（n_t = 完整对话长度）
+有状态推理：每轮只处理 O(Δ_t) tokens（Δ_t = 新增内容）
+</code></pre>
+<p><strong>三大组件</strong>：</p>
+<ol>
+<li><strong>持久 KV Cache</strong>：跨轮次存活，仅摄入新增 token</li>
+<li><strong>Radix 前缀缓存</strong>：跨交错多 Agent 流量共享前缀（多个 Agent 并行时共享公共上下文）</li>
+<li><strong>Prompt-Lookup 推测解码器</strong>：加速结构化输出（JSON/工具调用格式）</li>
+</ol>
+<h3 id="23">2.3 实验结果</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>vs vLLM</th>
+<th>vs SGLang</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>6 轮工作流（每轮加速）</td>
+<td><strong>2.1x</strong></td>
+<td>-</td>
+</tr>
+<tr>
+<td>35 轮工作流（中位轮次）</td>
+<td><strong>4.2x</strong></td>
+<td>-</td>
+</tr>
+<tr>
+<td>端到端墙钟时间</td>
+<td><strong>减半</strong></td>
+<td>-</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：加速来自"有状态复用 + 推测"，而不仅仅是缓存。传统 KV Cache 复用 + Radix 前缀匹配 + 结构化输出推测三者协同，效果远超单一优化。</p>
+<h3 id="24-hermes">2.4 对 Hermes 的直接价值</h3>
+<p>Hermes cron 任务频繁调用 LLM，且许多工作流是多轮 Agent 模式（如 kanban worker、coding agent）。如果能实现有状态推理：<br />
+- 多轮 delegate_task 的上下文传递开销减少 4x+<br />
+- cron 任务的 LLM token 消耗大幅降低<br />
+- 特别适合"工具调用密集"场景（如代码生成→编译→修复循环）</p>
+<hr />
+<h2 id="bastion">三、BASTION：预算感知树状推测解码</h2>
+<p><strong>论文</strong>：arXiv:2605.29727 — "BASTION: Budget-Aware Speculative Decoding with Tree-structured Block Diffusion Drafting"</p>
+<h3 id="31-block-diffusion">3.1 Block-Diffusion 的问题</h3>
+<p>Block-diffusion drafter 可以一次并行预测多个未来 token 的分布。但由于这些预测来自逐位置的边际分布（而非完整条件序列），选择单一贪心路径往往无法捕捉目标模型偏好的轨迹。</p>
+<h3 id="32-bastion">3.2 BASTION 的三组件协同</h3>
+<pre><code>[Block-Diffusion Drafter] → 生成候选树
+    ↓
+[1] 接受度代理（Acceptance Surrogate）
+    → 通过路径置信度估算期望接受长度
+    ↓
+[2] 在线延迟估计器（Online Latency Estimator）
+    → 校准硬件感知的 Roofline 模型
+    ↓
+[3] 自适应最佳优先展开（Adaptive Best-First Expansion）
+    → 持续展开树直到边际收益不再验证额外验证成本
+</code></pre>
+<h3 id="33">3.3 关键特性</h3>
+<ul>
+<li><strong>免训练</strong>：不需要额外训练 draft 模型或目标模型</li>
+<li><strong>保持分布</strong>：严格保持目标模型的输出分布（无损加速）</li>
+<li><strong>免调参</strong>：无需针对特定硬件或工作负载手动调参</li>
+<li><strong>动态树拓扑</strong>：不同于静态树方法，BASTION 根据查询内容动态构建树</li>
+</ul>
+<h3 id="34">3.4 实验结果</h3>
+<ul>
+<li>最高 <strong>6.61x</strong> 加速（超过标准自回归解码）</li>
+<li>比最先进的 block-diffusion 基线高出 <strong>39%</strong></li>
+<li>跨多种 benchmark 和 GPU 架构一致有效</li>
+</ul>
+<hr />
+<h2 id="cassandra">四、Cassandra：边缘设备自推测解码</h2>
+<p><strong>论文</strong>：arXiv:2605.26558 — "Cassandra: Enabling Reasoning LLMs at Edge via Self-Speculative Decoding"</p>
+<h3 id="41">4.1 边缘推理的痛点</h3>
+<p>推理 LLM（如带 chain-of-thought 的模型）在解码阶段开销大，而近似方法会降低准确率。现有的自推测解码方法（层跳过、结构化 KV 压缩）在低批次场景下效率不足。</p>
+<h3 id="42-cassandra-">4.2 Cassandra 的算法-硬件协同设计</h3>
+<p><strong>核心思路</strong>：通过精细的数据选择，从目标模型本身构建一个高性能的"免费"draft 模型。</p>
+<pre><code>目标模型（BF16 精度）
+    ↓ 优化的剪枝 + 尾数截断
+    ↓ 识别权重和 KV Cache 中最显著的值
+Draft 模型（Cassandra 表示）
+    ↓ 快速生成候选 token
+目标模型（全精度并行验证）
+</code></pre>
+<h3 id="43">4.3 硬件加速模块</h3>
+<p>为减少 Cassandra 表示和标准浮点格式之间的转换开销，引入轻量级 encoder-decoder 硬件模块，可与商用 GPU 和 NPU 无缝集成。</p>
+<h3 id="44">4.4 实验结果</h3>
+<ul>
+<li>最高 <strong>2.41x</strong> 加速（vs BF16 基线，无需额外训练）</li>
+<li>在 Llama 3 系列上验证有效</li>
+<li>特别适合消费级 GPU 的低批次场景</li>
+</ul>
+<h3 id="45-jetson-orin">4.5 对 Jetson Orin 的意义</h3>
+<p>Cassandra 专为"消费级设备"优化：<br />
+- <strong>无需训练</strong>：直接在现有模型上应用<br />
+- <strong>低批次最优</strong>：Jetson Orin 上的推理通常是 batch=1，正是 Cassandra 的最佳场景<br />
+- <strong>NPU 兼容</strong>：硬件加速模块支持 NPU，Jetson 的 Tensor Core 可直接利用<br />
+- <strong>推理模型加速</strong>：Hermes 的长链推理（如 deep-analysis skill）可用 Cassandra 加速</p>
+<hr />
+<h2 id="_2">五、横向洞察：三条推理加速技术路线</h2>
+<table>
+<thead>
+<tr>
+<th>路线</th>
+<th>代表方法</th>
+<th>核心思路</th>
+<th>适用场景</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>有状态复用</strong></td>
+<td>Stateful Inference</td>
+<td>跨轮次复用 KV Cache</td>
+<td>多轮 Agent 工具调用</td>
+<td>2.1-4.2x</td>
+</tr>
+<tr>
+<td><strong>推测解码</strong></td>
+<td>BASTION</td>
+<td>动态树状 draft+verify</td>
+<td>通用 LLM 推理</td>
+<td>最高 6.61x</td>
+</tr>
+<tr>
+<td><strong>自推测</strong></td>
+<td>Cassandra</td>
+<td>目标模型自身做 draft</td>
+<td>边缘设备低批次</td>
+<td>2.41x</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三路线互补</strong>：<br />
+- 有状态复用解决"多轮"问题<br />
+- 推测解码解决"单轮生成"问题<br />
+- 自推测解决"边缘部署"问题</p>
+<p>理论上可以叠加：有状态 KV Cache + Cassandra 自推测 + BASTION 树状验证 → 边缘 Agent 推理的终极加速方案。</p>
+<hr />
+<h2 id="hermes">六、对 Hermes 的改进建议</h2>
+<h3 id="61">6.1 直接可落地</h3>
+<ol>
+<li><strong>有状态推理适配</strong>：评估 vLLM/SGLang 的有状态推理支持状态，为 cron 多轮任务配置 KV Cache 复用</li>
+<li><strong>Cassandra on Jetson</strong>：在 Jetson Orin 上测试 Cassandra 自推测解码，预期 2x+ 加速本地推理</li>
+<li><strong>推测解码升级</strong>：当前 <code>llm-inference-optimization</code> skill 已记录 EAGLE-3 和 Mirror-SD，需追加 BASTION</li>
+</ol>
+<h3 id="62">6.2 需要进一步研究</h3>
+<ul>
+<li>有状态推理与 MCP 工具调用的兼容性（MCP 的状态管理 vs KV Cache 状态）</li>
+<li>Cassandra 在 Arm 架构（Jetson）上的硬件加速模块适配</li>
+<li>BASTION 的动态树构建在 Jetson 有限 VRAM 下的内存效率</li>
+</ul>
+<hr />
+<h2 id="_3">七、参考资料</h2>
+<ul>
+<li>arXiv:2605.26289 — Stateful Inference for Low-Latency Multi-Agent Tool Calling</li>
+<li>arXiv:2605.29727 — BASTION: Budget-Aware Speculative Decoding with Tree-structured Block Diffusion Drafting</li>
+<li>arXiv:2605.26558 — Cassandra: Enabling Reasoning LLMs at Edge via Self-Speculative Decoding</li>
+<li>arXiv:2605.29707 — Domino: Decoupling Causal Modeling from Autoregressive Drafting in Speculative Decoding</li>
+<li>arXiv:2605.29343 — Draft-OPD: On-Policy Distillation for Speculative Draft Models</li>
+</ul>
+<h2 id="_4">相关笔记</h2>
+<ul>
+<li>[[2026-05-31-LLM-Agent多智能体信用归因与自进化|05-31-LLM-Agent多智能体信用归因与自进化]]</li>
+<li>[[2026-05-31-agent两条路线-harness-vs-protocol|05-31-agent两条路线-harness-vs-protocol]]</li>
+<li>[[2026-06-01-AI-Agent安全前沿-AIRGuard运行时权限控制与越权行为检测|06-01-AI-Agent安全前沿-AIRGuard运行时权限控制与越权行为检测]]</li>
+<li>[[2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化|05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化]]</li>
+</ul>
+</body>
+</html>

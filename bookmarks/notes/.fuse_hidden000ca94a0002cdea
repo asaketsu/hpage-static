@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>从Whisper迁移到FunASR-Hermes语音识别升级实录</title>
+
+<meta property="og:title" content="从Whisper迁移到FunASR-Hermes语音识别升级实录" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="whisper-funasrhermes">从 Whisper 迁移到 FunASR：Hermes 语音识别升级实录</h1>
+<blockquote>
+<p>来源：微信公众号 | 作者：jc<br />
+核心结论：FunASR SenseVoiceSmall 最大的惊喜不仅在于中文转写准确率的提升，更在于自带的<strong>情绪识别</strong>能力，使得 Agent 能够直接感知用户的情感状态并做出共情响应。</p>
+</blockquote>
+<hr />
+<h2 id="stt">一、背景：为什么本地 STT 是必选项？</h2>
+<p>在将 AI Agent（如 Hermes）集成到飞书或企业微信等 IM 平台时，会遇到一个平台级 API 限制：</p>
+<ul>
+<li><strong>语音消息 API 限制</strong>：当用户发送语音消息时，平台推送给 Webhook 的只有音频媒体文件（<code>media_id</code>/<code>media</code>），不包含文字（飞书客户端的“语音转文字”仅是客户端本地呈现，API 侧不提供）。</li>
+<li>鉴于此，Agent 若想支持语音交互，<strong>本地部署 STT（语音转文字）引擎是刚需</strong>而非可选项。</li>
+</ul>
+<h3 id="11-whispercpp">1.1 原有 Whisper.cpp 方案的痛点</h3>
+<p>在升级前，系统采用的是 <code>whisper.cpp</code> 方案，但在 370 余条真实语音运行中暴露出以下硬伤：</p>
+<ul>
+<li><strong>口语识别不稳定</strong>：日常口语中的语气词容易被吞或者发生奇特变换（例如“我觉得吧”常被转写为“我觉得八”）。</li>
+<li><strong>中英混合能力差</strong>：遇到开发场景的英文术语（或代码缩写）时，强行音译为发音相近的奇怪中文。</li>
+<li><strong>长语音易截断</strong>：长达 30 秒以上的段落有时会在末尾出现截断，导致语义丢失。</li>
+</ul>
+<hr />
+<h2 id="funasr-sensevoicesmall">二、选型：为什么是 FunASR SenseVoiceSmall？</h2>
+<p><strong>FunASR</strong> 是阿里达摩院的一款开源语音识别框架，可便捷地切换和集成不同的声学模型。</p>
+<h3 id="21">2.1 ⚠️ 核心限制说明</h3>
+<p>官网主推的 <code>SenseVoiceLarge</code> 其指标在榜单上最强，但<strong>达摩院并未开源</strong>其权重。目前开源且能在本地部署的仅有 <strong><code>SenseVoiceSmall</code></strong>（参数量为 234M）。</p>
+<h3 id="22-sensevoicesmall">2.2 SenseVoiceSmall 的核心优势</h3>
+<ul>
+<li><strong>中文口语高匹配</strong>：其预训练数据大量来源于会议、客服、短视频等高口语化场景，采用非自回归（Non-Autoregressive）结构，10 秒音频处理时间在毫秒级别。</li>
+<li><strong>轻量且极速</strong>：参数量仅 234M，对 CPU 非常友好。在 GPU 上拥有 170x 实时速度，在 CPU 上有 17x 实时速度（在 GPU 推理性能上比 Whisper-large-v3 快约 13 倍）。</li>
+<li><strong>多维度感知（关键惊喜）</strong>：同时支持<strong>语种识别（LID）</strong>、<strong>富文本情感识别（7 种情绪：高兴/悲伤/愤怒/中性/恐惧/厌恶/惊讶）</strong>以及<strong>音频事件检测（AED）</strong>。</li>
+<li><strong>易集成</strong>：FunASR 统一了 <code>AutoModel</code> 接口，模型更换只需修改一行 <code>model</code> 参数。</li>
+</ul>
+<hr />
+<h2 id="_1">三、迁移实操与避坑指南</h2>
+<h3 id="31-cli-wrapper">3.1 兼容的管道化设计（CLI Wrapper）</h3>
+<p>工程上为了将影响降到最低，不要去改动 Agent 的核心框架代码。我们的策略是写一个命令行兼容的包装脚本（CLI CLI-Wrapper），让其输入、输出规范与旧版 <code>whisper</code> 命令行保持一致。</p>
+<pre><code class="language-bash"># 包装脚本核心逻辑伪代码
+# loading FunASR AutoModel -&gt; Specify SenseVoiceSmall -&gt; generate -&gt; format outputs.
+</code></pre>
+<p>在 Agent 的配置文件中，只需将相应的可执行路径替换为该 Python Wrapper 脚本即可。</p>
+<h3 id="32-stt">3.2 🔴 STT 热更新配置事故</h3>
+<p>在 5 月 30 日做 STT 配置切换的最后一步时，因在 Agent 进程重启阶段采用了不正确的 supervisor/systemd 信号，导致 Agent 进程直接崩溃掉线。</p>
+<blockquote>
+<p><strong>工程教训</strong>：Agent 执行涉及自身的系统配置、重启变更等危险操作时，必须触发二次确认，或至少先进行配置项的 Dry-run 预检。</p>
+</blockquote>
+<h3 id="33">3.3 说话人/情感检测多模态下载超时</h3>
+<p>FunASR 默认包含完整的富文本处理链路，需要加载额外的说话人追踪和情感识别模型：</p>
+<table>
+<thead>
+<tr>
+<th>模型组件</th>
+<th>大小 &amp; 特点</th>
+<th>下载避坑说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cam++</td>
+<td>说话人分离模型</td>
+<td>较小，快速完成下载</td>
+</tr>
+<tr>
+<td>emotion2vec+</td>
+<td>情感模型 (~1GB)</td>
+<td>国内源在下载到 270MB 时极易超时（默认有 300s 限制）。建议检测到超时后通过 CLI/Browser <strong>手动多线程拉取</strong> 到系统本地缓存目录，再由 Agent 移入正确目录。</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>依赖提醒</strong>：<code>whisper.cpp</code> 几乎零外部依赖；而 <code>FunASR</code> 依赖繁重的 Python、PyTorch、torchaudio 等生态，<strong>必须采用虚拟环境（Venv/Conda）隔离部署</strong>，以防污染宿主机环境。</p>
+</blockquote>
+<hr />
+<h2 id="371">四、升级效果：371 条真实运行表现</h2>
+<p>以下是升级后的日志记录：<br />
+<code>Transcribed audio_xxx.ogg via local STT command (SenseVoiceSmall, 289 chars)</code></p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Whisper.cpp 表现</th>
+<th>FunASR SenseVoiceSmall 表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>语气词识别</td>
+<td>易吞、错别字多</td>
+<td>自然记录，如“吧”、“哈”等字纠错率明显上升</td>
+</tr>
+<tr>
+<td>中英夹杂</td>
+<td>术语强行音译为奇怪中文</td>
+<td>准确还原英文缩写</td>
+</tr>
+<tr>
+<td>长语音处理</td>
+<td>超过 30 秒易在末尾截断</td>
+<td>60 秒以上长音频平稳转写无截断</td>
+</tr>
+<tr>
+<td>情感输入</td>
+<td>❌ 无此能力</td>
+<td>🌟 <strong>转写结果附带 [angry], [happy] 等情绪标签。Agent 据此在 Prompt 中自动调整共情语气。</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>情感交互实例：</strong><br />
+当向 Agent 发送明显带着不耐烦语气的飞书语音时，SenseVoice 识别出了 <code>[angry]</code>，Agent 捕捉到该标签后直接用“我能理解你的焦虑和愤怒，这件事情我马上排查”来进行共情。交互深度从“听文字”跨越到了“听语气”。</p>
+<hr />
+<h2 id="vs-stt">五、本地 vs 云端 STT 方案权衡</h2>
+<p>在当前阶段，为什么坚持在本地宿主机（如 Mac mini 边缘主机）而不是云端（如 OpenAI Whisper API）跑语音识别？</p>
+<ol>
+<li><strong>隐私安全 (Security)</strong>：语音聊天中常包含各种未脱敏的口述隐私、技术架构、API-key、地址，发到云端意味着数据越界，本地部署是最高级别的隐私保护。</li>
+<li><strong>零网络延迟 (Latency)</strong>：本地 GPU/CPU 推理无需网络往返，在 10s 音频上做推理能做到低于 0.3 秒的毫秒级反应。</li>
+<li><strong>边际成本 (Cost)</strong>：370 条日常语音如果走 OpenAI Whisper 虽便宜，但随着大批自动化 Cron 定期推送和持续累加，本地计算资源的边际成本为零，更加经济。</li>
+</ol>
+<hr />
+<h2 id="actionable-takeaway">六、行动清单总结 (Actionable Takeaway)</h2>
+<ul>
+<li>保持接口透明，通过 CLI Wrapper 实现无痛迁移。</li>
+<li>对 Python 生态庞大的依赖进行 <code>python -m venv</code> 虚拟环境隔离。</li>
+<li>情感模型大文件易下载超时，优先在本地环境中多线程下载完成。</li>
+<li>对 Agent 变更关键配置的逻辑加入只读预检或人类确认阀门，防止断头崩溃。</li>
+</ul>
+<h2 id="_2">相关笔记</h2>
+<ul>
+<li><a href="2026-05-26-从Go迁移到Rust-2026实战指南.md">从 Go 迁移到 Rust：2026 实战指南</a> (关键词: 迁移到)</li>
+<li><a href="2026-04-07-hermes-agent-deep-dive-evolution-roadmap.md">Hermes Agent Deep Dive — 进化路线图</a> (关键词: hermes)</li>
+<li><a href="2026-04-13-hermes-agent-vs-openclaw.md">Hermes Agent vs OpenClaw：Agent框架的路径之争</a> (关键词: hermes)</li>
+</ul>
+</body>
+</html>
