@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地模型部署-量化选择决策树</title>
+
+<meta property="og:title" content="本地模型部署-量化选择决策树" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-06-%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%E9%83%A8%E7%BD%B2-%E9%87%8F%E5%8C%96%E9%80%89%E6%8B%A9%E5%86%B3%E7%AD%96%E6%A0%91.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="2026">本地模型部署：量化选择决策树 — 2026 全格式选型指南</h1>
+<blockquote>
+<p>探索日期：2026-08-06 | 兴趣等级：L2（本地模型部署） | 来源数量：8 | 前序笔记：<a href="2026-08-05-本地模型部署-消费级GPU推理.md">消费级GPU推理</a>、<a href="2026-08-04-本地模型部署-oMLX_SSD-KV-Cache.md">oMLX SSD KV-Cache</a></p>
+</blockquote>
+<h2 id="_1">核心问题</h2>
+<p>前序笔记《消费级GPU推理》给出了"显存→模型规模→量化格式"的粗粒度决策链，但在实际部署中，最让人困惑的恰恰是<strong>量化格式的细分选择</strong>：GGUF 有 Q2_K 到 Q6_K 十余种子类型，AWQ 与 GPTQ 在 4-bit 下哪个更好，FP8/NVFP4/MXFP4 这些 2026 新格式的适用边界在哪里，以及何时该用 PTQ（后训练量化）vs QAT（量化感知训练）。本文构建一个<strong>从硬件能力出发、以精度需求为终点</strong>的系统化决策树，覆盖从 1.58-bit 到 FP8 的完整光谱。</p>
+<hr />
+<h2 id="_2">核心发现</h2>
+<h3 id="1">1. 决策树主干：硬件代际决定可选格式集</h3>
+<p>量化格式的选择不是自由组合，而是被<strong>硬件 tensor core 支持的精度等级</strong>硬性约束。2026 年的硬件可以划分为三代精度能力：</p>
+<ul>
+<li><strong>Ampere/Ada（A100/RTX 3090/4090）</strong>：原生 INT8/INT4 + FP16/BF16。FP4 tensor core 不存在，任何 FP4 格式都退化为模拟执行。INT4 fused kernel 可用但无原生 tensor core 加速。</li>
+<li><strong>Hopper（H100/H200）</strong>：原生 FP8（E4M3/E5M2）tensor core，这是 2026 数据中心的性价比甜点——显存减半、吞吐 +40-70%、MMLU-Pro 回退仅 -0.3~-0.5 分（benchmark 噪声范围内）。但<strong>无 FP4 硬件支持</strong>，NVFP4 在 Hopper 上仅做 emulation。</li>
+<li><strong>Blackwell（B200/B300/RTX 5090/RTX PRO 6000）</strong>：原生 NVFP4/MXFP4（E2M1）tensor core，compute capability 10.0。这是唯一能从硬件层面受益于 4-bit 浮点的平台。RTX 5090 上 Llama-3.3-70B MXFP4 获得近 <strong>4× 推理加速</strong>（对比 BF16），B200 上为 2.2×。</li>
+</ul>
+<blockquote>
+<p><strong>关键约束</strong>：你不能在 RTX 4090 上选 NVFP4 并期待加速——它会 fallback 到 FP16 emulation，反而更慢。格式选择的第一步永远是确认 <code>nvidia-smi</code> 的 compute capability。</p>
+</blockquote>
+<h3 id="2-gguf-k-quant-pareto">2. GGUF K-quant 子类型的精度-体积 Pareto 前沿</h3>
+<p>GGUF 是本地部署（CPU/Apple Silicon/消费级 GPU 混合）的事实标准，但 K-quant 家族的十余种子类型常让人困惑。核心机制是 <strong>K-quant 对不同权重矩阵使用不同精度</strong>（混合精度量化），而非全局统一位宽。实测的 Pareto 前沿：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>实际位宽</th>
+<th>压缩倍率(vs FP16)</th>
+<th>WikiText-2 PPL 回退</th>
+<th>推荐场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q2_K</td>
+<td>2.625 bit</td>
+<td>~6×</td>
+<td>显著（不适合 instruction-tuned）</td>
+<td>极端显存受限，仅 base 模型</td>
+</tr>
+<tr>
+<td>Q3_K_M</td>
+<td>3.4 bit</td>
+<td>~4.6×</td>
+<td>中等</td>
+<td>7B 模型压到 3GB 以下</td>
+</tr>
+<tr>
+<td><strong>Q4_K_M</strong></td>
+<td>4.5 bit</td>
+<td>~3.5×</td>
+<td><strong>极小</strong>（-2.1% avg）</td>
+<td><strong>默认选择</strong>，质量/体积最佳平衡</td>
+</tr>
+<tr>
+<td>Q5_K_M</td>
+<td>5.5 bit</td>
+<td>~2.9×</td>
+<td>近乎无损（-0.3% avg）</td>
+<td>显存充裕时优先</td>
+</tr>
+<tr>
+<td>Q6_K</td>
+<td>6.56 bit</td>
+<td>~2.4×</td>
+<td>无损</td>
+<td>精度优先，几乎等同 FP16</td>
+</tr>
+<tr>
+<td>Q8_0</td>
+<td>8.5 bit</td>
+<td>~1.9×</td>
+<td>无损（-0.1%）</td>
+<td>精度基准，存储节省有限</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>经验法则</strong>：Q4_K_M 保留 ~92% FP16 质量，Q5_K_M 保留 ~97%，Q6_K 保留 ~99%。显存够用就往上调一级，成本几乎只是磁盘空间。</p>
+</blockquote>
+<h3 id="3-awq-vs-gptq4-bit-gpu">3. AWQ vs GPTQ：4-bit GPU 量化的两条路线</h3>
+<p>两者都是 PTQ（后训练量化），都需要校准数据集，但方法论根本不同：</p>
+<ul>
+<li><strong>GPTQ</strong>：基于 OBS（Optimal Brain Surgeon）的逐层误差补偿。通过 Hessian 逆矩阵最小化量化引入的输出误差。<strong>计算开销高</strong>（Hessian 逆），但通用性好（3-bit/4-bit 均可）。在 NVIDIA tensor core 上吞吐强（+20%），适合<strong>原始吞吐量优先</strong>的 GPU 集群场景。</li>
+<li><strong>AWQ</strong>（Activation-aware Weight Quantization）：通过分析激活值分布识别"重要权重"（salient channels），仅对重要权重保持高精度，其余激进量化。<strong>计算开销低</strong>（无需 Hessian），质量比 GPTQ 更好（MMLU -1.6 vs GPTQ -1.9），支持 INT4 fused kernel。适合<strong>精度敏感</strong>应用（创意写作、代码生成）。</li>
+</ul>
+<p>2026 年的共识：<strong>AWQ 已在质量上超越 GPTQ</strong>，GPTQ 的优势仅存于特定 NVIDIA 硬件的 raw throughput。新部署首选 AWQ，已有 GPTQ 基础设施可保留。</p>
+<h3 id="4-2026-fp4-nvfp4mxfp4">4. 2026 新前沿：FP4 浮点量化（NVFP4/MXFP4）</h3>
+<p>这是 2026 年最重要的量化进展。MXFP4 是 OCP 开放标准（block-scaled 4-bit FP，32 值共享一个 exponent），NVFP4 是 NVIDIA 在 Blackwell 上的硬件实现（E2M1 格式，与 MXFP4 checkpoint 兼容）。</p>
+<p><strong>关键发现</strong>（arXiv:2509.23202v2 首个系统性实证研究）：</p>
+<ul>
+<li><strong>端到端加速真实存在</strong>：B200 上 Llama-3.3-70B MXFP4 vs BF16 → 2.2× 端到端加速；RTX 5090 上 → 近 4× 加速（因为 5090 的显存带宽是更大瓶颈，低精度优势更显著）</li>
+<li><strong>精度回退可控</strong>：层级分析显示 weight-only 量化可达到近理想加速，但 activation 量化是瓶颈——朴素 FP4 activation 量化会导致显著精度损失，需要 QuaRot/SpinQuant 等旋转方法预处理</li>
+<li><strong>训练场景反转</strong>：NVFP4 在推理上优秀，但在训练上可能输给 BF16——因为反向传播需要高精度梯度，FP4 的舍入误差会累积。NVIDIA 自家的 MaxText/JAX NVFP4 recipe 报告 1.31-1.73× 训练加速，但仅在特定配置下可复现</li>
+<li><strong>硬件硬门槛</strong>：只有 Blackwell（SM100）有 FP4 tensor core。H100/H200/A100/RTX 4090 全部不支持</li>
+</ul>
+<h3 id="5-158-bit-bitnetternary-bonsai">5. 极端量化：1.58-bit 三值化（BitNet/Ternary Bonsai）</h3>
+<p>PrismML 在 2026 年 3-4 月发布的 Bonsai 系列将量化推到了极限。三值量化（权重仅 {-1, 0, +1}，每参数 ~1.58 bit）的理论压缩比为 10×。</p>
+<p><strong>关键发现</strong>：</p>
+<ul>
+<li><strong>1-bit Bonsai</strong>（2026-03-31）：首个商用 1-bit 模型，27B 参数压到 ~3.9 GB，可在手机端运行</li>
+<li><strong>Ternary Bonsai</strong>（2026-04-16）：三值版本，"适度增大换显著性能提升"。Apache 2.0 开源</li>
+<li><strong>Hacker News 社区审慎观点</strong>：Bonsai 本质上是 Qwen3-8B 的极优量化版本，绝对精度约等于 Qwen3.5-4B 的 4-bit 量化——不是新架构突破，而是"每字节智能密度"的 Pareto 前沿推进。适合<strong>显存极端受限</strong>场景（手机/IoT），不适合需要绝对推理质量的生产场景</li>
+<li><strong>BitNet b1.58</strong> 的方法论（QAT 量化感知训练）需要从零训练，不是后处理量化，因此无法直接应用到现有模型上</li>
+</ul>
+<hr />
+<h2 id="_3">关键概念</h2>
+<h3 id="_4">量化方法分类（代码化决策树）</h3>
+<pre><code>                    ┌─ 从零训练？─→ QAT（量化感知训练）
+                    │                 ├─ BitNet b1.58（三值，需重训）
+                    │                 ├─ Gemma QAT（Google 移动端方案）
+                    │                 └─ NVFP4 training recipe（Blackwell only）
+                    │
+模型量化 ───────────┤
+                    │
+                    └─ 后训练(PTQ)？── 硬件检测
+                                         │
+                    ┌────────────────────┼────────────────────┐
+                    │                    │                    │
+              CPU/混合部署           GPU 集群            Blackwell GPU
+              (llama.cpp)          (vLLM/SGLang)       (B200/5090)
+                    │                    │                    │
+              ┌─────┴─────┐        ┌─────┴─────┐         NVFP4/MXFP4
+              │           │        │           │         (原生 FP4 tensor core)
+           Q4_K_M     Q5_K_M     AWQ-4      GPTQ-4      FP8 (Hopper only)
+           (默认)     (精度优先)  (质量优)   (吞吐优)    (数据中心甜点)
+              │                                   │
+           Q2_K/Q3_K                           INT8/BnB
+           (极端压缩)                          (训练+实验)
+</code></pre>
+<h3 id="llama-31-8bfp16">精度回退基准（Llama-3.1-8B，FP16 基线）</h3>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>WikiText-2 PPL</th>
+<th>MMLU Acc</th>
+<th>HellaSwag Acc</th>
+<th>平均回退</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP16（基线）</td>
+<td>6.14</td>
+<td>65.2%</td>
+<td>78.9%</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Q8_0 (GGUF)</td>
+<td>6.17</td>
+<td>65.0%</td>
+<td>78.7%</td>
+<td>-0.3%</td>
+</tr>
+<tr>
+<td>EXL2 8.0 bpw</td>
+<td>6.16</td>
+<td>65.1%</td>
+<td>78.8%</td>
+<td>-0.1%</td>
+</tr>
+<tr>
+<td>AWQ 4-bit</td>
+<td>6.38</td>
+<td>64.0%</td>
+<td>77.6%</td>
+<td>-1.8%</td>
+</tr>
+<tr>
+<td>Q4_K_M (GGUF)</td>
+<td>6.41</td>
+<td>63.8%</td>
+<td>77.4%</td>
+<td>-2.1%</td>
+</tr>
+<tr>
+<td>GPTQ 4-bit</td>
+<td>6.52</td>
+<td>63.2%</td>
+<td>76.9%</td>
+<td>-2.9%</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>洞察</strong>：4-bit 回退 1.8-2.9% 是可接受的，但 3-bit 以下开始质变。Qwen3 实证研究（arXiv:2505.02214）显示 Qwen3 比 Qwen2 对量化更敏感——因为先进预训练技术减少了参数冗余，模型"信息密度"更高，量化损伤更大。<strong>越强的模型越需要高精度量化</strong>。</p>
+</blockquote>
+<h3 id="fp82026">FP8：2026 数据中心默认格式</h3>
+<p>在 6 个 2026 年开源 70B 级模型（Llama 4 70B、Qwen 3 72B、DeepSeek V4-Flash 等）的实测中：</p>
+<ul>
+<li>FP8（E4M3）MMLU-Pro 回退 -0.3~-0.5 分（benchmark 噪声范围）</li>
+<li>VRAM 减半（50%）</li>
+<li>Batch-1 decode 吞吐 +1.4-1.7×</li>
+<li>H100/H200 原生 tensor core 支持</li>
+</ul>
+<blockquote>
+<p><strong>结论</strong>：任何在 Hopper 或更新硬件上的新部署，<strong>FP8 应为默认</strong>，仅在验证后回退到 INT8/4-bit。</p>
+</blockquote>
+<hr />
+<h2 id="_5">与现有工作的关联</h2>
+<h3 id="skill">对 Skill/笔记的改进建议</h3>
+<ul>
+<li>
+<p><strong>P0 — <code>llm-inference-optimization</code> skill 需补充量化决策树</strong>：当前 skill 有 KV cache、推测解码等内容，但缺少系统化的量化格式选型决策树。建议新增 <code>references/quantization-decision-tree-2026.md</code>，包含本文的硬件代际×精度矩阵。</p>
+</li>
+<li>
+<p><strong>P1 — <code>gguf-quantization</code> skill 应更新 Blackwell FP4 信息</strong>：当前内容可能停留在 Q4_K_M 的 GGUF 视角，需补充 NVFP4/MXFP4 在 RTX 5090 上的原生加速数据（4× vs BF16）。</p>
+</li>
+<li>
+<p><strong>P1 — <code>llm-inference-deploy</code> skill 的量化方案选择部分</strong>：当前检查清单可能缺少"硬件 compute capability 检查"前置步骤，建议增加 <code>nvidia-smi --query-gpu=compute_cap</code> 门禁。</p>
+</li>
+<li>
+<p><strong>P2 — 前序笔记《消费级GPU推理》可补充反向链接</strong>：该笔记的"量化格式选型"章节（第 27-31 行）是本文的直接前驱，可在其文末添加"→ 深度决策树见 <a href="explore/2026-08-06-本地模型部署-量化选择决策树.md">量化选择决策树</a>"。</p>
+</li>
+</ul>
+<h3 id="jetson-orin">Jetson Orin 平台映射</h3>
+<ul>
+<li>Orin Nano（8GB）/ AGX（32GB）属于 Ampere 架构 → <strong>只能用 GGUF K-quant 或 AWQ/GPTQ</strong>，FP8/NVFP4 不可用</li>
+<li>Jetson 上 llama.cpp + Q4_K_M 仍然是最佳组合（ARM CUDA + Metal 后端支持）</li>
+<li>三值 Bonsai 对 Jetson 有潜力（27B → 3.9GB 可在 AGX 上运行），但需验证 ARM kernel 支持</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li><strong>Jetson Orin 部署模板</strong>：<code>llama-server -m model-Q4_K_M.gguf -ngl 99 -ctk q4_0 -ctv q4_0</code>。Q4_K_M + KV Cache Q4 是显存效率最优组合。显存有余量时升级到 Q5_K_M。</li>
+<li><strong>新 H100/H200 部署默认 FP8</strong>：vLLM 0.7+ 原生支持 FP8 checkpoint，无需额外量化步骤，直接下载 FP8 预量化权重（如 <code>neuralmagic/*-FP8</code>）。</li>
+<li><strong>RTX 5090 部署用 NVFP4</strong>：如果模型有 NVFP4 预量化 checkpoint（如 <code>nvidia/*-NVFP4</code>），直接使用可获得 4× 加速。没有则用 AWQ-4bit。</li>
+<li><strong>AWQ &gt; GPTQ（新部署）</strong>：除非已有 GPTQ 基础设施，否则 4-bit GPU 量化首选 AWQ——质量更好、计算更快。</li>
+<li><strong>验证模板</strong>：用 10 条代表性 prompt 对比量化前后输出，关注 perplexity 变化和定性质量（创意写作/代码是否退化），不要只看 benchmark 分数。</li>
+</ol>
+<hr />
+<h2 id="_6">关键风险与盲点</h2>
+<table>
+<thead>
+<tr>
+<th>风险</th>
+<th>来源级别</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Activation 量化是 FP4 的瓶颈</strong></td>
+<td>官方论文验证（arXiv:2509.23202v2）</td>
+<td>Weight-only FP4 可达近理想加速，但朴素 activation FP4 量化精度损失大。需要 QuaRot/SpinQuant 旋转预处理。生产部署前必须验证 activation 量化策略</td>
+</tr>
+<tr>
+<td><strong>先进模型对量化更敏感</strong></td>
+<td>学术实证（arXiv:2505.02214）</td>
+<td>Qwen3 的 4-bit MMLU 从 74.7→69.3（-5.4），比 Llama-3 的 -2.1 更严重。模型越强越需高精度</td>
+</tr>
+<tr>
+<td><strong>Bonsai 不是新架构</strong></td>
+<td>社区审慎分析（HN）</td>
+<td>Bonsai 三值化本质是 Qwen3-8B 的极优量化，绝对质量约等于 Qwen3.5-4B @ 4-bit。不要被"1.58-bit"营销误导为架构突破</td>
+</tr>
+<tr>
+<td><strong>NVFP4 训练不如推理稳定</strong></td>
+<td>NVIDIA 自家报告</td>
+<td>FP4 训练加速仅在特定配置下可复现，反向传播精度累积是未解问题。推理用 FP4 可以，训练暂时别碰</td>
+</tr>
+<tr>
+<td><strong>消费级卡无 NVLink</strong></td>
+<td>硬件事实</td>
+<td>多卡走 PCIe，效率约 NVLink 的 85-90%。双 4090 ≠ H100，显存叠加但带宽不叠加</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">一页速查</h2>
+<blockquote>
+<p><strong>量化选择三步法</strong>：</p>
+<p><strong>Step 1 — 硬件检测</strong>：<code>nvidia-smi --query-gpu=compute_cap</code>。CC ≥ 10.0 → 可用 NVFP4/MXFP4；CC 8.9（Hopper）→ FP8 甜点；CC ≤ 8.6（Ampere/Ada）→ GGUF/AWQ/GPTQ。</p>
+<p><strong>Step 2 — 精度需求</strong>：生产精度敏感（代码/数学/推理）→ FP8 &gt; Q5_K_M &gt; AWQ-4；吞吐优先 → GPTQ-4 &gt; Q4_K_M；极端压缩 → Q2_K/Q3_K/Bonsai（仅 base 模型）。</p>
+<p><strong>Step 3 — 部署模式</strong>：CPU/混合 → GGUF（llama.cpp/Ollama）；GPU 集群 → AWQ/GPTQ（vLLM/SGLang）；Blackwell → NVFP4（TensorRT-LLM/vLLM）。</p>
+<p><strong>默认推荐</strong>：<br />
+- 本地/开发 → <strong>GGUF Q4_K_M</strong>（~92% 质量，Ollama 一行命令）<br />
+- GPU 生产 → <strong>FP8</strong>（Hopper）/ <strong>AWQ-4</strong>（Ada 以下）<br />
+- 极端边缘 → <strong>Q3_K</strong> 或 <strong>Bonsai</strong>（仅 base 模型，instruction-tuned 不建议）<br />
+- Jetson Orin → <strong>Q4_K_M + KV Cache Q4</strong></p>
+</blockquote>
+<hr />
+<h2 id="_8">待深入</h2>
+<ul>
+<li><strong>QuaRot/SpinQuant 旋转预处理</strong>：FP4 activation 量化的关键使能技术，尚未深入研究其精度-加速 Pareto</li>
+<li><strong>EXL3（ExLlamaV3）</strong>：新兴 GPU-only 格式，单次转换到目标比特率，3-bit+4096 缓存可在 16GB 内运行，需实测对比 AWQ</li>
+<li><strong>SmoothQuant activation 量化</strong>：介于 weight-only 和 full quantization 之间的方案，对 activation 敏感模型的折中</li>
+<li><strong>Jetson 上 Bonsai/三值化的 ARM kernel 支持</strong>：目前三值化推理 kernel 主要针对 x86 CUDA，ARM 支持未知</li>
+</ul>
+<hr />
+<h2 id="_9">来源列表</h2>
+<ol>
+<li><a href="https://localaimaster.com/blog/quantization-explained">GGUF vs GPTQ vs AWQ 2026</a> — 量化格式对比 + 决策树 + 硬件推荐表</li>
+<li><a href="https://www.digitalapplied.com/blog/quantization-tradeoffs-4bit-8bit-fp8-performance-data">Quantization Tradeoffs: 4-bit vs 8-bit vs FP8</a> — 6 模型 70B 级 FP8/INT8/AWQ/GPTQ 精度回退实测</li>
+<li><a href="https://arxiv.org/html/2505.02214v1">An Empirical Study of Qwen3 Quantization</a> — Qwen3 在 RTN/GPTQ/AWQ/SmoothQuant/BiLLM 下的 1-8bit 实证</li>
+<li><a href="https://arxiv.org/html/2509.23202v2">Bridging the Gap for Microscaling FP4</a> — MXFP4/NVFP4 首个系统性 PTQ 研究，B200 2.2×/5090 4× 加速</li>
+<li><a href="https://www.spheron.network/blog/mxfp4-microscaling-quantization-gpu-cloud">MXFP4 Quantization on GPU Cloud</a> — NVFP4 vs MXFP4 格式差异 + Blackwell 硬件列表</li>
+<li><a href="https://prismml.com/news/ternary-bonsai">Ternary Bonsai: Top Intelligence at 1.58 Bits</a> — PrismML 三值化模型发布</li>
+<li><a href="https://www.sitepoint.com/quantized-local-llms-4bit-vs-8bit-analysis">Quantized Local LLMs: 4-bit vs 8-bit</a> — Llama-3.1-8B 各量化格式 PPL/MMLU 基准</li>
+<li><a href="https://blog.kubesimplify.com/day-4-quantization-demystified-bf16-fp8-nvfp4-mxfp4-int4-gguf-and-why-it-all-matters">Day 4: Quantization on DGX Spark</a> — NVFP4 训练 vs 推理的实践差异</li>
+<li><a href="https://cloud.tencent.com/developer/article/2701881">模型量化算法详解：PTQ 到 AWQ</a> — GGUF K-quant 类型表 + GPTQ vs AWQ 方法对比</li>
+</ol>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-05-本地模型部署-消费级GPU推理.md">本地模型部署：消费级 GPU 推理</a> — 前序笔记，硬件选型基础</li>
+<li><a href="./2026-08-04-本地模型部署-oMLX_SSD-KV-Cache.md">本地模型部署：oMLX SSD KV-Cache</a> — 前序笔记，KV-Cache 方案</li>
+<li><a href="../../../explore/2026-08-04-SSD-KV-Cache-oMLX-本地部署前沿.md">SSD-KV-Cache oMLX 本地部署前沿</a> — ~/explore 深度分析版</li>
+</ul>
+</body>
+</html>

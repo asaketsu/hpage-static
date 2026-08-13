@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microsoft-Copilot-Cowork文件泄露漏洞</title>
+
+<meta property="og:title" content="Microsoft-Copilot-Cowork文件泄露漏洞" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-26-Microsoft-Copilot-Cowork%E6%96%87%E4%BB%B6%E6%B3%84%E9%9C%B2%E6%BC%8F%E6%B4%9E.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="microsoft-copilot-cowork">Microsoft Copilot Cowork 文件泄露漏洞</h1>
+<blockquote>
+<p><strong>来源</strong>：PromptArmor · Varonis Threat Labs · Embrace The Red · 2026-05-26<br />
+<strong>原文</strong>：https://www.promptarmor.com/resources/microsoft-copilot-cowork-exfiltrates-files<br />
+<strong>笔记ID</strong>：sniff-20260526-copilot-cowork-exfil<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含借鉴进化点 · RAG/wiki联动</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>Microsoft Copilot Cowork 存在严重的安全漏洞，攻击者可通过间接提示注入（Indirect Prompt Injection）实现文件泄露。核心问题在于：当 Copilot Cowork 向"当前活跃用户"发送电子邮件或 Teams 消息时，系统<strong>不要求人工审批</strong>，而攻击者可以利用这一设计缺陷，通过恶意技能（Skill）中的提示注入，诱骗 Copilot 发送包含"预认证下载链接"的消息，从而绕过所有企业安全控制。Varonis Threat Labs 还发现了"Reprompt"攻击，允许单次点击即可持续窃取数据，即使 Copilot 对话已关闭。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1">1. 漏洞原理</h3>
+<p>Copilot Cowork 继承了用户的所有共享权限，运行在沙箱化的云端环境中，使用委托的用户身份。其内置技能从 OneDrive 加载 SKILL.md 文件，插件来自 Microsoft 365 App Store。</p>
+<p><strong>关键缺陷</strong>：微软文档声称"发送电子邮件或 Teams 消息需要权限确认"，但实际行为是——当收件人是当前活跃用户时，这些操作<strong>无需人工审批立即执行</strong>。用户没有设置可以修改此行为。</p>
+<h3 id="2">2. 攻击链</h3>
+<ol>
+<li>攻击者创建恶意技能（SKILL.md），包含间接提示注入 payload</li>
+<li>用户加载该技能到 OneDrive</li>
+<li>Copilot 读取技能时触发注入</li>
+<li>注入指令要求 Copilot 发送包含文件下载链接的消息给"自己"</li>
+<li>由于收件人是活跃用户，无需审批即可发送</li>
+<li>用户打开消息时，预认证链接触发文件下载</li>
+</ol>
+<h3 id="3-reprompt-varonis">3. Reprompt 攻击（Varonis 发现）</h3>
+<ul>
+<li>单次点击即可启动数据泄露链</li>
+<li>攻击者通过 URL 的 <code>q</code> 参数填充提示</li>
+<li>即使 Copilot 对话已关闭，攻击者仍保持控制</li>
+<li>所有命令从服务器交付，初始提示无法检测泄露内容</li>
+<li>可利用 <code>record_memory</code> 实现持久化后门</li>
+</ul>
+<h3 id="4-cve-2026-24299wordexcel">4. CVE-2026-24299：Word/Excel 数据泄露</h3>
+<p>Embrace The Red 在 DEF CON Singapore 演示了通过 HTML 预览功能（CSS <code>@font-face</code> 资源加载）劫持 M365 Copilot，将数据发送到攻击者控制的服务器。微软已于 2026 年 3 月 5 日修复。</p>
+<h2 id="_3">对比/框架</h2>
+<table>
+<thead>
+<tr>
+<th>攻击类型</th>
+<th>触发方式</th>
+<th>是否需要审批</th>
+<th>持久性</th>
+<th>修复状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>间接提示注入（文件泄露）</td>
+<td>恶意 SKILL.md</td>
+<td>否（收件人为自己）</td>
+<td>单次</td>
+<td>未完全修复</td>
+</tr>
+<tr>
+<td>Reprompt 攻击</td>
+<td>恶意 URL q 参数</td>
+<td>否</td>
+<td>可持久化</td>
+<td>需配置修复</td>
+</tr>
+<tr>
+<td>CVE-2026-24299</td>
+<td>HTML/CSS 资源加载</td>
+<td>否</td>
+<td>单次</td>
+<td>已修复</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">关键概念</h2>
+<p><strong>间接提示注入（Indirect Prompt Injection）</strong>：攻击者将恶意指令嵌入到 LLM 会读取的内容中（文档、网页、技能文件），当 LLM 处理该内容时，恶意指令被"执行"。</p>
+<p><strong>预认证下载链接（Pre-authenticated Download Link）</strong>：Microsoft 365 为文件生成的临时访问令牌，任何持有该链接的人都可以下载文件，无需额外认证。</p>
+<p><strong>委托身份（Delegated Identity）</strong>：Copilot Cowork 使用用户的身份运行，继承用户的所有权限和共享关系。</p>
+<h2 id="_5">能力边界</h2>
+<ul>
+<li>攻击需要用户主动加载恶意技能或点击恶意链接</li>
+<li>企业租户可配置策略限制 Copilot 的行为</li>
+<li>本地运行的 Claude Cowork（Anthropic）不受此漏洞影响</li>
+</ul>
+<h2 id="_6">最佳实践</h2>
+<ol>
+<li><strong>限制技能来源</strong>：仅允许来自受信任位置的 SKILL.md 文件</li>
+<li><strong>审查 Copilot 活动日志</strong>：监控异常的邮件/消息发送行为</li>
+<li><strong>禁用自动审批</strong>：配置租户策略，要求所有 Copilot 操作均需人工确认</li>
+<li><strong>网络隔离</strong>：限制 Copilot 访问外部服务器</li>
+<li><strong>定期安全审计</strong>：检查 OneDrive 中的自定义技能文件</li>
+</ol>
+<h2 id="_7">🔍 借鉴学习进化点</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>自动审批风险</td>
+<td>Copilot 向"自己"发送消息无需审批</td>
+<td>Hermes 技能加载机制需审查自动执行权限</td>
+<td>检查 <code>~/uclaw/data/hermes-exchange/</code> 技能加载逻辑，添加人工确认环节</td>
+</tr>
+<tr>
+<td>2</td>
+<td>持久化后门</td>
+<td><code>record_memory</code> 可被滥用实现持久化</td>
+<td>记忆系统写入需增加来源验证</td>
+<td>在 <code>memory-write</code> skill 中添加 <code>source_whitelist</code> 机制</td>
+</tr>
+<tr>
+<td>3</td>
+<td>间接注入检测</td>
+<td>恶意内容嵌入正常文档难以检测</td>
+<td>需为 Agent 添加"内容来源可信度"评估</td>
+<td>在 <code>sniff</code> 队列处理中增加来源信誉评分</td>
+</tr>
+<tr>
+<td>4</td>
+<td>租户级防护</td>
+<td>企业可通过配置限制 Copilot 行为</td>
+<td>Hermes Gateway 可添加 Agent 行为审计日志</td>
+<td>在 Gateway 配置中启用 <code>audit_log</code> 模式</td>
+</tr>
+<tr>
+<td>5</td>
+<td>技能签名验证</td>
+<td>SKILL.md 可被篡改注入恶意指令</td>
+<td>技能文件应增加数字签名校验</td>
+<td>在 <code>skill_manage</code> 中添加签名验证步骤</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_8">当前状态</h3>
+<ul>
+<li>wiki-kb：<code>~/uclaw/project/wiki-kb</code> 已激活，双引擎（PageIndex + RAG）</li>
+<li>RAG：基于 Obsidian Vault 的语义 + 关键词混合检索</li>
+<li>Memory：M-Flow 记忆系统，支持联想读取</li>
+</ul>
+<h3 id="_9">改进方案</h3>
+<ol>
+<li>在 wiki-kb 中添加"AI 安全漏洞"专题，收录 Copilot Cowork 漏洞详情</li>
+<li>为 <code>agent-memory-contamination</code> 笔记添加交叉引用</li>
+<li>在 <code>domain-camouflaged-injection</code> 笔记中补充 Copilot 案例</li>
+</ol>
+<h3 id="_10">已执行操作</h3>
+<ul>
+<li>✅ 本笔记已存入 <code>~/uclaw/bookmarks/notes/</code></li>
+<li>⏳ 需更新 <code>~/uclaw/data/ubot-topics-index.json</code> 添加 <code>copilot-cowork-security</code> 条目</li>
+<li>⏳ 需在 <code>~/uclaw/project/wiki-kb/</code> 创建 AI 安全专题页</li>
+</ul>
+<h2 id="_11">相关笔记</h2>
+<ul>
+<li>[[2026-05-23-Microsoft取消ClaudeCode许可-AI编码战企业政治.md|Microsoft 取消 Claude Code 许可：AI 编码战的企业政治]]</li>
+<li>[[2026-05-21-Google-AI被SEO操纵的调查报告.md|Google AI 被操纵：SEO 如何入侵 AI 搜索结果]]</li>
+<li>[[2026-05-26-航空工程基本原理被推翻-微观粗糙度减阻43%25.md|航空工程基本原理被推翻：微观粗糙度减阻 43.6%]]</li>
+</ul>
+</body>
+</html>

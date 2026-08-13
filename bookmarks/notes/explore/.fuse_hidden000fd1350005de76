@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>skill-lifecycle-management-deep-dive</title>
+
+<meta property="og:title" content="skill-lifecycle-management-deep-dive" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-18-skill-lifecycle-management-deep-dive.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="skill-skillmd">Skill 自生自灭生命周期：自动发现模式→生成SKILL.md→退化检测→清理归档</h1>
+<blockquote>
+<p>2026-05-18 | proactive-learn 深度研究 | Topic: Agent Self-Evolution<br />
+方法：本地知识蒸馏（外部搜索全挂），基于 Hermes Agent 现有 356 个 Skills 的实证分析 + 架构推演<br />
+字数: ~4500 | 难度: L4（系统设计级）</p>
+</blockquote>
+<hr />
+<h2 id="5">一、核心发现（5 个关键发现）</h2>
+<h3 id="1hermes-3-skill">发现 1：Hermes 已有 3 层 Skill 管理机制，但生命周期存在"创建容易淘汰难"的不对称问题 — 🔴 核心矛盾</h3>
+<p><strong>现状分析</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>机制</th>
+<th>Skill</th>
+<th>覆盖阶段</th>
+<th>成熟度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自动创建</td>
+<td><code>auto-skill</code></td>
+<td>发现→评估→生成→注册</td>
+<td>✅ 可用</td>
+</tr>
+<tr>
+<td>定期审查</td>
+<td><code>skill-review</code></td>
+<td>僵尸检测→冗余检测→合并→归档</td>
+<td>⚠️ 规则完整但执行不充分</td>
+</tr>
+<tr>
+<td>自我进化</td>
+<td><code>evolver</code></td>
+<td>错误→模式→修复→基因</td>
+<td>✅ 可用</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不对称问题实证</strong>：<br />
+- 当前系统有 <strong>356 个 Skills</strong>，但 <strong>归档目录为空</strong>（<code>~/.hermes/skills/.archive/</code> 下 0 个文件）<br />
+- 创建速度：近 45 天新增 ~150 个 Skills（日均 3.3 个）<br />
+- 淘汰速度：0 个被归档或删除<br />
+- 预测：按此速度，6 个月内 Skills 将达到 700+，管理成本指数级增长</p>
+<p><strong>根因分析</strong>：<br />
+1. <strong>创建有明确触发</strong>（auto-skill 在任务完成时自动评估），但<strong>淘汰无自动化执行</strong><br />
+2. <code>skill-review</code> 定义了僵尸检测规则（90 天未使用），但 Cron 执行频率（每周）和执行深度不足<br />
+3. 删除操作有心理摩擦力——担心"删了以后要用"，缺乏"安全删除"机制（类似垃圾箱）<br />
+4. 缺少<strong>Skill 使用计数器</strong>——没有程序化追踪每个 Skill 的调用频次</p>
+<hr />
+<h3 id="2skill-5">发现 2：Skill 生命周期可建模为 5 阶段，每阶段需要不同的自动化策略 — 🔴 系统设计框架</h3>
+<p>借鉴软件开发生命周期（SDLC）和生物生命周期理论，提出 <strong>Skill Lifecycle Model (SLM)</strong>：</p>
+<pre><code>    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+    │ DISCOVER │───→│  CREATE  │───→│  ACTIVE  │───→│  DECAY   │───→│ RETIRE   │
+    │ 模式发现  │    │ 生成注册  │    │ 活跃使用  │    │ 退化降级  │    │ 归档清理  │
+    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘
+         ↑                                              │                │
+         └──────────────────── REVIVE ──────────────────┘                │
+         （被唤醒的 Skill 重新进入 ACTIVE）                                 │
+                                                                └→ RECYLE
+                                                                  （经验提取
+                                                                   后彻底删除）
+</code></pre>
+<p><strong>各阶段的自动化策略</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>持续时间</th>
+<th>自动化程度</th>
+<th>关键指标</th>
+<th>触发条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DISCOVER</strong></td>
+<td>实时</td>
+<td>80% 自动</td>
+<td>模式匹配得分</td>
+<td>同类任务出现 ≥2 次</td>
+</tr>
+<tr>
+<td><strong>CREATE</strong></td>
+<td>分钟级</td>
+<td>90% 自动</td>
+<td>SKILL.md 质量分</td>
+<td>auto-skill 评估通过</td>
+</tr>
+<tr>
+<td><strong>ACTIVE</strong></td>
+<td>数周-数月</td>
+<td>10% 自动（被动记录）</td>
+<td>使用频次/成功率</td>
+<td>每次被 skill_view 加载</td>
+</tr>
+<tr>
+<td><strong>DECAY</strong></td>
+<td>数周</td>
+<td>70% 自动</td>
+<td>无使用天数/错误率</td>
+<td>30 天未使用 或 错误率 &gt;30%</td>
+</tr>
+<tr>
+<td><strong>RETIRE</strong></td>
+<td>数天</td>
+<td>50% 自动</td>
+<td>最终决策</td>
+<td>90 天未使用 + 无人反对</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：当前系统在 DISCOVER→CREATE 和 ACTIVE 阶段有良好覆盖，但 <strong>DECAY→RETIRE 的自动化几乎为零</strong>。这是最大的改进空间。</p>
+<hr />
+<h3 id="3skill-4">发现 3：Skill 退化有 4 种可检测的模式，每种需要不同的响应策略 — 🟡 可操作</h3>
+<p>通过分析 Hermes 历史错误模式（evolver pitfalls 库），识别出 4 种 Skill 退化模式：</p>
+<h4 id="acontent-stale">模式 A：内容过时（Content Stale）</h4>
+<pre><code>症状：Skill 中引用的命令/URL/版本号已失效
+检测：定期验证 Skill 中的外部引用（URL 可达性、CLI 版本兼容性）
+案例：ths-auto-trader skill 中 &quot;xtquant 不在 PyPI&quot; 的描述在 2026-05-18 被发现过时
+响应：自动 patch 或标记 ⚠️
+频率估计：~10% 的 Skills 每月会产生过时内容
+</code></pre>
+<h4 id="bdemand-death">模式 B：需求消失（Demand Death）</h4>
+<pre><code>症状：Skill 长时间未被触发加载
+检测：追踪 skill_view() 和 Cron 任务中的 Skill 引用
+案例：大量红队安全 Skills（200+）可能属于此类——创建了但极少在 Cron 空闲时使用
+响应：30 天标记观察 → 90 天归档 → 180 天经验提取后删除
+</code></pre>
+<h4 id="cfunctional-overlap">模式 C：功能重叠（Functional Overlap）</h4>
+<pre><code>症状：多个 Skills 解决同一问题，触发条件模糊
+检测：语义相似度分析 + description 字段关键词重叠
+案例：`skill-pipeline` vs `harness-architecture` vs `task-executor` 可能有重叠
+响应：合并为统一 Skill，被合并的标记 `absorbed_into`
+</code></pre>
+<h4 id="dmodel-outgrown">模式 D：模型超越（Model Outgrown）</h4>
+<pre><code>症状：基础模型能力提升后，Skill 中的详细步骤变为冗余
+检测：对比 Skill 创建时的模型版本 vs 当前版本
+案例：早期详细描述 curl 用法的 Skill，在当前模型下可能只需一句话提示
+响应：精简 Skill 内容，从 200 行压缩到 50 行
+</code></pre>
+<hr />
+<h3 id="4skill">发现 4：Skill 使用追踪是当前系统最关键的缺失基础设施 — 🔴 架构缺陷</h3>
+<p><strong>问题</strong>：Hermes 的 skill_view() 和 skill_manage() 没有内置使用统计。无法回答"这个 Skill 上次被使用是什么时候？"</p>
+<p><strong>影响链</strong>：</p>
+<pre><code>无使用统计 → 无法判断僵尸 → 无法自动退化 → Skills 膨胀 → 上下文污染 → 效率下降
+</code></pre>
+<p><strong>可行方案（3 种，按实现难度排序）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>实现方式</th>
+<th>精度</th>
+<th>工作量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>方案 1：文件时间戳</strong></td>
+<td>每次 skill_view() 后 touch SKILL.md 更新 atime</td>
+<td>低（被系统备份等干扰）</td>
+<td>极小</td>
+</tr>
+<tr>
+<td><strong>方案 2：访问日志</strong></td>
+<td>skill_view() 内部追加 JSONL 日志到 <code>~/.hermes/skill-access.log</code></td>
+<td>中（记录每次加载）</td>
+<td>小</td>
+</tr>
+<tr>
+<td><strong>方案 3：使用计数器</strong></td>
+<td>SKILL.md frontmatter 新增 <code>access_count</code> + <code>last_accessed</code> 字段</td>
+<td>高（精确统计）</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<p><strong>推荐方案 2</strong>：JSONL 追加日志，零侵入，可异步分析。</p>
+<pre><code class="language-jsonl">{&quot;skill&quot;:&quot;evolver&quot;,&quot;action&quot;:&quot;view&quot;,&quot;timestamp&quot;:&quot;2026-05-18T04:50:00Z&quot;,&quot;context&quot;:&quot;cron&quot;}
+{&quot;skill&quot;:&quot;skill-review&quot;,&quot;action&quot;:&quot;view&quot;,&quot;timestamp&quot;:&quot;2026-05-18T04:50:05Z&quot;,&quot;context&quot;:&quot;cron&quot;}
+</code></pre>
+<p>统计脚本定期（每日 Cron）分析日志，更新 <code>~/.hermes/skills/skill-usage-stats.json</code>：</p>
+<pre><code class="language-json">{
+  &quot;evolver&quot;: {&quot;views&quot;: 42, &quot;last_viewed&quot;: &quot;2026-05-18&quot;, &quot;last_patched&quot;: &quot;2026-05-18&quot;},
+  &quot;skill-review&quot;: {&quot;views&quot;: 5, &quot;last_viewed&quot;: &quot;2026-05-11&quot;, &quot;last_patched&quot;: &quot;2026-05-11&quot;}
+}
+</code></pre>
+<hr />
+<h3 id="5skill-3">发现 5：Skill 自生自灭的最佳实践可以从 3 个领域借鉴 — 🟡 跨领域知识融合</h3>
+<h4 id="1npmpypi">借鉴 1：软件包管理（npm/PyPI）</h4>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>映射到 Skill</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>package.json</code> dependencies</td>
+<td>Skill 的 triggers/dependencies 声明</td>
+</tr>
+<tr>
+<td>deprecation 警告</td>
+<td>退化检测 → 通知用户</td>
+</tr>
+<tr>
+<td><code>npm audit</code></td>
+<td>Skill 安全审查（引用的 URL/命令是否安全）</td>
+</tr>
+<tr>
+<td>semver 语义化版本</td>
+<td>Skill 版本号 + 兼容性声明</td>
+</tr>
+<tr>
+<td><code>npm unpublish</code></td>
+<td>Skill 归档/删除</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键学习</strong>：npm 的 <code>deprecation</code> 是"软标记"——不删除但警告使用者。Skill 也应如此：先标记 deprecated，给缓冲期，再归档。</p>
+<h4 id="2git-github-flow">借鉴 2：Git 分支生命周期（GitHub Flow）</h4>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>映射到 Skill</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>feature branch</td>
+<td>新创建的 Skill（experimental）</td>
+</tr>
+<tr>
+<td>merge to main</td>
+<td>经过验证的 Skill（stable）</td>
+</tr>
+<tr>
+<td>branch deletion</td>
+<td>Skill 归档（合并后的分支可安全删除）</td>
+</tr>
+<tr>
+<td>stale branch 检测</td>
+<td>GitHub 自动标记超过 X 天无 commit 的分支</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键学习</strong>：GitHub 的 stale bot 机制——自动给不活跃的分支加标签，如果无人反对则自动删除。Skill 也需要一个 "stale bot"。</p>
+<h4 id="3apoptosis">借鉴 3：免疫系统的细胞凋亡（Apoptosis）</h4>
+<p>生物学启示：人体每天有 500 亿个细胞通过"程序性死亡"被清除。这不是随机破坏，而是精确控制的：</p>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>映射到 Skill</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>细胞凋亡信号</td>
+<td>Skill 退化信号（未使用/过时/重叠）</td>
+</tr>
+<tr>
+<td>死亡标记（磷脂酰丝氨酸外翻）</td>
+<td>Skill 标记 deprecated</td>
+</tr>
+<tr>
+<td>巨噬细胞清理</td>
+<td>evolver 执行归档</td>
+</tr>
+<tr>
+<td>记忆 B 细胞</td>
+<td>提取关键经验后保留</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键学习</strong>：细胞凋亡的精髓是"有序退出"——先标记、再收缩、最后清除，每个阶段都有检查点。Skill 的退休也应遵循这种"有序退出"模式。</p>
+<hr />
+<h2 id="skill-lifecycle-engine">二、技术细节：Skill Lifecycle Engine 架构设计</h2>
+<p>基于以上发现，提出 <strong>Skill Lifecycle Engine (SLE)</strong> 的具体架构：</p>
+<h3 id="21">2.1 核心组件</h3>
+<pre><code>~/.hermes/scripts/skill-lifecycle.py
+├── discover()     — 扫描任务历史，识别重复模式
+├── evaluate()     — 评估是否值得创建 Skill
+├── track()        — 追踪 Skill 使用（JSONL 日志）
+├── decay_check()  — 退化检测（4 种模式）
+├── retire()       — 归档/删除（有序退出）
+└── revive()       — 唤醒已归档的 Skill
+</code></pre>
+<h3 id="22">2.2 退化检测算法</h3>
+<pre><code class="language-python">def decay_check(skill_name: str) -&gt; DecayReport:
+    &quot;&quot;&quot;四维退化检测&quot;&quot;&quot;
+    signals = []
+
+    # 维度 1：需求消失（时间衰减）
+    days_unused = (now() - last_access(skill_name)).days
+    if days_unused &gt; 90:
+        signals.append((&quot;DEMAND_DEATH&quot;, &quot;critical&quot;, f&quot;{days_unused} 天未使用&quot;))
+    elif days_unused &gt; 30:
+        signals.append((&quot;DEMAND_DEATH&quot;, &quot;warning&quot;, f&quot;{days_unused} 天未使用&quot;))
+
+    # 维度 2：内容过时（引用检查）
+    stale_refs = check_external_refs(skill_name)
+    if stale_refs:
+        signals.append((&quot;CONTENT_STALE&quot;, &quot;critical&quot;, 
+                        f&quot;{len(stale_refs)} 个引用失效&quot;))
+
+    # 维度 3：功能重叠（语义分析）
+    overlap_skills = find_similar_skills(skill_name, threshold=0.7)
+    if overlap_skills:
+        signals.append((&quot;OVERLAP&quot;, &quot;warning&quot;,
+                        f&quot;与 {overlap_skills} 功能重叠&quot;))
+
+    # 维度 4：模型超越（压缩潜力）
+    skill_size = get_skill_size(skill_name)
+    model_capability = estimate_model_coverage(skill_name)
+    if model_capability &gt; 0.8 and skill_size &gt; 100:
+        signals.append((&quot;MODEL_OUTGROWN&quot;, &quot;info&quot;,
+                        f&quot;当前模型覆盖 {model_capability:.0%}，可压缩&quot;))
+
+    return DecayReport(skill_name, signals)
+</code></pre>
+<h3 id="23-5">2.3 有序退出流程（5 步检查点）</h3>
+<pre><code>CHECKPOINT 1: 标记（Tag）
+  └─ 在 SKILL.md frontmatter 添加 `status: deprecated`
+  └─ 在 skills-index.json 标记 ⚠️
+  └─ 缓冲期：14 天
+
+CHECKPOINT 2: 通知（Notify）
+  └─ 写入 evolution-log.jsonl
+  └─ 如果有 Cron 任务依赖此 Skill，记录影响范围
+  └─ 缓冲期：7 天
+
+CHECKPOINT 3: 经验提取（Extract）
+  └─ 分析 Skill 内容，提取可复用的知识点
+  └─ 写入经验池：experience-pool.jsonl
+  └─ 保留到 memory（如果包含独特知识）
+
+CHECKPOINT 4: 归档（Archive）
+  └─ 移动到 ~/.hermes/skills/.archive/{skill-name}/
+  └─ 更新 skills-index.json（移除条目，添加归档记录）
+  └─ 可通过 revive() 恢复
+
+CHECKPOINT 5: 彻底删除（Purge）
+  └─ 仅在归档 180 天后且无 revive 记录时执行
+  └─ 保留经验池中的提取记录作为&quot;记忆细胞&quot;
+</code></pre>
+<hr />
+<h2 id="_1">三、实践案例</h2>
+<h3 id="1hermes-356-skills">案例 1：Hermes 当前 356 个 Skills 的健康度快照</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>数量</th>
+<th>预估僵尸比例</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>red-teaming</td>
+<td>~200</td>
+<td>80%+</td>
+<td>安全渗透类，日常 Cron 几乎不触发</td>
+</tr>
+<tr>
+<td>mlops</td>
+<td>~30</td>
+<td>30%</td>
+<td>部分过时（如旧版训练方法）</td>
+</tr>
+<tr>
+<td>devops</td>
+<td>~25</td>
+<td>20%</td>
+<td>核心运维，活跃</td>
+</tr>
+<tr>
+<td>productivity</td>
+<td>~30</td>
+<td>15%</td>
+<td>高频使用</td>
+</tr>
+<tr>
+<td>software-dev</td>
+<td>~20</td>
+<td>25%</td>
+<td>中频使用</td>
+</tr>
+<tr>
+<td>research</td>
+<td>~15</td>
+<td>20%</td>
+<td>中频使用</td>
+</tr>
+<tr>
+<td>其他</td>
+<td>~36</td>
+<td>40%</td>
+<td>混合</td>
+</tr>
+</tbody>
+</table>
+<p><strong>预估</strong>：约 120-160 个 Skills（33-45%）处于僵尸或低频状态，但从未被清理。</p>
+<h3 id="2skill">案例 2：Skill 内容过时的真实案例</h3>
+<p><code>ths-auto-trader</code> skill 在 2026-05-17 的笔记中发现关键过时信息：<br />
+- <strong>旧描述</strong>："xtquant 不在 PyPI，需券商渠道获取"<br />
+- <strong>实际情况</strong>：xtquant 已上架 PyPI（<code>pip install xtquant</code>），版本 250516.1.1<br />
+- <strong>检测延迟</strong>：这个过时信息存在了至少 2 周才被发现</p>
+<p>如果有自动化的<strong>引用验证</strong>机制，这种过时信息可在 1 天内被检测。</p>
+<h3 id="3skill-">案例 3：Skill 创建-淘汰不对称的恶性循环</h3>
+<pre><code>创建容易（auto-skill 自动触发）
+    → Skills 增长（356 个且持续增长）
+    → available_skills 列表膨胀
+    → 模型每次 turn 都要扫描 356 个 Skill 描述
+    → Token 浪费（即使大部分 Skill 不相关）
+    → 触发条件模糊，错误匹配增加
+    → 任务效率下降
+</code></pre>
+<p><strong>量化估算</strong>：356 个 Skill 的 description 字段总长约 50K tokens，每次 turn 的 skill scanning 消耗约 50K tokens。如果清理到 200 个活跃 Skill，可节省 ~22K tokens/turn。</p>
+<hr />
+<h2 id="hermes-agent">四、对 Hermes Agent 的具体建议（优先级排序）</h2>
+<h3 id="p0">P0 — 立即可做（零代码改动）</h3>
+<ol>
+<li><strong>手动审查 red-teaming Skills（200+）</strong>：这些安全渗透类 Skill 在日常 Cron 中几乎不使用。建议：</li>
+<li>保留 Top 20 最常用的（hack、recon 等入口级）</li>
+<li>其余 180+ 全部归档到 <code>.archive/red-teaming/</code></li>
+<li>
+<p>效果：Skills 从 356 降到 ~176，token 节省 ~25K/turn</p>
+</li>
+<li>
+<p><strong>为 <code>skill-review</code> 的 Cron 增加执行深度</strong>：当前只做"报告"，应增加"自动标记 deprecated"动作</p>
+</li>
+</ol>
+<h3 id="p1-1-2">P1 — 短期实现（1-2 天）</h3>
+<ol>
+<li><strong>实现 Skill 访问日志</strong>：在 skill_view() 调用后追加 JSONL 到 <code>~/.hermes/skill-access.log</code></li>
+<li><strong>每日统计脚本</strong>：分析访问日志，更新 <code>skill-usage-stats.json</code></li>
+<li><strong>退化检测脚本</strong>：基于统计数据，每周输出退化报告</li>
+</ol>
+<h3 id="p2-1">P2 — 中期优化（1 周）</h3>
+<ol>
+<li><strong>Skill Lifecycle Engine（SLE）</strong>：实现上述 5 阶段引擎</li>
+<li><strong>引用验证自动化</strong>：定期检查 Skill 中的 URL 可达性和 CLI 版本兼容性</li>
+<li><strong>语义重叠检测</strong>：用 embedding 相似度分析 Skill 描述，识别合并候选</li>
+</ol>
+<hr />
+<h2 id="_2">五、知识缺口分析</h2>
+<table>
+<thead>
+<tr>
+<th>缺口</th>
+<th>说明</th>
+<th>填补方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Skill 调用频次的精确数据</strong></td>
+<td>当前无任何使用统计</td>
+<td>实现 P1 的访问日志</td>
+</tr>
+<tr>
+<td><strong>Token 消耗的量化分析</strong></td>
+<td>不确定 356 个 Skill 的扫描开销具体多大</td>
+<td>需要 Hermes 框架层面的 token 计数</td>
+</tr>
+<tr>
+<td><strong>模型超越的检测方法</strong></td>
+<td>如何判断"当前模型已能覆盖此 Skill"</td>
+<td>需要设计 benchmark 或 A/B 测试</td>
+</tr>
+<tr>
+<td><strong>归档 Skill 的恢复成本</strong></td>
+<td>归档后再需要的恢复时间</td>
+<td>需要实测 revive() 流程的延迟</td>
+</tr>
+<tr>
+<td><strong>跨 Agent 的 Skill 共享</strong></td>
+<td>jbot 和 ubot 如何共享/同步 Skill 生命周期</td>
+<td>需要 exchange-protocol 层面的设计</td>
+</tr>
+<tr>
+<td><strong>Skill 依赖图谱</strong></td>
+<td>Skill 之间的依赖关系（A 引用 B 的输出）</td>
+<td>需要 skill-orchestrator 的依赖分析</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">六、进化闭环评估</h2>
+<h3 id="_4">可采纳的新工作流/方法</h3>
+<ol>
+<li>✅ <strong>Skill 退化检测 4 模式框架</strong> → 可 patch 到 <code>skill-review</code> skill，增加具体的检测规则</li>
+<li>✅ <strong>有序退出 5 步检查点</strong> → 可作为新 skill <code>skill-retirement</code> 或 patch 到 <code>evolver</code></li>
+<li>✅ <strong>Skill 访问日志方案</strong> → 可记录到 memory 供下次实现</li>
+</ol>
+<h3 id="_5">一次性知识（仅存笔记）</h3>
+<ul>
+<li>跨领域类比（npm/Git/免疫系统）— 启发性强但无需落地</li>
+<li>理论模型（SLM 5 阶段）— 概念框架，暂不实现</li>
+</ul>
+<h3 id="skill">现有 Skill 缺陷</h3>
+<ul>
+<li><code>skill-review</code>：缺少<strong>自动化执行</strong>（只有报告没有动作）</li>
+<li><code>auto-skill</code>：缺少<strong>淘汰阶段</strong>（生命周期管理表不完整）</li>
+<li><code>evolver</code>：退化检测只有错误模式，缺少<strong>需求消失</strong>和<strong>模型超越</strong>维度</li>
+</ul>
+<hr />
+<p><em>研究方法：本地知识蒸馏（Tavily/web_search/web_extract 全部不可用），基于 Hermes Agent 356 个 Skills 的文件系统分析和已有 Skill 内容的深度整合。</em><br />
+<em>数据来源：skill-review SKILL.md、evolver SKILL.md、auto-skill SKILL.md、agent-autonomy SKILL.md、explore/ 目录历史笔记。</em></p>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="../2026-04-02-Agent Skills才是关键抽象层.md">Agent Skills才是关键抽象层</a></li>
+<li><a href="../2026-04-02-MiniMax Office Skills全家桶.md">MiniMax Office Skills全家桶</a></li>
+<li><a href="../2026-04-03-OpenClaw-paper-review-skill.md">OpenClaw-paper-review-skill</a></li>
+<li><a href="../2026-04-05-SelfImproving-Agent-CLI-infra.md">SelfImproving-Agent-CLI-infra</a></li>
+<li><a href="../2026-04-09-SKILL-md-ai-agent-skills.md">SKILL-md-ai-agent-skills</a></li>
+<li><a href="../2026-04-12-distill-skill-yupi.md">distill-skill-yupi</a></li>
+<li><a href="../2026-04-24-歸藏PPT-Skill-电子杂志风网页演示.md">歸藏PPT-Skill-电子杂志风网页演示</a></li>
+<li><a href="../2026-04-29-竞品吸收笔记-khazix-skills.md">竞品吸收笔记-khazix-skills</a></li>
+<li><a href="../2026-05-02-SkillClaw-analysis.md">SkillClaw-analysis</a></li>
+<li><a href="../2026-05-05-github-ai-trending-mattpocock-skills.md">github-ai-trending-mattpocock-skills</a></li>
+<li><a href="../2026-05-06-lewislulu-html-ppt-skill-analysis.md">lewislulu-html-ppt-skill-analysis</a></li>
+<li><a href="../2026-05-10-skill-building-invoice-automation.md">skill-building-invoice-automation</a></li>
+<li><a href="../2026-05-10-softwarecopyright-skill-analysis.md">softwarecopyright-skill-analysis</a></li>
+<li><a href="../2026-05-18-开源AI模型工具2025春季爆发.md">开源AI模型工具2025春季爆发</a></li>
+<li><a href="2026-05-18-f5-tts-voice-cloning-incremental.md">f5-tts-voice-cloning-incremental</a></li>
+<li><a href="2026-05-19-autotts-analysis.md">autotts-analysis</a></li>
+<li><a href="2026-05-19-tts-stt-pipeline-optimization-deep-dive.md">tts-stt-pipeline-optimization-deep-dive</a></li>
+<li><a href="2026-05-20-llm_wiki分析与Skill进化.md">llm_wiki分析与Skill进化</a></li>
+<li><a href="f5-tts-zero-shot-voice-cloning-deep-dive-20260518.md">f5-tts-zero-shot-voice-cloning-deep-dive-20260518</a></li>
+<li><a href="local-tts-stt-optimization-20260519.md">local-tts-stt-optimization-20260519</a></li>
+<li><a href="../orphan/2026-04-02-OpenClaw核心机制Skills全解析.md">OpenClaw核心机制Skills全解析</a></li>
+<li><a href="../orphan/2026-04-07-OpenClaw-Skills-handbook.md">OpenClaw-Skills-handbook</a></li>
+<li><a href="../orphan/2026-05-03-CyberVerse公众号HTML模板分析.md">CyberVerse公众号HTML模板分析</a></li>
+<li><a href="../orphan/2026-05-04-国自然申请书AI-Skill流水线.md">国自然申请书AI-Skill流水线</a></li>
+<li><a href="../orphan/2026-05-09-数据血缘-lineage-工具全景.md">数据血缘-lineage-工具全景</a></li>
+<li><a href="../orphan/2026-05-16-HTML的不合理有效性-Claude-Code-团队.md">HTML的不合理有效性-Claude-Code-团队</a></li>
+<li><a href="../orphan/20260512-10-skill-学术去ai味框架.md">20260512-10-skill-学术去ai味框架</a></li>
+<li><a href="../orphan/build-ai-cli.md">build-ai-cli</a></li>
+<li><a href="../orphan/frontend-slides-skill.md">frontend-slides-skill</a></li>
+<li><a href="../orphan/hermes-skill-top10-2026w18.md">hermes-skill-top10-2026w18</a></li>
+<li><a href="../orphan/skills-apple.md">skills-apple</a></li>
+<li><a href="../orphan/skills-catalog.md">skills-catalog</a></li>
+<li><a href="../orphan/skills-data-science.md">skills-data-science</a></li>
+<li><a href="../orphan/skills-dogfood.md">skills-dogfood</a></li>
+<li><a href="../orphan/skills-email.md">skills-email</a></li>
+<li><a href="../orphan/skills-github.md">skills-github</a></li>
+<li><a href="../orphan/skills-leisure.md">skills-leisure</a></li>
+<li><a href="../orphan/skills-logo-generator-skill.md">skills-logo-generator-skill</a></li>
+<li><a href="../orphan/skills-smart-home.md">skills-smart-home</a></li>
+<li><a href="../orphan/skills-social-media.md">skills-social-media</a></li>
+<li><a href="../orphan/skills-team-roles.md">skills-team-roles</a></li>
+<li><a href="../skills-autonomous-ai-agents.md">skills-autonomous-ai-agents</a></li>
+<li><a href="../skills-creative.md">skills-creative</a></li>
+<li><a href="../skills-devops.md">skills-devops</a></li>
+<li><a href="../skills-gaming.md">skills-gaming</a></li>
+<li><a href="../skills-mcp.md">skills-mcp</a></li>
+<li><a href="../skills-media.md">skills-media</a></li>
+<li><a href="../skills-mlops.md">skills-mlops</a></li>
+<li><a href="../skills-note-taking.md">skills-note-taking</a></li>
+<li><a href="../skills-openclaw-imports.md">skills-openclaw-imports</a></li>
+<li><a href="../skills-overview.md">skills-overview</a></li>
+<li><a href="../skills-productivity.md">skills-productivity</a></li>
+<li><a href="../skills-red-teaming.md">skills-red-teaming</a></li>
+<li><a href="../skills-research.md">skills-research</a></li>
+<li><a href="../skills-software-development.md">skills-software-development</a></li>
+</ul>
+</body>
+</html>

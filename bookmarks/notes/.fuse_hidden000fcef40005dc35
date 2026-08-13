@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGLang高性能LLM推理框架深度分析</title>
+
+<meta property="og:title" content="SGLang高性能LLM推理框架深度分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-17-SGLang%E9%AB%98%E6%80%A7%E8%83%BDLLM%E6%8E%A8%E7%90%86%E6%A1%86%E6%9E%B6%E6%B7%B1%E5%BA%A6%E5%88%86%E6%9E%90.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="sglang-llm">SGLang：高性能 LLM 推理框架深度分析</h1>
+<ul>
+<li>📅 2026-05-17</li>
+<li>⭐ 4.5/5 — LLM 推理领域事实标准，全栈优化+结构化生成，生产级验证</li>
+<li>🏷️ #LLM推理 #SGLang #vLLM #DeepSeek #RadixAttention #结构化输出 #RL训练</li>
+<li>📰 LMSYS 官方 GitHub + PyTorch 2025 演讲 + 技术博客</li>
+<li>🔗 https://github.com/sgl-project/sglang</li>
+<li>关联：[[2026-05-17-PageIndex项目分析]] — PageIndex 使用索引技术，SGLang 可作为后端推理引擎</li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>SGLang 是 LMSYS（UC Berkeley 主导）开发的高性能 LLM 推理框架，采用前后端双引擎架构：前端提供结构化生成 DSL 编程语言，后端运行时集成 RadixAttention 前缀缓存、零开销 CPU 调度器、Prefill-Decode 分离等核心优化。全球 400K+ GPU 部署，日处理万亿级 token，已成为 DeepSeek 官方推荐推理引擎。2026 年在 GB300 NVL72 上实现 25x 推理加速，并扩展至视频/图像生成（SGLang Diffusion）。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="_3">一、双引擎架构设计</h3>
+<p><strong>Frontend（前端编程层）</strong>：<br />
+- SGLang DSL：Python 域特定语言，定义 LLM 交互流程<br />
+- 结构化输出约束：压缩有限状态机（Compressed FSM），原生 JSON/Schema 支持<br />
+- OpenAI API 兼容：零改动迁移<br />
+- 多模态支持：多图像/视频输入（LLaVA-OneVision）</p>
+<p><strong>Runtime（后端运行时）</strong>：<br />
+- RadixAttention：前缀树缓存 KV cache，复用公共前缀，最高 5x 加速<br />
+- 零开销 CPU 调度器：无额外开销的 batch 调度<br />
+- Continuous Batching：动态批处理，请求完成即释放 slot<br />
+- Prefill-Decode 分离（PD Disaggregation）：独立扩缩容，DeepSeek 场景 3.8x Prefill + 4.8x Decode<br />
+- Speculative Decoding：投机采样，小模型引导大模型加速<br />
+- Paged Attention：分页注意力，高效管理 GPU 显存<br />
+- 多维并行：Tensor/Pipeline/Expert/Data Parallelism<br />
+- 量化全栈：FP4/FP8/INT4/AWQ/GPTQ</p>
+<h3 id="_4">二、性能里程碑</h3>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>时间</th>
+<th>核心优化</th>
+<th>性能数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>v0.1</td>
+<td>2024/01</td>
+<td>RadixAttention + 压缩 FSM</td>
+<td>3x JSON 解码加速</td>
+</tr>
+<tr>
+<td>v0.2</td>
+<td>2024/07</td>
+<td>Llama3 服务优化</td>
+<td>优于 TensorRT-LLM, vLLM</td>
+</tr>
+<tr>
+<td>v0.3</td>
+<td>2024/09</td>
+<td>DeepSeek MLA + torch.compile</td>
+<td>7x 吞吐 + 1.5x 编译加速</td>
+</tr>
+<tr>
+<td>v0.4</td>
+<td>2024/12</td>
+<td>零开销调度器 + Cache-Aware LB</td>
+<td>结构化输出进一步提升</td>
+</tr>
+<tr>
+<td>—</td>
+<td>2025/05</td>
+<td>96xH100 大规模 EP</td>
+<td>2.7x 解码吞吐</td>
+</tr>
+<tr>
+<td>—</td>
+<td>2025/09</td>
+<td>GB200 NVL72 PD 分离</td>
+<td>3.8x Prefill, 4.8x Decode</td>
+</tr>
+<tr>
+<td>—</td>
+<td>2025/10</td>
+<td>TPU 原生支持 (SGLang-Jax)</td>
+<td>跨硬件统一体验</td>
+</tr>
+<tr>
+<td>—</td>
+<td>2025/11</td>
+<td>SGLang Diffusion</td>
+<td>视频/图像生成加速</td>
+</tr>
+<tr>
+<td>—</td>
+<td>2026/02</td>
+<td>GB300 NVL72</td>
+<td><strong>25x 推理性能</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="_5">三、硬件生态全覆盖</h3>
+<table>
+<thead>
+<tr>
+<th>硬件平台</th>
+<th>状态</th>
+<th>代表型号</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NVIDIA GPU</td>
+<td>✅ 全栈</td>
+<td>GB200/B300/H100/A100/Spark/5090</td>
+</tr>
+<tr>
+<td>AMD GPU</td>
+<td>✅ ROCM</td>
+<td>MI355/MI300</td>
+</tr>
+<tr>
+<td>Google TPU</td>
+<td>✅ Jax backend</td>
+<td>全系列</td>
+</tr>
+<tr>
+<td>Intel Xeon</td>
+<td>✅</td>
+<td>CPU 推理</td>
+</tr>
+<tr>
+<td>Ascend NPU</td>
+<td>✅</td>
+<td>华为昇腾</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_6">四、模型支持矩阵</h3>
+<p><strong>LLM</strong>：Llama, Qwen, DeepSeek, Kimi, GLM, GPT, Gemma, Mistral, Nemotron, MiMo, LLaDA 2.0</p>
+<p><strong>Embedding</strong>：e5-mistral, gte, mcdse</p>
+<p><strong>Reward</strong>：Skywork</p>
+<p><strong>Diffusion</strong>：WAN, Qwen-Image（SGLang Diffusion）</p>
+<p><strong>多模态</strong>：LLaVA-OneVision（多图像/视频）</p>
+<h3 id="sglang-vs-vllm">五、SGLang vs vLLM 核心对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>SGLang</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心定位</td>
+<td>结构化生成 + 推理引擎</td>
+<td>纯推理引擎</td>
+</tr>
+<tr>
+<td>编程接口</td>
+<td>SGLang DSL（Python）</td>
+<td>Python API</td>
+</tr>
+<tr>
+<td>前缀缓存</td>
+<td>RadixAttention（前缀树）</td>
+<td>PagedAttention</td>
+</tr>
+<tr>
+<td>结构化输出</td>
+<td>压缩 FSM 原生支持</td>
+<td>需 Outlines 等插件</td>
+</tr>
+<tr>
+<td>DeepSeek</td>
+<td>官方推荐，MLA+DP Attention</td>
+<td>社区支持</td>
+</tr>
+<tr>
+<td>TPU 支持</td>
+<td>✅ SGLang-Jax</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>RL 训练</td>
+<td>✅ 原生集成（verl, slime 等）</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>Diffusion</td>
+<td>✅ SGLang Diffusion</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>生产规模</td>
+<td>400K+ GPU</td>
+<td>广泛使用</td>
+</tr>
+<tr>
+<td>开源组织</td>
+<td>LMSYS（非营利）</td>
+<td>vLLM Project</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rl-post-training">六、RL &amp; Post-Training 生态</h3>
+<p>SGLang 是 RLHF/RLAIF 训练的首选 rollout backend，原生集成主流 RL 框架：</p>
+<table>
+<thead>
+<tr>
+<th>框架</th>
+<th>来源</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AReaL</td>
+<td>inclusionAI</td>
+<td>RL 框架</td>
+</tr>
+<tr>
+<td>Miles</td>
+<td>radixark</td>
+<td>RL 框架</td>
+</tr>
+<tr>
+<td>slime</td>
+<td>THUDM</td>
+<td>RL 框架</td>
+</tr>
+<tr>
+<td>Tunix</td>
+<td>Google</td>
+<td>RL 框架</td>
+</tr>
+<tr>
+<td>verl</td>
+<td>火山引擎</td>
+<td>RL 框架</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">七、快速上手</h3>
+<pre><code class="language-bash"># 安装
+pip install sglang
+
+# 单 GPU 启动
+python3 -m sglang.launch_server --model meta-llama/Llama-3-8B --port 30000
+
+# DeepSeek 多 GPU
+python3 -m sglang.launch_server --model deepseek-ai/DeepSeek-V3 --tp 8 --port 30000
+
+# OpenAI 兼容调用
+import openai
+client = openai.Client(base_url=&quot;http://127.0.0.1:30000/v1&quot;, api_key=&quot;EMPTY&quot;)
+</code></pre>
+<h2 id="_8">🔍 借鉴点</h2>
+<ul>
+<li><strong>RadixAttention 前缀树缓存</strong> → Hermes Agent 长对话场景可借鉴：相同 system prompt 的请求复用 KV cache，减少重复计算</li>
+<li><strong>PD 分离架构</strong> → 推理服务部署时可独立扩缩容 prefill 和 decode 节点，降低延迟</li>
+<li><strong>压缩 FSM 结构化输出</strong> → Agent 工具调用场景，JSON Schema 约束可直接编译为 FSM，避免重采样</li>
+<li><strong>零开销 CPU 调度器</strong> → 多 Agent 并发推理时的 batch 调度设计参考</li>
+<li><strong>OpenAI API 兼容</strong> → 零改动迁移，可直接替代 vLLM 作为推理后端</li>
+</ul>
+<h2 id="_9">🔗 关联性</h2>
+<ul>
+<li>关联 Skill：serving-llms-vllm — vLLM 部署指南，SGLang 是其强力竞争者</li>
+<li>关联 Skill：llm-inference-optimization — 推理优化技术栈，SGLang 集成了其中大部分技术</li>
+<li>关联项目：PageIndex — 文档结构化索引，SGLang 可作为后端推理引擎加速 RAG</li>
+<li>关联技术：DeepSeek V3/R1 → SGLang 是官方推荐推理引擎</li>
+</ul>
+<h2 id="_10">💡 启发</h2>
+<ul>
+<li><strong>结构化生成是未来</strong>：SGLang 把结构化输出当成一等公民，而不是事后插件。Agent 时代的 LLM 调用几乎都需要 JSON/Schema 约束，这块 SGLang 有天然优势</li>
+<li><strong>推理框架的生态壁垒</strong>：SGLang 通过 RL 训练生态（verl 等）建立护城河，不仅仅是推理引擎，而是训练-推理一体化平台</li>
+<li><strong>前缀缓存的价值被低估</strong>：多轮对话中 system prompt 通常不变，RadixAttention 可以大幅降低延迟和成本</li>
+</ul>
+<h2 id="_11">🔮 预判</h2>
+<ul>
+<li><strong>SGLang 将取代 vLLM 成为主流</strong>：DeepSeek 官方背书 + 结构化输出 + RL 生态，三重优势叠加。预计 2026 年底市占率超 60%</li>
+<li><strong>Diffusion 推理统一</strong>：SGLang Diffusion 把视频/图像生成纳入统一框架，LLM + Diffusion 融合推理是下一个增长点</li>
+<li><strong>Jetson/边缘部署待突破</strong>：当前 SGLang 偏向数据中心级部署，边缘端（如 Jetson Orin）仍是 llama.cpp 的天下</li>
+</ul>
+<h2 id="_12">相关笔记</h2>
+<ul>
+<li>[[2026-05-17-PageIndex项目分析]] — 文档索引与 RAG，SGLang 可作为后端</li>
+</ul>
+</body>
+</html>
