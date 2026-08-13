@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KVarN-华为vLLM原生KV-Cache量化后端</title>
+
+<meta property="og:title" content="KVarN-华为vLLM原生KV-Cache量化后端" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-05-KVarN-%E5%8D%8E%E4%B8%BAvLLM%E5%8E%9F%E7%94%9FKV-Cache%E9%87%8F%E5%8C%96%E5%90%8E%E7%AB%AF.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="kvarn-vllm-kv-cache">KVarN：华为 vLLM 原生 KV-Cache 量化后端，无需校准即插即用</h1>
+<blockquote>
+<p><strong>来源</strong>：Huawei CSL · GitHub · 2026-06-05<br />
+<strong>原文</strong>：https://github.com/huawei-csl/KVarN<br />
+<strong>评分</strong>：⭐4.5/5<br />
+<strong>标签</strong>：#KV-Cache量化 #vLLM #华为 #LLM推理优化 #Triton #长上下文</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>华为 CSL 团队开源 KVarN（Variance Normalized KV-Cache），一个原生集成于 vLLM 的 KV-cache 量化后端。KVarN 无需模型修改、无需校准，一条命令即可启用，实现 3-5× KV-cache 容量提升和最高 1.3× 吞吐量提升，同时保持 FP16 精度。核心创新是"方差归一化"量化方法，解决了现有方法（如 TurboQuant）容量提升但吞吐量下降 40-52% 的困境。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="_3">性能表现</h3>
+<ul>
+<li>3-5× 更多 KV-cache 容量（同 GPU）</li>
+<li>最高 1.3× 吞吐量（超过 FP16）</li>
+<li>FP16 级精度保持</li>
+<li>对比 TurboQuant：高 ~2.4× 吞吐量，同容量，更高精度</li>
+</ul>
+<h3 id="_4">技术原理（四阶段管线）</h3>
+<ol>
+<li><strong>Cache</strong>：原始 FP16 KV tile（channels × tokens）</li>
+<li><strong>Rotated Cache</strong>：Hadamard 旋转沿通道维度混合</li>
+<li><strong>Variance Normalized</strong>：方差归一化消除通道间差异</li>
+<li><strong>Quantized</strong>：最终量化到低比特（默认 K4V2，即 Key 4bit Value 2bit）</li>
+</ol>
+<h3 id="_5">关键特性</h3>
+<ul>
+<li><strong>Calibration-free</strong>：无需校准数据集，即插即用</li>
+<li><strong>Native vLLM backend</strong>：不是外挂，是 vLLM 原生 attention backend</li>
+<li><strong>Triton kernels</strong>：JIT 编译，无需预编译</li>
+<li><strong>block_size=128</strong>：当前固定 tile 大小，其他尺寸即将支持</li>
+</ul>
+<h3 id="_6">使用方式</h3>
+<pre><code class="language-python"># 一行启用
+llm = LLM(model=&quot;Qwen/Qwen3-32B&quot;, dtype=&quot;float16&quot;,
+           kv_cache_dtype=&quot;kvarn_k4v2_g128&quot;, block_size=128)
+</code></pre>
+<p>或 vLLM serving：</p>
+<pre><code class="language-bash">vllm serve Qwen/Qwen3-32B --dtype float16 --kv-cache-dtype kvarn_k4v2_g128 --block-size 128
+</code></pre>
+<h3 id="_7">注意事项</h3>
+<ul>
+<li>KVarN 在 float16 计算下运行（不是 int4）</li>
+<li>多 GPU 或充裕 --gpu-memory-utilization 时自动获得完整容量</li>
+<li>单 GPU 紧张预算时，需设置 <code>VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0</code></li>
+</ul>
+<h2 id="_8">关键概念</h2>
+<ul>
+<li><strong>KV-Cache 量化</strong>：将注意力机制中的 Key-Value 缓存从 FP16 压缩到低比特</li>
+<li><strong>Hadamard 旋转</strong>：数学变换，沿通道维度混合信号，为量化做准备</li>
+<li><strong>方差归一化</strong>：消除通道间方差差异，使量化误差均匀分布</li>
+<li><strong>TurboQuant</strong>：vLLM 内置的 KV-cache 量化方法，KVarN 的主要对比对象</li>
+<li><strong>K4V2</strong>：Key 4bit + Value 2bit 的量化配置</li>
+</ul>
+<h2 id="_9">能力边界</h2>
+<ul>
+<li>仅支持 vLLM（非通用框架）</li>
+<li>当前 block_size 固定 128</li>
+<li>仅验证了部分模型（Qwen3-32B 等）</li>
+<li>需要从 fork 安装（非 vLLM 上游）</li>
+<li>短上下文场景收益有限（容量优势在长上下文才体现）</li>
+</ul>
+<h2 id="_10">最佳实践</h2>
+<ul>
+<li>多 GPU 环境下效果最佳</li>
+<li>紧张单 GPU 需调整 memory profiler 设置</li>
+<li>长上下文/高并发场景收益最大</li>
+<li>量化精度与 FP16 对比验证</li>
+</ul>
+<h2 id="_11">🔍 借鉴学习进化点</h2>
+<ol>
+<li><strong>Calibration-free 设计哲学</strong>：Hermes Skill 系统可借鉴"零配置即插即用"理念。新 Skill 应尽量减少前置条件，像 KVarN 一样一条命令启用。</li>
+<li><strong>Variance Normalization 思路</strong>：量化前的"方差归一化"思路可迁移到 Hermes 的 error classifier。对错误信号做归一化后再分类，可能提高分类准确率。</li>
+<li><strong>Triton JIT 编译模式</strong>：Hermes 脚本如果涉及 GPU 计算，可采用 Triton JIT 而非预编译，简化部署流程。</li>
+<li><strong>KV-Cache 量化对 Hermes RAG 的启示</strong>：当 RAG 索引量大时，可考虑对向量做类似量化，减少内存占用。特别是 wiki-knowledge-base 的向量存储。</li>
+<li><strong>四阶段管线（Cache→Rotate→Normalize→Quantize）</strong>：这种"预处理→变换→归一化→压缩"模式可迁移到数据处理 Skill。</li>
+</ol>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动</h2>
+<h3 id="_12">当前状态</h3>
+<ul>
+<li>已有 LLM 推理优化相关笔记（llm-inference-optimization）</li>
+<li>GPU 网络优化笔记（ZCube 架构）</li>
+<li>边缘 LLM 部署笔记</li>
+</ul>
+<h3 id="_13">改进方案</h3>
+<ol>
+<li>将 KVarN 加入 LLM 推理优化节点</li>
+<li>关联 ZCube 架构笔记（同为华为 AI 基础设施）</li>
+<li>探索对 wiki-kb 向量索引做量化压缩</li>
+</ol>
+<h3 id="_14">已执行操作</h3>
+<ul>
+<li>✅ 笔记写入</li>
+<li>⏳ 待更新索引</li>
+</ul>
+<h2 id="_15">相关笔记</h2>
+<ul>
+<li>[[2026-04-28-LLM推理优化前沿技术2026]] — LLM推理优化全景</li>
+<li>[[2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理]] — KV-Cache优化</li>
+<li>[[2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化]] — KV缓存压缩</li>
+<li>[[2026-05-30-vLLM推理引擎前沿-推测解码与分离式预填充]] — vLLM前沿</li>
+<li>[[2026-06-01-LLM推理加速新突破-有状态推理-BASTION推测解码与边缘自推测]] — 推理加速</li>
+</ul>
+</body>
+</html>

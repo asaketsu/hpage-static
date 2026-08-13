@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kai-Sound-TTS源码分析</title>
+
+<meta property="og:title" content="Kai-Sound-TTS源码分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-09-Kai-Sound-TTS%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="kai-sound-tts-esp32-tts">Kai-Sound-TTS 源码分析：ESP32 TTS 播报全链路方案</h1>
+<blockquote>
+<p>来源：<a href="https://github.com/Kaiii-create/kai-sound-tts">Kaiii-create/kai-sound-tts</a> · <a href="https://mp.weixin.qq.com/s/X1Ud811saY39poEefazSjQ">原文链接</a><br />
+整理日期：2026-06-09</p>
+</blockquote>
+<hr />
+<h2 id="_1">项目概述</h2>
+<p>一套完整的 <strong>网页 + PHP + Python + MQTT + ESP32</strong> TTS 播报方案（v1.0.0-mqtt），核心链路：</p>
+<pre><code>网页输入文本 → PHP 断句分段 + 预生成 → Python 火山引擎 TTS → MQTT 下发 → ESP32 HTTP 拉流 → I2S 播放
+</code></pre>
+<hr />
+<h2 id="_2">架构分层</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">层</th>
+<th style="text-align: left;">组件</th>
+<th style="text-align: left;">职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">前端</td>
+<td style="text-align: left;"><code>index.html</code></td>
+<td style="text-align: left;">深色玻璃拟态控制台，文本输入/音量/状态</td>
+</tr>
+<tr>
+<td style="text-align: left;">调度层</td>
+<td style="text-align: left;"><code>tts_request_handler.php</code></td>
+<td style="text-align: left;">断句分段 + 预生成 TTS + 顺序下发 MQTT</td>
+</tr>
+<tr>
+<td style="text-align: left;">TTS 层</td>
+<td style="text-align: left;"><code>tts_bridge_server.py</code></td>
+<td style="text-align: left;">火山引擎流式 TTS → MP3，HTTP 流 URL</td>
+</tr>
+<tr>
+<td style="text-align: left;">控制层</td>
+<td style="text-align: left;">Mosquitto MQTT</td>
+<td style="text-align: left;">控制命令（tts/stop/volume），不传音频</td>
+</tr>
+<tr>
+<td style="text-align: left;">设备层</td>
+<td style="text-align: left;"><code>sound.ino</code> (ESP32)</td>
+<td style="text-align: left;">HTTP 拉流 + 32KB 缓冲 + I2S 解码播放</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_3">核心设计决策</h2>
+<h3 id="1-mqtt-vs-http">1. MQTT 控制链 vs HTTP 音频链分离</h3>
+<pre><code>MQTT → 控制命令（tts + url / stop / volume）
+HTTP → 实际音频流（ESP32 主动拉取）
+</code></pre>
+<p>这是整条链路最关键的设计。MQTT 只传指令，不传音频数据，避免 ESP32 自行处理缓冲、连续字节流等复杂逻辑。</p>
+<h3 id="2-php">2. PHP 智能断句分段</h3>
+<p>三级断句策略：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优先级</th>
+<th style="text-align: left;">断句依据</th>
+<th style="text-align: left;">标点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">1</td>
+<td style="text-align: left;">句末标点</td>
+<td style="text-align: left;"><code>。！？；换行</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">2</td>
+<td style="text-align: left;">句内标点</td>
+<td style="text-align: left;"><code>，、：</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">3</td>
+<td style="text-align: left;">长度兜底</td>
+<td style="text-align: left;">硬切 <code>hardMaxChars=100</code></td>
+</tr>
+</tbody>
+</table>
+<p>参数：<code>targetChars=70</code>（目标段长），<code>hardMaxChars=100</code>（硬上限）</p>
+<h3 id="3">3. 预生成策略</h3>
+<pre><code>旧方案：播完一段 → 临时生成下一段 → 下发 → 播放（段间停顿明显）
+新方案：PHP 一次性预生成所有段的 TTS URL → 按序下发（段间几乎无等待）
+</code></pre>
+<h3 id="4-esp32">4. ESP32 本地缓冲</h3>
+<pre><code class="language-cpp">AudioFileSourceBuffer(audioFile, 32 * 1024)  // 32KB
+</code></pre>
+<p>HTTP 流先缓冲到本地再喂解码器，WiFi 短暂抖动不中断播放。</p>
+<hr />
+<h2 id="_4">关键踩坑记录</h2>
+<h3 id="1">坑 1：长文本单条流必断</h3>
+<p><strong>原因</strong>：文本越长 → 播放越久 → WiFi 抖动概率越高 → HTTP 流断。</p>
+<p><strong>解法</strong>：分段顺序播放，每段独立 HTTP 流。</p>
+<h3 id="2mqtthttp">坑 2：MQTT/HTTP 链路混淆</h3>
+<p>MQTT 是控制链，HTTP 是音频链。调试时必须分开看，否则容易误判问题出在哪层。</p>
+<h3 id="3_1">坑 3：插播不可靠</h3>
+<p>ESP32 在 HTTP 拉流播放时，MQTT 接收不稳定，强插播命令可能到不了设备。当前版本放弃抢占式插播，专注顺序播报。</p>
+<h3 id="4127001-https-m4a">坑 4：127.0.0.1 / HTTPS / M4A</h3>
+<ul>
+<li><code>127.0.0.1</code> 对 ESP32 无意义，TTS URL 必须用服务器公网 IP</li>
+<li>ESP32 不能直接播 HTTPS 地址</li>
+<li>M4A 不能当 MP3 解码</li>
+</ul>
+<hr />
+<h2 id="_5">源码结构分析</h2>
+<h3 id="esp32-soundino">ESP32 固件 (<code>sound.ino</code>)</h3>
+<pre><code>WiFi 连接 + 事件回调（断连检测）
+  ↓
+MQTT 订阅 device/{DEVICE_ID}/command
+  ↓
+命令处理：
+  tts {url} → 启动 HTTP 拉流 + 32KB 缓冲 + MP3 解码 + I2S 输出
+  stop      → 停止当前播放
+  volume N  → 调整音量 (0-100)
+  ↓
+状态上报 → device/{DEVICE_ID}/status
+心跳上报 → device/{DEVICE_ID}/heartbeat (10s)
+</code></pre>
+<p>关键常量：<br />
+- <code>AUDIO_BUFFER_BYTES = 32KB</code><br />
+- <code>MQTT_RECONNECT_INTERVAL = 5000ms</code><br />
+- <code>WIFI_RECOVER_TIMEOUT = 4000ms</code><br />
+- I2S 引脚：DOUT=25, BCLK=27, LRC=26</p>
+<h3 id="python-tts-tts_bridge_serverpy">Python TTS 桥 (<code>tts_bridge_server.py</code>)</h3>
+<pre><code>ThreadingHTTPServer (0.0.0.0:9100)
+  ├── POST /api/tts     → 调用火山引擎 TTS → 返回 stream_url
+  ├── GET  /api/tts/{id} → 查询 TTS 任务状态
+  └── GET  /audio/{id}   → 音频流代理（ESP32 拉取）
+</code></pre>
+<p>火山引擎配置：<br />
+- API：<code>openspeech.bytedance.com/api/v3/tts/unidirectional</code><br />
+- 音色：<code>zh_female_vv_uranus_bigtts</code><br />
+- 格式：MP3 / 24000Hz<br />
+- TTL：600s</p>
+<h3 id="php">PHP 调度层</h3>
+<pre><code>public/index.html           → 前端控制台
+public/api/command.php       → 通用 MQTT 命令下发
+public/api/tts.php           → TTS 请求入口（断句+预生成+顺序下发）
+public/api/tts-status.php    → TTS 状态查询代理
+tts_request_handler.php      → 核心编排逻辑
+config.php                   → MQTT/Python/TLS 配置
+</code></pre>
+<hr />
+<h2 id="bom">硬件 BOM</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">器件</th>
+<th style="text-align: left;">说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">ESP32 开发板</td>
+<td style="text-align: left;">WiFi + 蓝牙，I2S 输出</td>
+</tr>
+<tr>
+<td style="text-align: left;">MAX98357A</td>
+<td style="text-align: left;">I2S 功放模块，3W D类</td>
+</tr>
+<tr>
+<td style="text-align: left;">小喇叭</td>
+<td style="text-align: left;">4Ω/3W 即可</td>
+</tr>
+<tr>
+<td style="text-align: left;">杜邦线</td>
+<td style="text-align: left;">3 根（DOUT/BCLK/LRC）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">优化改进方向</h2>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">优先级</th>
+<th style="text-align: left;">改进</th>
+<th style="text-align: left;">思路</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">P0</td>
+<td style="text-align: left;">消除段间停顿</td>
+<td style="text-align: left;">双缓冲交替播放，前段播完时后段已缓冲</td>
+</tr>
+<tr>
+<td style="text-align: left;">P0</td>
+<td style="text-align: left;">TTS 引擎可替换</td>
+<td style="text-align: left;">抽象 TTS Provider 接口，支持 Edge-TTS/本地 Piper 等</td>
+</tr>
+<tr>
+<td style="text-align: left;">P1</td>
+<td style="text-align: left;">UDP 传输实验</td>
+<td style="text-align: left;">替代 HTTP 拉流，降低延迟和断流概率</td>
+</tr>
+<tr>
+<td style="text-align: left;">P1</td>
+<td style="text-align: left;">配置统一管理</td>
+<td style="text-align: left;">四处占位配置合并为 <code>.env</code> 文件</td>
+</tr>
+<tr>
+<td style="text-align: left;">P2</td>
+<td style="text-align: left;">强插播支持</td>
+<td style="text-align: left;">双缓冲 + 命令队列 + 播放中断标记</td>
+</tr>
+<tr>
+<td style="text-align: left;">P2</td>
+<td style="text-align: left;">多设备管理</td>
+<td style="text-align: left;">device_id 注册 + 分组播报</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">项目价值判断</h2>
+<p><strong>做得好的</strong>：<br />
+- 全链路从网页到声音跑通，真实可用<br />
+- 踩坑记录极其诚实（失败的尝试比成功的方案更有价值）<br />
+- MQTT 控制链 / HTTP 音频链分离，职责清晰<br />
+- PHP 断句 + 预生成策略实用</p>
+<p><strong>局限</strong>：<br />
+- 四语言栈（JS/PHP/Python/C++）对部署和维护成本高<br />
+- 强绑定火山引擎 TTS<br />
+- 段间停顿仍可感知<br />
+- 无 HTTPS/WSS 支持</p>
+<hr />
+<p><em>项目路径：<code>/home/jc/uclaw/project/kai-sound-tts/</code></em></p>
+<h2 id="_8">相关笔记</h2>
+</body>
+</html>

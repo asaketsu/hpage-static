@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知识图谱与LLM从向量库到推理增强</title>
+
+<meta property="og:title" content="知识图谱与LLM从向量库到推理增强" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-01-%E7%9F%A5%E8%AF%86%E5%9B%BE%E8%B0%B1%E4%B8%8ELLM%E4%BB%8E%E5%90%91%E9%87%8F%E5%BA%93%E5%88%B0%E6%8E%A8%E7%90%86%E5%A2%9E%E5%BC%BA.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-rag">知识图谱+LLM：从向量库 RAG 到推理增强</h1>
+<blockquote>
+<p>来源：<a href="https://mp.weixin.qq.com/s/2pk4Mhr4nLMapJrTqpYX6Q">叶小钗·公众号</a> · 2026-05-04<br />
+标签：<code>#知识图谱</code> <code>#RAG</code> <code>#LLM</code> <code>#CDSS</code> <code>#GraphRAG</code> <code>#本体论</code> <code>#医疗AI</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心论点</h2>
+<p><strong>向量库不是 RAG 的必选项</strong>。它将知识压缩为孤立的"点"，语义检索很脆弱。知识图谱的回归是对知识本质的回应——不满足于"更像"，而是"更相关"与"更可信"。</p>
+<blockquote>
+<p>真实的系统，往往是关键词、规则路由、向量检索与图谱查询的混合体。</p>
+</blockquote>
+<hr />
+<h2 id="_2">一、向量库的问题</h2>
+<h3 id="rag">传统 RAG 四步</h3>
+<pre><code>切分(Chunking) → 向量化(Embedding) → 检索(Retrieval) → 拼凑(Prompting)
+</code></pre>
+<h3 id="_3">致命缺陷：上下文割裂</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>问题</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>电商退款助手</td>
+<td>"T+1"主条款召回，"黑名单除外"在下一块未召回</td>
+<td>高风险订单被误退款</td>
+</tr>
+<tr>
+<td>医疗临床指南</td>
+<td>"适用症"与"妊娠期禁用"被切到不同块</td>
+<td>孕妇用了禁用药</td>
+</tr>
+<tr>
+<td>通用</td>
+<td>文档分块破坏原文完整性（表格、论证逻辑）</td>
+<td>信息丢失</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">根因</h3>
+<ul>
+<li>Embedding 编码长度有限（256-768 tokens，最新 8000）</li>
+<li>太短：信息不足，匹配不上</li>
+<li>太长：核心语义被稀释，"信息淹没"</li>
+<li><strong>语义相似 ≠ 语义正确</strong>，它找的是"像"的，不是"对"的</li>
+</ul>
+<hr />
+<h2 id="_5">二、知识图谱</h2>
+<h3 id="_6">三大元素</h3>
+<table>
+<thead>
+<tr>
+<th>元素</th>
+<th>含义</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>实体</strong> (Entities)</td>
+<td>节点，代表事物/概念</td>
+<td>疾病、药物、症状</td>
+</tr>
+<tr>
+<td><strong>关系</strong> (Relations)</td>
+<td>实体间的连接</td>
+<td>表现为、引发、治疗</td>
+</tr>
+<tr>
+<td><strong>属性</strong> (Attributes)</td>
+<td>实体/关系的特征</td>
+<td>类型、用途、方法</td>
+</tr>
+</tbody>
+</table>
+<h3 id="vs">知识库 vs 知识图谱</h3>
+<pre><code>知识库（无关系）：糖尿病 → 属性列表（类型、并发症数组）  // 点状
+知识图谱（有关系）：糖尿病 --表现为--&gt; 口渴  --引发--&gt; 心血管疾病  // 网状
+</code></pre>
+<blockquote>
+<p>图谱 = 强制将知识按<strong>实体-关系-属性</strong>标准结构化。</p>
+</blockquote>
+<h3 id="_7">图谱核心优势</h3>
+<ol>
+<li><strong>跨领域关联</strong>：二甲双胍→治疗→糖尿病，二甲双胍→可能导致→体重下降，二甲双胍→通过AMPK通路→代谢调节</li>
+<li><strong>低成本扩展</strong>：新关系只需添加三元组，不需要改数据库 schema</li>
+<li><strong>推理能力</strong>：可做路径推理（症状→疾病类别→检查指标→鉴别诊断）</li>
+<li><strong>约束生成</strong>：对大模型输出进行实时约束，降低幻觉</li>
+</ol>
+<hr />
+<h2 id="cdss">三、CDSS 案例复盘</h2>
+<h3 id="cdss_1">CDSS（临床决策支持系统）为什么失败</h3>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>知识库不全</strong></td>
+<td>ICD-11 几万个疾病，专业人员录入成本极高，校准困难</td>
+</tr>
+<tr>
+<td><strong>泛化能力不足</strong></td>
+<td>患者说"胸口很沉"，CDSS 需要"胸痛"标准术语才能匹配</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>好的医生不需要 CDSS，水平不行的医生也抽取不准。CDSS 鸡肋。</p>
+</blockquote>
+<h3 id="cdss_2">大模型时代 CDSS 重生</h3>
+<ul>
+<li>泛化能力鸿沟被 LLM 弥合（"胸口很沉"→自动映射"胸痛"）</li>
+<li>知识图谱提供<strong>确定性约束</strong>，LLM 提供<strong>语义理解</strong></li>
+<li>快思考（LLM）+ 慢思考（图谱）= 靠谱的医疗 AI</li>
+</ul>
+<hr />
+<h2 id="llm">四、图谱+LLM 架构</h2>
+<h3 id="_8">医疗置信度四维度</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>数据溯源</strong></td>
+<td>每条结论追溯到权威指南/文献/病历</td>
+</tr>
+<tr>
+<td><strong>一致性</strong></td>
+<td>多数据源推理结果一致</td>
+</tr>
+<tr>
+<td><strong>动态性</strong></td>
+<td>实时更新最新医学研究</td>
+</tr>
+<tr>
+<td><strong>可解释推理链</strong></td>
+<td>附带推理链+证据来源</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">三层防御体系</h3>
+<pre><code>输入 → 路由判断
+  ├─ 简单查询 → RAG 基础层 → 置信度验证
+  └─ 复杂查询 → 图谱推理层 → 置信度验证
+                           → 置信度&gt;90% → 输出
+                           → 置信度&lt;90% → 专家复核
+</code></pre>
+<h3 id="_10">三种方案对比</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯 LLM</td>
+<td>有推理但无约束，幻觉风险高</td>
+</tr>
+<tr>
+<td>LLM + RAG</td>
+<td>有信息但拼凑缺乏逻辑性</td>
+</tr>
+<tr>
+<td><strong>LLM + 图谱 + RAG</strong></td>
+<td>结构化推理 + CoT + 溯源，可信度最高</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="ontology">五、本体论 (Ontology)</h2>
+<h3 id="_11">核心定义</h3>
+<blockquote>
+<p>本体论 = 去表述这个世界应该被如何定义（这个世界可以很小）。</p>
+</blockquote>
+<p>图谱是网，<strong>本体论是网背后的建模规则</strong>。</p>
+<h3 id="_12">本体论解决什么</h3>
+<p>不定义本体，"发热、肺炎、抗生素、白细胞升高"会被粗暴地等价为同类节点——但它们根本不是：<br />
+- 发热 = 症状<br />
+- 肺炎 = 疾病<br />
+- 抗生素 = 药物类别<br />
+- 白细胞升高 = 检查结果</p>
+<p>本体论定义：<br />
+1. <strong>实体类型</strong>：疾病、症状、药物、检查、指南、禁忌证<br />
+2. <strong>允许关系</strong>：疾病表现为症状，药物治疗疾病，药物禁用于某类人群<br />
+3. <strong>语义强度</strong>：因果、相关、并发、风险提示、弱关联<br />
+4. <strong>推理规则</strong>：哪些关系可传递，哪些必须结合证据等级</p>
+<blockquote>
+<p><strong>本体论是让知识图谱具备行业 KnowHow 的建模规则。</strong> 大模型可以帮提高抽取效率，但本体论决定抽取结果能不能被正确使用。</p>
+</blockquote>
+<hr />
+<h2 id="_13">六、工程启示</h2>
+<h3 id="_14">向量库的正确角色</h3>
+<blockquote>
+<p>向量库不是主角，而是模糊问法的补充工具——处理"先定位、后精读"中的定位环节。</p>
+</blockquote>
+<h3 id="_15">真实系统架构</h3>
+<pre><code>关键词 + 规则路由 + 向量检索 + 图谱查询 = 混合体
+</code></pre>
+<h3 id="_16">未来方向</h3>
+<ul>
+<li>从"检索增强"走向"推理增强"</li>
+<li>组件内化为 Agent 能力：自主规划、多步推理、自我校验</li>
+<li>Google NotebookLM 的技术路径可能是方向</li>
+</ul>
+<hr />
+<h2 id="_17">思考</h2>
+<p>这篇文章对 RAG 系统的演进做了非常清晰的梳理，核心洞察是：<strong>语义相似 ≠ 语义正确</strong>。</p>
+<p><strong>与我们系统的关系</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>我们的实践</th>
+<th>对应文中概念</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory Graph (MCP)</td>
+<td>知识图谱</td>
+</tr>
+<tr>
+<td>mcp_memorygraph_create_relationship</td>
+<td>三元组</td>
+</tr>
+<tr>
+<td>recall_memories / search_memories</td>
+<td>向量检索+关键词混合</td>
+</tr>
+<tr>
+<td>缺失：本体论定义</td>
+<td>❌ 未定义实体类型/关系语义强度</td>
+</tr>
+</tbody>
+</table>
+<p><strong>可改进</strong>：<br />
+1. 为 Memory Graph 增加本体论层——定义实体类型和关系的语义强度<br />
+2. 记忆检索时区分"因果"和"弱关联"关系类型<br />
+3. 对关键决策类记忆增加溯源字段</p>
+<h2 id="_18">相关笔记</h2>
+<ul>
+<li><a href="2026-05-29-LLM-Agent组合一致性边界研究.md">LLM-Agent组合一致性边界研究</a></li>
+<li><a href="2026-05-29-LLM信念管理研究.md">LLM信念管理研究</a></li>
+<li><a href="2026-05-29-LLM训练数据组织优化.md">LLM训练数据组织优化</a></li>
+<li><a href="2026-05-30-Liquid-AI-LFM2.5-8B-A1B-MoE边缘模型新标杆.md">Liquid-AI-LFM2.5-8B-A1B-MoE边缘模型新标杆</a></li>
+<li><a href="2026-05-30-Liquid-AI-LFM2.5-8B-A1B-边缘设备MoE推理模型.md">Liquid-AI-LFM2.5-8B-A1B-边缘设备MoE推理模型</a></li>
+<li><a href="2026-05-30-vLLM推理引擎前沿-推测解码与分离式预填充.md">vLLM推理引擎前沿-推测解码与分离式预填充</a></li>
+<li><a href="2026-05-31-LLM-Agent多智能体信用归因与自进化.md">LLM-Agent多智能体信用归因与自进化</a></li>
+<li><a href="2026-05-31-LLM量化交易前沿-Agent评估与Alpha因子.md">LLM量化交易前沿-Agent评估与Alpha因子</a></li>
+<li><a href="2026-05-31-LoRA侵入维度消除策略-从发现到系统性解决方案.md">LoRA侵入维度消除策略-从发现到系统性解决方案</a></li>
+<li><a href="2026-05-31-Rotary-GPU-消费级显卡运行35B-MoE模型.md">Rotary-GPU-消费级显卡运行35B-MoE模型</a></li>
+<li><a href="2026-05-31-£200数据中心GPU装进游戏PC-本地LLM硬件实战.md">£200数据中心GPU装进游戏PC-本地LLM硬件实战</a></li>
+<li><a href="2026-06-01-LLM推理加速新突破-有状态推理-BASTION推测解码与边缘自推测.md">LLM推理加速新突破-有状态推理-BASTION推测解码与边缘自推测</a></li>
+<li><a href="2026-06-01-VeFA与RL训练交叉-特征空间适配在强化学习中的适用性.md">VeFA与RL训练交叉-特征空间适配在强化学习中的适用性</a></li>
+<li><a href="explore/2026-05-29-AI-Agent动态推理成本分析.md">AI-Agent动态推理成本分析</a></li>
+<li><a href="explore/2026-05-30-RiM-LLM工作记忆推理.md">RiM-LLM工作记忆推理</a></li>
+<li><a href="explore/2026-05-31-LLM工作记忆隐式推理-RiM.md">LLM工作记忆隐式推理-RiM</a></li>
+<li><a href="explore/2026-05-31-后训练技术增量蒸馏-范式融合与未解问题.md">后训练技术增量蒸馏-范式融合与未解问题</a></li>
+<li><a href="explore/2026-05-31-开源3D_设计AI-OpenSCAD+LLM.md">开源3D_设计AI-OpenSCAD+LLM</a></li>
+<li><a href="explore/2026-06-01-Reasoning-in-Memory-LLM工作记忆推理.md">Reasoning-in-Memory-LLM工作记忆推理</a></li>
+</ul>
+</body>
+</html>
