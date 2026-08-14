@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xiaomi-Robotics-0实时执行VLA解析</title>
+
+<meta property="og:title" content="Xiaomi-Robotics-0实时执行VLA解析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="xiaomi-robotics-0-gpu-vla">Xiaomi-Robotics-0：消费级 GPU 上实时执行的开源 VLA</h1>
+<blockquote>
+<p>日期：2026-08-15<br />
+类型：技术报告深度解析（增量学习笔记）<br />
+论文：Xiaomi-Robotics-0: An Open-Sourced Vision-Language-Action Model with Real-Time Execution（arXiv:2602.12684v1，2026-02-13，小米机器人，22 位作者）<br />
+开源：代码+checkpoint（xiaomi-robotics-0.github.io）<br />
+定位：承接 [[2026-08-14-VLA模型全景解析]]，本篇聚焦全景中被低估的一环——<strong>推理延迟工程</strong>：怎么让 4.7B VLA 在 RTX 4090 上以 80ms 延迟平滑跑实机，同时不靠机器人数据之外的东西保住 VLM 能力。</p>
+</blockquote>
+<hr />
+<h2 id="vla">一、核心问题：VLA 的实时性不是"跑得快"，是"接得顺"</h2>
+<p>VLA 参数量可达数十亿 → 推理延迟高 → 连续推理步之间<strong>动作拼接不连续</strong> → 产生分布外的抖动运动（OOD jerky motions），一步抖、步步错。这是实机部署的第一杀手，比成功率更先卡死落地。</p>
+<p>Xiaomi-Robotics-0 的解法是<strong>训练配方 + 部署策略双管齐下</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>层面</th>
+<th>手段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>模型</td>
+<td>预训练 VLM（处理视觉+语言）+ DiT（flow-matching 生成动作 chunk），共 <strong>4.7B 参数</strong></td>
+</tr>
+<tr>
+<td>预训练</td>
+<td>大规模跨本体机器人轨迹 + 视觉-语言数据联合训练（防灾难性遗忘）</td>
+</tr>
+<tr>
+<td>后训练</td>
+<td>异步执行专项技术（见下）</td>
+</tr>
+<tr>
+<td>部署</td>
+<td>连续推理的动作 chunk 时间步对齐</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">二、方法细节</h2>
+<h3 id="21">2.1 数据规模（照录）</h3>
+<table>
+<thead>
+<tr>
+<th>数据类型</th>
+<th>规模</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>机器人轨迹</td>
+<td>开源（DROID、MolmoAct）+ 自采；自采两任务：Lego 拆卸 338 小时、折毛巾 400 小时；总计约 <strong>200M timesteps</strong></td>
+</tr>
+<tr>
+<td>视觉-语言</td>
+<td><strong>80M+ 样本</strong>，两类来源：通用 VL 数据集（保语义广度）+ 机器人数据衍生的 VL 数据（增强机器人视角图像感知）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 两阶段训练</h3>
+<p><strong>预训练（两步）</strong>：<br />
+1. 第一步给 VLM 装上动作生成能力：训练其从观测图像+指令+本体状态预测动作 chunk。为处理轨迹多模态，采用 <strong>Choice Policies</strong>——同时预测 N 个动作 chunk 候选及各自得分<br />
+2. 第二步（衔接 DiT 生成路径，具体分工见报告 2.2 节）</p>
+<p><strong>后训练（异步执行专项）——本文最核心的技术贡献</strong>：<br />
+- 基础手法：<strong>动作前缀条件化</strong>（action prefixing）——上一次推理的动作作为下一次生成的前缀，保证 chunk 间连续性<br />
+- 但前缀有陷阱：后续时间步动作会利用"相邻动作相似"的时序相关性走<strong>捷径</strong>——直接抄前缀而不是看视觉/语言信号 → 策略退化、反应性下降<br />
+- 解法：后训练时把因果注意力掩码换成 <strong>Λ（Lambda）形注意力掩码</strong>，强制动作生成更多关注视觉/语言条件、抑制对动作前缀的过度依赖</p>
+<h3 id="23-vs">2.3 部署：同步 vs 异步（照录全文逻辑）</h3>
+<p><strong>同步执行</strong>：执行 chunk 前 T_e 步 → 停下 → 用最新观测推理下一个 chunk → 机器人空转等推理完成。简单但空转。</p>
+<p><strong>异步执行</strong>（核心）：</p>
+<pre><code>1. 推理得到 T 步 chunk，先执行前 T_e 步，然后触发下一次推理
+2. 推理期间机器人不停——继续执行当前 chunk 剩余动作
+3. 下一次推理以 [T_e, T_e+Δt_c-1] 区间的动作为前缀条件（噪声初始化）
+4. 新 chunk 生成完毕后，从 Δt_inf 步开始执行（Δt_inf = 推理延迟）
+5. 约束 Δt_c ≥ Δt_inf：前缀覆盖整个推理窗口
+   → 推理全程始终有动作可执行，推理周期无缝衔接
+</code></pre>
+<p><strong>推理参数</strong>：action chunk 从标准高斯采样初始化，<strong>5 步 flow-matching</strong> 积分 τ∈[0,1] 得到预测。<strong>RTX 4090 上推理延迟 80ms</strong>。<br />
+<strong>传感器同步</strong>：所有输入模态按时间戳重采样到统一 <strong>30Hz</strong> 时间线，每个时钟节拍聚合各传感器时间上最近的测量。</p>
+<h2 id="_2">三、实验结果</h2>
+<h3 id="31-benchmark-sota">3.1 仿真（三大 benchmark 全 SOTA）</h3>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th>成绩</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LIBERO（四 split 平均）</td>
+<td><strong>98.7%</strong>（对比 OpenVLA 76.5%、OpenVLA-OFT 更强）</td>
+</tr>
+<tr>
+<td>SimplerEnv Google Robot</td>
+<td>Visual Matching <strong>85.5%</strong> / Variant Aggregation 74.7%</td>
+</tr>
+<tr>
+<td>SimplerEnv WidowX</td>
+<td><strong>79.2%</strong></td>
+</tr>
+<tr>
+<td>CALVIN ABC→D / ABCD→D</td>
+<td>5 连任务平均完成数 4.54→<strong>4.75</strong> / 4.67→<strong>4.80</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="32">3.2 实机（双臂精细操作两任务）</h3>
+<p><strong>Lego 拆卸</strong>（LA-5/10/20 单结构 + MA 34 块混合；指标=正确分拣率+吞吐）：<br />
+- 所有方法成功率接近；两个同步方法（π0.5、Xiaomi Sync）略优——异步方法反应性稍弱，抓取精度不足时砖块与夹指间高张力会弹飞<br />
+- <strong>吞吐：Xiaomi-Robotics-0 全场最高</strong>，超过同为异步部署的 Training RTC 变体</p>
+<p><strong>折毛巾</strong>（6 条毛巾 × 2 次 30 分钟连续 rollout；单次超 2 分钟记失败）：<br />
+- π0.5 / Sync / Training RTC 吞吐相当（1 pcs/min）<br />
+- <strong>Xiaomi-Robotics-0：1.2 pcs/min 最高</strong></p>
+<p><strong>失败模式分析（有价值）</strong>：Training RTC 变体常卡死——甩毛巾时误抓多层，不去重新抓取纠正，而是陷入重复甩动的死循环。这印证<strong>动作前缀机制在策略学习中引入捷径</strong>：后续动作预测直接抄前缀而不看其他模态。Λ 形掩码版有效避免此类重复失败。</p>
+<h3 id="33-vlm">3.3 VLM 能力保持</h3>
+<p>预训练阶段 VL 数据 + 轨迹联合训练 → 在通用 VL benchmark 套件（通用 QA 到幻觉检测）上<strong>追平底座 VLM</strong>，含具身推理 benchmark ERQA。机器人训练不再以牺牲语义能力为代价。</p>
+<h2 id="_3">四、技术谱系（定位这套方法的位置）</h2>
+<table>
+<thead>
+<tr>
+<th>引用</th>
+<th>贡献</th>
+<th>本文用法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>π0（Physical Intelligence 2024）</td>
+<td>VLM+flow-matching 架构范式</td>
+<td>继承架构</td>
+</tr>
+<tr>
+<td>π0.5</td>
+<td>SOTA VLA baseline</td>
+<td>实机对比对象</td>
+</tr>
+<tr>
+<td>Black 2025a Real-time chunking</td>
+<td>同步执行的动作 chunk 平滑</td>
+<td>部署基础</td>
+</tr>
+<tr>
+<td>Black 2025b Training-time action conditioning（RTC）</td>
+<td>训练时动作条件化</td>
+<td>本文的"前缀陷阱"来源，Λ 掩码是它的修复</td>
+</tr>
+<tr>
+<td>Qwen3-VL</td>
+<td>底座 VLM</td>
+<td>[1] 号引用，语义能力来源</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话定位</strong>：π0 架构 + RTC 的坑填平 + 异步执行工程化 + VLM 能力保全 = 当前消费级 GPU 实机 VLA 的最完整开源参考实现。</p>
+<h2 id="jetson">五、工程借鉴（Jetson/端侧部署直接相关）</h2>
+<ol>
+<li><strong>80ms@RTX4090 的构成</strong>：5 步 flow-matching（而非几十步扩散）是延迟主功臣——<strong>推理步数砍到个位数</strong>是 VLA 实时的第一杠杆</li>
+<li><strong>异步执行协议</strong>：Δt_c ≥ Δt_inf 约束 + 前缀覆盖推理窗口——推理慢不致命，<strong>衔接断裂才致命</strong>。这套时间对齐协议可直接移植到任何 chunk 式策略</li>
+<li><strong>30Hz 时间戳重采样</strong>：多传感器异步到达时按统一时间线聚合最近测量——比硬件级同步便宜得多，工程实用</li>
+<li><strong>Λ 形注意力掩码</strong>：任何用自回归前缀保证连续性的场景（语音流、机器人、流式生成）都可能踩"前缀捷径"坑——训练时约束注意力看向条件信号是通用修复</li>
+<li><strong>联合训练保 VLM</strong>：机器人微调时混入 VL 数据可防灾难性遗忘——对 Hermes 的多任务模型微调同样适用（技能执行能力与语义理解共存）</li>
+</ol>
+<h2 id="_4">六、与既有笔记的关联</h2>
+<ul>
+<li>[[2026-08-14-VLA模型全景解析]]：全景图里补上"实时执行"这一工程维度的最详细公开实现</li>
+<li>[[2026-08-14-Qwen3.5-0.8B端侧零件工程使用指南]]：本文 4.7B@80ms 是"云端/工控机级"实时，0.8B 端侧零件是另一档——两级推理体系（大模型规划+小模型端侧执行）的分工参照</li>
+<li>[[2026-08-15-WorldPilot-WAM先验引导VLA双通道融合]]：World Pilot 每步多一次 WAM 前向（不适合高频控制）vs 本文 80ms 单模型——<strong>融合先验与实时执行目前不可兼得</strong>，是下一阶段的开放问题</li>
+</ul>
+<h2 id="_5">七、信息源</h2>
+<ul>
+<li>arXiv:2602.12684v1 HTML 全文精读（curl 直接提取）</li>
+<li>开源仓库：xiaomi-robotics-0.github.io（代码+预训练/后训练 checkpoint）</li>
+<li>对比基线：OpenVLA / OpenVLA-OFT / π0.5 / Training RTC</li>
+</ul>
+</body>
+</html>
