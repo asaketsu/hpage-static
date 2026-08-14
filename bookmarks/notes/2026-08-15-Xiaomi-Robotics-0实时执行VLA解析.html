@@ -159,15 +159,16 @@ strong { color: #8b1a1a; }
 </head>
 <body>
 <h1 id="xiaomi-robotics-0-gpu-vla">Xiaomi-Robotics-0：消费级 GPU 上实时执行的开源 VLA</h1>
+<h1 id="vla">VLA #实时推理 #机器人</h1>
 <blockquote>
-<p>日期：2026-08-15<br />
+<p>出处：arXiv:2602.12684（Xiaomi-Robotics-0: An Open-Sourced Vision-Language-Action Model with Real-Time Execution，2026-02-13，小米机器人 22 位作者）<br />
+开源：https://xiaomi-robotics-0.github.io（代码+checkpoint）<br />
+日期：2026-08-15<br />
 类型：技术报告深度解析（增量学习笔记）<br />
-论文：Xiaomi-Robotics-0: An Open-Sourced Vision-Language-Action Model with Real-Time Execution（arXiv:2602.12684v1，2026-02-13，小米机器人，22 位作者）<br />
-开源：代码+checkpoint（xiaomi-robotics-0.github.io）<br />
 定位：承接 [[2026-08-14-VLA模型全景解析]]，本篇聚焦全景中被低估的一环——<strong>推理延迟工程</strong>：怎么让 4.7B VLA 在 RTX 4090 上以 80ms 延迟平滑跑实机，同时不靠机器人数据之外的东西保住 VLM 能力。</p>
 </blockquote>
 <hr />
-<h2 id="vla">一、核心问题：VLA 的实时性不是"跑得快"，是"接得顺"</h2>
+<h2 id="_1">一、内容整理：问题与方法全貌</h2>
 <p>VLA 参数量可达数十亿 → 推理延迟高 → 连续推理步之间<strong>动作拼接不连续</strong> → 产生分布外的抖动运动（OOD jerky motions），一步抖、步步错。这是实机部署的第一杀手，比成功率更先卡死落地。</p>
 <p>Xiaomi-Robotics-0 的解法是<strong>训练配方 + 部署策略双管齐下</strong>：</p>
 <table>
@@ -196,7 +197,7 @@ strong { color: #8b1a1a; }
 </tr>
 </tbody>
 </table>
-<h2 id="_1">二、方法细节</h2>
+<h2 id="_2">二、方法细节</h2>
 <h3 id="21">2.1 数据规模（照录）</h3>
 <table>
 <thead>
@@ -236,7 +237,7 @@ strong { color: #8b1a1a; }
 </code></pre>
 <p><strong>推理参数</strong>：action chunk 从标准高斯采样初始化，<strong>5 步 flow-matching</strong> 积分 τ∈[0,1] 得到预测。<strong>RTX 4090 上推理延迟 80ms</strong>。<br />
 <strong>传感器同步</strong>：所有输入模态按时间戳重采样到统一 <strong>30Hz</strong> 时间线，每个时钟节拍聚合各传感器时间上最近的测量。</p>
-<h2 id="_2">三、实验结果</h2>
+<h2 id="_3">三、实验结果</h2>
 <h3 id="31-benchmark-sota">3.1 仿真（三大 benchmark 全 SOTA）</h3>
 <table>
 <thead>
@@ -274,7 +275,7 @@ strong { color: #8b1a1a; }
 <p><strong>失败模式分析（有价值）</strong>：Training RTC 变体常卡死——甩毛巾时误抓多层，不去重新抓取纠正，而是陷入重复甩动的死循环。这印证<strong>动作前缀机制在策略学习中引入捷径</strong>：后续动作预测直接抄前缀而不看其他模态。Λ 形掩码版有效避免此类重复失败。</p>
 <h3 id="33-vlm">3.3 VLM 能力保持</h3>
 <p>预训练阶段 VL 数据 + 轨迹联合训练 → 在通用 VL benchmark 套件（通用 QA 到幻觉检测）上<strong>追平底座 VLM</strong>，含具身推理 benchmark ERQA。机器人训练不再以牺牲语义能力为代价。</p>
-<h2 id="_3">四、技术谱系（定位这套方法的位置）</h2>
+<h2 id="_4">四、技术谱系（定位这套方法的位置）</h2>
 <table>
 <thead>
 <tr>
@@ -320,22 +321,30 @@ strong { color: #8b1a1a; }
 <li><strong>Λ 形注意力掩码</strong>：任何用自回归前缀保证连续性的场景（语音流、机器人、流式生成）都可能踩"前缀捷径"坑——训练时约束注意力看向条件信号是通用修复</li>
 <li><strong>联合训练保 VLM</strong>：机器人微调时混入 VL 数据可防灾难性遗忘——对 Hermes 的多任务模型微调同样适用（技能执行能力与语义理解共存）</li>
 </ol>
-<h2 id="_4">六、趋势判断</h2>
+<h2 id="_5">五、查询拓展：值得跟进的后续线索</h2>
+<ul>
+<li><strong>开源仓库</strong>（xiaomi-robotics-0.github.io）：checkpoint 尺寸、量化版本、推理代码结构——验证 80ms 在更低端硬件（Jetson Thor）的可达性</li>
+<li><strong>Choice Policies 原文</strong>：预训练第一步的动作 chunk 多候选机制，处理轨迹多模态的细节</li>
+<li><strong>π0.5 / RTC（Black 2025b）</strong>：动作前缀条件化的原始提出者——"前缀捷径"坑的第一手描述</li>
+<li><strong>LIBERO-PRO</strong>（arXiv:2510.03827）：防"背 benchmark"的鲁棒评估——98.7% 的 LIBERO 分数需在此复检</li>
+<li><strong>查询方向</strong>：异步执行协议在流式语音 Agent（Hermes TTS 管线）中的对应物——chunk 衔接断裂问题同构</li>
+</ul>
+<h2 id="_6">六、趋势判断</h2>
 <ol>
 <li><strong>VLA 竞赛的重心正从"benchmark 分数"转向"实机工程化"</strong>：LIBERO 98.7% 已接近饱和（OpenVLA-OFT 97%+），下一个差异化战场是延迟、平滑性、吞吐——Xiaomi 这份报告本身就是一个信号：大厂愿意为 80ms 和 1.2 pcs/min 发一篇正式报告</li>
 <li><strong>异步执行协议将成为 chunk 式策略的标配</strong>：Δt_c ≥ Δt_inf 约束 + 前缀覆盖推理窗口的逻辑与具体模型无关，可平移到任何 flow-matching/diffusion 策略——预计一年内成为开源 VLA 框架的默认部署模式</li>
 <li><strong>"前缀捷径"问题的曝光会带动注意力掩码设计的小高潮</strong>：Λ 形掩码证明训练时约束注意力分配能修复策略退化——这类"训练-部署一致性"问题会在更多自回归+前缀场景（流式语音、视频生成）复现</li>
 <li><strong>消费级 GPU 实时 + 开源 checkpoint 的组合在压缩商用 VLA 方案的空间</strong>：4090 可跑意味着中小团队全套自建成为可能，VLA 落地门槛从"有一个机器人实验室"降到"有一张 4090"</li>
 </ol>
-<h2 id="_5">七、归纳总结</h2>
+<h2 id="_7">七、归纳总结</h2>
 <p>Xiaomi-Robotics-0 是目前<strong>消费级 GPU 实时 VLA 最完整的公开参考实现</strong>：4.7B（Qwen3-VL 底座 + DiT flow-matching），预训练混入 80M VL 样本保语义能力，后训练用 Λ 形注意力掩码填平"动作前缀捷径"的坑，部署用异步执行协议（推理期间继续执行、前缀覆盖推理窗口、5 步 flow-matching）做到 RTX 4090 上 80ms 延迟。交付成绩：三大仿真 benchmark 全 SOTA（LIBERO 98.7%）、实机双臂任务吞吐全场最高（折毛巾 1.2 pcs/min）、VLM benchmark 追平底座。核心洞察一句话：<strong>VLA 实时性的敌人不是推理慢，而是 chunk 衔接断裂</strong>——训练侧防捷径、部署侧时间对齐，两手抓才能既快又顺。与 World Pilot 的对照给出下一阶段的开放问题：先验融合（每步多一次 WAM 前向）与实时执行（80ms 单模型）目前不可兼得。</p>
-<h2 id="_6">八、与既有笔记的关联</h2>
+<h2 id="_8">八、关联分析：与既有笔记的衔接</h2>
 <ul>
 <li>[[2026-08-14-VLA模型全景解析]]：全景图里补上"实时执行"这一工程维度的最详细公开实现</li>
 <li>[[2026-08-14-Qwen3.5-0.8B端侧零件工程使用指南]]：本文 4.7B@80ms 是"云端/工控机级"实时，0.8B 端侧零件是另一档——两级推理体系（大模型规划+小模型端侧执行）的分工参照</li>
 <li>[[2026-08-15-WorldPilot-WAM先验引导VLA双通道融合]]：World Pilot 每步多一次 WAM 前向（不适合高频控制）vs 本文 80ms 单模型——<strong>融合先验与实时执行目前不可兼得</strong>，是下一阶段的开放问题</li>
 </ul>
-<h2 id="_7">七、信息源</h2>
+<h2 id="_9">七、信息源</h2>
 <ul>
 <li>arXiv:2602.12684v1 HTML 全文精读（curl 直接提取）</li>
 <li>开源仓库：xiaomi-robotics-0.github.io（代码+预训练/后训练 checkpoint）</li>
