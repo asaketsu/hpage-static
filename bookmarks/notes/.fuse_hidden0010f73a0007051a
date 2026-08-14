@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent两条路线-harness-vs-protocol</title>
+
+<meta property="og:title" content="agent两条路线-harness-vs-protocol" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-31-agent%E4%B8%A4%E6%9D%A1%E8%B7%AF%E7%BA%BF-harness-vs-protocol.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-harness-vs-protocol-native">Agent 两条路线：Harness vs Protocol-Native</h1>
+<blockquote>
+<p>来源：<a href="https://x.com/Potatoloogs/status/2060982941711491494">@Potatoloogs (土豆本豆)</a> · 2026-05-31<br />
+标签：<code>#AI Agent</code> <code>#多Agent系统</code> <code>#Protocol</code> <code>#架构思考</code> <code>#Agent社会</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">核心论点</h2>
+<p>Agent 发展分成两条路线，大部分讨论集中在第一条，但<strong>第二条可能更值得关注</strong>。</p>
+<hr />
+<h2 id="harness-agent">第一条路线：Harness 式多 Agent 系统</h2>
+<p><strong>本质</strong>：Workflow Engine + Ontology，多个 Agent 共享上下文、共享目标、中心化调度。</p>
+<p><strong>关键技术栈</strong>：<br />
+- Prompt Engineering<br />
+- Context Management<br />
+- Task Routing<br />
+- Tool Calling<br />
+- Planning / Memory / Workflow</p>
+<p><strong>本质仍属于软件工程问题</strong>——Agent 更像可调用的函数、带人格的工具、任务节点。LLM Orchestration = 一个大模型调度多个子角色完成复杂推理。</p>
+<blockquote>
+<p>所以当年擅长编程的人都重获新生。</p>
+</blockquote>
+<hr />
+<h2 id="protocol-native-agent-system">第二条路线：Protocol-Native Agent System</h2>
+<p><strong>核心变化</strong>：每个人拥有自己的 Personal Agent，甚至是<strong>专属的无人公司</strong>。</p>
+<h3 id="task-scoped-identity-scoped">从 task-scoped 到 identity-scoped</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>第一条路线</th>
+<th>第二条路线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent 性质</td>
+<td>任务级实例</td>
+<td>身份级实体</td>
+</tr>
+<tr>
+<td>生命周期</td>
+<td>任务结束即销毁</td>
+<td>长期持续存在</td>
+</tr>
+<tr>
+<td>拥有属性</td>
+<td>无</td>
+<td>记忆、身份、偏好、资源、权限、关系网络、利益边界</td>
+</tr>
+<tr>
+<td>代表</td>
+<td>工具</td>
+<td>代表"你"</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">为什么只能依赖协议？</h3>
+<p>当海量 Agent 独立存在时，它们之间必须解决：</p>
+<ol>
+<li><strong>身份确认</strong> — 你是谁</li>
+<li><strong>权限边界</strong> — 你能做什么</li>
+<li><strong>信任机制</strong> — 我怎么相信你</li>
+<li><strong>委托关系</strong> — 我把什么交给你</li>
+<li><strong>协商机制</strong> — 我们怎么达成一致</li>
+<li><strong>激励机制</strong> — 你为什么要做</li>
+<li><strong>声誉系统</strong> — 别人怎么评价你</li>
+<li><strong>价值交换</strong> — 怎么结算</li>
+</ol>
+<blockquote>
+<p>Agent 之间的交互已经不是 API Call，更像<strong>制度性交互</strong>。</p>
+</blockquote>
+<h3 id="_3">核心转变</h3>
+<p><strong>AI 世界的核心会从 Prompt Engineering 转向 Protocol Engineering。</strong></p>
+<hr />
+<h2 id="_4">协议即组织：三阶段演进</h2>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>协议功能</th>
+<th>代表</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>传统互联网</strong></td>
+<td>数据通信</td>
+<td>TCP/IP、HTTP、SMTP — 发送和接收端约定说话格式</td>
+</tr>
+<tr>
+<td><strong>区块链</strong></td>
+<td>状态计算</td>
+<td>以太坊 — 全网共同执行状态转换规则</td>
+</tr>
+<tr>
+<td><strong>Agent Society</strong></td>
+<td>组织协调</td>
+<td>定义协调、权限、激励、身份、组织关系 — 协议承担"组织"功能</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">作者观点</h2>
+<blockquote>
+<p>现在读起来可能不太直观，因为第二条路线还没成为现实。但回想三年前有人说"LLM 提供基座能力、中间层提供原子能力、用户自己攒趁手的工具"。当时也觉得抽象，现在就是 vibe coding 的日常。第二条路线可能也是这样，过半年再看就能 get 到了。</p>
+</blockquote>
+<hr />
+<h2 id="_6">思考</h2>
+<p>这篇推文精准捕捉了 Agent 演化的分水岭。第一条路线（Harness）是当前主流——我们的 Hermes + Kanban + Cron 本质上就是这条路。但第二条路线指向更深层的变革：当 Agent 成为个人数字身份的延伸时，Agent 间的协作不能靠中心化调度，只能靠<strong>去中心化协议</strong>。</p>
+<p><strong>与我们系统的关系</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>我们的实践</th>
+<th>对应路线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hermes Gateway + Kanban 编排</td>
+<td>第一条路线（Harness）</td>
+</tr>
+<tr>
+<td>Memory Graph + 身份记忆</td>
+<td>向第二条路线过渡的基础设施</td>
+</tr>
+<tr>
+<td>三机交换池（exchange-protocol）</td>
+<td>第二条路线的雏形（Agent 间经验共享）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键启发</strong>：Protocol Engineering 的思维需要提前布局——身份、信任、权限、价值交换这些底层协议，值得在当前系统中就开始设计。</p>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li>[[2026-05-06-harness-engineering-落地实践|05-06-harness-engineering-落地实践]]</li>
+<li>[[2026-04-23-深入源码Hermes-Agent-Self-Improving|04-23-深入源码Hermes-Agent-Self-Improving]]</li>
+<li>[[2026-04-07-OpenClaw-autonomy-harness-loop|04-07-OpenClaw-autonomy-harness-loop]]</li>
+<li>[[2026-05-31-领域专长才是真正的护城河-Agent时代的价值重估|05-31-领域专长才是真正的护城河-Agent时代的价值重估]]</li>
+</ul>
+</body>
+</html>
