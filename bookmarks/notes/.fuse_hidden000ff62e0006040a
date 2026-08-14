@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hindsight记忆系统设计理念吸收</title>
+
+<meta property="og:title" content="Hindsight记忆系统设计理念吸收" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-08-Hindsight%E8%AE%B0%E5%BF%86%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1%E7%90%86%E5%BF%B5%E5%90%B8%E6%94%B6.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="hindsight">Hindsight 记忆系统设计理念吸收</h1>
+<blockquote>
+<p>来源: 一个IT / <a href="https://mp.weixin.qq.com/s/Q7SZQxhH3SLvzee7bR1qnA">原文</a> | 2026-06-04<br />
+结论：Hindsight 本身（9GB Docker + PG + BGE embedding）开销过大不部署，但其核心设计理念可降维融入现有 Hermes 记忆体系。</p>
+</blockquote>
+<hr />
+<h2 id="_1">可吸收的三个核心思路</h2>
+<h3 id="1-observation">1. Observation 自动提炼</h3>
+<p><strong>Hindsight 做法</strong>：多次 retain 相关事实 → 后台 consolidation 自动去重合并、证据追踪、矛盾标记、趋势更新。</p>
+<p><strong>降维落地方案</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>现有机制</th>
+<th>改进方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MEMORY.md 扁平 KV 存储</td>
+<td>增加「观察层」：从多次对话事实自动提炼结论</td>
+</tr>
+<tr>
+<td>idle-busy-loop Phase 2.3 隐式记忆提取</td>
+<td>扩展为：扫描近期 session → 检测重复事实 → 自动合并为 Observation</td>
+</tr>
+<tr>
+<td>纯手动 memory add</td>
+<td>保留手动，但增加 cron 定期扫描去重合并</td>
+</tr>
+</tbody>
+</table>
+<p><strong>具体实现思路</strong>：<br />
+- 每次 session 结束后，扫描本轮新增 memory 条目<br />
+- 与已有条目做文本相似度比对（简单 Jaccard 或 embedding 余弦）<br />
+- 相似度 &gt; 阈值 → 合并为一条，追加时间戳和来源 session<br />
+- 矛盾条目（如"用户偏好 X" vs "用户偏好 Y"）→ 标记为 <code>[待确认]</code> 供下次会话核实</p>
+<h3 id="2-tempr">2. 多路检索融合（TEMPR 简化版）</h3>
+<p><strong>Hindsight 做法</strong>：Semantic + BM25 + Graph + Temporal 四路并行 → RRF 融合 → Cross-Encoder 重排。</p>
+<p><strong>降维落地方案</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>TEMPR 策略</th>
+<th>对应已有能力</th>
+<th>差距</th>
+<th>可补齐方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Semantic</td>
+<td>无</td>
+<td>缺向量检索</td>
+<td>轻量 sentence-transformer 本地推理（Jetson 可跑）</td>
+</tr>
+<tr>
+<td>BM25</td>
+<td>session_search FTS5 ✅</td>
+<td>仅限 session，不含 memory</td>
+<td>扩展 FTS5 到 memory 文件</td>
+</tr>
+<tr>
+<td>Graph</td>
+<td>无</td>
+<td>无实体关联</td>
+<td>从 memory 条目自动提取实体关系（正则+LLM）</td>
+</tr>
+<tr>
+<td>Temporal</td>
+<td>无</td>
+<td>无时间感知</td>
+<td>memory 条目加时间戳元数据，查询时支持时间范围</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最小可行方案</strong>：先做 BM25 + Temporal 两路（零额外依赖），后续视需加 Semantic。</p>
+<h3 id="3-reflect">3. reflect() 主动推理</h3>
+<p><strong>Hindsight 做法</strong>：在 Mission/Directives/Disposition 配置指导下，自主收集记忆证据并推理输出。</p>
+<p><strong>降维落地方案</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>现有机制</th>
+<th>改进方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>memory 被动存储</td>
+<td>增加 reflect cron：定期扫描全部 memory → 主动推理</td>
+</tr>
+<tr>
+<td>无反思步骤</td>
+<td>idle-busy-loop Phase 3 可扩展为：整理记忆 → 发现矛盾 → 主动提建议</td>
+</tr>
+</tbody>
+</table>
+<p><strong>具体实现思路</strong>：<br />
+- 每日 cron 扫描 MEMORY.md + L2 short-term + L3 topics<br />
+- 检测过期信息（&gt;30天无引用的 L2 条目）<br />
+- 检测矛盾条目并生成澄清建议<br />
+- 检测知识缺口（频繁被问但无 memory 覆盖的领域）</p>
+<hr />
+<h2 id="_2">记忆分层的启发</h2>
+<p>Hindsight 四层 → 我们的映射：</p>
+<table>
+<thead>
+<tr>
+<th>Hindsight 层</th>
+<th>我们对应</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>World Fact（客观事实）</td>
+<td>MEMORY.md 条目</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td>Experience Fact（操作记录）</td>
+<td>session_history</td>
+<td>✅ 已有（session_search）</td>
+</tr>
+<tr>
+<td><strong>Observation（自动提炼）</strong></td>
+<td><strong>缺失</strong></td>
+<td>❌ 需补齐 — 最高优先</td>
+</tr>
+<tr>
+<td>Mental Model（心智模型）</td>
+<td>USER.md 部分覆盖</td>
+<td>⚠️ 可扩展为更系统的 persona</td>
+</tr>
+</tbody>
+</table>
+<p><strong>优先级</strong>：Observation 自动提炼 &gt; Temporal 检索 &gt; reflect 主动推理 &gt; Graph 实体关联</p>
+<hr />
+<h2 id="idle-busy-loop">与现有 idle-busy-loop 的衔接</h2>
+<p>这些改进可直接挂入 idle-busy-loop 的 Phase 框架：</p>
+<ul>
+<li><strong>Phase 2.3 隐式记忆提取</strong> → 扩展为含去重合并的 Observation 生成</li>
+<li><strong>Phase 2.4 时效性刷新</strong> → 增加 Temporal 检索能力，自动标记过期条目</li>
+<li><strong>Phase 3 整理阶段</strong> → 增加矛盾检测和知识缺口分析（reflect 简化版）</li>
+</ul>
+<p><strong>不新增依赖、不增加服务</strong>，纯在 Hermes 现有 Skill + Cron + Memory 框架内实现。</p>
+<hr />
+<h2 id="_3">相关笔记</h2>
+<ul>
+<li><a href="./2026-06-08-ROS2实时性保障与硬件加速技术详解.md">2026-06-08-ROS2实时性保障与硬件加速技术详解</a></li>
+<li><a href="./2026-06-08-Supertonic 99M参数离线TTS引擎树莓派也能跑.md">2026-06-08-Supertonic 99M参数离线TTS引擎树莓派也能跑</a></li>
+<li><a href="./INTJ和ISTJ中间差一个世界.md">INTJ和ISTJ中间差一个世界</a></li>
+</ul>
+</body>
+</html>

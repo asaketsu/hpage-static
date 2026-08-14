@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理引擎竞争-vLLM-vs-SGLang</title>
+
+<meta property="og:title" content="LLM推理引擎竞争-vLLM-vs-SGLang" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-14-LLM%E6%8E%A8%E7%90%86%E5%BC%95%E6%93%8E%E7%AB%9E%E4%BA%89-vLLM-vs-SGLang.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'JetBrains Mono', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-2025-2026vllm-vs-sglang">LLM 推理引擎竞争 2025-2026：vLLM vs SGLang 深度分析</h1>
+<blockquote>
+<p>来源：INCLUSION AI / Ant Open Source 社区报告 (2025-08) + Zylos Research 推理优化综述 (2026-01) + 行业基准测试<br />
+日期：2026-08-14</p>
+</blockquote>
+<h2 id="_1">核心结论</h2>
+<p>vLLM 和 SGLang 从激烈竞争走向<strong>功能趋同</strong>——两者现在都支持连续批处理、PagedAttention、RadixAttention、分块预填充、推测解码、分离式服务和 CUDA Graphs。核心差异从"谁功能更多"转向"谁的架构更优雅、CPU调度开销更低、生态更广"。</p>
+<h2 id="1">1. 两大引擎起源与核心技术</h2>
+<h3 id="vllmpagedattention">vLLM：PagedAttention 革命</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>详情</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>起源</strong></td>
+<td>2023年 UC Berkeley，Woosuk Kwon，论文 "Efficient Memory Management for LLM Serving with PagedAttention"</td>
+</tr>
+<tr>
+<td><strong>核心创新</strong></td>
+<td>从操作系统借鉴分页和缓存管理——PagedAttention 实现细粒度 KV Cache 内存管理</td>
+</tr>
+<tr>
+<td><strong>导师</strong></td>
+<td>Ion Stoica（Spark + Ray 创始人）</td>
+</tr>
+<tr>
+<td><strong>治理</strong></td>
+<td>2025年5月转入 PyTorch Foundation，AMD/Google/Meta/NVIDIA 多方治理</td>
+</tr>
+<tr>
+<td><strong>生产部署</strong></td>
+<td>Amazon Rufus, LinkedIn AI, Microsoft Azure</td>
+</tr>
+<tr>
+<td><strong>社区</strong></td>
+<td>740+ 贡献者，27K 月下载，~33% 贡献者来自中国</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sglangradixattention">SGLang：RadixAttention + 零开销调度</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>详情</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>起源</strong></td>
+<td>2023年底（比vLLM晚约半年），Lianmin Zheng + Ying Sheng + Liangsheng Yin，LMSYS Org</td>
+</tr>
+<tr>
+<td><strong>核心创新</strong></td>
+<td>RadixAttention（基数树缓存，扩展PagedAttention）+ 高效 CPU 调度设计</td>
+</tr>
+<tr>
+<td><strong>技术精髓</strong></td>
+<td>在请求间保留和复用 KV Cache——当 prefix 匹配时，削减预填充计算 30-50%</td>
+</tr>
+<tr>
+<td><strong>导师</strong></td>
+<td>同为 Ion Stoica（Berkeley）</td>
+</tr>
+<tr>
+<td><strong>生产部署</strong></td>
+<td>xAI Grok-2.5, DeepSeek-R1 on AMD MI300X, LMSYS Chatbot Arena（300K+ GPU）</td>
+</tr>
+<tr>
+<td><strong>社区</strong></td>
+<td>更精简，~52% 贡献者来自中国</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">交叉贡献</h3>
+<p><strong>194 名开发者</strong>同时为 vLLM 和 SGLang 贡献代码——约占 SGLang 总代码贡献者的 <strong>30%</strong>。这解释了两者为何快速趋同。</p>
+<h2 id="2">2. 核心技术对比</h2>
+<h3 id="pagedattention-vs-radixattention">PagedAttention vs RadixAttention</h3>
+<pre><code>vLLM PagedAttention（空间优化）:
+┌─────┬─────┬─────┬─────┬─────┐
+│ Blk │ Blk │ Blk │ Blk │ Blk │  ← 非连续物理块，逻辑→物理映射
+│  A  │  A  │  B  │  A  │  B  │  ← 同一请求的块可散布在任意位置
+└─────┴─────┴─────┴─────┴─────┘
+内存利用率：38% → 96%（2.5-5x 提升）
+
+SGLang RadixAttention（时间优化）:
+     [System Prompt]          ← 共享 prefix，复用 KV Cache
+      /         \
+  [User A]    [User B]        ← 分叉点开始独立计算
+   /    \       |
+[T1]  [T2]   [T1]              ← 树状结构，prefix 匹配时削减 30-50% 冗余计算
+</code></pre>
+<ul>
+<li><strong>vLLM 优化空间</strong>（内存利用率）：PagedAttention 将碎片化内存从 38% 利用率提升到 96%</li>
+<li><strong>SGLang 优化时间</strong>（计算复用）：RadixAttention 在多轮对话中削减 30-50% 冗余预填充计算</li>
+</ul>
+<h3 id="2025">2025 功能趋同矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>vLLM</th>
+<th>SGLang</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>连续批处理 (Continuous Batching)</td>
+<td>✅ 核心特性</td>
+<td>✅ 内置</td>
+<td>Orca 论文首创</td>
+</tr>
+<tr>
+<td>PagedAttention</td>
+<td>✅ 核心特性</td>
+<td>✅ 内置</td>
+<td>vLLM 原创</td>
+</tr>
+<tr>
+<td>RadixAttention</td>
+<td>✅ 已集成</td>
+<td>✅ 原创</td>
+<td>SGLang 原创</td>
+</tr>
+<tr>
+<td>分块预填充 (Chunked Prefill)</td>
+<td>✅</td>
+<td>✅</td>
+<td>长 prompt 分块处理</td>
+</tr>
+<tr>
+<td>推测解码 (Speculative Decoding)</td>
+<td>✅</td>
+<td>✅</td>
+<td>小模型预测→大模型验证</td>
+</tr>
+<tr>
+<td>分离式服务 (Disaggregated Serving)</td>
+<td>✅</td>
+<td>✅</td>
+<td>prefill/decode 分离到不同 GPU</td>
+</tr>
+<tr>
+<td>CUDA Graphs</td>
+<td>✅</td>
+<td>✅</td>
+<td>消除 kernel launch 开销</td>
+</tr>
+<tr>
+<td>FlashInfer / FlashAttention</td>
+<td>✅</td>
+<td>✅</td>
+<td>共享算子库</td>
+</tr>
+<tr>
+<td>DeepGEMM</td>
+<td>✅</td>
+<td>✅</td>
+<td>FP8 GEMM 算子</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-2025-2026">3. 基准测试数据（2025-2026）</h2>
+<h3 id="100-gpt-oss-120b">100 并发 GPT-OSS-120B 吞吐量</h3>
+<table>
+<thead>
+<tr>
+<th>引擎</th>
+<th>tokens/sec</th>
+<th>相对性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>vLLM</strong></td>
+<td><strong>4,741</strong></td>
+<td>1.00x（基准）</td>
+</tr>
+<tr>
+<td><strong>SGLang</strong></td>
+<td>3,221</td>
+<td>0.68x</td>
+</tr>
+<tr>
+<td><strong>TensorRT-LLM</strong></td>
+<td>1,942</td>
+<td>0.41x</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">各引擎最佳场景基准</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>vLLM</th>
+<th>SGLang</th>
+<th>TensorRT-LLM</th>
+<th>llama.cpp</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>吞吐量</td>
+<td>14-24x vs HF</td>
+<td>多调用场景高达 5x</td>
+<td>最佳单请求</td>
+<td>—</td>
+</tr>
+<tr>
+<td>TTFT</td>
+<td>50-80ms</td>
+<td>—</td>
+<td><strong>35-50ms</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>每token延迟</td>
+<td>—</td>
+<td><strong>4-21ms 最稳定</strong></td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>vs vLLM (Llama-70B)</td>
+<td>—</td>
+<td>高达 3.1x</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>并发/秒</td>
+<td>120-160 req/s</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="qwen">阿里云第三方对比（Qwen 系列）</h3>
+<p>整体单 GPU/双 GPU 结果<strong>倾向 SGLang</strong>，但结果因硬件/模型/配置而异。</p>
+<h2 id="4-vllm-v1">4. vLLM V1 重构</h2>
+<p>2024年，vLLM 遭遇经典软件工程瓶颈：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>详情</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>CPU 调度开销</strong></td>
+<td>第三方研究显示，某些场景下 vLLM 的 CPU 调度开销<strong>超过总推理时间的 50%</strong></td>
+</tr>
+<tr>
+<td><strong>架构债务</strong></td>
+<td>功能和硬件支持快速扩张导致难以合并独立开发的功能</td>
+</tr>
+<tr>
+<td><strong>解决方案</strong></td>
+<td>2025年初 V1 基础重构，之后增长重新加速</td>
+</tr>
+</tbody>
+</table>
+<p>SGLang 同期表现更少的功能/模型/硬件支持，却凭借更可扩展的架构、优秀的 CPU 调度、以及后来的"零开销"调度设计交付了同等强劲的结果。</p>
+<h2 id="5">5. 选型决策矩阵</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐引擎</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>高并发 + 吞吐量优先</td>
+<td><strong>vLLM</strong></td>
+<td>4,741 tok/s @ 100 并发</td>
+</tr>
+<tr>
+<td>Agent 工作流 + RAG</td>
+<td><strong>SGLang</strong></td>
+<td>RadixAttention 复用多轮对话 prefix</td>
+</tr>
+<tr>
+<td>NVIDIA + 极致性能</td>
+<td><strong>TensorRT-LLM</strong></td>
+<td>最佳单请求，B200 上最强</td>
+</tr>
+<tr>
+<td>边缘/便携性</td>
+<td><strong>llama.cpp</strong></td>
+<td>INT4/INT8，CPU/低配 GPU</td>
+</tr>
+<tr>
+<td>HuggingFace 生态</td>
+<td><strong>TGI</strong></td>
+<td>原生集成</td>
+</tr>
+<tr>
+<td>企业多模型</td>
+<td><strong>Triton</strong></td>
+<td>多模型编排</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">硬件建议</h3>
+<table>
+<thead>
+<tr>
+<th>硬件</th>
+<th>配置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>生产 (H100)</td>
+<td>FP8 量化 + FlashAttention-3 + vLLM/SGLang</td>
+</tr>
+<tr>
+<td>边缘 (RTX 40xx)</td>
+<td>llama.cpp + INT4/INT8</td>
+</tr>
+<tr>
+<td>次世代 (Blackwell)</td>
+<td>NVFP4 + FA-4 + TensorRT-LLM</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6">6. 推理优化技术全景</h2>
+<h3 id="kv-cache">KV Cache 优化</h3>
+<p>传统方法预分配连续内存，60-80% 内存浪费。PagedAttention 方案：<br />
+- 将 KV Cache 分成固定大小块（blocks）<br />
+- 非连续物理存储 + 逻辑→物理映射表<br />
+- 内存利用率 38% → 96%<br />
+- 支持 copy-on-write 共享（beam search/parallel sampling 零拷贝）</p>
+<h3 id="vs">连续批处理 vs 静态批处理</h3>
+<pre><code>静态批处理：
+Req1: [████████████████]  ← 等最慢的请求
+Req2: [██████]            ← 完成后空等
+Req3: [████████████████████████]  ← 拖慢整批
+
+连续批处理（Continuous Batching）：
+Req1: [████████████████]
+Req2: [██████][新请求...]
+Req3: [████████████████████████]
+         ↑ 每个iteration级别动态插入/移除请求
+</code></pre>
+<h2 id="7-jetson-orin">7. 对 Jetson Orin 边缘部署的借鉴</h2>
+<p>当前 Hermes Agent 运行在 Jetson Orin Nano Super（67 TOPS, 8GB unified memory），本地推理用 Ollama。以下是从 vLLM/SGLang 中可借鉴的优化思路：</p>
+<ol>
+<li><strong>KV Cache 是内存瓶颈</strong>：Jetson unified memory 架构下，KV Cache 直接吃系统 RAM。8GB 环境下 7B 模型 + 长上下文可能 OOM</li>
+<li><strong>PagedAttention 思路适用于边缘</strong>：减少 KV Cache 碎片化可提升可服务序列数</li>
+<li><strong>RadixAttention 的 prefix 复用在 Agent 场景价值极高</strong>：Hermes 的系统提示+MEMORY+USER profile 是固定 prefix，每次请求重复计算。RadixAttention 可削减这部分计算</li>
+<li><strong>推测解码适合边缘</strong>：小模型预测 + 大模型验证，在延迟敏感场景（语音 TTS/STT）有应用价值</li>
+<li><strong>CPU 调度开销在边缘更致命</strong>：Jetson CPU 核心有限，vLLM V1 的"零开销调度"思路值得 Ollama 借鉴</li>
+</ol>
+<h3 id="_5">关键引用</h3>
+<ul>
+<li>vLLM 论文：<em>"Efficient Memory Management for Large Language Model Serving with PagedAttention"</em> (SOSP 2023)</li>
+<li>SGLang 论文：<em>"SGLang: Efficient Execution of Structured Language Model Programs"</em></li>
+<li>vLLM V1 发布博客：blog.vllm.ai/2025/01/27/v1-alpha-release.html</li>
+<li>CPU 调度开销分析：mlsys.wuklab.io/posts/scheduling_overhead/</li>
+<li>社区报告：inclusion-ai.org/blog/llm-landscape-vllm-sgl</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>embedded-rust-nostd-rtic-esp32-deep-dive</title>
+
+<meta property="og:title" content="embedded-rust-nostd-rtic-esp32-deep-dive" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-19-embedded-rust-nostd-rtic-esp32-deep-dive.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="rust-no_std-rtic-esp32">嵌入式 Rust 实战：no_std 开发、RTIC 框架、ESP32 固件深度研究</h1>
+<blockquote>
+<p>📅 2026-05-19 | 🏷️ 嵌入式/Rust/no_std/RTIC/ESP32/Embassy/esp-hal<br />
+📎 来源: EDN/eettaiwan/FOSDEM 2026/rtic.rs/GitHub esp-rs/Reddit/rust-lang 论坛<br />
+📎 Topic: 嵌入式 | 兴趣队列探索</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心发现</h2>
+<h3 id="1esp-hal-100-beta-esp32-rust">发现1：esp-hal 1.0.0 Beta — ESP32 生态的 Rust 里程碑</h3>
+<p>2025 年 2 月，esp-rs 项目发布了 <strong>esp-hal 1.0.0-beta</strong>，这是 ESP32 裸机 Rust 开发的重大里程碑：</p>
+<p><strong>支持的芯片系列（全覆盖）</strong>：<br />
+| 芯片 | 架构 | 特点 | Rust 支持 |<br />
+|------|------|------|-----------|<br />
+| ESP32 | Xtensa LX6 | 经典款，双核 240MHz | ✅ 完整 |<br />
+| ESP32-S2 | Xtensa LX7 | USB OTG，安全启动 | ✅ 完整 |<br />
+| ESP32-S3 | Xtensa LX7 | AI 加速，摄像头，BLE 5 | ✅ 完整 |<br />
+| ESP32-C3 | RISC-V RV32IMC | 低功耗，高性价比 | ✅ 完整（原生 LLVM） |<br />
+| ESP32-C6 | RISC-V RV32IMAC | WiFi 6, Thread/Matter | ✅ 完整 |<br />
+| ESP32-C5 | RISC-V | WiFi 6 增强版 | ✅ 完整 |<br />
+| ESP32-H2 | RISC-V | 纯 Thread/Zigbee | ✅ 完整 |<br />
+| ESP32-C61 | RISC-V | 新一代入门 | ✅ 完整 |</p>
+<p><strong>关键突破</strong>：<br />
+- <strong>no_std WiFi/BLE/ESP-NOW</strong> 已可用（通过 esp-wifi/esp-radio crate，需 <code>unstable</code> feature）<br />
+- 实现 <code>embedded-hal 1.0</code> traits（统一的硬件抽象接口）<br />
+- 阻塞 + async 双模式 API（通过 <code>into_async()</code> 转换）<br />
+- 多核支持（ESP32/S3 双核可独立使用不同 driver）<br />
+- Espressif 官方支持（不是社区维护，是厂商级投入）</p>
+<p><strong>意义</strong>：以前 Rust on ESP32 只能做 blink，现在可以写完整的 WiFi + BLE 产品固件。</p>
+<h3 id="2rtic-v2">发现2：RTIC v2 — 硬件加速的实时并发框架</h3>
+<p><strong>RTIC（Real-Time Interrupt-driven Concurrency）</strong> 是嵌入式 Rust 的两大并发框架之一，核心设计基于 <strong>Stack Resource Policy (SRP)</strong>：</p>
+<p><strong>架构特性</strong>：<br />
+- <strong>非传统 RTOS</strong>：没有软件内核，直接利用硬件中断控制器（NVIC/PLIC/CLINT）<br />
+- <strong>静态优先级调度</strong>：编译期计算资源天花板（ceiling），零运行时开销<br />
+- <strong>编译期并发安全</strong>：利用 Rust 所有权模型，编译器保证无死锁、无数据竞争<br />
+- <strong>任务模型</strong>：<br />
+  - <strong>Hardware tasks</strong>：绑定中断向量，由硬件触发<br />
+  - <strong>Software tasks</strong>：由代码 spawn，支持优先级<br />
+  - <strong>Message passing</strong>：任务间通过 <code>spawn</code> 传递数据</p>
+<p><strong>支持架构</strong>：<br />
+| 架构 | 后端 | 状态 |<br />
+|------|------|------|<br />
+| Cortex-M (ARM) | NVIC | ✅ 完全支持 |<br />
+| RISC-V PLIC+CLINT | 中断控制器 | ✅ 支持（ESP32-C3/C6） |<br />
+| RISC-V CLIC | 增强中断 | ⚠️ 实验性 |</p>
+<p><strong>RTIC v2 的重大变化</strong>：<br />
+- v2 本质上是 async executor：<br />
+  - 优先级 0 的 software task ≈ Embassy 的 Executor<br />
+  - 高优先级 software task ≈ Embassy 的 InterruptExecutor<br />
+- SRP lock 不可跨 <code>.await</code>（编译期强制）<br />
+- 支持 RISC-V 目标（ESP32-C3/C6 可直接用 RTIC）</p>
+<h3 id="3embassy">发现3：Embassy — 异步嵌入式的新范式</h3>
+<p><strong>Embassy</strong> 是 RTIC 的主要竞争者，采用纯 async/await 模型：</p>
+<p><strong>核心差异对比</strong>：<br />
+| 维度 | RTIC v2 | Embassy |<br />
+|------|---------|---------|<br />
+| <strong>并发模型</strong> | 中断优先级 + SRP | async/await executor |<br />
+| <strong>学习曲线</strong> | 陡（需理解 SRP） | 平缓（async/await 熟悉） |<br />
+| <strong>调度保证</strong> | 硬实时（硬件中断） | 软实时（协作调度） |<br />
+| <strong>ESP32 支持</strong> | ✅ RISC-V 变种 | ✅ 原生（esp-rtos 集成） |<br />
+| <strong>网络协议栈</strong> | 需自建 | 内置（embassy-net） |<br />
+| <strong>USB 支持</strong> | 需自建 | 内置（embassy-usb） |<br />
+| <strong>BLE 支持</strong> | 需自建 | 内置（trouble crate） |<br />
+| <strong>代码量</strong> | 少（宏驱动） | 中等 |<br />
+| <strong>适合场景</strong> | 硬实时控制、电机驱动 | IoT 设备、传感器网络 |</p>
+<p><strong>Embassy 独有能力</strong>：<br />
+- <code>embassy-boot</code>：轻量 bootloader + DFU（固件升级、掉电安全、试启动+回滚）<br />
+- <code>embassy-net</code>：async TCP/IP 协议栈（smoltcp 后端）<br />
+- <code>embassy-usb</code>：async USB 设备栈<br />
+- <code>trouble</code>：BLE 4.x/5.x Host 协议栈（支持 nRF52/ESP32/RP2040）<br />
+- <code>lora-rs</code>：async LoRa/LoRaWAN 协议栈</p>
+<h3 id="4-c-rust-fosdem-2026">发现4：从 C 到 Rust 的固件迁移实战（FOSDEM 2026）</h3>
+<p>FOSDEM 2026 有一场专题演讲 <strong>"From C to Rust on the ESP32: A Developer's Journey into no_std"</strong>，分享真实迁移经验：</p>
+<p><strong>迁移策略</strong>：<br />
+1. <strong>渐进式</strong>：不是一次性重写，而是从外围驱动开始逐模块替换<br />
+2. <strong>FFI 桥接</strong>：C 和 Rust 代码通过 <code>extern "C"</code> 互操作，逐步替换<br />
+3. <strong>工具链并行</strong>：ESP-IDF (C) 和 esp-rs (Rust) 构建系统共存<br />
+4. <strong>测试驱动</strong>：每个替换的模块都有主机端单元测试（Rust 的 <code>#[test]</code> 在 host 上跑）</p>
+<p><strong>关键教训</strong>：<br />
+- <code>unsafe</code> 块应该小且集中（嵌入式 Rust 中不可避免，但要限制范围）<br />
+- Xtensa 目标需要 <code>espup</code> 安装自定义工具链（RISC-V 如 C3/C6 可直接用标准 Rust）<br />
+- WiFi/BLE 驱动尚不稳定，生产环境建议保守<br />
+- 社区生态在快速成长但尚未达到 C/ESP-IDF 的成熟度</p>
+<hr />
+<h2 id="_2">二、技术细节</h2>
+<h3 id="21-no_std">2.1 no_std 项目结构</h3>
+<p>一个完整的 ESP32 no_std Rust 项目结构：</p>
+<pre><code>my-esp32-firmware/
+├── .cargo/
+│   └── config.toml          # 目标三元组 + linker 配置
+├── Cargo.toml
+├── build.rs                 # 编译时生成链接脚本
+├── memory.x                 # 内存布局定义
+└── src/
+    └── main.rs              # #![no_std] + #![no_main] 入口
+</code></pre>
+<p><strong>Cargo.toml 关键配置</strong>：</p>
+<pre><code class="language-toml">[package]
+name = &quot;my-esp32-firmware&quot;
+version = &quot;0.1.0&quot;
+edition = &quot;2021&quot;
+
+[dependencies]
+esp-hal = { version = &quot;1.0.0-beta&quot;, features = [&quot;esp32s3&quot;] }
+esp-backtrace = { version = &quot;0.14&quot;, features = [&quot;esp32s3&quot;, &quot;panic-handler&quot;, &quot;exception-handler&quot;] }
+esp-println = { version = &quot;0.12&quot;, features = [&quot;esp32s3&quot;] }
+critical-section = &quot;1.2&quot;
+
+# 可选：Embassy async
+embassy-executor = { version = &quot;0.7&quot;, features = [&quot;nightly&quot;] }
+embassy-time = &quot;0.4&quot;
+
+[profile.dev]
+opt-level = &quot;s&quot;    # 必须！无优化代码太大塞不进 Flash
+
+[profile.release]
+opt-level = &quot;s&quot;
+lto = true         # 链接时优化，减小体积
+</code></pre>
+<p><strong>main.rs 骨架</strong>：</p>
+<pre><code class="language-rust">#![no_std]
+#![no_main]
+
+use esp_backtrace as _;  // panic handler + exception handler
+use esp_hal::{clock::ClockControl, peripherals::Peripherals, prelude::*};
+use esp_println::println;
+
+#[entry]
+fn main() -&gt; ! {
+    let peripherals = Peripherals::take();
+    let system = peripherals.SYSTEM.split();
+    let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+
+    // 配置 GPIO
+    let io = Io::new(peripherals.GPIO, peripherals.IO_MUX);
+    let mut led = io.pins.gpio2.into_push_pull_output();
+
+    loop {
+        led.toggle().unwrap();
+        delay(500_000);  // 简单延时
+    }
+}
+</code></pre>
+<h3 id="22-rtic">2.2 RTIC 任务框架示例</h3>
+<pre><code class="language-rust">#![no_std]
+#![no_main]
+
+use rtic::app;
+use panic_halt as _;
+
+#[app(device = esp32s3, peripherals = true)]
+mod app {
+    use esp_hal::gpio::{Gpio2, Output, PushPull};
+    use esp_hal::timer::Timer;
+
+    // 共享资源（编译期保证无数据竞争）
+    #[shared]
+    struct Shared {
+        counter: u32,
+    }
+
+    // 本地资源（任务独占）
+    #[local]
+    struct Local {
+        led: Gpio2&lt;Output&lt;PushPull&gt;&gt;,
+        timer: Timer,
+    }
+
+    #[init]
+    fn init(cx: init::Context) -&gt; (Shared, Local, init::Monotonics) {
+        let peripherals = cx.device;
+        // 初始化硬件...
+
+        (
+            Shared { counter: 0 },
+            Local { led, timer },
+            init::Monotonics(),
+        )
+    }
+
+    // 硬件任务：绑定到定时器中断
+    #[task(binds = TIMER0, priority = 2, local = [led], shared = [counter])]
+    fn timer_tick(cx: timer_tick::Context) {
+        let led = cx.local.led;
+        led.toggle().unwrap();
+
+        cx.shared.counter.lock(|c| {
+            *c += 1;
+        });
+    }
+
+    // 软件任务：可被 spawn
+    #[task(priority = 1, shared = [counter])]
+    fn process_data(cx: process_data::Context) {
+        let count = cx.shared.counter.lock(|c| *c);
+        // 处理数据...
+    }
+}
+</code></pre>
+<p><strong>RTIC 关键概念</strong>：<br />
+- <code>#[shared]</code>：多任务共享资源，编译期自动插入临界区<br />
+- <code>lock()</code>：SRP 锁，天花板优先级协议，保证无死锁<br />
+- <code>priority</code>：静态优先级，编译期确定调度顺序<br />
+- <code>spawn</code>：任务间消息传递，非阻塞</p>
+<h3 id="23-embassy-async">2.3 Embassy async 模式示例</h3>
+<pre><code class="language-rust">#![no_std]
+#![no_main]
+
+use embassy_executor::Spawner;
+use embassy_time::{Duration, Timer};
+use esp_backtrace as _;
+use esp_hal::gpio::{Gpio2, Output, PushPull};
+
+#[embassy_executor::main]
+async fn main(_spawner: Spawner) {
+    let peripherals = esp_hal::init(esp_hal::Config::default());
+    let io = esp_hal::gpio::Io::new(peripherals.GPIO, peripherals.IO_MUX);
+
+    let led = io.pins.gpio2.into_push_pull_output();
+
+    // Blink task
+    loop {
+        led.set_high().await;
+        Timer::after(Duration::from_millis(500)).await;
+        led.set_low().await;
+        Timer::after(Duration::from_millis(500)).await;
+    }
+}
+</code></pre>
+<p><strong>Embassy 多任务示例</strong>：</p>
+<pre><code class="language-rust">#[embassy_executor::task]
+async fn sensor_reader(mut sensor: I2c&lt;'static&gt;) {
+    loop {
+        let data = sensor.read(0x68, 6).await;
+        // 处理传感器数据
+        Timer::after(Duration::from_millis(100)).await;
+    }
+}
+
+#[embassy_executor::task]
+async fn wifi_manager(stack: WifiStack) {
+    // WiFi 连接管理...
+    stack.connect().await;
+}
+
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    // 初始化硬件...
+    spawner.spawn(sensor_reader(sensor)).ok();
+    spawner.spawn(wifi_manager(stack)).ok();
+}
+</code></pre>
+<h3 id="24-xtensa-vs-risc-v">2.4 Xtensa vs RISC-V 工具链差异</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Xtensa (ESP32/S2/S3)</th>
+<th>RISC-V (C3/C6/H2)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工具链安装</td>
+<td><code>espup</code> (自定义 LLVM)</td>
+<td>标准 <code>rustup target add</code></td>
+</tr>
+<tr>
+<td>Rust 版本</td>
+<td>需要 esp-rs fork</td>
+<td>标准 stable Rust</td>
+</tr>
+<tr>
+<td>编译速度</td>
+<td>较慢（fork 工具链）</td>
+<td>快（原生 LLVM 后端）</td>
+</tr>
+<tr>
+<td>调试</td>
+<td>probe-rs / JTAG</td>
+<td>probe-rs / JTAG</td>
+</tr>
+<tr>
+<td>生态成熟度</td>
+<td>稍早（历史更长）</td>
+<td>快速追赶中</td>
+</tr>
+</tbody>
+</table>
+<p><strong>推荐入门芯片</strong>：<strong>ESP32-C3</strong>（RISC-V，可用标准 Rust 工具链，学习阻力最小）</p>
+<h3 id="25-embedded-hal-10">2.5 embedded-hal 1.0 — 统一硬件抽象</h3>
+<p><code>embedded-hal</code> 是嵌入式 Rust 的核心抽象层，2024 年底正式发布 1.0：</p>
+<pre><code class="language-rust">use embedded_hal::digital::OutputPin;
+use embedded_hal::delay::DelayNs;
+
+// 泛型驱动 — 不依赖任何具体 MCU
+fn blink&lt;P, D&gt;(pin: &amp;mut P, delay: &amp;mut D) -&gt; !
+where
+    P: OutputPin,
+    D: DelayNs,
+{
+    loop {
+        pin.set_high().ok();
+        delay.delay_ms(500);
+        pin.set_low().ok();
+        delay.delay_ms(500);
+    }
+}
+
+// 同一份代码可用于 ESP32 / STM32 / RP2040 / nRF52
+</code></pre>
+<p><strong>关键 traits</strong>：<br />
+- <code>embedded_hal::digital::{InputPin, OutputPin}</code> — GPIO<br />
+- <code>embedded_hal::spi::SpiBus</code> — SPI 总线<br />
+- <code>embedded_hal::i2c::I2c</code> — I²C 总线<br />
+- <code>embedded_hal::uart::Uart</code> — 串口<br />
+- <code>embedded_hal::pwm::SetDutyCycle</code> — PWM<br />
+- <code>embedded_hal::adc::Adc</code> — ADC<br />
+- <code>embedded_hal_async::*</code> — 异步版本（用于 Embassy）</p>
+<hr />
+<h2 id="_3">三、实践启发</h2>
+<h3 id="31">3.1 选择框架的决策树</h3>
+<pre><code>是否需要硬实时保证（电机控制/飞控）？
+├─ 是 → RTIC（SRP 调度保证确定性）
+└─ 否
+    ├─ 需要 WiFi/BLE/USB？ → Embassy（内置协议栈）
+    └─ 简单传感器读取？ → 裸 loop + esp-hal（最简单）
+</code></pre>
+<h3 id="32-jetson-orin-esp32">3.2 Jetson Orin + ESP32 的混合架构</h3>
+<p>结合猫仔运行环境（Jetson Orin Nano），实用方案：<br />
+- <strong>Jetson 端</strong>：Python 策略引擎 + 数据分析（AKShare/Tushare）<br />
+- <strong>ESP32 端</strong>：Rust 固件做实时信号采集 + 执行<br />
+- <strong>通信</strong>：UART/MQTT over WiFi，Jetson 下发指令，ESP32 上报数据<br />
+- <strong>固件开发</strong>：用 <code>cross</code> 或 Jetson 上的 Rust 工具链交叉编译</p>
+<h3 id="33-ai">3.3 AI 时代嵌入式开发的变革</h3>
+<p>Embedded Computing Design 的社区圆桌观点：<br />
+- <strong>AI 将写大部分嵌入式代码</strong>（但需要类型安全语言生成，Rust 更适合）<br />
+- <strong>Rust 的编译器即测试</strong>理念与 AI 代码生成天然互补<br />
+- <strong>内存安全在 AI 生成代码中更为关键</strong>（AI 不理解裸机指针陷阱）<br />
+- Linux 内核已接受 Rust 模块，NASA 评估 Rust 用于航天系统</p>
+<h3 id="34-rust-vs-c">3.4 性能对比（Rust vs C）</h3>
+<p>根据学术研究（ResearchGate 论文 + Instagram 团队分享）：<br />
+- <strong>Flash 占用</strong>：Rust 略大于 C（约 5-15%），但 LTO 可缩小差距<br />
+- <strong>RAM 使用</strong>：Rust 更优（无动态分配，编译期确定性内存）<br />
+- <strong>运行性能</strong>：零成本抽象 ≈ 手写 C（benchmark 差异 &lt;3%）<br />
+- <strong>开发效率</strong>：Rust 前期慢（学习曲线），后期快（编译器捕获 bug）</p>
+<hr />
+<h2 id="_4">四、知识缺口</h2>
+<ul>
+<li>[ ] esp-radio（原 esp-wifi）的稳定时间线（当前需 <code>unstable</code> feature）</li>
+<li>[ ] ESP32-S3 + ESP-IDF + Rust std 模式 vs no_std 模式的功能对比</li>
+<li>[ ] Embassy 的 <code>embassy-boot</code> DFU 在 ESP32 上的实际使用案例</li>
+<li>[ ] RTIC 在 RISC-V ESP32-C6 上的中断延迟实测数据</li>
+<li>[ ] probe-rs + VSCode 调试 ESP32 Rust 固件的完整工作流</li>
+<li>[ ] Rust async 在 ESP32 上的栈使用分析（每个 task 的栈开销）</li>
+</ul>
+<hr />
+<h2 id="_5">五、与现有生态的关系</h2>
+<table>
+<thead>
+<tr>
+<th>发现</th>
+<th>可采纳度</th>
+<th>行动</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>esp-hal 1.0 beta 全系列支持</td>
+<td>⭐⭐⭐</td>
+<td>记录到 memory，嵌入式 skill 需更新</td>
+</tr>
+<tr>
+<td>RTIC v2 RISC-V 支持</td>
+<td>⭐⭐</td>
+<td>笔记存档，待实际项目时参考</td>
+</tr>
+<tr>
+<td>Embassy esp-rtos 集成</td>
+<td>⭐⭐⭐</td>
+<td>推荐 ESP32 IoT 项目首选 Embassy</td>
+</tr>
+<tr>
+<td>embedded-hal 1.0 统一抽象</td>
+<td>⭐⭐⭐</td>
+<td>写入 memory，泛型驱动设计模板</td>
+</tr>
+<tr>
+<td>Bevy ECS on ESP32 (no_std)</td>
+<td>⭐</td>
+<td>纯新奇，暂无实际应用场景</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">六、参考资源</h2>
+<ol>
+<li><a href="https://developer.espressif.com/blog/2025/02/rust-esp-hal-beta/">esp-hal 1.0.0-beta 公告</a> — Espressif 官方</li>
+<li><a href="https://rtic.rs/">RTIC Book</a> — 官方文档</li>
+<li><a href="https://github.com/embassy-rs/embassy">Embassy GitHub</a> — 14,897 commits，活跃开发</li>
+<li><a href="https://fosdem.org/2026/schedule/event/GNNQFP-converting-c-firmware-to-rust/">FOSDEM 2026: From C to Rust on ESP32</a></li>
+<li><a href="https://www.ednchina.com/news/a14639.html">EDN: Rust 嵌入式内存安全</a> — 2025-12</li>
+<li><a href="https://blog.theembeddedrustacean.com/the-embedded-rust-esp-development-ecosystem">Embedded Rust ESP 开发生态</a></li>
+<li><a href="https://www.willhart.io/post/embedded-rust-options/">RTIC vs Embassy 对比</a> — 实战对比</li>
+<li><a href="https://docs.espressif.com/projects/rust/book/">Rust on ESP Book</a> — Espressif 官方 Rust 教程</li>
+</ol>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="esp32-projects.md">esp32-projects</a></li>
+<li><a href="esp32-lcd-display.md">esp32-lcd-display</a></li>
+<li><a href="explore/2026-05-18-esp32-edge-impulse-pipeline.md">esp32-edge-impulse-pipeline</a></li>
+<li><a href="explore/embedded-rust-deep-learn.md">embedded-rust-deep-learn</a></li>
+<li><a href="esp32-s3-voice-gesture-lamp-analysis.md">esp32-s3-voice-gesture-lamp-analysis</a></li>
+</ul>
+</body>
+</html>
