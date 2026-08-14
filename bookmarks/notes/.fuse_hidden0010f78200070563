@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TinyML模型部署STM32精度排查</title>
+
+<meta property="og:title" content="TinyML模型部署STM32精度排查" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-04-TinyML%E6%A8%A1%E5%9E%8B%E9%83%A8%E7%BD%B2STM32%E7%B2%BE%E5%BA%A6%E6%8E%92%E6%9F%A5.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="tinyml-stm32">TinyML 模型部署 STM32 精度下降的六大排查方向</h1>
+<blockquote>
+<p>来源：微信公众号「玩转单片机与嵌入式」| 作者：子衡（嵌入式 AI 工程师）<br />
+链接：https://mp.weixin.qq.com/s/mBrfdvzNUt5msDNSaT9voQ<br />
+日期：2026-06-04</p>
+</blockquote>
+<h2 id="_1">核心结论</h2>
+<p>TinyML 项目中模型在 PC 上 90%+ 准确率，部署到 STM32 后骤降。<strong>排查起点不是模型大小，而是确认同一条数据经 Python 和 STM32 处理后进入模型的输入数组是否一致。</strong></p>
+<h2 id="_2">六大问题分类</h2>
+<h3 id="1">1. 训练数据 ≠ 板上实际数据</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">场景</th>
+<th style="text-align: left;">PC 训练数据</th>
+<th style="text-align: left;">STM32 实际数据</th>
+<th style="text-align: left;">后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">动作识别</td>
+<td style="text-align: left;">手工裁剪 IMU 窗口</td>
+<td style="text-align: left;">连续实时流，传感器角度变化</td>
+<td style="text-align: left;">窗口位置敏感，识别不稳定</td>
+</tr>
+<tr>
+<td style="text-align: left;">声音分类</td>
+<td style="text-align: left;">干净音频，音量统一</td>
+<td style="text-align: left;">麦克风增益+电源噪声+混响</td>
+<td style="text-align: left;">误报漏报双增</td>
+</tr>
+<tr>
+<td style="text-align: left;">视觉识别</td>
+<td style="text-align: left;">离线图片，光照稳定</td>
+<td style="text-align: left;">曝光/白平衡/压缩/角度变化</td>
+<td style="text-align: left;">模型对亮度尺度敏感</td>
+</tr>
+<tr>
+<td style="text-align: left;">异常检测</td>
+<td style="text-align: left;">实验室正常/异常样本</td>
+<td style="text-align: left;">设备老化+温度+安装松动</td>
+<td style="text-align: left;">阈值漂移失稳</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键判断法</strong>：把 STM32 采集的原始数据导出到 Python 跑一遍——Python 也差 = 数据分布问题；Python 好但 STM32 差 = 预处理/量化/运行时问题。</p>
+<h3 id="2">2. 预处理未逐字节对齐</h3>
+<p>小模型对输入处理极度敏感。逐项核对清单：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">预处理项</th>
+<th style="text-align: left;">核对要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">窗口长度</td>
+<td style="text-align: left;">采样点数、滑动步长、是否重叠</td>
+</tr>
+<tr>
+<td style="text-align: left;">采样频率</td>
+<td style="text-align: left;">训练用 100Hz，板上是否真的稳定 100Hz</td>
+</tr>
+<tr>
+<td style="text-align: left;">滤波方式</td>
+<td style="text-align: left;">去直流、低通、滤波器系数一致性</td>
+</tr>
+<tr>
+<td style="text-align: left;">特征提取</td>
+<td style="text-align: left;">FFT 点数、窗函数、MFCC 参数、统计特征顺序</td>
+</tr>
+<tr>
+<td style="text-align: left;">归一化</td>
+<td style="text-align: left;">除以 255 / 减均值 / 除方差 / 裁剪范围</td>
+</tr>
+<tr>
+<td style="text-align: left;">数据顺序</td>
+<td style="text-align: left;">通道顺序、维度顺序、大小端、行列顺序</td>
+</tr>
+</tbody>
+</table>
+<p><strong>排查金标准</strong>（5 步法）：</p>
+<pre><code>1. 选固定原始样本 raw_sample
+2. Python:  raw_sample → preprocess_py → model_input_py
+3. STM32:   raw_sample → preprocess_mcu → model_input_mcu
+4. 逐值对比 model_input_py vs model_input_mcu
+5. 差异超预期 → 先修预处理，不要改模型
+</code></pre>
+<h3 id="3">3. 量化后模型变了</h3>
+<p>int8 量化的三次对比检查：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">对比</th>
+<th style="text-align: left;">目的</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">float 模型 vs int8 模型</td>
+<td style="text-align: left;">量化本身精度损失</td>
+</tr>
+<tr>
+<td style="text-align: left;">Python int8 vs STM32 int8</td>
+<td style="text-align: left;">部署前后数值链路一致性</td>
+</tr>
+<tr>
+<td style="text-align: left;">离线样本 vs 板上实时样本</td>
+<td style="text-align: left;">现场数据是否偏离训练分布</td>
+</tr>
+</tbody>
+</table>
+<p><strong>代表性数据集要覆盖</strong>：每类典型样本、边界/易混淆样本、不同传感器位置/光照/噪声、容易被忽略的现场数据。不要只拿最干净样本做 <code>representative_dataset</code>。</p>
+<h3 id="4">4. 板上验证方式太粗</h3>
+<p>只看串口打印分类标签不够。至少记录 6 项：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">记录项</th>
+<th style="text-align: left;">内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">原始输入摘要</td>
+<td style="text-align: left;">均值、最大/最小值、前 10 采样点</td>
+</tr>
+<tr>
+<td style="text-align: left;">预处理后特征</td>
+<td style="text-align: left;">前 20 特征值</td>
+</tr>
+<tr>
+<td style="text-align: left;">模型输入 tensor</td>
+<td style="text-align: left;">int8 数组、scale、zero point</td>
+</tr>
+<tr>
+<td style="text-align: left;">模型原始输出</td>
+<td style="text-align: left;">每类分数（非仅 label）</td>
+</tr>
+<tr>
+<td style="text-align: left;">推理耗时</td>
+<td style="text-align: left;">DWT cycle counter</td>
+</tr>
+<tr>
+<td style="text-align: left;">错误码</td>
+<td style="text-align: left;">Cube.AI / TFLM 返回值</td>
+</tr>
+</tbody>
+</table>
+<p>推荐串口日志格式：</p>
+<pre><code>[RAW] min=-0.83 max=1.12 mean=0.04
+[FEAT] 12 9 -3 18 21 20 7 -2 ...
+[IN] scale=0.0156 zp=-3 first=-8 -6 -3 4 9 ...
+[OUT] normal=12 shake=91 idle=4
+[TIME] preprocess=2.1ms inference=7.8ms post=0.3ms
+</code></pre>
+<h3 id="5">5. 后处理把好结果改坏了</h3>
+<p>模型输出 ≠ 业务结论。常见后处理陷阱：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">任务</th>
+<th style="text-align: left;">❌ 不推荐</th>
+<th style="text-align: left;">✅ 更稳做法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">动作识别</td>
+<td style="text-align: left;">单帧最大概率直出</td>
+<td style="text-align: left;">多帧投票 + 状态切换最小保持时间</td>
+</tr>
+<tr>
+<td style="text-align: left;">关键词检测</td>
+<td style="text-align: left;">一帧超阈值就触发</td>
+<td style="text-align: left;">置信度平滑 + 触发后冷却时间</td>
+</tr>
+<tr>
+<td style="text-align: left;">异常检测</td>
+<td style="text-align: left;">固定异常分数阈值</td>
+<td style="text-align: left;">结合设备状态/负载区间/连续异常次数</td>
+</tr>
+<tr>
+<td style="text-align: left;">视觉分类</td>
+<td style="text-align: left;">每帧独立输出</td>
+<td style="text-align: left;">目标区域稳定后再输出 + 亮度清晰度检查</td>
+</tr>
+</tbody>
+</table>
+<h3 id="6">6. 实时系统污染了模型输入</h3>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">系统问题</th>
+<th style="text-align: left;">表现</th>
+<th style="text-align: left;">排查</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">采样抖动</td>
+<td style="text-align: left;">同一动作每次窗口特征不稳</td>
+<td style="text-align: left;">记录相邻采样间隔，确认中断优先级</td>
+</tr>
+<tr>
+<td style="text-align: left;">DMA 缓存覆盖</td>
+<td style="text-align: left;">新数据覆盖推理中的数据</td>
+<td style="text-align: left;">双缓冲 + half/full complete 标志</td>
+</tr>
+<tr>
+<td style="text-align: left;">栈溢出</td>
+<td style="text-align: left;">跑一段时间 HardFault</td>
+<td style="text-align: left;">检查 RTOS 栈水位，增大模型任务栈</td>
+</tr>
+<tr>
+<td style="text-align: left;">串口打印阻塞</td>
+<td style="text-align: left;">实时性下降</td>
+<td style="text-align: left;">降低打印频率，用环形缓冲或 DMA UART</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">💡 对我们的价值</h2>
+<h3 id="_4">✅ 直接关联</h3>
+<ul>
+<li><strong>ESP32 / Jetson 嵌入式 AI 部署</strong>：完全适用的排查框架</li>
+<li><strong>TinyML 项目脚手架</strong> (已有 Skill)：预处理对齐检查流程可集成</li>
+</ul>
+<h3 id="_5">⚠️ 可改进</h3>
+<ul>
+<li>将"预处理对齐 5 步法"固化到 tinyml-project-scaffold Skill 中</li>
+<li>推理日志格式 <code>[RAW][FEAT][IN][OUT][TIME]</code> 可做成 STM32 端的调试宏模板</li>
+<li>量化三次对比法加入 TFLite / ONNX 部署检查清单</li>
+</ul>
+<h3 id="_6">🔥 行动项</h3>
+<ol>
+<li>编写 <code>debug_inference_logger.h</code> C 头文件，统一 STM32 推理日志格式</li>
+<li>在 tinyml-project-scaffold Skill 中增加"部署精度验证"阶段</li>
+<li>制作预处理对齐自动化对比脚本（Python 端导出 → C 端导入 → 自动 diff）</li>
+</ol>
+<p>→ 相关：[[2026-04-30-边缘AI与On-Device-LLM前沿学习.md]]</p>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li><a href="2026-06-03-YOLO部署到STM32可行性分析.md">YOLO部署到STM32可行性分析</a></li>
+</ul>
+</body>
+</html>

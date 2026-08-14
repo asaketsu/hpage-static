@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoConnect源码架构分析</title>
+
+<meta property="og:title" content="AutoConnect源码架构分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-09-AutoConnect%E6%BA%90%E7%A0%81%E6%9E%B6%E6%9E%84%E5%88%86%E6%9E%90.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="autoconnect">AutoConnect 源码架构分析</h1>
+<blockquote>
+<p>ESP8266/ESP32 WiFi 运行时配置库，Captive Portal 方式免除硬编码 SSID/密码。<br />
+版本 1.4.2 · MIT License · 作者 Hieromon Ikasamo<br />
+仓库：https://github.com/Hieromon/AutoConnect</p>
+</blockquote>
+<h2 id="_1">一、项目概览</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心代码</td>
+<td>9,889 行（src/）</td>
+</tr>
+<tr>
+<td>文件数</td>
+<td>33 个 .h/.cpp + 5 个 .hpp 模板</td>
+</tr>
+<tr>
+<td>依赖</td>
+<td>ArduinoJson, PageBuilder</td>
+</tr>
+<tr>
+<td>架构</td>
+<td>ESP8266 / ESP32 双平台，C++ 模板分层</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、架构分层</h2>
+<pre><code>┌─────────────────────────────────────┐
+│  AutoConnect.h (完整版入口)          │  ← 用户 #include
+│  AutoConnectCore.h (精简版入口)      │
+├─────────────────────────────────────┤
+│  AutoConnectExt / AutoConnectCore   │  ← 模板类主体
+│  (AutoConnectCoreImpl.hpp)          │
+├─────────────────────────────────────┤
+│  AutoConnectAux (自定义页面引擎)     │
+│  AutoConnectElement (UI 元素体系)    │
+├─────────────────────────────────────┤
+│  AutoConnectCredential (凭据存储)    │
+│  AutoConnectOTA (固件更新)           │
+│  AutoConnectUpdate (远程更新)        │
+│  AutoConnectTicker (状态 LED)        │
+├─────────────────────────────────────┤
+│  AutoConnectConfigBase/Ext (配置)    │
+│  AutoConnectDefs.h (编译宏/常量)     │
+│  AutoConnectTypes.h (枚举定义)       │
+└─────────────────────────────────────┘
+</code></pre>
+<h2 id="_3">三、核心连接状态机</h2>
+<p><code>begin()</code> 方法实现了一个 4 阶段连接状态机：</p>
+<ol>
+<li><strong>WiFi.begin 直连</strong>：尝试用已保存凭据直接连接</li>
+<li><strong>autoReconnect</strong>：加载历史凭据按 RECENT/RSSI 策略重试</li>
+<li><strong>Captive Portal</strong>：连接失败后启动 SoftAP + DNS 欺骗，弹出配置页面</li>
+<li><strong>whileCaptivePortal 循环</strong>：阻塞等待用户配置或超时退出</li>
+</ol>
+<p>关键标志位（<code>AC_PORTALSTATE_t</code>）：<br />
+- <code>AC_ESTABLISHED</code> — 连接成功<br />
+- <code>AC_AUTORECONNECT</code> — 自动重连生效<br />
+- <code>AC_TIMEOUT</code> — Portal 超时<br />
+- <code>AC_CAPTIVEPORTAL</code> — Portal 活跃<br />
+- <code>AC_INPROGRESS</code> — WiFi.begin 进行中</p>
+<h2 id="captive-portal">四、Captive Portal 机制</h2>
+<pre><code>WiFi连接失败
+    ↓
+启用 SoftAP (默认 IP: 192.168.244.1)
+    ↓
+启动 DNSServer (劫持所有 DNS → SoftAP IP)
+    ↓
+浏览器任意 URL → 重定向到配置页面
+    ↓
+用户输入 SSID + 密码 → WiFi.begin(new_credential)
+    ↓
+连接成功 → 关闭 Portal → 回调 onConnect()
+</code></pre>
+<p>核心技巧：<br />
+- DNS 劫持：所有 URL 请求都通过 <code>_captivePortal</code> 处理<br />
+- 超时控制：<code>portalTimeout</code> 可配，超时后可选保持/关闭 Portal<br />
+- <code>retainPortal</code>：超时后仍保持 Portal 状态供后续连接</p>
+<h2 id="autoconnectcredential">五、凭据存储 (AutoConnectCredential)</h2>
+<ul>
+<li><strong>ESP8266</strong>：EEPROM 扇区存储，<code>station_config_t</code> 结构体（SSID + 密码 + BSSID + DHCP/Static + IP 配置）</li>
+<li><strong>ESP32</strong>：Preferences (NVS) 存储（通过 <code>AUTOCONNECT_USE_PREFERENCES</code> 宏切换）</li>
+<li>支持多条凭据存储，按 RECENT（最近使用）或 RSSI（信号最强）排序</li>
+<li>可导出/导入到文件系统（SPIFFS/LittleFS/SD）</li>
+</ul>
+<h2 id="ui-autoconnectelement">六、UI 元素体系 (AutoConnectElement)</h2>
+<p>11 种 UI 元素，双层实现（Basis 层 + JSON 层）：</p>
+<table>
+<thead>
+<tr>
+<th>元素</th>
+<th>功能</th>
+<th>JSON 支持</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AutoConnectElement</td>
+<td>通用 HTML 容器</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectButton</td>
+<td>按钮</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectCheckbox</td>
+<td>复选框</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectFile</td>
+<td>文件上传</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectInput</td>
+<td>文本输入</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectRadio</td>
+<td>单选按钮组</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectRange</td>
+<td>滑块</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectSelect</td>
+<td>下拉选择</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectStyle</td>
+<td>CSS 样式注入</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectSubmit</td>
+<td>提交按钮</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>AutoConnectText</td>
+<td>文本/HTML 显示</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Basis 层：纯 C++ 对象操作</li>
+<li>JSON 层：可通过 JSON 文件（PROGMEM/SPIFFS/SD）加载页面定义</li>
+<li><code>AutoConnectAux</code> 作为容器管理元素集合，支持 <code>operator[]</code> 按名访问</li>
+</ul>
+<h2 id="ota-autoconnectota">七、OTA 更新 (AutoConnectOTA)</h2>
+<ul>
+<li>继承 <code>AutoConnectUploadHandler</code>，覆写 <code>_write()</code> 使用 <code>Update</code> 类写入固件</li>
+<li>两种更新目标：固件 (<code>OTA_DEST_FIRM</code>) / 文件 (<code>OTA_DEST_FILE</code>)</li>
+<li>状态机：IDLE → START → PROGRESS → SUCCESS/FAIL → RIP（重启就绪）</li>
+<li>通过 <code>AutoConnectAux</code> 页面内嵌到菜单</li>
+</ul>
+<h2 id="autoconnectconfigbase">八、配置参数 (AutoConnectConfigBase)</h2>
+<p>30+ 可配参数，关键项：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>apip</code></td>
+<td>192.168.244.1</td>
+<td>SoftAP IP</td>
+</tr>
+<tr>
+<td><code>autoRise</code></td>
+<td>true</td>
+<td>连接失败自动启动 Portal</td>
+</tr>
+<tr>
+<td><code>autoReconnect</code></td>
+<td>false</td>
+<td>自动重连历史凭据</td>
+</tr>
+<tr>
+<td><code>immediateStart</code></td>
+<td>false</td>
+<td>跳过首次 WiFi.begin 直接启动 Portal</td>
+</tr>
+<tr>
+<td><code>portalTimeout</code></td>
+<td>0 (无限)</td>
+<td>Portal 超时</td>
+</tr>
+<tr>
+<td><code>retainPortal</code></td>
+<td>false</td>
+<td>超时后保持 Portal</td>
+</tr>
+<tr>
+<td><code>autoSave</code></td>
+<td>AUTO</td>
+<td>自动保存凭据</td>
+</tr>
+<tr>
+<td><code>principle</code></td>
+<td>RECENT</td>
+<td>凭据选择策略</td>
+</tr>
+<tr>
+<td><code>auth</code></td>
+<td>NONE</td>
+<td>HTTP 认证（Basic/Digest）</td>
+</tr>
+<tr>
+<td><code>ticker</code></td>
+<td>false</td>
+<td>LED 闪烁指示连接状态</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">九、模板设计模式</h2>
+<p>项目使用 C++ 模板实现三级功能分层：</p>
+<pre><code>AutoConnectCore&lt;ConfigBase&gt;     ← 最小集（仅 WiFi 配置）
+    ↓ 继承
+AutoConnectExt&lt;ConfigExt&gt;       ← 完整集（+ Aux + JSON + OTA）
+    ↓ typedef
+AutoConnect = AutoConnectExt&lt;AutoConnectConfigExt&gt;
+</code></pre>
+<ul>
+<li><code>AutoConnectConfigBase</code> — 基础配置（30 个参数）</li>
+<li><code>AutoConnectConfigExt</code> — 扩展配置（+ OTA/Update 相关）</li>
+<li>用户通过 <code>#include "AutoConnect.h"</code> 或 <code>"AutoConnectCore.h"</code> 选择功能范围</li>
+</ul>
+<h2 id="_5">十、关键设计模式提炼</h2>
+<ol>
+<li><strong>Captive Portal 模式</strong>：SoftAP + DNS 劫持 + Web 配置页面，零 APP 依赖</li>
+<li><strong>模板策略模式</strong>：通过 C++ 模板参数注入配置类型，编译期决定功能集</li>
+<li><strong>双平台适配</strong>：<code>#ifdef ARDUINO_ARCH_ESP8266 / ESP32</code> 条件编译</li>
+<li><strong>Element 组合模式</strong>：<code>AutoConnectAux</code> 容器 + 11 种 Element 可组合，JSON 描述驱动</li>
+<li><strong>凭据持久化策略</strong>：EEPROM(ESP8266) / Preferences(ESP32) 双实现，统一接口</li>
+</ol>
+<h2 id="_6">十一、实用价值评估</h2>
+<ul>
+<li><strong>学习价值 ★★★★</strong>：Captive Portal 完整实现、ESP 双平台适配、C++ 模板分层架构</li>
+<li><strong>复用价值 ★★★</strong>：可直接用于 ESP 项目 WiFi 配置场景，但依赖 PageBuilder 略重</li>
+<li><strong>改进空间</strong>：</li>
+<li>不支持 WiFiManager 风格的扫描列表展示</li>
+<li>配置页面仅英文，i18n 需自行替换字符串常量</li>
+<li>OTA 仅支持固件级更新，不支持分区/文件系统级</li>
+</ul>
+<h2 id="_7">相关笔记</h2>
+</body>
+</html>

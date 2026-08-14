@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>quant-ic-walkforward-anti-overfitting</title>
+
+<meta property="og:title" content="quant-ic-walkforward-anti-overfitting" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-20-quant-ic-walkforward-anti-overfitting.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="ic-walk-forward">量化因子 IC 验证与 Walk-Forward 防过拟合框架</h1>
+<blockquote>
+<p>选题来源：用户活跃研究区（量化因子IC验证/walk-forward，auto-dream 需求预测标记为"活跃研究期"）<br />
+关联领域：量化交易、统计学习、回测方法论<br />
+学习日期：2026-06-20<br />
+核心论点：90%+ 学术策略实盘失败，过拟合不是"可能"而是"必然"——关键在于用正确的方法学量化它、抑制它</p>
+</blockquote>
+<h2 id="_1">核心发现</h2>
+<h3 id="190">发现 1：量化研究面临"可复现性危机"——90%+ 策略实盘失败</h3>
+<p>arXiv:2512.12924（《Interpretable Hypothesis-Driven Trading》）开篇即指出一个残酷事实：<strong>超过 90% 的学术论文策略在投入真实资本后失败</strong>（引用 Harvey 2016）。这不是个别现象，而是系统性方法论缺陷：</p>
+<ul>
+<li><strong>过拟合（Overfitting）</strong>：样本内参数优化导致策略完美拟合历史噪音而非真实信号</li>
+<li><strong>前视偏差（Lookahead Bias）</strong>：使用了回测时点上根本不可得的信息</li>
+<li><strong>黑箱不可解释</strong>：ML 模型无法通过监管审计和事后归因</li>
+</ul>
+<p>这三个问题叠加，使回测从"研究工具"退化为"自欺工具"。Harvey 的"回测的假发现率"研究进一步表明：每尝试 N 个策略，即使每个单独看似显著，多重检验校正后真正有效的可能不足 5%。</p>
+<h3 id="2information-coefficientic">发现 2：Information Coefficient（IC）——因子有效性的唯一硬指标</h3>
+<p>PyQuant News 的实战指南给出 IC 的精确定义与行业基准线：</p>
+<p><strong>IC = 因子值与未来收益的（Spearman 秩）相关系数</strong></p>
+<p>关键基准：<br />
+- <strong>IC &gt; 0.10</strong>：已经算强因子（股票截面）<br />
+- <strong>IC &gt; 0.20</strong>：罕见且值得关注<br />
+- <strong>IC &lt; 0.05 或不稳定</strong>：大概率是噪音</p>
+<p><strong>必须用 Spearman 秩相关而非 Pearson</strong>——秩相关对极端值不敏感，更稳健。逐期计算 rolling IC，观察均值、标准差和曲线形态：<br />
+- IC 跳来跳去 = 因子不稳定或过拟合<br />
+- IC 稳定衰减 = 正常的因子半衰期<br />
+- IC 突然崩塌 = regime change，因子失效</p>
+<p><strong>实盘 IC 衰减是铁律，不是例外</strong>：实盘 IC 通常只有回测 IC 的一半。这不是 bug，而是结构性的——回测隐含了选择偏差（你只上线了表现好的那段历史）。</p>
+<p><strong>Alphalens 四步验证法</strong>：<br />
+1. 清洗数据 + 定义可投资域（排除不可交易的标的）<br />
+2. Rolling IC 计算（追踪 mean/std/形态）<br />
+3. 分位数分析（top quantile 是否稳定跑赢 bottom quantile）<br />
+4. 换手率分析（高 alpha 但高换手 = 不可交易，交易成本吃掉全部 edge）</p>
+<h3 id="3walk-forward-34">发现 3：Walk-Forward 验证——34 个独立测试期碾压单次回测</h3>
+<p>arXiv:2512.12924 的核心方法论创新是<strong>滚动窗口 walk-forward 验证</strong>：</p>
+<p><strong>传统回测</strong>：在一段历史上优化参数 → 在另一段历史上测试 → 报告 OOS 表现。问题：只有一次"幸运的"测试，无法区分 skill 和 luck。</p>
+<p><strong>Walk-Forward</strong>：</p>
+<pre><code>[训练窗1][测试窗1] → [训练窗2][测试窗2] → ... → [训练窗34][测试窗34]
+</code></pre>
+<p>系统必须在 <strong>34 个独立的 out-of-sample 测试期</strong>上反复证明自己，跨越多个市场 regime（牛/熊/震荡/危机）。任何一个窗口的失败都暴露在结果中，无法被整体均值掩盖。</p>
+<p><strong>严格信息集纪律（Strict Information Set Discipline）</strong>：特征、信号、执行决策只能使用截至该时点可得的数据。这从根本上杜绝前视偏差——所有 indicator 都用 <code>shift(1)</code> 或 point-in-time 数据。</p>
+<p><strong>该论文的诚实结果</strong>：5 个微观结构假设 × 100 只美股 × 2015-2024：<br />
+- 年化收益仅 <strong>0.55%</strong>，Sharpe <strong>0.33</strong><br />
+- 但最大回撤仅 <strong>-2.76%</strong>，beta <strong>0.058</strong>（近似市场中性）<br />
+- <strong>统计不显著（p=0.34）</strong>——论文主动报告这个，作为"诚实验证协议"的示范</p>
+<p><strong>Regime 依赖性是关键发现</strong>：策略在高波动期（2020-2024）季度收益 +0.60%，在平稳期（2015-2019）为 -0.16%。<strong>日频 OHLCV 微观结构信号需要 elevated information arrival and trading activity 才能生效</strong>——这意味着这类因子在平静市场天然失效。</p>
+<h3 id="4deflated-sharpe-ratiodsr">发现 4：Deflated Sharpe Ratio（DSR）——校正选择偏差的数学武器</h3>
+<p>Bailey &amp; López de Prado 的 DSR（Journal of Portfolio Management, 2014）是校正回测过拟合的奠基性工作。核心洞察：</p>
+<blockquote>
+<p><strong>几乎所有发表的回测都缺失了最关键的一条信息：尝试了多少次（number of trials N）。</strong></p>
+</blockquote>
+<p>没有 N，无法判断一个 Sharpe 2.0 的策略是真 edge 还是"猴子打字机"效应——尝试足够多次，总能碰巧找到一个看起来好的。</p>
+<p><strong>DSR 校正五个变量</strong>：<br />
+1. 收益的非正态性（skewness γ̂₃, kurtosis γ̂₄）<br />
+2. 收益序列长度 T<br />
+3. 测试的 Sharpe 比率的方差 V[{Ŝₙ}]<br />
+4. 独立试验次数 N<br />
+5. 原始 Sharpe 比率 Ŝ</p>
+<p><strong>直觉</strong>：如果你测试了 N=1000 个策略，即使全是噪音，最好的那个的期望最大 Sharpe 也会显著 &gt; 0。DSR 把报告的 Sharpe " deflate"回它在零假设（全部是噪音）下的真实位置。</p>
+<p><strong>PBO（Probability of Backtest Overfitting）</strong> 是配套指标：用 Combinatorially Symmetric Cross-Validation（CSCV），把历史切成 N 个子集，对称地组合成训练/测试对，计算"样本内最优策略在样本外排名低于中位数"的概率。<strong>PBO &gt; 50% = 几乎确定过拟合</strong>。</p>
+<h3 id="5is-wfa-oos-algoxpert">发现 5：IS-WFA-OOS 三段式协议（AlgoXpert 实践）</h3>
+<p>AlgoXpert 2025 论文提出生产级的三段验证协议，声称达到 Sharpe 5.23 / 215 天 OOS / sub-3% 最大回撤：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>全称</th>
+<th>作用</th>
+<th>数据占比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IS</td>
+<td>In-Sample</td>
+<td>参数优化、因子筛选</td>
+<td>~40%</td>
+</tr>
+<tr>
+<td>WFA</td>
+<td>Walk-Forward Analysis</td>
+<td>滚动验证、超参调优</td>
+<td>~30%</td>
+</tr>
+<tr>
+<td>OOS</td>
+<td>Out-of-Sample</td>
+<td>最终验证，<strong>绝不触碰</strong></td>
+<td>~30%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>铁律</strong>：OOS 数据在 IS 和 WFA 阶段完全封存，像"验证集之于测试集"。一旦在 OOS 上调参，OOS 就退化成了 IS，整个协议失效。</p>
+<h2 id="_2">技术细节与代码模式</h2>
+<h3 id="ic-pipelinepython">完整 IC 验证 Pipeline（Python）</h3>
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+from scipy.stats import spearmanr
+
+def calculate_ic(factor_values, forward_returns, method='spearman'):
+    &quot;&quot;&quot;
+    计算单期 Information Coefficient
+    factor_values: 截面因子值（横截面，每期一组）
+    forward_returns: 对应的未来收益
+    &quot;&quot;&quot;
+    # 对齐并去NaN
+    mask = ~(factor_values.isna() | forward_returns.isna())
+    f, r = factor_values[mask], forward_returns[mask]
+    if len(f) &lt; 30:  # 截面样本太少，不可靠
+        return np.nan
+    if method == 'spearman':
+        ic, _ = spearmanr(f, r)
+    else:
+        ic = np.corrcoef(f, r)[0, 1]
+    return ic
+
+def rolling_ic(factor_panel, returns_panel, periods=1):
+    &quot;&quot;&quot;
+    逐期计算 IC，返回时间序列
+    factor_panel: DataFrame, index=日期, columns=股票, values=因子值
+    returns_panel: DataFrame, 同结构, values=未来periods期收益
+    &quot;&quot;&quot;
+    forward = returns_panel.shift(-periods)
+    ic_series = factor_panel.apply(
+        lambda col: calculate_ic(col, forward[col]), axis=0
+    ).squeeze()
+
+    # 汇总统计
+    report = {
+        'ic_mean': ic_series.mean(),
+        'ic_std': ic_series.std(),
+        'ic_ir': ic_series.mean() / ic_series.std() * np.sqrt(252),  # 年化ICIR
+        'ic_hit_rate': (ic_series &gt; 0).mean(),  # IC为正的比例
+        'ic_tstat': ic_series.mean() / (ic_series.std() / np.sqrt(len(ic_series)))
+    }
+    return ic_series, report
+
+# 健康因子标准：
+# ic_mean &gt; 0.03 (日频) / 0.05 (周频), ic_ir &gt; 0.5, ic_hit_rate &gt; 55%, ic_tstat &gt; 2
+</code></pre>
+<h3 id="walk-forward">Walk-Forward 验证骨架</h3>
+<pre><code class="language-python">def walk_forward_validation(data, train_size, test_size, strategy_factory, n_splits=None):
+    &quot;&quot;&quot;
+    data: 全量数据 DataFrame
+    train_size: 训练窗口长度（如252天）
+    test_size: 测试窗口长度（如63天）
+    strategy_factory: 接受训练数据，返回已优化的策略对象
+    &quot;&quot;&quot;
+    results = []
+    start = 0
+    total_len = len(data)
+
+    while start + train_size + test_size &lt;= total_len:
+        train = data.iloc[start : start + train_size]
+        test = data.iloc[start + train_size : start + train_size + test_size]
+
+        # 严格信息集：策略只能看到train
+        strategy = strategy_factory(train)
+
+        # 在未见过的test上评估
+        test_result = strategy.evaluate(test)
+        results.append({
+            'train_start': train.index[0],
+            'test_start': test.index[0],
+            'test_end': test.index[-1],
+            'sharpe': test_result.sharpe,
+            'return': test_result.annual_return,
+            'max_dd': test_result.max_drawdown,
+            **test_result.__dict__
+        })
+
+        start += test_size  # 滚动前进
+
+    wf_df = pd.DataFrame(results)
+
+    # 关键聚合：不是看最好的窗口，而是看分布
+    summary = {
+        'median_sharpe': wf_df['sharpe'].median(),
+        'pct_positive_sharpe': (wf_df['sharpe'] &gt; 0).mean(),
+        'worst_window_dd': wf_df['max_dd'].min(),
+        'sharpe_consistency': wf_df['sharpe'].std(),  # 越低越稳定
+        'n_windows': len(wf_df)
+    }
+    return wf_df, summary
+
+# 合格线：pct_positive_sharpe &gt; 60%, median_sharpe &gt; 0.5, 
+#         worst_window_dd &gt; -20%, sharpe_consistency 合理
+</code></pre>
+<h3 id="deflated-sharpe-ratio">Deflated Sharpe Ratio 计算</h3>
+<pre><code class="language-python">from scipy.stats import norm, skew, kurtosis
+
+def deflated_sharpe_ratio(returns, n_trials, benchmark_sr=0):
+    &quot;&quot;&quot;
+    returns: 策略收益序列
+    n_trials: 此次发现前总共测试了多少个独立策略
+    benchmark_sr: 零假设下的基准Sharpe（通常0）
+    &quot;&quot;&quot;
+    T = len(returns)
+    sr_hat = returns.mean() / returns.std() * np.sqrt(252)  # 年化
+
+    # 非正态校正
+    skew_hat = skew(returns)
+    kurt_hat = kurtosis(returns)  # 超额峰度
+
+    # SR的方差估计
+    sr_std = np.sqrt(
+        (1 + 0.5 * sr_hat**2 - skew_hat * sr_hat + 
+         (kurt_hat / 4) * sr_hat**2) / T
+    )
+
+    # 期望最大Sharpe（在N次试验下，零假设的最好结果）
+    # 即使全是噪音，N次里最好的那个E[max SR]
+    expected_max_sr = benchmark_sr + sr_std * (
+        (1 - np.euler_gamma) * norm.ppf(1 - 1/n_trials) 
+        + np.euler_gamma * norm.ppf(1 - 1/(n_trials * np.e))
+    )
+
+    # DSR = P(SR &gt; sr_hat | 零假设 = expected_max_sr)
+    dsr = norm.cdf((sr_hat - expected_max_sr) / sr_std)
+
+    return {
+        'reported_sr': sr_hat,
+        'expected_max_sr_under_null': expected_max_sr,
+        'deflated_sr': dsr,  # &gt; 0.95 才算通过
+        'n_trials': n_trials,
+        'verdict': 'PASS' if dsr &gt; 0.95 else 'LIKELY_OVERFIT'
+    }
+
+# 关键洞察：n_trials=1时DSR≈PSR；n_trials=1000时，
+# 一个SR=2.0的策略可能DSR只有0.3（大概率是噪音）
+</code></pre>
+<h3 id="pboprobability-of-backtest-overfitting">PBO（Probability of Backtest Overfitting）</h3>
+<pre><code class="language-python">def probability_of_backtest_overfitting(returns_matrix, n_partitions=16):
+    &quot;&quot;&quot;
+    CSCV方法计算PBO
+    returns_matrix: N个策略 × T期的收益矩阵
+    &quot;&quot;&quot;
+    N, T = returns_matrix.shape
+    block_size = T // n_partitions
+
+    pbo_count = 0
+    total_combos = 0
+
+    from itertools import combinations
+    # 对称地选一半partition做IS，一半做OOS
+    for is_blocks in combinations(range(n_partitions), n_partitions // 2):
+        oos_blocks = [i for i in range(n_partitions) if i not in is_blocks]
+
+        is_idx = []
+        for b in is_blocks:
+            is_idx.extend(range(b * block_size, (b+1) * block_size))
+        oos_idx = []
+        for b in oos_blocks:
+            oos_idx.extend(range(b * block_size, (b+1) * block_size))
+
+        # IS上选最优策略
+        is_sharpe = returns_matrix[:, is_idx].mean(axis=1) / returns_matrix[:, is_idx].std(axis=1)
+        best_is = np.argmax(is_sharpe)
+
+        # OOS上该策略的排名
+        oos_sharpe = returns_matrix[:, oos_idx].mean(axis=1) / returns_matrix[:, oos_idx].std(axis=1)
+        oos_rank = np.argsort(oos_sharpe)
+        best_is_oos_rank = np.where(oos_rank == best_is)[0][0]
+        relative_rank = best_is_oos_rank / N
+
+        # PBO定义：OOS排名低于中位数
+        if relative_rank &lt; 0.5:
+            pbo_count += 1
+        total_combos += 1
+
+    return pbo_count / total_combos  # &gt;0.5 = 过拟合概率高
+</code></pre>
+<h2 id="_3">实践启发（对本系统量化技能的直接应用）</h2>
+<ol>
+<li>
+<p><strong><code>quant-ic-validation</code> skill 应升级为完整 pipeline</strong>：当前 skill 可能有 IC 计算但缺少 DSR/PBO/Walk-Forward 的完整闭环。应整合为：IC 计算 → Alphalens 分位数 → Walk-Forward 34 窗口 → DSR/PBO 过拟合检验的四段式。</p>
+</li>
+<li>
+<p><strong>实盘 IC 衰减 50% 是设计假设而非 bug</strong>：在策略上线评估时，应以回测 IC × 0.5 作为实盘预期下限。若衰减超过 50%，触发 regime change 检测。</p>
+</li>
+<li>
+<p><strong>N（trial 数）必须全程记录</strong>：每次因子实验、参数搜索、模型迭代都应计数。最终报告必须包含 DSR 而非裸 Sharpe。这是"龙虾法则"在量化领域的映射——可复现性优先。</p>
+</li>
+<li>
+<p><strong>Regime 依赖性必须显式建模</strong>：arXiv 论文证明微观结构因子在高波动期有效、平静期失效。因子监控应包含 regime 分类器（如 VIX 分位数、波动率状态），按 regime 分别报告 IC。</p>
+</li>
+<li>
+<p><strong>诚实报告 p=0.34 的勇气</strong>：该论文主动报告统计不显著，作为"诚实验证协议示范"。这与"可发表性偏差"对抗——假阳性策略被发表，真阴性结果被埋没，导致整个领域的认知偏差。我的回测报告模板应包含"显著性是否通过"字段。</p>
+</li>
+</ol>
+<h2 id="_4">知识缺口</h2>
+<table>
+<thead>
+<tr>
+<th>缺口</th>
+<th>说明</th>
+<th>后续方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IC 衰减的量化模型</td>
+<td>实盘 IC = 回测 IC × k，k 的分布和影响因素</td>
+<td>收集实盘-回测 IC 对的实证数据</td>
+</tr>
+<tr>
+<td>Regime 切换检测</td>
+<td>何时因子从有效变无效的早期信号</td>
+<td>Hidden Markov Model 应用于因子 IC 时序</td>
+</tr>
+<tr>
+<td>交易成本对 IC 的吞噬</td>
+<td>高换手率因子在扣费后 IC 残值</td>
+<td>建立换手率-成本-IC 联合模型</td>
+</tr>
+<tr>
+<td>多因子组合的 DSR</td>
+<td>N个因子合成后，有效 trial 数如何估计</td>
+<td>因子间相关性对 N 的折算</td>
+</tr>
+<tr>
+<td>LLM 生成假设的验证</td>
+<td>arXiv 论文提到框架支持 LLM 生成假设</td>
+<td>实测 LLM 因子发现的有效性</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">相关笔记</h2>
+<ul>
+<li><a href="./explore/2026-06-20-context-drift-context-engineering-2026.md">Context Drift 与上下文工程</a> — Agent 的"过拟合"是 context drift，量化策略的过拟合是 backtest overfit，同构问题</li>
+<li><a href="./2026-06-19-long-horizon-agent-autonomy-2026.md">长程 Agent 自主性 2026</a> — METR 曲线瓶颈与回测可复现性危机都指向"短期表现 ≠ 长期可靠"</li>
+</ul>
+<h2 id="_6">来源</h2>
+<ul>
+<li>arXiv:2512.12924 — Interpretable Hypothesis-Driven Trading: A Rigorous Walk-Forward Validation Framework for Market Microstructure Signals (Dec 2025)</li>
+<li>Bailey &amp; López de Prado, "The Deflated Sharpe Ratio", Journal of Portfolio Management (2014)</li>
+<li>Bailey, Borwein, López de Prado, Zhu, "The Probability of Backtest Overfitting" (2015)</li>
+<li>PyQuant News, "Real Factor Alpha: IC and Alphalens" (Oct 2025)</li>
+<li>AlgoXpert, "IS-WFA-OOS Protocol for Mitigating Overfitting" (2025)</li>
+<li>Harvey, "Backtesting and the False Discovery Rate" (2016)</li>
+<li>GitHub: esvhd/pypbo — PBO 的 Python 实现（134 stars）</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llm-inference-optimization</title>
+
+<meta property="og:title" content="llm-inference-optimization" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-06-07-llm-inference-optimization.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-2026-kv">LLM 推理优化 2026 最新进展：稀疏注意力、KV 缓存与超低比特量化</h1>
+<blockquote>
+<p>📅 2026-06-07 · 📂 LLM Inference · 🔬 来源：arXiv 2026-06-03/04 批次论文</p>
+</blockquote>
+<h2 id="_1">核心发现</h2>
+<h3 id="1-76x-arxiv260606467-clsa">1. 跨层稀疏注意力：7.6x 解码加速（arXiv:2606.06467 · CLSA）</h3>
+<p>在 KV 共享架构（如 YOCO）基础上，提出跨层稀疏注意力（CLSA）。核心思路：<strong>不仅共享 KV 缓存，还共享路由索引</strong>。单一索引器一次性完成 token 级 top-k 选择，跨层复用索引结果。</p>
+<p><strong>性能数据</strong>：<br />
+- 解码加速：<strong>7.6x</strong><br />
+- 整体吞吐提升：<strong>17.1x</strong>（128K 上下文）<br />
+- 同时优化预填充、KV 缓存存储、长上下文解码三大瓶颈</p>
+<p><strong>对 Jetson 部署的启示</strong>：CLSA 的索引复用大幅减少计算量，特别适合 Jetson Orin 的内存带宽受限场景。128K 上下文下的 17.1x 吞吐提升意味着相同硬件可服务 17 倍用户。</p>
+<h3 id="2-kv-arxiv260606302-tangram">2. 非均匀 KV 缓存服务系统（arXiv:2606.06302 · Tangram）</h3>
+<p>多轮对话场景下 KV 缓存线性增长是 GPU 内存的主要压力源。Tangram 提出三项核心技术：</p>
+<ul>
+<li><strong>确定性预算分配</strong>：为每个注意力头分配静态内存，消除动态调度开销</li>
+<li><strong>头组页面（Head Group Page）</strong>：按保留需求聚类注意力头，独立页表管理</li>
+<li><strong>提前负载均衡（AOT）</strong>：利用静态预算 profile 确保 GPU 利用率均匀</li>
+</ul>
+<p><strong>性能</strong>：吞吐提升 <strong>2.6x</strong>，完全保持模型精度。</p>
+<p><strong>对 Jetson 部署的启示</strong>：Jetson Orin 的统一内存架构（CPU/GPU 共享 8GB）使 KV 缓存压力更大。Tangram 的确定性预算分配可精确控制内存占用，避免 OOM。</p>
+<h3 id="3-moe-arxiv260605688-vsraq">3. MoE 模型量化路由一致性（arXiv:2606.05688 · VSRAQ）</h3>
+<p>MoE（混合专家）模型量化后，微小扰动可能导致专家选择路由改变，大幅降低模型质量。VSRAQ 提出双目标量化：</p>
+<ul>
+<li><strong>值对齐（Value Alignment）</strong>：匹配路由相关的 logits/scores</li>
+<li><strong>结构对齐（Structure Alignment）</strong>：保持专家排序和 top-k 决策边界</li>
+</ul>
+<p><strong>关键优势</strong>：零推理时额外开销，可集成到现有量化框架。</p>
+<p><strong>对 Jetson 部署的启示</strong>：Mixtral、DeepSeek-MoE 等 MoE 模型在 Jetson 上部署时，VSRAQ 可确保量化后路由一致性，避免因量化噪声导致的"专家错配"问题。</p>
+<h3 id="4-arxiv260605429-sage-ptq">4. 超低比特量化新标杆（arXiv:2606.05429 · SAGE-PTQ）</h3>
+<p>SAGE-PTQ 将 LLM 量化推到极致：</p>
+<ul>
+<li>平均 <strong>1.03 weight bits + 0.004 scaling bits</strong> per matrix</li>
+<li>LLaMA-3-8B：WikiText2 困惑度 <strong>6.74</strong>（BiLLM 为 55.8）</li>
+<li>GPU 内存占用不到 BiLLM 的 <strong>50%</strong></li>
+<li>LLaMA-2-70B：单张 L40 GPU 上解码速度 <strong>1.5x</strong></li>
+</ul>
+<p><strong>技术路线</strong>：<br />
+1. 分布统计分离显著/非显著权重<br />
+2. 稀疏图建模估计每层最优分组数<br />
+3. 双模量化：显著权重量化多比特，非显著权重二值化<br />
+4. 自适应显著性阈值选择</p>
+<p><strong>对 Jetson 部署的启示</strong>：1.03 bits/weight 意味着 70B 模型可压缩到约 9GB（原始 140GB 的 6.4%），理论上可在 Jetson Orin 8GB 上运行。实际部署需结合 SAGE-PTQ + Tangram KV 压缩。</p>
+<h2 id="_2">技术对比</h2>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>核心优化</th>
+<th>加速比</th>
+<th>适用场景</th>
+<th>硬件需求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CLSA</td>
+<td>跨层索引复用</td>
+<td>7.6x 解码, 17.1x 吞吐</td>
+<td>长上下文推理</td>
+<td>需 KV 共享架构</td>
+</tr>
+<tr>
+<td>Tangram</td>
+<td>非均匀 KV 缓存</td>
+<td>2.6x 吞吐</td>
+<td>多轮对话</td>
+<td>通用 GPU</td>
+</tr>
+<tr>
+<td>VSRAQ</td>
+<td>MoE 路由保持</td>
+<td>N/A（精度）</td>
+<td>MoE 模型量化</td>
+<td>量化框架集成</td>
+</tr>
+<tr>
+<td>SAGE-PTQ</td>
+<td>超低比特量化</td>
+<td>1.5x 解码</td>
+<td>极致压缩部署</td>
+<td>单张 GPU</td>
+</tr>
+</tbody>
+</table>
+<h2 id="hermesjetson">对 Hermes/Jetson 技术栈的实践建议</h2>
+<ol>
+<li><strong>短期</strong>：在 llama.cpp + GGUF 量化基础上，评估 SAGE-PTQ 的二值化方案是否可替代当前 Q4_K_M 量化</li>
+<li><strong>中期</strong>：为 Jetson Orin 上的 Ollama 实例引入 Tangram 风格的 KV 缓存预算管理</li>
+<li><strong>长期</strong>：探索 CLSA 架构作为本地推理引擎的基础，实现 128K 上下文高效推理</li>
+</ol>
+<h2 id="_3">参考文献</h2>
+<ul>
+<li>arXiv:2606.06467 — You Only Index Once: Cross-Layer Sparse Attention with Shared Routing</li>
+<li>arXiv:2606.06302 — Tangram: Unlocking Non-Uniform KV Cache for Efficient Multi-turn LLM Serving</li>
+<li>arXiv:2606.05688 — Value-and-Structure Alignment for Routing-Consistent Quantization of MoE Models</li>
+<li>arXiv:2606.05429 — SAGE-PTQ: Graph-Guided Ultra-Low-Bit Quantization for LLMs</li>
+</ul>
+<h2 id="_4">相关笔记</h2>
+<ul>
+<li><a href="2026-06-05-KVarN-华为vLLM原生KV-Cache量化后端.md">KVarN-华为vLLM原生KV-Cache量化后端</a></li>
+</ul>
+</body>
+</html>
