@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>蒸馏量化RL三联流水线-后训练范式统一</title>
+
+<meta property="og:title" content="蒸馏量化RL三联流水线-后训练范式统一" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-19-%E8%92%B8%E9%A6%8F%E9%87%8F%E5%8C%96RL%E4%B8%89%E8%81%94%E6%B5%81%E6%B0%B4%E7%BA%BF-%E5%90%8E%E8%AE%AD%E7%BB%83%E8%8C%83%E5%BC%8F%E7%BB%9F%E4%B8%80.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="rl-llm-reward-density">蒸馏+量化+RL 三联流水线：LLM 后训练范式统一与 Reward-Density 原则</h1>
+<blockquote>
+<p>2026-05-19 夜学 | 深度 L3 | 前沿研究综合</p>
+</blockquote>
+<hr />
+<h2 id="1">① 核心发现</h2>
+<h3 id="1-sparse-to-dense-reward-principlearxiv-260512483princeton">1. Sparse-to-Dense Reward Principle（arXiv 2605.12483，Princeton）</h3>
+<p>这篇论文提出了 <strong>reward-density principle</strong>（奖励密度原则），从根本上重新思考了稀缺标注数据的分配策略：</p>
+<p><strong>核心洞察</strong>：稀疏的序列级奖励（如数学题对/错）应该用于有能力探索的大模型（教师），而密集的 token 级教师奖励应该用于压缩行为到小模型（学生）。</p>
+<p><strong>三阶段流水线</strong>：<br />
+- <strong>Stage 1（Teacher-Side Discovery）</strong>：在大型教师模型上用稀疏奖励 RL（如 GRPO）做行为发现<br />
+- <strong>Stage 2（Dense Bridge）</strong>：通过两阶段密集蒸馏将教师行为迁移到学生<br />
+  - 2a: Forward-KL warmup（教师 rollouts 上）<br />
+  - 2b: On-Policy Distillation（学生 rollouts 上）<br />
+- <strong>Stage 3（Student-Side Sparse RL）</strong>：仅在此后才对学生做稀疏 RL</p>
+<p><strong>关键数据</strong>：<br />
+- 固定 Qwen3-1.7B 部署规模：RL-improved 8B teacher → dense bridge → student = <strong>79.3% MATH</strong>，超过 direct GRPO on student 的 76.5%（+2.8pp）<br />
+- Forward-KL warmup + OPD 的组合在 MATH 上始终最强<br />
+- 操作原则：<strong>永远不要把稀缺标注数据浪费在准备最不充分的策略上</strong></p>
+<h3 id="2-rlad-rl-aware-distillationarxiv-260222495">2. RLAD — RL-Aware Distillation（arXiv 2602.22495）</h3>
+<p>提出 <strong>Trust Region Ratio Distillation（TRRD）</strong>，将蒸馏与 RL 后训练统一：</p>
+<p><strong>关键创新</strong>：<br />
+- 用 PPO/GRPO 风格的 likelihood-ratio 目标替代传统的 teacher-student KL 正则项<br />
+- 锚定到 teacher-old-policy mixture，实现 advantage-aware、trust-region-bounded 的蒸馏<br />
+- <strong>选择性模仿</strong>：学生只在有利于 RL 目标时才跟随教师</p>
+<p><strong>效果</strong>：在多个逻辑推理和数学 benchmark 上，RLAD 一致优于 offline distillation、标准 GRPO 和 KL-based on-policy distillation</p>
+<h3 id="3-on-policy-distillation-arxiv-260400626tencent">3. On-Policy Distillation 统一框架综述（arXiv 2604.00626，Tencent）</h3>
+<p>首个 OPD（On-Policy Distillation）综合 survey，提出统一理论框架：</p>
+<p><strong>三维度设计空间</strong>：<br />
+1. <strong>Feedback Signal</strong>：logit-based（白盒概率）、outcome-based（结果奖励）、self-play（自我对弈）<br />
+2. <strong>Teacher Access</strong>：white-box（完整 logits）、black-box（仅输出）、teacher-free（自蒸馏）<br />
+3. <strong>Loss Granularity</strong>：token-level、sequence-level、hybrid</p>
+<p><strong>核心理论</strong>：将 OPD 形式化为 <strong>f-divergence minimization</strong> over student-sampled trajectories，建立了 OPD 与 KL-constrained RL 的理论联系。</p>
+<p><strong>关键失败模式</strong>：<br />
+- 分布偏移（compounding error）<br />
+- 教师覆盖不足<br />
+- 负迁移（negative transfer）<br />
+- 训练不稳定</p>
+<h3 id="4-densegrpo-iclr-2026">4. DenseGRPO — 稀疏到密集奖励（ICLR 2026）</h3>
+<p>将 sparse-to-dense 思想应用到 Flow Matching 模型对齐：</p>
+<p><strong>核心方法</strong>：<br />
+- 预测 step-wise reward gain 作为每个去噪步骤的密集奖励<br />
+- 基于 ODE 方法在中间清洁图像上应用奖励模型<br />
+- 揭示了 GRPO 中统一探索设置与时间变化噪声强度的不匹配问题<br />
+- 提出自适应噪声强度 ψ(t) 校准</p>
+<p><strong>意义</strong>：sparse-to-dense 不仅适用于 LLM 文本推理，也适用于生成式模型的 RL 对齐</p>
+<h3 id="5-deepseek-r1-pipeline">5. DeepSeek-R1 蒸馏范式验证了 Pipeline 的有效性</h3>
+<p>DeepSeek-R1 的训练流程本身就是三联流水线的工业级验证：<br />
+- <strong>Stage 1</strong>：DeepSeek-V3-Base 上大规模 GRPO RL（发现推理能力）<br />
+- <strong>Stage 2</strong>：蒸馏到 6 个 Dense 模型（1.5B/7B/8B/14B/32B/70B）<br />
+- 蒸馏效果：小模型蒸馏 &gt; 小模型独立 RL（证明了教师 RL 发现 + 蒸馏迁移的优越性）</p>
+<hr />
+<h2 id="2">② 技术原理解析</h2>
+<h3 id="21-reward-density-principle">2.1 Reward-Density Principle 数学基础</h3>
+<p>传统做法是在部署模型上直接 GRPO：</p>
+<pre><code>J_GRPO(θ) = E[{τ_k} ~ π_θ_old] [
+  1/K Σ_k 1/|o_k| Σ_t [ρ̂_k,t(θ) Â_k - β D_KL(π_θ || π_ref)]
+]
+</code></pre>
+<p>其中 Â_k = (r_k - E[r_k]) / std[r_k]，是序列级的稀疏优势。</p>
+<p><strong>问题</strong>：小模型探索能力有限，稀疏奖励的梯度信号太弱。</p>
+<p><strong>Sparse-to-Dense 方案</strong>的 dense bridge 用 token 级密集信号：</p>
+<pre><code>L_dense_bridge = E_{y~π_S(·|x)} [
+  Σ_t D_f(π_T(·|x,y_{&lt;t}) || π_S(·|x,y_{&lt;t}))
+]
+</code></pre>
+<p>其中 D_f 是 f-divergence（通常是 Forward KL），π_T 是教师，π_S 是学生。</p>
+<h3 id="22-rlad-trrd">2.2 RLAD 的 TRRD 机制</h3>
+<p>传统 on-policy 蒸馏目标：</p>
+<pre><code>L_OPD = -E_{y~π_S} [Σ_t log π_T(y_t|x, y_{&lt;t})]
+</code></pre>
+<p>RLAD 的 TRRD 替换为：</p>
+<pre><code>L_TRRD = E_{y~π_S} [Σ_t min(ρ̃_t(θ) · A_t, clip(ρ̃_t(θ), 1-ε, 1+ε) · A_t)]
+</code></pre>
+<p>其中 ρ̃<em>t(θ) = π_θ(y_t|x,y</em>{&lt;t}) / (α·π_T(y_t|x,y_{&lt;t}) + (1-α)·π_old(y_t|x,y_{&lt;t}))</p>
+<p>这是一个混合参考策略（teacher + old policy），使得蒸馏信号与 RL advantage 联动：<br />
+- 当教师方向与 RL 目标一致时，模仿强度大<br />
+- 当不一致时，trust region 限制防止负迁移</p>
+<h3 id="23-opd-rl">2.3 OPD 与 RL 的理论等价性</h3>
+<p>Survey 的核心理论贡献：On-Policy Distillation 可以等价于 KL-constrained policy optimization。</p>
+<p>对于 KL-regularized 目标：</p>
+<pre><code>max_π E_{y~π}[r(y)] - β·D_KL(π || π_ref)
+</code></pre>
+<p>最优策略为：</p>
+<pre><code>π*(y|x) ∝ π_ref(y|x) · exp(r(y)/β)
+</code></pre>
+<p>当 π_ref = π_T（教师）时，上述 KL-constrained RL 等价于用教师作为参考策略的 distillation + RL 联合优化。</p>
+<h3 id="24">2.4 三联流水线的最优顺序</h3>
+<p>综合多篇论文的实验证据：</p>
+<table>
+<thead>
+<tr>
+<th>策略</th>
+<th>MATH (1.7B)</th>
+<th>计算成本</th>
+<th>推荐场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct GRPO on student</td>
+<td>76.5%</td>
+<td>低</td>
+<td>资源极度受限</td>
+</tr>
+<tr>
+<td>Teacher RL → Distill</td>
+<td>79.3%</td>
+<td>中</td>
+<td>标准场景</td>
+</tr>
+<tr>
+<td>Teacher RL → Dense Bridge → Student RL</td>
+<td>~80%+</td>
+<td>高</td>
+<td>最佳效果</td>
+</tr>
+<tr>
+<td>RLAD (unified)</td>
+<td>comparable</td>
+<td>中-高</td>
+<td>需要 RL+KD 联合</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键发现</strong>：先蒸馏再 RL &gt; 先 RL 再蒸馏。因为蒸馏提供了更好的初始化，后续 RL 可以在更高起点上探索。</p>
+<hr />
+<h2 id="3">③ 知识关联</h2>
+<ul>
+<li>[[2026-05-10-蒸馏量化联合策略-QAD-LBLLM-CapacityGap]] → QAD 解决了量化后的精度恢复，但未涉及 RL 阶段。本篇补充了 RL→蒸馏→量化的完整流水线顺序问题</li>
+<li>[[2026-05-04-LLM对齐训练范式RLHF-DPO-GRPO-DAPO]] → GRPO 是三联流水线 Stage 1 的 RL 算法，本篇补充了 GRPO 后如何与蒸馏串联</li>
+<li>[[2026-05-14-多目标GRPO-GDPO-AW-GRPO-Reward融合与冲突消解]] → 多目标 GRPO 产出更好的教师信号，可用于三联流水线的 Teacher-Side Discovery 阶段</li>
+<li>[[2026-05-09-LLM知识蒸馏技术全景]] → 蒸馏全景的延续，本篇聚焦于 RL-aware distillation 和 OPD 与 RL 的理论统一</li>
+<li>[[2026-05-11-MoE蒸馏与压缩-专家路由迁移-稀疏结构处理]] → MoE 模型的三联流水线需要额外考虑专家路由信息的迁移</li>
+<li>[[2026-05-18-MoE模型LoRA微调最佳实践]] → MoE-LoRA 可作为三联流水线 Stage 3（student-side RL）的高效训练方案</li>
+<li>[[2026-05-17-LoRA高效微调前沿技术全景]] → LoRA 在三联流水线中可用于每阶段的参数高效训练</li>
+<li>obs_notes: [[大模型核心术语]] → 包含 RLHF/DPO/GRPO 基础术语定义</li>
+<li>[[2026-05-13-MoE投机解码-稀疏激活与推理加速深度解析]] → 三联流水线的最终产物（压缩模型）可通过投机解码进一步加速</li>
+<li>[[2026-05-07-大模型量化技术全景-GGUF-GPTQ-AWQ-FP8-BitNet]] → 三联流水线中量化阶段的技术选择参考</li>
+</ul>
+<hr />
+<h2 id="4-actionable-insights">④ Actionable Insights</h2>
+<h3 id="41-hermes-agent-pipeline">4.1 Hermes Agent 自训练 Pipeline</h3>
+<p>现有的 Hermes self-improvement loop（evolver skill）可以借鉴 sparse-to-dense 原则：<br />
+- 用大模型（如 DeepSeek-V3）做 RL discovery<br />
+- 通过 OPD 蒸馏到小模型（如 Qwen3-1.7B）<br />
+- 小模型作为日常 Agent 运行</p>
+<h3 id="42">4.2 量化部署路径优化</h3>
+<p>当前量化部署（05-07 学习）的流程：SFT → 量化 → QAD 恢复<br />
+优化为：大模型 RL → 蒸馏到目标大小 → 量化 → QAD → 部署（多一个蒸馏阶段，但效果更好）</p>
+<h3 id="43-multi-teacher-kd-grpo">4.3 Multi-Teacher KD + GRPO</h3>
+<p>OpenReview 上发现 Multi-Teacher KD Augmented GRPO（MTKD-GRPO）论文，将多教师蒸馏直接嵌入 GRPO 目标：</p>
+<pre><code>J'(θ) = L_GRPO(θ) - β·D_KL(π_θ||π_ref) + λ·Σ_i w_i(s)·D_H(π_Ti||π_θ)
+</code></pre>
+<p>可用于 Hermes 的多模型经验融合。</p>
+<h3 id="44-rlkdaaai-2026">4.4 RLKD（AAAI 2026）推理结构蒸馏</h3>
+<p>RLKD 用 RL 蒸馏推理链的隐式多分支结构（Generative Structure Reward Model），而非单纯模仿输出。比 standard KD 更适合推理任务的迁移。</p>
+<hr />
+<h2 id="5">⑤ 待深入问题</h2>
+<ol>
+<li><strong>三联流水线中量化阶段的最佳位置</strong> — 在蒸馏前量化教师（QAD 思路）还是蒸馏后量化学生？QAD 论文显示 RL-heavy 模型量化后 QAD 可恢复至近 BF16，但未与蒸馏联合评估</li>
+<li><strong>RLAD + QAD 叠加</strong> — TRRD 的 advantage-aware 蒸馏是否与 QAD 的 KL 散度蒸馏目标兼容？是否可设计 RL-aware QAD</li>
+<li><strong>Sparse-to-Dense 在 Agent 场景的适配</strong> — 奖励密度原则是否适用于工具调用、规划等 Agent 任务？稀疏奖励（任务成功/失败）→ 密集奖励（每步 token 级反馈）的迁移</li>
+<li><strong>MoE 模型的三联流水线特殊处理</strong> — DeepSeek-V3 是 MoE，蒸馏到 Dense 时专家路由信息如何处理？D²-MoE delta 分解是否应嵌入流水线</li>
+<li><strong>OPD 自蒸馏天花板</strong> — Self-Distilled Reasoner 证明模型可以做自己的教师，但收敛上界在哪？与外部教师蒸馏的差距有多大</li>
+<li><strong>DenseGRPO 的 LLM 适配</strong> — ICLR 2026 DenseGRPO 是为 Flow Matching 设计的，step-wise dense reward 思想如何迁移到 LLM 的 token 级奖励</li>
+<li><strong>三联流水线的计算最优分配</strong> — 在固定总计算预算下，Teacher RL、Dense Bridge、Student RL 的计算分配比例</li>
+</ol>
+<hr />
+<h2 id="_1">参考文献</h2>
+<ol>
+<li>Beyond GRPO and On-Policy Distillation (arXiv 2605.12483) — Sparse-to-Dense Reward Principle</li>
+<li>Reinforcement-aware Knowledge Distillation / RLAD (arXiv 2602.22495) — TRRD 机制</li>
+<li>A Survey of On-Policy Distillation for LLMs (arXiv 2604.00626) — OPD 统一理论</li>
+<li>DenseGRPO (ICLR 2026, arXiv 2601.20218) — 稀疏到密集奖励</li>
+<li>QAD: Quantization-Aware Distillation (NVIDIA, arXiv 2601.20088) — NVFP4 精度恢复</li>
+<li>DeepSeek-R1 (arXiv 2501.12948) — 工业级 RL→蒸馏流水线</li>
+<li>RLKD (AAAI 2026) — RL-based 推理结构蒸馏</li>
+<li>MTKD-GRPO (TMLR under review) — 多教师蒸馏增强 GRPO</li>
+<li>Maximizing GRPO Under Annotation Budgets (arXiv 2508.14094) — GRPO 数据效率</li>
+<li>Stratos (AAAI 2026, 41495) — 端到端蒸馏 Pipeline</li>
+</ol>
+<h2 id="_2">相关笔记</h2>
+<ul>
+<li>[[LLM 后训练范式]]</li>
+<li>[[GRPO 训练]]</li>
+</ul>
+</body>
+</html>

@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VoxCPM2-TokenizerFree多语言TTS-语音克隆-声音设计</title>
+
+<meta property="og:title" content="VoxCPM2-TokenizerFree多语言TTS-语音克隆-声音设计" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | security" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-12-VoxCPM2-TokenizerFree%E5%A4%9A%E8%AF%AD%E8%A8%80TTS-%E8%AF%AD%E9%9F%B3%E5%85%8B%E9%9A%86-%E5%A3%B0%E9%9F%B3%E8%AE%BE%E8%AE%A1.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..500&family=IBM+Plex+Sans:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Fira Code', 'JetBrains Mono', monospace;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1f2937;
+  background: #f3f4f6;
+}
+
+h1 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #111827;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #111827;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'JetBrains Mono', 'Space Mono', monospace;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #111827cc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #111827aa;
+}
+
+a {
+  color: #dc2626;
+  text-decoration: none;
+  border-bottom: 1px solid #dc262630;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #dc2626;
+}
+
+code {
+  background: #fef2f2;
+  color: #dc2626;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #111827;
+  color: #f9fafb;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #dc2626;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1f2937cc;
+  background: #fef2f2;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ table：彻底禁用 ═══ */
+table, th, td { display: none !important; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e5e7eb;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #111827; }
+
+
+        h1::before { content: '🛡 '; }
+        pre { border-left: 3px solid #dc2626; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="voxcpm2-tokenizer-free-tts-openbmb">VoxCPM2 — Tokenizer-Free 多语言 TTS + 语音克隆 + 声音设计（OpenBMB）</h1>
+<blockquote>
+<p>GitHub: https://github.com/OpenBMB/VoxCPM<br />
+HuggingFace: https://huggingface.co/openbmb/VoxCPM2<br />
+技术报告: https://arxiv.org/abs/2606.06928<br />
+许可证: Apache-2.0（可商用）<br />
+评分: ⭐⭐⭐⭐⭐ (5/5) — 无 tokenizer 的端到端扩散自回归 TTS，2B 参数，30 语言，48kHz</p>
+</blockquote>
+<h2 id="_1">一句话定位</h2>
+<p><strong>OpenBMB 出品的 tokenizer-free TTS 系统，2B 参数，200 万小时多语言训练，支持 30 语言 + 中文方言，48kHz 录音室级音质，Voice Design（文字描述创造音色）+ 可控克隆 + 终极克隆三种模式，Apache-2.0 完全开源可商用。</strong></p>
+<h2 id="_2">核心技术亮点</h2>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Tokenizer-Free</strong></td>
+<td>直接生成连续语音表示，跳过离散 tokenization，实现高自然度和高表现力合成</td>
+</tr>
+<tr>
+<td><strong>扩散自回归架构</strong></td>
+<td>End-to-end diffusion autoregressive，基于 MiniCPM-4 backbone</td>
+</tr>
+<tr>
+<td><strong>2B 参数</strong></td>
+<td>200 万小时多语言语音数据训练</td>
+</tr>
+<tr>
+<td><strong>30 语言</strong></td>
+<td>阿拉伯语/中文/英语/法语/德语/日语/韩语/俄语/西班牙语等 30 种，无需指定语言标签</td>
+</tr>
+<tr>
+<td><strong>中文方言</strong></td>
+<td>四川话/粤语/吴语/东北话/河南话/陕西话/山东话/天津话/闽南话</td>
+</tr>
+<tr>
+<td><strong>48kHz 音质</strong></td>
+<td>接收 16kHz 参考音频，直接输出 48kHz，AudioVAE V2 非对称编解码内置超分辨率</td>
+</tr>
+<tr>
+<td><strong>RTF ~0.13</strong></td>
+<td>Nano-vLLM 加速后 RTX 4090 上 RTF 0.13（标准实现 ~0.30）</td>
+</tr>
+<tr>
+<td><strong>~8GB VRAM</strong></td>
+<td>2B 模型仅需 ~8GB 显存</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">四种语音生成模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>输入</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>🗣️ Text-to-Speech</strong></td>
+<td>纯文本</td>
+<td>标准合成，自动推断韵律和表现力</td>
+</tr>
+<tr>
+<td><strong>🎨 Voice Design</strong></td>
+<td>文字描述音色（如"年轻女性，温柔甜美"）</td>
+<td><strong>无需参考音频</strong>，从自然语言描述创造全新音色</td>
+</tr>
+<tr>
+<td><strong>🎛️ Controllable Cloning</strong></td>
+<td>参考音频 + 风格控制指令</td>
+<td>克隆音色同时可控情感/语速/风格</td>
+</tr>
+<tr>
+<td><strong>🎙️ Ultimate Cloning</strong></td>
+<td>参考音频 + 参考文本（transcript）</td>
+<td>音频续写式克隆，忠实再现音色/节奏/情感/风格的每个细节</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">快速上手</h2>
+<h3 id="_5">安装</h3>
+<pre><code class="language-bash">pip install voxcpm
+# 要求: Python ≥3.10(&lt;3.13), PyTorch ≥2.5.0, CUDA ≥12.0
+</code></pre>
+<h3 id="python-api">Python API</h3>
+<pre><code class="language-python">from voxcpm import VoxCPM
+import soundfile as sf
+
+model = VoxCPM.from_pretrained(&quot;openbmb/VoxCPM2&quot;, load_denoiser=False)
+
+# 基础 TTS
+wav = model.generate(text=&quot;你好，欢迎使用 VoxCPM2。&quot;, cfg_value=2.0, inference_timesteps=10, seed=42)
+sf.write(&quot;demo.wav&quot;, wav, model.tts_model.sample_rate)
+
+# Voice Design — 文字描述创造音色
+wav = model.generate(
+    text=&quot;(年轻女性，温柔甜美的声音)你好，欢迎来到 VoxCPM2！&quot;,
+    cfg_value=2.0, inference_timesteps=10, seed=42,
+)
+
+# Controllable Cloning — 克隆 + 风格控制
+wav = model.generate(
+    text=&quot;(稍快语速，欢快的语调)这是一个带风格控制的克隆语音。&quot;,
+    reference_wav_path=&quot;path/to/voice.wav&quot;,
+)
+
+# Ultimate Cloning — 终极克隆
+wav = model.generate(
+    text=&quot;这是终极克隆演示。&quot;,
+    prompt_wav_path=&quot;path/to/voice.wav&quot;,
+    prompt_text=&quot;参考音频的完整文本转写。&quot;,
+    reference_wav_path=&quot;path/to/voice.wav&quot;,  # 可选，提升相似度
+)
+
+# 流式输出
+import numpy as np
+chunks = []
+for chunk in model.generate_streaming(text=&quot;流式语音合成非常简单！&quot;):
+    chunks.append(chunk)
+wav = np.concatenate(chunks)
+</code></pre>
+<h3 id="cli">CLI 使用</h3>
+<pre><code class="language-bash"># Voice Design（无需参考音频）
+voxcpm design --text &quot;VoxCPM2 brings studio-quality multilingual speech synthesis.&quot; --output out.wav
+
+# 带风格控制的设计
+voxcpm design \
+  --text &quot;VoxCPM2 brings studio-quality multilingual speech synthesis.&quot; \
+  --control &quot;Young female voice, warm and gentle, slightly smiling&quot; \
+  --seed 42 --output out.wav
+
+# 语音克隆（参考音频）
+voxcpm clone --text &quot;This is a voice cloning demo.&quot; --reference-audio path/to/voice.wav --output out.wav
+
+# 终极克隆（参考音频 + 转写）
+voxcpm clone \
+  --text &quot;This is a voice cloning demo.&quot; \
+  --prompt-audio path/to/voice.wav --prompt-text &quot;reference transcript&quot; \
+  --reference-audio path/to/voice.wav --output out.wav
+
+# 批量处理
+voxcpm batch --input examples/input.txt --output-dir outs
+
+# 带时间戳输出（word/char 级别）
+pip install &quot;voxcpm[timestamps]&quot;
+voxcpm design --text &quot;...&quot; --output out.wav --timestamps --timestamp-level word --timestamp-language en
+</code></pre>
+<h2 id="_6">部署方案对比</h2>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>引擎</th>
+<th>RTF (4090)</th>
+<th>并发</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>标准 PyTorch</strong></td>
+<td>voxcpm</td>
+<td>~0.30</td>
+<td>单请求</td>
+<td>开发/测试</td>
+</tr>
+<tr>
+<td><strong>Nano-vLLM</strong></td>
+<td>nano-vllm-voxcpm</td>
+<td>~0.13</td>
+<td>批量并发 + async API</td>
+<td>中小规模生产</td>
+</tr>
+<tr>
+<td><strong>vLLM-Omni</strong></td>
+<td>vllm-omni</td>
+<td>—</td>
+<td>PagedAttention + 连续批处理 + OpenAI 兼容 API</td>
+<td>大规模多租户</td>
+</tr>
+<tr>
+<td><strong>llama.cpp-omni</strong></td>
+<td>C++ (GGUF)</td>
+<td>M4 Pro ~1.76</td>
+<td>单设备</td>
+<td><strong>端侧/边缘部署（无 Python）</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="vllm-omni-openai-api">vLLM-Omni 生产部署（OpenAI 兼容 API）</h3>
+<pre><code class="language-bash">vllm serve openbmb/VoxCPM2 --omni --port 8000
+
+# OpenAI 客户端直接调用
+curl http://localhost:8000/v1/audio/speech \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;model&quot;:&quot;openbmb/VoxCPM2&quot;,&quot;input&quot;:&quot;Hello from VoxCPM2!&quot;,&quot;voice&quot;:&quot;default&quot;}' \
+  --output out.wav
+</code></pre>
+<h3 id="llamacpp-omni">llama.cpp-omni 端侧部署</h3>
+<pre><code class="language-bash"># 下载 GGUF 权重（Q8_0 质量损失可忽略，体积减半）
+./build/bin/voxcpm2-cli \
+    -t &quot;Hello, this is VoxCPM2 running on edge.&quot; \
+    -o output.wav \
+    VoxCPM2-BaseLM-Q8_0.gguf VoxCPM2-Acoustic-F16.gguf
+</code></pre>
+<p>支持 CPU / Metal / CUDA / Vulkan 后端。</p>
+<h2 id="_7">版本对比</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>VoxCPM2 (最新)</th>
+<th>VoxCPM1.5</th>
+<th>VoxCPM-0.5B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>参数</strong></td>
+<td>2B</td>
+<td>0.6B</td>
+<td>0.5B</td>
+</tr>
+<tr>
+<td><strong>采样率</strong></td>
+<td>48kHz</td>
+<td>44.1kHz</td>
+<td>16kHz</td>
+</tr>
+<tr>
+<td><strong>语言</strong></td>
+<td>30</td>
+<td>2 (zh, en)</td>
+<td>2 (zh, en)</td>
+</tr>
+<tr>
+<td><strong>克隆模式</strong></td>
+<td>独立参考 + 续写</td>
+<td>仅续写</td>
+<td>仅续写</td>
+</tr>
+<tr>
+<td><strong>Voice Design</strong></td>
+<td>✅</td>
+<td>❌</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>可控克隆</strong></td>
+<td>✅</td>
+<td>❌</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>RTF (4090)</strong></td>
+<td>~0.30</td>
+<td>~0.15</td>
+<td>~0.17</td>
+</tr>
+<tr>
+<td><strong>RTF (Nano-vLLM)</strong></td>
+<td>~0.13</td>
+<td>~0.08</td>
+<td>~0.10</td>
+</tr>
+<tr>
+<td><strong>VRAM</strong></td>
+<td>~8GB</td>
+<td>~6GB</td>
+<td>~4GB</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_8">💡 对我们的借鉴分析</h2>
+<h3 id="tts">与现有 TTS 方案对比</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>VoxCPM2</th>
+<th>LuxTTS (当前主力)</th>
+<th>F5-TTS (克隆)</th>
+<th>ElevenLabs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>参数</strong></td>
+<td>2B</td>
+<td>—</td>
+<td>~1.3GB</td>
+<td>闭源</td>
+</tr>
+<tr>
+<td><strong>语言</strong></td>
+<td>30 (含中文方言)</td>
+<td>中英文</td>
+<td>任意（参考音频）</td>
+<td>多语言</td>
+</tr>
+<tr>
+<td><strong>采样率</strong></td>
+<td>48kHz</td>
+<td>48kHz</td>
+<td>24kHz</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>VRAM</strong></td>
+<td>~8GB</td>
+<td>~2.2GB</td>
+<td>~1.3GB</td>
+<td>云端</td>
+</tr>
+<tr>
+<td><strong>Voice Design</strong></td>
+<td>✅ 文字描述</td>
+<td>❌</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><strong>可控克隆</strong></td>
+<td>✅ 风格控制</td>
+<td>❌</td>
+<td>仅克隆</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>端侧部署</strong></td>
+<td>✅ GGUF/C++</td>
+<td>❌ Python</td>
+<td>❌ Python</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>许可证</strong></td>
+<td>Apache-2.0</td>
+<td>开源</td>
+<td>开源</td>
+<td>商业</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">🔥 关键启发</h3>
+<table>
+<thead>
+<tr>
+<th>启发点</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Tokenizer-Free 架构</strong></td>
+<td>绕过离散 tokenization 直接生成连续语音——这可能是 TTS 的范式转换。当前主流 TTS（VITS/F5-TTS/LuxTTS）都依赖某种形式的 tokenizer</td>
+</tr>
+<tr>
+<td><strong>Voice Design</strong></td>
+<td>用自然语言描述创造音色（"年轻女性，温柔甜美"），无需参考音频。这对数字人场景极有价值——可以为不同数字人角色快速定制专属音色</td>
+</tr>
+<tr>
+<td><strong>可控克隆</strong></td>
+<td>克隆音色 + 风格控制指令，比 F5-TTS 的纯克隆更进一步</td>
+</tr>
+<tr>
+<td><strong>Jetson 可行性评估</strong></td>
+<td>2B 参数需 ~8GB VRAM。Jetson Orin Nano 8GB unified memory 勉强够。但需要配合 llama.cpp-omni 的 GGUF 量化（Q8_0）才有可能跑起来</td>
+</tr>
+<tr>
+<td><strong>vLLM-Omni OpenAI API</strong></td>
+<td><code>/v1/audio/speech</code> 端点与 OpenAI TTS API 兼容，可无缝替换</td>
+</tr>
+<tr>
+<td><strong>端侧 GGUF 部署</strong></td>
+<td>llama.cpp-omni 支持 CPU/Metal/CUDA/Vulkan，Jetson 可用 CUDA 后端。Q8_0 量化体积减半质量损失可忽略</td>
+</tr>
+</tbody>
+</table>
+<h3 id="jetson-orin-nano">📊 Jetson Orin Nano 部署评估</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>评估</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VRAM</td>
+<td>⚠️ 临界</td>
+<td>2B fp16 需 ~8GB，Jetson 8GB 刚好。需 Q8_0 量化才安全</td>
+</tr>
+<tr>
+<td>推理速度</td>
+<td>⚠️ 待测</td>
+<td>RTX 4090 RTF 0.3，Jetson 算力约为 4090 的 1/15，预计 RTF 4-5（不可实时）</td>
+</tr>
+<tr>
+<td>端侧方案</td>
+<td>✅ 可行</td>
+<td>llama.cpp-omni + GGUF Q8_0，CPU/CUDA 后端</td>
+</tr>
+<tr>
+<td>替代定位</td>
+<td>云端推理</td>
+<td>Jetson 上做 LuxTTS/F5-TTS，云端部署 VoxCPM2 做高质量生成</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">🎯 可实施的行动</h3>
+<ol>
+<li><strong>短期</strong>：在 Jetson 上试跑 VoxCPM2 GGUF Q8_0，测 RTF 是否可接受</li>
+<li><strong>中期</strong>：如果 RTF &lt; 3，可作为 LuxTTS 的高质量替代（非实时场景如视频制作）</li>
+<li><strong>Voice Design 集成</strong>：为数字人 pipeline 项目（digital-human-pipeline）的 Step 2（音色确定）提供新方案——文字描述即可创造音色，无需录制参考音频</li>
+</ol>
+<h2 id="_11">关联</h2>
+<ul>
+<li>→ 相关：2026-06-14-语音智能体闭环-Typeless-VoxCPM2.md</li>
+<li>→ 相关：2026-05-14-Supertonic-闪电般本地TTS.md</li>
+<li>→ 相关：explore/2026-05-18-f5-tts-voice-cloning-incremental.md</li>
+<li>→ 项目：~/uclaw/project/digital-human-pipeline/（VoxCPM2 可作为 Step 2 TTS 方案）</li>
+</ul>
+</body>
+</html>
