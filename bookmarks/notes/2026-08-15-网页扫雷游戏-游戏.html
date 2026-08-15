@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="经典扫雷网页版：单文件零依赖，首点必安全，支持插旗、和弦、长按与最佳纪录。">
+<meta name="description" content="经典扫雷网页版：单文件零依赖，首点必安全，触屏优化模式切换，支持插旗、和弦与最佳纪录。">
 <meta property="og:title" content="扫雷 · 单文件网页游戏">
-<meta property="og:description" content="三档难度 / 首点必安全 / 和弦速开 / 最佳纪录">
+<meta property="og:description" content="三档难度 / 首点必安全 / 触屏模式切换 / 最佳纪录">
 <title>扫雷 · Minesweeper</title>
 <style>
 :root{
@@ -47,6 +47,17 @@ header p{font-size:14px;color:var(--ink2);margin-top:8px;line-height:1.7}
 }
 .levels button:hover{border-color:var(--accent);color:var(--accent)}
 .levels button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500;box-shadow:var(--sh-sm)}
+/* 模式切换（触屏核心交互） */
+.mode-bar{display:flex;justify-content:center;margin-bottom:8px}
+.mode-seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--panel2);box-shadow:var(--sh-sm)}
+.mode-seg button{
+  font:inherit;font-size:14px;padding:0 24px;min-height:44px;border:0;
+  background:transparent;color:var(--ink2);cursor:pointer;transition:all .15s ease;
+  display:inline-flex;align-items:center;gap:8px
+}
+.mode-seg button svg{width:16px;height:16px}
+.mode-seg button.on{background:var(--accent);color:#fff;font-weight:500}
+.mode-hint{text-align:center;font-size:13px;color:var(--ink2);margin:0 0 16px;line-height:1.6}
 /* HUD */
 .hud{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--panel2);border:1px solid var(--line2);border-radius:var(--r);padding:8px 16px;margin-bottom:16px}
 .led{
@@ -72,9 +83,11 @@ header p{font-size:14px;color:var(--ink2);margin-top:8px;line-height:1.7}
   cursor:pointer;display:grid;place-items:center;
   font-family:inherit;font-weight:700;font-size:calc(var(--cell)*.52);
   box-shadow:inset 0 -2px 0 rgba(120,105,70,.16), inset 0 1px 0 rgba(255,255,255,.6);
-  transition:background .12s ease;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;padding:0;line-height:1
+  transition:background .12s ease;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;padding:0;line-height:1
 }
 .cell:hover:not(.open){background:var(--cell-hi)}
+body.mode-flag .cell:not(.open){background:var(--cell-face)}
+body.mode-flag .cell:not(.open):hover{background:var(--accent-soft)}
 .cell svg{width:calc(var(--cell)*.55);height:calc(var(--cell)*.55);pointer-events:none}
 .cell.open{background:var(--cell-open);box-shadow:inset 0 0 0 1px var(--line2);cursor:default;animation:pop .2s ease backwards;animation-delay:var(--d,0ms)}
 @keyframes pop{from{transform:scale(.5);opacity:.25}}
@@ -105,6 +118,8 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
   .led{font-size:18px;min-width:60px;padding:4px 6px}
   .face{width:44px;height:44px}
   .meta{min-width:60px}
+  .mode-seg button{padding:0 20px}
+  .levels button{padding:8px 14px}
 }
 </style>
 </head>
@@ -126,6 +141,10 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
     <symbol id="i-cross" viewBox="0 0 24 24">
       <path d="M5 5 L19 19 M19 5 L5 19" stroke="#c93a2e" stroke-width="3" stroke-linecap="round"/>
     </symbol>
+    <symbol id="i-pick" viewBox="0 0 24 24">
+      <path d="M4 20 L13 11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M9 4 C13 3 17.5 5 20 9.5 C18 8.5 14.5 8.3 12 9.5 L9.5 12 C8.3 14.5 8.5 18 9.5 20 C5 17.5 3 13 4 9 Z" fill="currentColor" opacity=".85"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -141,6 +160,18 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
       <button data-lv="medium">中级 16×16</button>
       <button data-lv="hard">高级 30×16</button>
     </nav>
+
+    <nav class="mode-bar" aria-label="操作模式">
+      <div class="mode-seg" role="group">
+        <button id="modeDig" class="on" type="button">
+          <svg><use href="#i-pick"/></svg>挖开
+        </button>
+        <button id="modeFlag" type="button">
+          <svg><use href="#i-flag"/></svg>插旗
+        </button>
+      </div>
+    </nav>
+    <p class="mode-hint" id="modeHint">当前：挖开模式 · 点格子翻开，点已开数字可和弦速开</p>
 
     <section class="hud" aria-label="状态栏">
       <div class="led" id="mineLed" aria-label="剩余雷数">010</div>
@@ -182,14 +213,14 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
     <p id="banner" role="status" aria-live="polite"></p>
 
     <p class="legend">
-      <span><kbd>左键</kbd>翻开</span>
+      <span><kbd>点格</kbd>按当前模式操作</span>
       <span><kbd>右键</kbd>插旗</span>
-      <span><kbd>双击</kbd>数字和弦速开</span>
-      <span><kbd>长按</kbd>手机插旗</span>
+      <span><kbd>点数字</kbd>和弦速开</span>
+      <span><kbd>长按</kbd>快速插旗</span>
     </p>
   </main>
 
-  <footer>最佳纪录保存在本机浏览器（localStorage）· 首次点击及周围一格保证无雷</footer>
+  <footer>最佳纪录保存在本机浏览器（localStorage）· 首次点击及周围一格保证无雷 · 手机推荐用「插旗模式」标记雷区</footer>
 </div>
 
 <script>
@@ -205,10 +236,14 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
   var timeLed = document.getElementById('timeLed');
   var banner  = document.getElementById('banner');
   var faceBtn = document.getElementById('faceBtn');
+  var modeDigBtn = document.getElementById('modeDig');
+  var modeFlagBtn = document.getElementById('modeFlag');
+  var modeHint = document.getElementById('modeHint');
   var faces = {normal:document.getElementById('fNormal'), wow:document.getElementById('fWow'),
                win:document.getElementById('fWin'), lose:document.getElementById('fLose')};
 
   var S = null, timerId = null;
+  var mode = 'dig'; // 'dig' | 'flag'
 
   function bestKey(){ return 'ms-best-' + S.key; }
   function getBest(){ var v = localStorage.getItem(bestKey()); return v ? +v : null; }
@@ -222,6 +257,16 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
     return String(Math.min(999, n)).padStart(3, '0');
   }
   function updateMineLed(){ mineLed.textContent = pad3(S.mines - S.flags); mineLed.classList.toggle('neg', S.flags > S.mines); }
+
+  function setMode(m){
+    mode = m;
+    modeDigBtn.classList.toggle('on', m === 'dig');
+    modeFlagBtn.classList.toggle('on', m === 'flag');
+    document.body.classList.toggle('mode-flag', m === 'flag');
+    modeHint.textContent = (m === 'dig')
+      ? '当前：挖开模式 · 点格子翻开，点已开数字可和弦速开'
+      : '当前：插旗模式 · 点格子插旗 / 再点同一格拔旗';
+  }
 
   function neighbors(r, c){
     var out = [];
@@ -342,7 +387,6 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
     if (S.over || cell.open) return;
     cell.flag = !cell.flag;
     S.flags += cell.flag ? 1 : -1;
-    cell.el.classList.toggle('flag', cell.flag);
     cell.el.innerHTML = cell.flag ? '<svg><use href="#i-flag"/></svg>' : '';
     cell.el.setAttribute('aria-label', cell.flag ? '已插旗' : '');
     updateMineLed();
@@ -388,21 +432,26 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
 
   /* ---------- 事件 ---------- */
   function cellIdx(target){
-    var el = target.closest('.cell');
+    var el = target.closest ? target.closest('.cell') : null;
     return el ? +el.dataset.i : null;
   }
 
+  // 统一点击入口：按模式分发（触屏 / 鼠标共用）
   boardEl.addEventListener('click', function(e){
-    if (lpFired){ lpFired = false; return; }
+    if (lpFired && Date.now() - lpTime < 600){ lpFired = false; return; } // 吞掉长按后浏览器补发的 click
     var i = cellIdx(e.target);
     if (i === null) return;
     var cell = S.grid[i];
+    if (mode === 'flag'){
+      if (!cell.open) toggleFlag(i);
+      return;
+    }
     if (cell.open){ tryChord(i); } else { openCell(i); }
   });
 
   boardEl.addEventListener('dblclick', function(e){
     var i = cellIdx(e.target);
-    if (i === null) return;
+    if (i === null || mode === 'flag') return;
     tryChord(i);
   });
 
@@ -412,19 +461,20 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
     if (i !== null) toggleFlag(i);
   });
 
-  // 长按插旗（移动端）
-  var lpTimer = null, lpFired = false;
+  // 长按快速插旗（任何模式均可用，触屏辅助）
+  var lpTimer = null, lpFired = false, lpTime = 0;
   boardEl.addEventListener('touchstart', function(e){
     var i = cellIdx(e.target);
     if (i === null) return;
     lpFired = false;
     lpTimer = setTimeout(function(){
-      lpFired = true;
+      lpFired = true; lpTime = Date.now();
       toggleFlag(i);
       if (navigator.vibrate) navigator.vibrate(30);
-    }, 420);
+    }, 380);
   }, {passive:true});
   boardEl.addEventListener('touchend', function(){ clearTimeout(lpTimer); }, {passive:true});
+  boardEl.addEventListener('touchcancel', function(){ clearTimeout(lpTimer); }, {passive:true});
   boardEl.addEventListener('touchmove', function(){ clearTimeout(lpTimer); }, {passive:true});
 
   // 按下时笑脸惊讶
@@ -436,6 +486,9 @@ footer{margin-top:16px;text-align:center;font-size:12px;color:var(--ink2)}
   document.querySelectorAll('.levels button').forEach(function(b){
     b.addEventListener('click', function(){ init(b.dataset.lv); });
   });
+
+  modeDigBtn.addEventListener('click', function(){ setMode('dig'); });
+  modeFlagBtn.addEventListener('click', function(){ setMode('flag'); });
 
   window.addEventListener('resize', function(){
     if (!S) return;
