@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手写PTX-TensorCore-GEMM多精度研究-L4</title>
+
+<meta property="og:title" content="手写PTX-TensorCore-GEMM多精度研究-L4" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="ptx-tensor-core-gemm-nvidia-l4">手写 PTX Tensor-Core GEMM 内核：NVIDIA L4 多精度研究</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2608.10103（X @vintcessun / 恒星sun 推文荐读）<br />
+<strong>原文链接</strong>：https://arxiv.org/html/2608.10103v1<br />
+<strong>作者</strong>：MattJBorowski1991（开源 artifact：github.com/MattJBorowski1991/TensorCorePTX）<br />
+<strong>记录日期</strong>：2026-08-15</p>
+</blockquote>
+<p><strong>标签</strong>：#GPU优化 #PTX #TensorCore #量化 #LLM推理 #GEMM</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-wmma-ptx">1.1 核心问题：什么时候值得从 WMMA 下沉到手写 PTX？</h3>
+<p>Tensor Core 有两级访问接口：<br />
+- <strong>WMMA C++ API</strong>（高层）：方便可移植，但固定 fragment 形状、加载模式、累加器布局，隐藏底层指令流<br />
+- <strong>PTX 路径</strong>（低层）：<code>cp.async</code>（全局→共享异步拷贝）+ <code>ldmatrix</code>（协作式共享→寄存器加载）+ <code>mma.sync</code>（矩阵乘本体）——程序员直接控制 tile 形状、流水深度、寄存器映射，代价是复杂度剧增</p>
+<p><strong>流行假设是"手写 PTX 必然更快"。本文用受控单 GPU 实验证明：这个假设只在特定精度和规模下成立。</strong></p>
+<h3 id="12">1.2 实验设计（方法论亮点）</h3>
+<ul>
+<li>平台：NVIDIA L4（Ada 架构 SM89，72W 推理卡，FP16 TC 242 TFLOPS / INT8 TC 485 TOPS）</li>
+<li>全部内核共享同一分块配置（WMMA_M=N=16、4×2 warp-tile、8 warps/block），<strong>一次只改一个维度</strong>（加载路径/mma形状/累加器类型/流水深度）——保证每个加速都能归因到具体机制</li>
+<li>规模扫描 N=512→8192 方阵，Nsight Compute <code>--set full</code> 全指标剖析</li>
+<li>四组实验：Run1 FP16 族 / Run2 INT8 族 / Run3 INT4 基础 / Run4 最优 INT4 k64 消融</li>
+</ul>
+<h3 id="13">1.3 结果总表</h3>
+<table>
+<thead>
+<tr>
+<th>精度</th>
+<th>PTX vs 同精度 WMMA</th>
+<th>机制</th>
+<th>最优内核</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP16</td>
+<td><strong>1.0×（无收益）</strong></td>
+<td>指令级增益被操作数打包开销抵消</td>
+<td>fp16_wmma（基线即最优）</td>
+</tr>
+<tr>
+<td>INT8</td>
+<td><strong>1.4×–1.8×</strong></td>
+<td>指令数减少 25–43% + 全局访存合并近乎完美（浪费 sector 仅 0.4%）</td>
+<td>int8_ptx_mma_k32</td>
+</tr>
+<tr>
+<td>INT4</td>
+<td><strong>2.9×–4.3×</strong></td>
+<td>原生 <code>mma.sync.m16n8k64.s4</code> 绕过 WMMA 的软件模拟展开</td>
+<td>k64（大 N）/ 3stage（小 N）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>相对 FP16 WMMA 基线的端到端加速（N=8192）：INT8 最优 34.4×，INT4 最优 98.7×。</strong></p>
+<h3 id="14-run-1-fp16ptx">1.4 Run 1 — FP16：PTX 打不过编译器</h3>
+<ul>
+<li>6 个 FP16 内核，所有规模下手写 PTX 均不快于编译器优化过的 WMMA，差距 ±5% 以内</li>
+<li>计算受限段（N≤4096）所有内核都跑出 1280–1500 GFLOPS；manual_pack 虽然 SM 吞吐最高（~57%）但打包开销最大（N=512 慢 22%）</li>
+<li>N=8192 时 ~537MB 工作集溢出 L2，全部内核卡死在 DRAM：L1/TEX 吞吐从 ~90% 崩到 ~38%，GFLOPS 减半，所有差异缩到 1% 以内——<strong>带宽成为唯一瓶颈，指令组合变得无关紧要</strong></li>
+<li>反直觉发现：FP16 累加器变体把占用率提到 70–82%（其他 56–66%），<strong>GFLOPS 却不涨</strong>——占用率不缺 warp 时不是吞吐的驱动因素</li>
+</ul>
+<h3 id="15-run-2-int8k32">1.5 Run 2 — INT8：k32 靠指令数和合并访存赢</h3>
+<ul>
+<li>int8_ptx_mma_k32 全规模最快（N=512 快 23% → N=8192 快 43%）</li>
+<li>机制：把每个 K=32 tile 分解为两个紧致展开的 m16n8k16 MMA，指令数比 WMMA 少 25–43%；全局加载合并近乎完美——N=8192 只浪费 0.4% sector（其他内核约 50%）</li>
+<li>N=8192 时 <strong>DRAM Active Cycles 与墙钟时间几乎 1:1 对应</strong>：k32 记录 1.57B DRAM 活跃周期 vs WMMA 2.80B（-43.9%，正好对应 -43% 提速）——最清晰的证据：大 N 是 DRAM 延迟受限，排名由合并质量决定</li>
+<li>反例对照：k16 中小规模反而慢于 WMMA（未合并加载每 32 字节 sector 浪费 31 字节）；3stage 在 N=4096 崩 +37%（三缓冲打满 MIO 队列）；dp4a 纯标量路径慢 4.8×（指令数多几倍且完全不用 Tensor Core）</li>
+<li>占用率再次证伪：int8_wmma 占用率全规模最高，却稳定输给寄存器受限的 k32</li>
+</ul>
+<h3 id="16-run-3-int4-mma-wmma">1.6 Run 3 — INT4：原生 MMA 碾压 WMMA 软件模拟（最大收益）</h3>
+<ul>
+<li>根因：WMMA 的 INT4 路径（<code>wmma::experimental::precision::s4</code>）是<strong>软件展开模拟</strong>——指令数膨胀+重度 lane 依赖分支发散</li>
+<li>N=8192 时 int4_wmma 每 warp 只有 <strong>16.89 个活跃线程</strong> + <strong>461 万条发散分支</strong>；原生 PTX 内核满 32 线程/warp + <strong>零发散</strong>，每调度器指令数少 6–7×</li>
+<li>PTX 内部也有分水岭：3stage 小 N 最快（预取重叠深），但 N 增大后 L1 命中率崩到 14.5%（被 L2 吞吐 95.6% 主导）；k64 在 N=8192 保住 61.6% L1 命中率，N≥2048 后全程最优——<strong>交叉点是内存层级效应，不是 Tensor Core 利用率差异</strong>（两者用同一个 m16n8k64 MMA）</li>
+</ul>
+<h3 id="17-run-4-int4-k64">1.7 Run 4 — INT4 k64 消融：真正的局部最优</h3>
+<p>固定 m16n8k64 策略扫三个旋钮：A 加载器分片（x1/x2/x4 ldmatrix）、缓存驱逐策略（.ca vs .cg）、B 操作数布局（转置 vs 非转置）。</p>
+<ul>
+<li>选定配置（x4 A + x2 B + 非转置 + .ca）确实坐在局部最优盆地里，非转置 .ca 变体只差几个百分点</li>
+<li><strong>转置 B 变体灾难性崩溃</strong>：每 32 字节 sector 只用上 ~2.2 字节，每调度器可执行 warp 从 0.57 掉到 0.20，大 N 慢 3.1×——再次确认<strong>合并访存质量（而非 MMA 算术）统治这个内核族</strong></li>
+<li>.cg 策略把流量从 L1 推给 L2（命中 64%→20%），温和但一致的延迟退化</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-wmma-vs-mmasync">2.1 WMMA vs mma.sync 的指令层级</h3>
+<p>WMMA 是 CUDA C++ 的 <code>nvcuda::wmma</code> 命名空间，m16n16k16 固定形状，fragment 对程序员不透明；PTX 的 <code>mma.sync.aligned</code> 暴露 m16n8k16/m16n8k64 等原生形状，<code>ldmatrix</code> 按 lane 协作加载寄存器 fragment。WMMA 缺 INT4 原生支持（experimental 的 s4 是模拟），这是本文 INT4 巨大差距的根源。</p>
+<h3 id="22-cpasync">2.2 cp.async 流水线</h3>
+<p><code>cp.async</code>（Ampere 引入）16 字节全局→共享拷贝不占寄存器不阻塞发射 warp；<code>commit_group</code>/<code>wait_group</code> 括住飞行中的拷贝。双缓冲=一块 shared 在填、一块在算；三缓冲（wait_group 1）多一块在途换更长 L2 延迟隐藏，代价是 shared memory 压力。</p>
+<h3 id="23-l4">2.3 L4 定位</h3>
+<p>Ada 代 72W 单槽低姿态推理卡：FP32 30.3 TFLOPS、FP16 TC 242、INT8 TC 485 TOPS、24GB/300GB/s。论文的量化收益部分来自"L4 带宽相对算力偏紧"的卡型特征——带宽越紧，量化缩小工作集逃出 DRAM 悬崖的收益越大。</p>
+<h3 id="24-nvidia">2.4 与 NVIDIA 论坛历史疑问的呼应</h3>
+<p>NVIDIA 开发者论坛早有"INT8 WMMA 为何不比 FP16 快"的老问题（RTX 2060 实测两者同速）——本文给出了系统性答案：WMMA 层面 INT8 的理论双倍吞吐被指令流/访存掩盖，只有下沉 PTX（k32）才兑现部分差距。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 决策规则（论文核心产出）</h3>
+<pre><code>是否值得手写 PTX？
+├─ FP16 → 不值得。编译器 WMMA lowering 已近最优，大 N 带宽受限，
+│          PTX 无可回收的开销
+├─ INT8 → 中等值得（1.4–1.8×）。机制性收益：更少指令+更好合并
+└─ INT4 → 非常值得（2.9–4.3×）。结构性收益：绕过 WMMA 软件模拟，
+           原生 m16n8k64.s4 单指令完成
+
+统一原则：PTX 的工程复杂度，只在【它能消除 WMMA 路径无法避免的
+指令开销】时才值得付出——最戏剧化的是 INT4（WMMA 在软件里模拟）
+</code></pre>
+<h3 id="32">3.2 两条反直觉工程认知</h3>
+<ul>
+<li><strong>占用率是诊断量不是优化目标</strong>：两次实验证伪（FP16 累加器占用率 82% 不涨 GFLOPS；int8_wmma 占用率最高却稳定输给寄存器受限的 k32）</li>
+<li><strong>推理规模下真正的约束是内存不是算术</strong>：量化收益不只来自每操作数字节减半/减四分之一，更来自工作集缩到能驻留 L2——INT4 因此逃过了把 FP16 卡死在 N=8192 的 DRAM 悬崖（INT4_wmma 的 DRAM 活跃只 0.88%，L2 命中 99.7%）</li>
+</ul>
+<h3 id="33-n8192">3.3 性能数据速查（N=8192 墙钟）</h3>
+<ul>
+<li><strong>内核</strong>：fp16_wmma 16500ms &gt; int8_wmma 858ms &gt; int4_wmma 713ms &gt; int8_k32 480ms &gt; int4_3stage 198ms &gt; int4_k64 <strong>167ms</strong></li>
+<li><strong>vs FP16 WMMA</strong>：int8_k32 34.4× / int4_3stage 83.5× / int4_k64 <strong>98.7×</strong></li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：低精度原生化是推理栈的持续方向</h3>
+<p>依据：INT4 从"WMMA 模拟"到"原生单指令"带来 4.3× 结构性收益；行业同构趋势——Blackwell 已原生 FP4/FP8 block-scaled（cuBLAS 12.9 报 FP8 vs BF16 1.5–2.2×）。<br />
+判断：未来推理卡每代新增的原生低精度格式，谁先吃到原生指令红利谁拿走数量级加速。</p>
+<h3 id="2">趋势2：单卡推理优化的重心从算子调优转向内存层级工程</h3>
+<p>依据：本文所有大 N 排名由合并访存质量+缓存驻留决定（转置 B 崩 3.1×、.cg 退化、DRAM cycles 与墙钟 1:1）；L4 这类带宽紧算力松的卡尤其如此。<br />
+判断：量化→L2 驻留→合并访存这条链路，比追求 Tensor Core 利用率百分比更值得投入。</p>
+<h3 id="3-ptx">趋势3：手工 PTX 的价值窗口收窄但不会消失</h3>
+<p>依据：FP16 上编译器已追平手写；但 WMMA 抽象层存在结构性盲区（INT4 模拟、fragment 布局不透明）。Triton/CUTLASS 等中间层持续吃掉两端。<br />
+判断：下沉 PTX 的决策将越来越像本文的判据式回答——先问"WMMA 路径有没有无法避免的开销"，再决定是否投入。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-jetson">5.1 与 Jetson 本地推理笔记的关联</h3>
+<p>本机 Jetson Orin Nano（8GB 统一内存、带宽 ~102GB/s）是比 L4 更极端的"带宽紧"案例。本文的结论直接映射：本地跑量化模型（GGUF Q4/Q8、TensorRT INT8/INT4）的收益不仅是算得快，更是工作集缩进缓存/统一内存带宽预算——<code>edge-llm-quantization</code>、<code>jetson-tensorrt-deploy</code> 两个 skill 的理论基础再添一实证。</p>
+<h3 id="52-llm">5.2 与 LLM 推理部署实践的关联</h3>
+<p>论文明确面向"单张 L4 级卡服务量化开源模型（Llama/Mistral/Qwen/Nemotron）"。对 llama.cpp（GGUF 路线）和 TensorRT-LLM（原生低精度 MMA 路线）的分野给出了解释框架：后者走的就是本文"原生 INT4/INT8 MMA"路线，前者部分场景仍在模拟展开的等价物上消耗指令预算。</p>
+<h3 id="53-arxiv-260810103">5.3 与 arXiv 2608.10103 的方法论关联</h3>
+<p>"一次只改一个变量 + 全指标剖析 + 机制归因"的实验设计，与自身量化回测中的 walk-forward 验证同构：不止问"快多少"，必须问"为什么快、瓶颈在哪层"。可借鉴到 <code>gpu-capacity-estimation</code> skill 的并发压测设计——把"占用率"当诊断量的思路同样适用于并发批大小调优。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>"PTX is worth its complexity exactly when it removes instruction overhead that the WMMA path cannot avoid."</p>
+<p>"Treat occupancy as a diagnostic, not a target."</p>
+<p>推文版："别急着为榨性能就下沉手写 PTX：在 NVIDIA L4 上，FP16 甚至赢不了双缓冲 WMMA。"</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>启示</strong>：本地 Jetson 量化推理遇到瓶颈时，先查访存合并与缓存驻留（Nsight 的 DRAM Active Cycles / L1/L2 命中率），再考虑更深的流水或手写 PTX</li>
+<li><strong>行动</strong>：把本文决策规则补进 <code>edge-llm-quantization</code> skill 的"量化方案选择"章节（INT4 原生 MMA vs 模拟的差距依据）；artifact 仓库（TensorCorePTX）留作内核参考实现</li>
+</ul>
+</body>
+</html>
