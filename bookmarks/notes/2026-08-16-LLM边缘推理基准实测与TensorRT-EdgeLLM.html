@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM边缘推理基准实测与TensorRT-EdgeLLM</title>
+
+<meta property="og:title" content="LLM边缘推理基准实测与TensorRT-EdgeLLM" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-tensorrt-edge-llm">LLM 边缘推理基准实测与 TensorRT Edge-LLM 部署新路径</h1>
+<blockquote>
+<p>日期：2026-08-16 ｜ 类型：技术调研笔记 ｜ 来源：arXiv 2604.24785v2 + NVIDIA Jetson AI Lab 官方教程<br />
+关联：衔接 2026-08-15 PTX Tensor-Core GEMM 多精度研究、nexa-local-inference skill（Ollama on Jetson Orin Nano Super）</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心结论（先看这个）</h2>
+<ol>
+<li><strong>加速器 vs CPU 能效差距高达 40×</strong>——RPi5 纯 CPU 推理 27–77 MJ/Mtok，加 NPU/GPU 后降到 0.6–5.5 MJ/Mtok。边缘部署 LLM 没有加速器等于浪费一个数量级的能量。</li>
+<li><strong>Jetson Orin Nano Super（我们的设备）GPU offload 只带来 1.24×–1.82× 能效增益</strong>——因为它 CPU 基线本来就强（6 核 A78AE），不像 RPi5 那样夸张。但<strong>绝对吞吐全场第一</strong>：1.5B 模型 9.37–9.59 tok/s，约为 M5Stack NPU 的 4 倍。</li>
+<li><strong>NVIDIA 官方新推出 TensorRT Edge-LLM</strong>：纯 C++ 推理路径（无 Python 解释器），Orin（sm_87）支持 FP16 + INT4 AWQ；FP8/NVFP4 仅 Thor（sm_110）可用。这是 Orin 上替代 Ollama 的性能路线。</li>
+<li><strong>M5Stack AX630C（$99.90, 3.2 TOPS）吞吐密度 Tps/m³ 全场第一</strong>——空间受限场景（无人机/卫星地面站）的最优解，54×54×13mm 体积跑出 2.42–3.44 tok/s。</li>
+<li>与 PTX GEMM 研究结论互相印证：<strong>推理规模下约束是内存带宽不是算力</strong>——Jetson 102GB/s LPDDR5 共享内存是 1.5B–3B 模型能跑顺的物理基础。</li>
+</ol>
+<hr />
+<h2 id="_2">二、功能清单（这篇论文/工具提供了什么）</h2>
+<h3 id="21-cloud-to-edge-benchmarking-llm-inference-on-hardware-accelerated-single-board-computersarxiv-260424785v2">2.1 论文《Cloud to Edge: Benchmarking LLM Inference on Hardware-Accelerated Single-Board Computers》(arXiv 2604.24785v2)</h3>
+<ul>
+<li><strong>多维度基准方法论</strong>：联合评估推理性能（吞吐/TTFT）+ 硬件效率（能耗 MJ/Mtok）+ 物理约束（吞吐密度 Tps/m³）</li>
+<li><strong>两个新复合指标</strong>：</li>
+<li>吞吐密度 Tps/m³ = 吞吐 ÷ 设备外部体积（空间受限场景选型用）</li>
+<li>MJ/Mtok = 每百万 token 能耗（能量受限场景选型用）</li>
+<li><strong>四平台实测</strong>：M5Stack LLM（AX630C NPU 3.2 TOPS）/ RPi5 纯 CPU / RPi5+Hailo-10H（40 TOPS NPU）/ Jetson Orin Nano Super（67 TOPS GPU）</li>
+<li><strong>模型矩阵</strong>：DeepSeek-R1-Distill-Qwen-1.5B、Qwen2.5（0.5B/1.5B/Instruct/Coder）、Llama 3.2（1B/3B），全部 Q4_K_M</li>
+<li><strong>开放数据</strong>：OSF (osf.io/5r9t4) + GitHub 基准套件 (kaze-technologies/LLM-Edge-Benchmarking-Suite)</li>
+</ul>
+<h3 id="22-tensorrt-edge-llmnvidia-githubcomnvidiatensorrt-edge-llm">2.2 TensorRT Edge-LLM（NVIDIA 官方，github.com/NVIDIA/TensorRT-Edge-LLM）</h3>
+<ul>
+<li>高性能 <strong>C++ 推理运行时</strong>，面向嵌入式 LLM/VLM，运行时无 Python 解释器参与</li>
+<li>工作流三步：Python 导出量化 ONNX（x86/Thor）→ 目标设备上编译 TensorRT engine（<strong>必须在本机构建</strong>）→ 原生二进制加载服务</li>
+<li>量化支持：INT4 AWQ（4× 压缩）、NVFP4（4×）、FP8（2×）——<strong>Orin 只支持 FP16/INT4，Thor 才有 FP8/NVFP4</strong></li>
+<li>模型支持面：Llama 3.x、Qwen3/3.5/3.6（0.6B–27B）、Qwen3-VL、InternVL3/3.5、Phi-4-Multimodal、Nemotron-Nano（Mamba2 混合架构）、Alpamayo R1（机器人 VLA）</li>
+<li>C++ API 三调用集成：create runtime → capture CUDA graphs → <code>handleRequest()</code> 每查询</li>
+</ul>
+<hr />
+<h2 id="jetson-q4_k_m100-token-n5">三、关键实测数据（Jetson 相关，Q4_K_M，100 token 生成，n=5）</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>指标</th>
+<th>M5Stack NPU</th>
+<th>RPi5 CPU</th>
+<th>RPi5+Hailo</th>
+<th>Jetson CPU</th>
+<th><strong>Jetson GPU</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>R1-Distill-1.5B</td>
+<td>tok/s</td>
+<td>2.42</td>
+<td>0.32</td>
+<td>1.53</td>
+<td>6.01</td>
+<td><strong>9.59</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>MJ/Mtok</td>
+<td><strong>0.57</strong></td>
+<td>33.24</td>
+<td>3.47</td>
+<td>2.09</td>
+<td>1.15</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B</td>
+<td>tok/s</td>
+<td>–</td>
+<td>0.27</td>
+<td>4.37</td>
+<td>4.21</td>
+<td><strong>9.37</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>MJ/Mtok</td>
+<td>–</td>
+<td>35.30</td>
+<td><strong>1.30</strong></td>
+<td>1.38</td>
+<td>1.11</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B-Instruct</td>
+<td>tok/s</td>
+<td>2.55</td>
+<td>0.30</td>
+<td>6.34</td>
+<td>6.90</td>
+<td><strong>9.09</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>MJ/Mtok</td>
+<td><strong>0.57</strong></td>
+<td>35.31</td>
+<td>0.88</td>
+<td>1.83</td>
+<td>1.17</td>
+</tr>
+<tr>
+<td>Llama3.2-1B</td>
+<td>tok/s</td>
+<td>3.44</td>
+<td>0.39</td>
+<td>–</td>
+<td>9.51</td>
+<td><strong>10.96</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>MJ/Mtok</td>
+<td><strong>0.41</strong></td>
+<td>27.87</td>
+<td>–</td>
+<td>1.64</td>
+<td>1.23</td>
+</tr>
+<tr>
+<td>Llama3.2-3B</td>
+<td>tok/s</td>
+<td>–</td>
+<td>0.14</td>
+<td>1.01</td>
+<td>4.30</td>
+<td><strong>6.31</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>MJ/Mtok</td>
+<td>–</td>
+<td>76.64</td>
+<td>5.51</td>
+<td>3.04</td>
+<td><strong>1.72</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>要点提炼</strong>：<br />
+- Jetson GPU 在 3B 模型上能效反超所有对手（1.72 MJ/Mtok），模型越大 GPU 优势越明显——NPU 固定算子图对小模型优化好，大模型吃带宽<br />
+- M5Stack 的 MJ/Mtok 数字最好（0.41–0.57）但吞吐只有 2–3.4 tok/s：<strong>极低功耗 ≠ 高性能</strong>，选型看约束<br />
+- RPi5+Hailo NPU 相对 CPU 能效提升 9.57×–39.97×，是 RPi 生态的质变<br />
+- TTFT 方面 Jetson GPU 1.38–3.16ms 级（流式首 token），交互体验最佳</p>
+<h3 id="_3">硬件规格对照</h3>
+<table>
+<thead>
+<tr>
+<th>设备</th>
+<th>体积</th>
+<th>价格</th>
+<th>算力</th>
+<th>内存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M5Stack LLM</td>
+<td>54×54×13mm</td>
+<td>$99.90</td>
+<td>3.2 TOPS INT8</td>
+<td>4GB（1GB 可用）+3GB NPU RAM</td>
+</tr>
+<tr>
+<td>RPi5</td>
+<td>85×56×17mm</td>
+<td>$222.75</td>
+<td>–</td>
+<td>8GB LPDDR4X</td>
+</tr>
+<tr>
+<td>RPi5+AI HAT+</td>
+<td>85×56×20mm</td>
+<td>$451.83</td>
+<td>40 TOPS INT4</td>
+<td>8GB+8GB NPU</td>
+</tr>
+<tr>
+<td><strong>Jetson Orin Nano Super</strong></td>
+<td>100×79×21mm</td>
+<td>$304.78</td>
+<td>67 TOPS INT8</td>
+<td>8GB LPDDR5 <strong>102GB/s</strong></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">四、使用性评估（好不好用/适用场景）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>评价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>论文方法论</td>
+<td>⭐⭐⭐⭐⭐ 首次把物理体积纳入 LLM 选型指标，IoT/无人机场景直接可用 Tps/m³ 排序</td>
+</tr>
+<tr>
+<td>论文局限</td>
+<td>只测 Ollama 系 runtime（原生/Hailo 定制/StackFlow），TensorRT-LLM/ONNX RT 留作未来工作；无冷启动/热节流数据；模型仅到 3B</td>
+</tr>
+<tr>
+<td>TensorRT Edge-LLM</td>
+<td>⭐⭐⭐⭐ 生产级路径（无 Python 开销），但工程门槛高：需 x86/Thor 导出 + 本机编译 engine + 20-50GB 存储</td>
+</tr>
+<tr>
+<td>与 Ollama 对比</td>
+<td>Ollama 适合快速原型（GGUF 生态全）；Edge-LLM 适合部署（C++ 常驻、CUDA graph 捕获），两者是原型→生产的两阶段</td>
+</tr>
+</tbody>
+</table>
+<p><strong>适用场景判定</strong>：<br />
+- 空间极限（无人机载荷、可穿戴）→ M5Stack AX630C<br />
+- 已有 RPi5 生态 → 加 AI HAT+（$229 升级换 40 TOPS）<br />
+- 综合性能+二次开发（我们的情况）→ <strong>Jetson Orin Nano Super</strong>：吞吐第一、生态最全、GPIO/DLA/PVA 可扩展<br />
+- Thor 级新项目 → FP8/NVFP4 全开，8B VLM 本地跑</p>
+<hr />
+<h2 id="_5">五、指导性意见（何时用/何时不用/替代方案）</h2>
+<ol>
+<li><strong>何时用 TensorRT Edge-LLM</strong>：模型固定（Qwen3-4B 级）、追求最低延迟和能效、要嵌入 C++ 应用（机器人/kiosk/工业检测）。官方教程明确 Orin Nano 8GB 可跑 Qwen3-4B INT4 AWQ。</li>
+<li><strong>何时继续用 Ollama</strong>：需要频繁换模型试验、GGUF 生态依赖、或运行 3B 以下小模型（论文数据显示此规模 Ollama 已够用，Jetson GPU 9-11 tok/s）。</li>
+<li><strong>何时不值得</strong>：云端 API 可用且无隐私/离线硬约束时，别折腾边缘；3B 以下纯 CPU 推理（RPi5 0.14-0.86 tok/s）不可用于交互场景，只能做批处理。</li>
+<li><strong>替代路线</strong>：llama.cpp（跨平台 GGUF）/ MLC-LLM（通用编译）/ vLLM（服务器级，Orin 支持有限）。EdgeReasoning 论文（arXiv 2511.01866）提醒：Orin Ampere 架构不支持 INT4 计算回退 INT8，AWQ W4A16 实际跑 INT8 kernel——<strong>量化宣传与硬件实际执行有落差</strong>。</li>
+<li><strong>与 PTX GEMM 研究的衔接</strong>：GEMM 研究证明 INT4 原生 mma.sync 比 WMMA 快 2.9-4.3×；Edge-LLM 的 INT4 AWQ 正是利用这类原生低精度路径。若要极致性能，手写 kernel（PTX 路线）&gt; Edge-LLM &gt; Ollama。</li>
+</ol>
+<hr />
+<h2 id="_6">六、案例可寻</h2>
+<ul>
+<li><strong>官方教程案例</strong>：Qwen3-4B-Instruct-2507 INT4 AWQ 在 Jetson Orin Nano 8GB 完整跑通（导出→编译→推理）；Cosmos-Reason2-8B VLM NVFP4 在 Thor</li>
+<li><strong>论文场景</strong>：无人机、卫星地面站、坚固化便携作业、OT/国防内网（数据不出边界是硬约束）</li>
+<li><strong>我们自己的案例</strong>：nexa-local-inference skill 已在 Orin Nano Super 上跑 Ollama——本文给出的下一步演进就是 Edge-LLM 路线</li>
+<li>踩坑案例（教程 Troubleshooting 官方记录）：</li>
+<li>Jetson 上裸 <code>pip install torch</code> 会挂（<code>_dlpack_exchange_api</code> AttributeError）——必须用 NVIDIA PyTorch 容器 + <code>--system-site-packages</code> venv + <code>pip install --no-deps .</code></li>
+<li>FP8 导出 8B 模型需 6× 模型大小的 GPU VRAM + 20× CPU RAM——显存不够改用 INT4 AWQ</li>
+<li>Orin Nano 上 <code>make -j$(nproc)</code> 会 OOM——降为 <code>make -j4</code> 或串行</li>
+</ul>
+<hr />
+<h2 id="_7">七、使用方法借鉴（可直接抄的命令）</h2>
+<h3 id="71">7.1 论文基准套件（想复现或测自己的板子）</h3>
+<pre><code class="language-bash">git clone https://github.com/kaze-technologies/LLM-Edge-Benchmarking-Suite
+# Python harness 对接各 runtime HTTP API，自动 warmup + n=5 计时 + 功率计读数
+# 完整数据: https://osf.io/5r9t4
+</code></pre>
+<h3 id="72-tensorrt-edge-llm-orin-nano-qwen3-4b">7.2 TensorRT Edge-LLM 三步工作流（Orin Nano 跑 Qwen3-4B）</h3>
+<pre><code class="language-bash"># Step 1: x86 主机导出（量化为 INT4 AWQ ONNX）
+tensorrt-edgellm-quantize llm \
+  --model_dir Qwen/Qwen3-4B-Instruct-2507 \
+  --output_dir $MODEL_NAME/quantized \
+  --quantization int4_awq
+
+# Step 2: Orin Nano 本机编译 runtime + engine（engine 必须本机构建！）
+git clone https://github.com/NVIDIA/TensorRT-Edge-LLM.git
+cd TensorRT-Edge-LLM &amp;&amp; git submodule update --init --recursive
+export EDGELLM_PLUGIN_PATH=$(pwd)/build/libNvInfer_edgellm_plugin.so
+make -j4   # Orin Nano 限内存，禁止 -j$(nproc)
+
+# Step 3: C++ 推理（生产集成三调用）
+# createRuntime() → captureCudaGraphs() → handleRequest()
+</code></pre>
+<h3 id="73-checklist">7.3 精度-平台兼容速查（抄进部署 checklist）</h3>
+<table>
+<thead>
+<tr>
+<th>精度</th>
+<th>内存节省</th>
+<th>Orin (sm_87)</th>
+<th>Thor (sm_110)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP16</td>
+<td>基线</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>FP8</td>
+<td>2×</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>INT4 AWQ</td>
+<td>4×</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>NVFP4</td>
+<td>4×</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">八、对我们体系的改进建议</h2>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>建议</th>
+<th>落点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1</td>
+<td>nexa-local-inference skill 补充 Edge-LLM 备选路线（当前只有 Ollama）</td>
+<td>skill patch</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>用论文的 MJ/Mtok 口径给 Jetson 上的 TTS/LLM 服务做能效基线，纳入 system-info 巡检</td>
+<td>待用户指令</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>edge-llm-quantization skill 增加"Orin 无 FP8/INT4 计算回退 INT8"的坑点说明</td>
+<td>skill patch</td>
+</tr>
+<tr>
+<td>P3</td>
+<td>M5Stack AX630C 作为机器人/移动场景候选记录备查</td>
+<td>决策备选</td>
+</tr>
+</tbody>
+</table>
+<p><strong>参考来源</strong>：<br />
+- arXiv 2604.24785v2（Cloud to Edge 基准论文）<br />
+- jetson-ai-lab.com/tutorials/tensorrt-edge-llm（官方教程）<br />
+- github.com/NVIDIA/TensorRT-Edge-LLM<br />
+- EdgeReasoning arXiv 2511.01866（W4A16 在 Orin 回退 INT8 的证据）</p>
+</body>
+</html>
