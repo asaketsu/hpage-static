@@ -308,6 +308,7 @@ strong { color: #8b1a1a; }
 </head>
 <body>
 <h1 id="llm-tensorrt-edge-llm">LLM 边缘推理基准实测与 TensorRT Edge-LLM 部署新路径</h1>
+<h1 id="jetson-tensorrt">边缘推理 #Jetson #TensorRT #量化部署 #基准测试</h1>
 <blockquote>
 <p>日期：2026-08-16 ｜ 类型：技术调研笔记 ｜ 来源：arXiv 2604.24785v2 + NVIDIA Jetson AI Lab 官方教程<br />
 关联：衔接 2026-08-15 PTX Tensor-Core GEMM 多精度研究、nexa-local-inference skill（Ollama on Jetson Orin Nano Super）</p>
@@ -322,7 +323,7 @@ strong { color: #8b1a1a; }
 <li>与 PTX GEMM 研究结论互相印证：<strong>推理规模下约束是内存带宽不是算力</strong>——Jetson 102GB/s LPDDR5 共享内存是 1.5B–3B 模型能跑顺的物理基础。</li>
 </ol>
 <hr />
-<h2 id="_2">二、功能清单（这篇论文/工具提供了什么）</h2>
+<h2 id="_2">二、内容整理（功能清单：这篇论文/工具提供了什么）</h2>
 <h3 id="21-cloud-to-edge-benchmarking-llm-inference-on-hardware-accelerated-single-board-computersarxiv-260424785v2">2.1 论文《Cloud to Edge: Benchmarking LLM Inference on Hardware-Accelerated Single-Board Computers》(arXiv 2604.24785v2)</h3>
 <ul>
 <li><strong>多维度基准方法论</strong>：联合评估推理性能（吞吐/TTFT）+ 硬件效率（能耗 MJ/Mtok）+ 物理约束（吞吐密度 Tps/m³）</li>
@@ -529,7 +530,7 @@ strong { color: #8b1a1a; }
 - 综合性能+二次开发（我们的情况）→ <strong>Jetson Orin Nano Super</strong>：吞吐第一、生态最全、GPIO/DLA/PVA 可扩展<br />
 - Thor 级新项目 → FP8/NVFP4 全开，8B VLM 本地跑</p>
 <hr />
-<h2 id="_5">五、指导性意见（何时用/何时不用/替代方案）</h2>
+<h2 id="_5">五、归纳总结：指导性意见（何时用/何时不用/替代方案）</h2>
 <ol>
 <li><strong>何时用 TensorRT Edge-LLM</strong>：模型固定（Qwen3-4B 级）、追求最低延迟和能效、要嵌入 C++ 应用（机器人/kiosk/工业检测）。官方教程明确 Orin Nano 8GB 可跑 Qwen3-4B INT4 AWQ。</li>
 <li><strong>何时继续用 Ollama</strong>：需要频繁换模型试验、GGUF 生态依赖、或运行 3B 以下小模型（论文数据显示此规模 Ollama 已够用，Jetson GPU 9-11 tok/s）。</li>
@@ -646,5 +647,22 @@ make -j4   # Orin Nano 限内存，禁止 -j$(nproc)
 - jetson-ai-lab.com/tutorials/tensorrt-edge-llm（官方教程）<br />
 - github.com/NVIDIA/TensorRT-Edge-LLM<br />
 - EdgeReasoning arXiv 2511.01866（W4A16 在 Orin 回退 INT8 的证据）</p>
+<hr />
+<h2 id="_9">九、查询拓展（延伸问题与检索线索）</h2>
+<ul>
+<li><strong>Q: Jetson Orin Nano Super 上 Ollama 换 TensorRT Edge-LLM 能快多少？</strong> 线索：NVIDIA 官方 benchmark 表（nvidia.github.io/TensorRT-Edge-LLM 性能页）有 AGX Thor 默认设置数据；Orin 需自测，预期来自去除 Python 开销 + CUDA graph 捕获</li>
+<li><strong>Q: 8GB 统一内存跑 Qwen3-4B INT4 后还剩多少余量跑 TTS/视觉任务？</strong> 线索：INT4 后权重 ~2.4GB + KV cache + 系统（LuxTTS/F5-TTS 常驻约 3-4GB），需实测并发余量</li>
+<li><strong>Q: M5Stack AX630C 国内可购性和 StackFlow 中文资料？</strong> 线索：淘宝 M5Stack 官方店；StackFlow 文档主要在 axcl 生态</li>
+<li><strong>Q: 论文的 Tps/m³ 指标怎么算的？</strong> 线索：tok/s ÷ 设备外部体积（mm³→m³），排除电源/外壳/散热间隙</li>
+<li><strong>Q: Thor 之外，AMD Ryzen AI / 高通 Hexagon NPU 有无同类官方 runtime？</strong> 线索：AMD Lemonade / QNN SDK，留在下期调研</li>
+</ul>
+<h2 id="_10">十、趋势判断</h2>
+<ol>
+<li><strong>边缘 LLM runtime 正在从"Python 胶水"收敛到"C++ 原生"</strong>：Ollama（易用）→ llama.cpp（性能）→ TensorRT Edge-LLM（生产 C++）。三阶段与服务器端 vLLM 路径完全同构，趋势明确。</li>
+<li><strong>量化格式进入平台分裂期</strong>：INT4 AWQ 全平台通吃，FP8/NVFP4 成 Thor/Ada+ 专属，Orin 世代被锁死在 INT4——<strong>买边缘硬件前先查 sm_ 架构支持的精度表</strong>，这将成为选型新常识。</li>
+<li><strong>基准方法论从单轴走向多维</strong>：只看 tok/s 的时代结束，MJ/Mtok（能耗）+ Tps/m³（体积）组合才是 IoT 场景的决策口径，预计 2026 下半年更多论文跟进这套复合指标。</li>
+<li><strong>带宽是边缘推理的终极约束</strong>（与 PTX GEMM 研究互证）：102GB/s LPDDR5 是 Jetson 跑 3B 模型的物理天花板，下一代 unified memory 带宽提升比 TOPS 数字更值得关注。</li>
+<li><strong>7B 以下模型边缘化已成定局</strong>：论文 $350 以下设备全部跑通 0.5B–3B Q4 模型，剩余战场在 4B–8B（Edge-LLM 教程主线）和 VLM 多模态。</li>
+</ol>
 </body>
 </html>
