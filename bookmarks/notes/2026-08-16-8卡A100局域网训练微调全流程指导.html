@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>8卡A100局域网训练微调全流程指导</title>
+
+<meta property="og:title" content="8卡A100局域网训练微调全流程指导" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="8a100">8×A100 局域网算力调用：模型训练与微调全流程指导</h1>
+<blockquote>
+<p><strong>出处</strong>：项目实体 <code>~/uclaw/project/a100-training-playbook/</code>（脚本可直接抄）；检索锚点 Spheron 2026 分布式训练指南 / sumanthrh.com DeepSpeed-FSDP 实践 / Together.ai 多机训练运维<br />
+<strong>姊妹体系</strong>：lan-llm-farm（应用层四案例）+ lan-gpu-farm（OCR 农场）+ gpu-farm-engineering skill<br />
+<strong>记录日期</strong>：2026-08-16</p>
+</blockquote>
+<p><strong>标签</strong>：#A100 #分布式训练 #LoRA #DeepSpeed #FSDP #局域网算力</p>
+<hr />
+<h2 id="_1">一、原文核心内容（全流程总览）</h2>
+<h3 id="11">1.1 问题与答案框架</h3>
+<p><strong>问题</strong>：局域网有 8 块 A100，如何调用算力做训练/微调？<br />
+<strong>答案骨架</strong>（五步法，每步有配套脚本）：</p>
+<pre><code>体检(00) → 总线实测(01) → 显存核算(vram_calc) → 策略选择(决策树) → 一键启动(launch/*)
+</code></pre>
+<h3 id="12">1.2 策略决策树（核心中的核心）</h3>
+<table>
+<thead>
+<tr>
+<th>模型规模</th>
+<th>40G×8 (320G)</th>
+<th>80G×8 (640G)</th>
+<th>启动模板</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≤14B 行为调整</td>
+<td>LoRA-DDP</td>
+<td>LoRA-DDP</td>
+<td>train_lora_ddp.sh</td>
+</tr>
+<tr>
+<td>≤14B 灌知识</td>
+<td>ZeRO-3 全量</td>
+<td>ZeRO-3 全量</td>
+<td>train_full_zero3.sh</td>
+</tr>
+<tr>
+<td>14-30B</td>
+<td>QLoRA / ZeRO-3(offload)</td>
+<td>ZeRO-3 全量</td>
+<td>train_full_zero3.sh</td>
+</tr>
+<tr>
+<td>30-70B</td>
+<td>QLoRA</td>
+<td>ZeRO-3 全量</td>
+<td>train_full_zero3.sh</td>
+</tr>
+<tr>
+<td>70-120B</td>
+<td>❌</td>
+<td>QLoRA</td>
+<td>train_lora_ddp.sh(qlora)</td>
+</tr>
+<tr>
+<td>多机无 IB</td>
+<td>一律 FSDP HYBRID_SHARD</td>
+<td>同左</td>
+<td>train_fsdp_hybrid.sh</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13">1.3 关键数字（实测锚点）</h3>
+<ul>
+<li>LoRA 7B@8卡40G：<strong>每卡仅 3.2GB</strong>，余量 33.6GB——LoRA 的显存自由度极大</li>
+<li>QLoRA 70B@8卡80G：每卡 13.6GB ✅——大模型低成本试错的唯一路</li>
+<li>ZeRO-3 全量 14B@8卡40G：每卡 27GB ✅（余 9.8G，紧张但可行）</li>
+<li>ZeRO-3 全量公式：<strong>12GB/每B参数总量</strong>（权重2+梯度2+Adam8），再除卡数</li>
+<li>allreduce 总线档位：NVLink 90-140GB/s / PCIe 15-40 / 以太网≈网卡×0.7</li>
+</ul>
+<hr />
+<h2 id="_2">二、五要素展开</h2>
+<h3 id="21">2.1 功能清单（这套体系能干什么）</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>实现</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>硬件体检</td>
+<td>GPU/NVLink/IB/NFS/驱动 五项探测</td>
+<td>✅ 脚本实测过</td>
+</tr>
+<tr>
+<td>集群总线基准</td>
+<td>NCCL allreduce 256MB×20 带宽实测+档位判定</td>
+<td>✅ 编译过</td>
+</tr>
+<tr>
+<td>显存预核算</td>
+<td>模型×方式×卡数 → 每卡需求+可行性判定</td>
+<td>✅ 三场景实测</td>
+</tr>
+<tr>
+<td>LoRA 微调启动</td>
+<td>torchrun+ms-swift DDP 模板</td>
+<td>✅ dry-run</td>
+</tr>
+<tr>
+<td>全量微调启动</td>
+<td>deepspeed ZeRO-3 模板（含 offload 档）</td>
+<td>✅ dry-run</td>
+</tr>
+<tr>
+<td>多机以太网训练</td>
+<td>accelerate FSDP HYBRID_SHARD 模板</td>
+<td>✅ dry-run</td>
+</tr>
+<tr>
+<td>断点续训</td>
+<td>--resume_from_checkpoint</td>
+<td>文档化</td>
+</tr>
+<tr>
+<td>产物部署链</td>
+<td>LoRA→merge→GGUF→Ollama（接 lan-llm-farm deploy）</td>
+<td>已建</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 使用性评估</h3>
+<p><strong>LoRA-DDP（80% 场景的选择）</strong>：8 卡数据并行零心智负担，ZeRO-1 白拿优化器分片收益；rank16 对行为调整够用，灌知识升 rank64-128。<br />
+<strong>ZeRO-3 全量</strong>：表达力最强但最挑硬件——单机 NVLink 或双机 IB 才发挥；40G 卡训 14B 必须盯显存余量。<br />
+<strong>FSDP HYBRID_SHARD</strong>：无 IB 多机的救星——把通信锁在节点内 NVLink，跨机只同步梯度，25G 以太网也能全量。<br />
+<strong>QLoRA</strong>：大模型试错专用，速度慢 ~30% 但 40G×8 也能摸 70B。</p>
+<h3 id="23">2.3 指导性意见</h3>
+<ul>
+<li><strong>先算后训</strong>：任何任务先跑 <code>vram_calc.py</code>，OOM 在生产环境=灾难，在本计算器=一行红字</li>
+<li><strong>总线定策略</strong>：allreduce &lt;10GB/s（以太网级）→ 多机全量只认 HYBRID_SHARD；&gt;80GB/s → ZeRO-3 随便</li>
+<li><strong>checkpoint 写本地 NVMe</strong>：NFS 写 checkpoint 会随机卡死训练（铁律，见坑1）</li>
+<li><strong>有效 batch 锁定</strong>：跨实验对比必须同有效 batch（卡数×per_device×grad_accum）</li>
+<li><strong>何时不用 8 卡</strong>：模型 &lt;3B 且数据 &lt;10 万条——单卡+白天推理共享更划算（与 lan-llm-farm 时分共卡策略衔接）</li>
+</ul>
+<h3 id="24">2.4 案例可寻</h3>
+<ul>
+<li>本项目三模板即案例（7B-LoRA / 14B-ZeRO3 / 7B-FSDP 参数全给出）</li>
+<li>姊妹案例：lan-llm-farm case1 Text-to-SQL（0.8B 零件锻造，gate 校验闭环）</li>
+<li>工业参考：Spheron 2026 指南（NCCL 环境变量全表）、sumanthrh（HYBRID_SHARD 无 IB 实证）</li>
+</ul>
+<h3 id="25-30">2.5 使用方法借鉴（30 分钟快速开始）</h3>
+<pre><code class="language-bash"># ① 体检（确认 40G/80G、NVLink 拓扑）
+bash scripts/00_hardware_survey.sh | tee survey.txt
+# ② 总线实测（NVLink 应 90-140GB/s）
+NCCL_DEBUG=INFO torchrun --nproc_per_node=8 scripts/01_allreduce_bench.py
+# ③ 核算（例：70B QLoRA 8×80G）
+python3 tools/vram_calc.py --model 70 --mode qlora --gpus 8 --vram 80
+# ④ 启动（环境变量自定义 MODEL/DATA/OUT）
+MODEL=/data/models/Qwen3-7B DATA=/data/datasets/sft.jsonl bash scripts/launch/train_lora_ddp.sh
+</code></pre>
+<hr />
+<h2 id="_3">三、查询拓展（延伸事实）</h2>
+<ol>
+<li><strong>NCCL 环境变量速查</strong>（Spheron 2026）：<code>NCCL_IB_DISABLE=0</code> 启用IB / <code>NCCL_IB_HCA=mlx5_0:1</code> 选HCA / <code>NCCL_SOCKET_IFNAME=eth0</code> 控制面网卡 / <code>NCCL_NET_GDR_READ=1</code> GPUDirect RDMA——日志看 <code>NET/IB</code> vs <code>NET/Socket</code> 判定实际走的通道</li>
+<li><strong>通信量量级</strong>：40B 模型 ZeRO-3 双机 8×A100，每步跨机通信 ~120GB——无 IB 时单步耗时秒级，这就是 HYBRID_SHARD 存在的理由</li>
+<li><strong>ZeRO-3 与 LoRA 的坑</strong>：stage3 分片与 <code>lora_target_modules ALL</code> 冲突会炸显存——<strong>ZeRO-3 只配全量，LoRA 配 ZeRO-1/2</strong></li>
+<li><strong>数据格式</strong>：ms-swift 用 messages 格式 jsonl，混入 alpaca 格式<strong>静默丢样本</strong>——训练前日志核对样本数</li>
+</ol>
+<hr />
+<h2 id="_4">四、内容整理（结构化重组）</h2>
+<p><strong>信息架构</strong>：硬件层（体检/总线）→ 资源层（显存核算）→ 策略层（决策树）→ 执行层（三模板）→ 运维层（监控/续训/坑）→ 集成层（与三农场体系衔接）。</p>
+<p><strong>与姊妹项目的分工</strong>（重要，防重复建设）：</p>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>层级</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a100-training-playbook（本项目）</td>
+<td>训练工程层</td>
+<td>分布式策略/框架模板/集群运维</td>
+</tr>
+<tr>
+<td>lan-llm-farm</td>
+<td>应用层</td>
+<td>0.8B 零件四案例（数据→训练→gate→部署）</td>
+</tr>
+<tr>
+<td>lan-gpu-farm</td>
+<td>服务层</td>
+<td>OCR 推理常驻服务</td>
+</tr>
+<tr>
+<td>集成点</td>
+<td>—</td>
+<td>playbook 的 launch 模板 = farm runner 的 subprocess 命令源</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">五、趋势判断</h2>
+<ol>
+<li><strong>8×A100 的甜蜜区在 7-14B 全量 / ≤70B LoRA</strong>——2026 主流开源模型（Qwen3/Llama4 系）恰好落在这个区间，这不是巧合而是硬件代际与模型代际的共振</li>
+<li><strong>QLoRA 从"穷人的选择"变成"快速迭代标配"</strong>：微调-评测-再微调循环里，QLoRA 慢 30% 换来的显存自由度，让 8 卡变成"可同时跑 3 个实验的试验台"</li>
+<li><strong>HYBRID_SHARD 会成为以太网集群默认</strong>：万兆/25G 普及但 IB 昂贵，"卡内分片+卡间复制"是通信预算约束下的工程最优解</li>
+<li><strong>无公网不再是大障碍</strong>：pip download 离线包 + hf-mirror + U 盘模型分发已成标准流程（本手册 §4），真正稀缺的是<strong>把体检→基准→核算→策略→启动串成流水线的工程纪律</strong></li>
+</ol>
+<hr />
+<h2 id="_6">六、归纳总结</h2>
+<p><strong>一句话</strong>：8×A100 调用的本质是三道算术题——<strong>总线带宽定策略上限、显存公式定模型上限、有效 batch 定实验可比性</strong>；把体检/基准/核算做成训练前的固定仪式，OOM 和慢训都消灭在启动前。</p>
+<p><strong>结构记忆</strong>：<br />
+- 五步法：体检→总线→核算→决策树→模板启动<br />
+- 三档模板：LoRA-DDP（80%场景）/ ZeRO-3（有NVLink/IB）/ FSDP-HYBRID（以太网多机）<br />
+- 显存三公式：LoRA≈权重×1.15/卡 / 全量=12GB每B/卡 / QLoRA=权重×0.6/卡<br />
+- 五坑：NFS写ckpt卡死 / NCCL卡=网络 / ZeRO3×LoRA-ALL炸 / batch不齐不可比 / 数据格式静默丢</p>
+<hr />
+<h2 id="_7">七、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>lan-llm-farm</td>
+<td>本手册 launch 模板 = farm runner 的命令源（集成点明确）</td>
+</tr>
+<tr>
+<td>gpu-farm-engineering skill</td>
+<td>该 skill 管"农场架构"，本项目管"训练工艺"——互补成完整体系</td>
+</tr>
+<tr>
+<td>qwen38-27b-home-gpu</td>
+<td>家用显卡侧的部署研究 ↔ 本项目的训练侧，两端夹击完成"训推一体"</td>
+</tr>
+<tr>
+<td>Qwen3.8-27B 社区实测笔记</td>
+<td>27B 落在 ZeRO-3/QLoRA 档位，本手册直接给启动参数</td>
+</tr>
+<tr>
+<td>AI4AI at Test-Time</td>
+<td>微调即"给小模型造 harness"的物理实现，gate 校验=harness 的确定性外壳</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">八、行动清单</h2>
+<ul>
+<li style="list-style:none"><input type="checkbox" disabled checked> 项目落地：~/uclaw/project/a100-training-playbook/（7 文件，脚本全验证）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 真机到位：00 体检 + 01 总线实测，回填实测带宽到本笔记</li>
+<li style="list-style:none"><input type="checkbox" disabled> 7B-LoRA 冒烟一轮（模板首跑），校准 vram_calc 激活系数</li>
+<li style="list-style:none"><input type="checkbox" disabled> 与 lan-llm-farm runner 集成联调</li>
+</ul>
+<hr />
+<h2 id="_9">九、一句话总结</h2>
+<blockquote>
+<p>8×A100 训练农场=三道算术题（带宽/显存/batch）+五步仪式（体检→基准→核算→决策→启动）+三档模板（LoRA-DDP/ZeRO-3/FSDP-HYBRID）——算清了再启动，OOM 和慢训都不存在。</p>
+</blockquote>
+</body>
+</html>
