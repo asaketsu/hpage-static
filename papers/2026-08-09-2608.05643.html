@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>1. Refining Over Resampling: Test-Time Self-Correction for LLM Reasoning | 论文精选</title>
+<title>放弃多采样+验证器选择的老路，改用"广度探索+深度自修正"框架提升推理 | 论文精选</title>
 <style>
 body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
        max-width: 860px; margin: 0 auto; padding: 24px 18px 60px;
@@ -25,48 +25,15 @@ footer { margin-top: 48px; color: #aaa; font-size: 12px; text-align: center; }
 </style>
 </head>
 <body>
-<a class="back" href="../../index.html">← 返回 Paper 列表</a>
+<a class="back" href="../index.html#papers">← 返回 Paper 列表</a>
 <div class="meta">📚 论文精选 · 2026-08-09</div>
-<h1>1. Refining Over Resampling: Test-Time Self-Correction for LLM Reasoning</h1>
-<div class="en-title">1. Refining Over Resampling: Test-Time Self-Correction for LLM Reasoning</div>
+<h1>放弃多采样+验证器选择的老路，改用"广度探索+深度自修正"框架提升推理</h1>
+<div class="en-title">Refining Over Resampling: Test-Time Self-Correction for LLM Reasoning</div>
 <div class="meta">👥 Ahsan Bilal, Muhammad Ahmed Mohsin, Muhammad Umer, et al. &nbsp; <span class="arxiv">2608.05643</span></div>
 <h2>📋 摘要</h2>
-<div class="abstract"></div>
-<div class="highlight">💡 无需外部奖励模型，用测试时算力"精修"已有轨迹而非盲目多采样，直接挑战 best-of-N 范式，对小模型推理增益显著。
-
-═══════════════════
-
-📄 2. Answer First, Reason Later: Commitment Order in Diffusion LLMs
-🔗 arxiv.org/abs/2608.05687
-👥 Jewon Yeom, Jaewon Sok, Seonghyeon Park, et al.
-📅 2026-08-06 | cs.CL
-
-一句话总结：揭开 Diffusion LLM 推理失败的根因——生成顺序混乱导致"先出答案再补推理"。
-
-核心摘要：
-Masked diffusion LLM（dLLM）以"任意顺序 commit token"为卖点，但本文发现这一自由度恰是推理任务的失败根源。对 LLaDA-8B 在 GSM8K 上的解码日志分析显示：无约束解码在轨迹 15-24% 位置就提交最终答案，而推理区还有一半被 mask；随画布增长，高达 90% 的问题退化为"只有答案"的输出。根因不是 EOS 压力，而是 sampler 能否在远距离位置执行终止信念。2x2 实验表明 CoT 仅在有序提交下有效（交互效应 +34.8 个百分点）。作者提出 frontier-gated commitment 单旋钮干预，因果性地恢复全部 gap（0.528→0.852），同时保留 4 倍并行解码。
-
-💡 亮点：首次精确定位 dLLM 推理崩溃机制（commit order reachability），并揭示现有 window 采样器其实无意中"误打误撞"修好了这个病——深刻且实用。
-
-═══════════════════
-
-📄 3. LC-GRPO: Bridging Train-Inference Gap for Flow-Based GRPO with Langevin Correction
-🔗 arxiv.org/abs/2608.05600
-👥 Yingqing Guo, Hui Yuan, Zijian He, Mengdi Wang, Zheng Ding
-📅 2026-08-06 | cs.LG
-
-一句话总结：用 Langevin 校正弥合 Flow 模型 GRPO 训练（SDE）与推理（ODE）之间的分布鸿沟。
-
-核心摘要：
-Flow 生成模型推理时解确定性 ODE，但在线强化学习需要随机 rollout 做探索，因此现有 flow-GRPO 方法用 SDE 替代训练期 ODE。问题在于：有限步离散下 ODE 与 SDE 的样本差异显著，SDE rollout 随探索噪声增大变得模糊，导致训练样本与测试 ODE 样本错配。本文提出 LC-GRPO：每个 rollout 过渡先做 ODE Euler 步（对齐推理），再加一个针对边际分布的 Langevin 随机校正。所需 score 直接从 flow velocity 恢复，无需额外 score 模型，且过渡保持各向同性高斯、似然可算。理论上证明单步 Langevin 校正可降低 Wasserstein 误差。在 SD3.5-Medium、FLUX.1-Dev、HunyuanVideo 上，LC-GRPO 稳定提升文生图/文生视频的奖励优化并保持质量。
-
-💡 亮点：直击 flow-based RL 中被忽视的"训练用 SDE、推理用 ODE"的 train-inference gap，方案优雅（零额外模型），对多模态生成 RLHF 有直接迁移价值。
-
-═══════════════════
-
-📁 数据源：arXiv cs.AI/CL/LG new listings（curl 降级方案，web_search 辅助）
-🔧 说明：今日 arXiv API 返回 429 限流，全程使用 curl + HTML 解析降级链完成，无数据缺失。</div>
-<a class="link" href="https://arxiv.org/abs/2608.05643" target="_blank">打开论文原文 (arXiv) ↗</a>
+<div class="abstract">测试时扩展（test-time scaling）通过增加推理计算来提升 LLM 推理能力，但单纯多采样会遇到边际递减——新 rollout 往往重复已有答案模式。本文提出无验证器的 breadth-depth refinement 框架：先采样多个独立推理路径（广度），再对每条路径做迭代式 self-critique + self-correction（深度），最后多数投票聚合。在 AIME24/25、AMC、OlympiadBench、MATH500 上，该法稳定超越贪婪解码、多数投票、verifier-based best-of-N、beam search 和 lookahead decoding。例如 Qwen2.5-1.5B 在 MATH500 上达到 58.0%，AMC 上从 25.0% 提升至 32.5%。</div>
+<div class="highlight">💡 无需外部奖励模型，用测试时算力"精修"已有轨迹而非盲目多采样，直接挑战 best-of-N 范式，对小模型推理增益显著。</div>
+<a class="link" href="https://arxiv.org/html/2608.05643" target="_blank">打开论文原文 HTML 版 (arXiv) ↗</a>
 <footer>Pushed by Hermes daily-paper · 2026-08-09</footer>
 </body>
 </html>
