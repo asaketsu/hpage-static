@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>局域网A100训练农场lan-llm-farm-算力调用与四案例微调全流程</title>
+
+<meta property="og:title" content="局域网A100训练农场lan-llm-farm-算力调用与四案例微调全流程" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="a100-lan-llm-farm-qwen35-08b">局域网 A100 训练农场 lan-llm-farm：算力调用与 Qwen3.5-0.8B 四案例微调全流程</h1>
+<blockquote>
+<p>项目路径：<code>/home/jc/uclaw/project/lan-llm-farm/</code> ｜ 创建：2026-08-16<br />
+源笔记：<a href="./2026-08-14-Qwen3.5-0.8B端侧零件工程使用指南.md">Qwen3.5-0.8B 端侧零件工程使用指南</a><br />
+姊妹项目：<a href="./2026-08-15-局域网A100算力池×双OCR-批量文档与微调业务流程.md">局域网A100算力池×双OCR</a>（lan-gpu-farm，端口 8800-8802）<br />
+核心理念：<strong>0.8B 当零件不当全能助手</strong>——每条业务线都是"边界清楚、输出可校验"的窄任务，训练农场负责把零件锻造出来</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、功能清单（逐项）</h2>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>文件</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>环境体检</td>
+<td><code>server/setup/00_env_check.sh</code></td>
+<td>GPU/CUDA/Python/磁盘/端口/离线依赖六项检查，非 A100 自动警告</td>
+</tr>
+<tr>
+<td>训练环境</td>
+<td><code>server/setup/01_install_train_env.sh</code></td>
+<td>uv venv(py3.12) + torch2.10 + transformers≥4.57 + ms-swift≥3.10，支持 OFFLINE_WHEELS 离线装</td>
+</tr>
+<tr>
+<td>推理服务</td>
+<td><code>server/setup/02_install_vllm.sh</code></td>
+<td>vLLM :8811（0.8B bf16 ~8G 显存，--enable-lora 热挂载产物试跑）</td>
+</tr>
+<tr>
+<td>常驻注册</td>
+<td><code>server/setup/03_systemd.sh</code></td>
+<td>gateway/vLLM systemd + <strong>夜训分时 timer</strong>（23:00 降显存→07:00 恢复）</td>
+</tr>
+<tr>
+<td>训练网关</td>
+<td><code>server/gateway/server.py</code> + <code>core.py</code></td>
+<td>FastAPI :8810：四问门禁→SQLite 任务队列→GPU 显存调度→案例路由→产物登记</td>
+</tr>
+<tr>
+<td>纯逻辑层</td>
+<td><code>server/gateway/core.py</code></td>
+<td>门禁/调度/状态机/TaskStore 全部纯函数，无 GPU 可回归测试</td>
+</tr>
+<tr>
+<td>客户端</td>
+<td><code>server/gateway/client_submit.py</code></td>
+<td>submit/status/cancel/artifacts 四命令，仅标准库（Jetson/PC 零依赖）</td>
+</tr>
+<tr>
+<td>显存看门狗</td>
+<td><code>server/ops/gpu_monitor.py</code></td>
+<td>cron 每 10 分钟查空闲显存，低于阈值写 jsonl + 可选 webhook 告警</td>
+</tr>
+<tr>
+<td>案例1 Text-to-SQL</td>
+<td><code>cases/case1_text2sql/</code></td>
+<td>10 模板×槽位生成 3300 条 (问题,SQL,结果)，SQLite 执行+结果集对比评测</td>
+</tr>
+<tr>
+<td>案例2 手册问答</td>
+<td><code>cases/case2_manual_qa/</code></td>
+<td>手册知识片段→多问法 QA，<strong>独立 heldout 评估集</strong>防训练集表演</td>
+</tr>
+<tr>
+<td>案例3 检索重排器</td>
+<td><code>cases/case3_reranker/</code></td>
+<td>query-doc 打分（含难负例），MRR/NDCG@10 评测</td>
+</tr>
+<tr>
+<td>案例4 巡检 OVD/REC</td>
+<td><code>cases/case4_inspection_ovd/</code></td>
+<td>程序化合成巡检场景图+bbox 真值，OVD(找一类)/REC(找那一个)双任务 IoU 评测</td>
+</tr>
+<tr>
+<td>共用指标库</td>
+<td><code>cases/common/metrics.py</code></td>
+<td>MRR/NDCG/IoU/hit_rate/bbox解析/relevance解析，四案例共享</td>
+</tr>
+<tr>
+<td>通用 runner</td>
+<td><code>cases/common/generic_runner.py</code></td>
+<td>make_data→swift sft→evaluate→report 流水线工厂，case2/3/4 复用</td>
+</tr>
+<tr>
+<td>部署链</td>
+<td><code>deploy/merge_and_quantize.sh</code></td>
+<td>LoRA merge→bf16 全量→GGUF Q4_K_M（~600MB 端侧包）</td>
+</tr>
+<tr>
+<td>部署链</td>
+<td><code>deploy/serve_local.sh</code></td>
+<td>双路：Ollama 端侧（Jetson）/ vLLM 局域网共享</td>
+</tr>
+<tr>
+<td>回归门禁</td>
+<td><code>tests/test_pure_functions.py</code></td>
+<td>33 用例：门禁/调度/状态机/TaskStore/指标/四案例 mock 端到端，<strong>实测 33 passed exit 0</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、架构与算力调度（一图流）</h2>
+<pre><code>Jetson/PC 客户端 ──HTTP:8810──&gt; 训练网关 ──┬─ subprocess ─&gt; swift sft（夜间窗口）
+  client_submit.py     ①四问门禁          │
+                       ②SQLite任务队列      └─ HTTP:8811 ─&gt; vLLM 推理（白天常驻）
+                       ③GPU显存调度(76G预算)                  ├─ 评测批量生成
+                       ④案例路由 cases/*                     └─ LoRA 热挂载试跑
+                       ⑤产物登记(sha1+大小)
+</code></pre>
+<p><strong>显存预算（A100-80G 单卡）</strong>：白天 vLLM ~8G + 评测复用；夜间 LoRA 训练 18G（文本）~34G（视觉 SFT）+ OCR 农场余量 12G。<strong>与 lan-gpu-farm 单双日轮换</strong>：双日 LLM 训练 / 单日 OCR 微调，两网关通过 <code>/gpu/status</code> 互查避让。</p>
+<p><strong>四问门禁</strong>（源笔记§四，网关强制）：提交任务必须带 answers.yaml，①错误能否自动发现 ②数据是否必须本地 ③任务能否微调收窄 ④0.8B 选型理由——<strong>答不上两个直接 422 拒绝</strong>。</p>
+<h2 id="_3">三、完整操作流程</h2>
+<h3 id="a100-4">A100 侧（一次性，4 步）</h3>
+<pre><code class="language-bash">cd ~/uclaw/project/lan-llm-farm
+bash server/setup/00_env_check.sh          # 体检（GPU/驱动/磁盘≥200G/端口8810,8811）
+bash server/setup/01_install_train_env.sh  # 训练环境（无公网: OFFLINE_WHEELS=/data/wheels）
+bash server/setup/02_install_vllm.sh       # vLLM 手动验证
+sudo bash server/setup/03_systemd.sh       # systemd 常驻 + 夜训 timer
+</code></pre>
+<p>模型预置（无公网场景）：U 盘拷入 <code>Qwen3.5-0.8B</code> 到 <code>/data/llm-farm/models/</code>，或临时代理 <code>huggingface-cli download Qwen/Qwen3.5-0.8B --local-dir /data/llm-farm/models/Qwen3.5-0.8B</code>。</p>
+<h3 id="_4">日常业务流（客户端两条命令）</h3>
+<pre><code class="language-bash"># ① 提交训练任务（answers 四问回答可从各案例 config.yaml 的 answers 段抄）
+python3 server/gateway/client_submit.py submit \
+    --case case1_text2sql --config case1_text2sql/config.yaml \
+    --gateway http://&lt;A100_IP&gt;:8810 --priority 1
+
+# ② 轮询状态 + 取产物（gate 达标 → done；未达标 → failed(gate)）
+python3 server/gateway/client_submit.py status --task-id &lt;id&gt; --gateway http://&lt;A100_IP&gt;:8810
+python3 server/gateway/client_submit.py artifacts --task-id &lt;id&gt; --gateway http://&lt;A100_IP&gt;:8810
+</code></pre>
+<h3 id="_5">训练产物 → 端侧部署</h3>
+<pre><code class="language-bash"># A100 上合并+量化（产出 merged/ bf16 + gguf/Q4_K_M ~600MB）
+bash deploy/merge_and_quantize.sh /data/llm-farm/artifacts/case1/&lt;task_id&gt; case1
+
+# Jetson 端侧注册（Ollama 自动生成 Modelfile）
+bash deploy/serve_local.sh ollama /data/llm-farm/artifacts/case1/Qwen3.5-0.8B-case1-Q4_K_M.gguf
+# 或局域网共享（A100 上全量 bf16）
+bash deploy/serve_local.sh vllm /data/llm-farm/artifacts/case1/&lt;task_id&gt;/merged 8820
+</code></pre>
+<h2 id="_6">四、四案例明细（数据→校验器→达标线）</h2>
+<table>
+<thead>
+<tr>
+<th>案例</th>
+<th>训练数据</th>
+<th>校验器（Gate）</th>
+<th>达标线</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>case1 Text-to-SQL</td>
+<td>3000 条模板生成（航空紧固件库存 schema）</td>
+<td>SQLite 执行 + 结果集对比（执行准确率，非字符串比对）</td>
+<td>≥85%</td>
+<td>mock 自测 1.0/注噪 0.5→gate 正确触发</td>
+</tr>
+<tr>
+<td>case2 手册问答</td>
+<td>10 知识条目×多问法+同义增广</td>
+<td><strong>heldout 独立集</strong>关键词≥2 或模糊≥0.75</td>
+<td>≥70%</td>
+<td>判分逻辑单测通过</td>
+</tr>
+<tr>
+<td>case3 重排器</td>
+<td>正例+易负例+<strong>难负例</strong>（同 topic 不同条目）</td>
+<td>MRR / NDCG@10 / pair_acc</td>
+<td>MRR≥0.35</td>
+<td>金标 mock=1.0 自测通过</td>
+</tr>
+<tr>
+<td>case4 OVD/REC</td>
+<td>程序化合成场景图（拒绝采样防重叠）+bbox 真值</td>
+<td>IoU≥0.5 贪心匹配命中率</td>
+<td>≥60%</td>
+<td>标注规范性单测通过（bbox∈[0,1]、x1&lt;x2）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>达线才算 done</strong>——网关把评测报告挂任务记录，未达线标 <code>failed(gate)</code>，防"训练集表演"（case2 的 heldout 纪律即为此设计）。</p>
+<h3 id="_7">关键设计决策（可直接借鉴）</h3>
+<ol>
+<li><strong>执行准确率 &gt; 精确匹配</strong>：等价 SQL（<code>ORDER BY</code> 次级键、ROUND 尾差）也算对，贴近业务真实可用性。实现坑：金标 SQL 的 <code>ORDER BY</code> 必须带确定性次级键（如 <code>, part_no</code>），否则并列值排序不稳定金标不可复现（实测 0.98→修后 1.0）。</li>
+<li><strong>sqlite3 隐式事务坑</strong>：<code>executemany</code> 后必须显式 <code>commit()</code>，否则评测器 <code>BEGIN</code> 撞未提交事务抛错（本次实测抓到的真 bug）。</li>
+<li><strong>合成数据零标注成本</strong>：case1 模板×槽位、case4 程序化画图+bbox 真值来自生成参数——IoU 天然可校验。真实落地只需替换数据源（真照片+标注），评测器不变。</li>
+<li><strong>优先级抢占语义</strong>：数字越小越优先；<code>decide_schedule</code> 在显存不足时找 priority 数字<strong>更大</strong>（更不重要）的可断点任务让位。</li>
+<li><strong>夜训分时</strong>：23:00 timer 把 vLLM 从 0.10 显存占用重启到 0.05（腾出训练显存），07:00 恢复——推理不断服，训练有空间。</li>
+</ol>
+<h2 id="_8">五、使用性评估</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>评价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>好用吗</td>
+<td>✅ 客户端零依赖（纯标准库）；四问门禁防拍脑袋立项；33 项纯函数回归无 GPU 可跑</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>局域网单卡 A100/任意大显存 GPU + 小模型（0.8B~4B）LoRA 流水线；数据不出网的企业场景</td>
+</tr>
+<tr>
+<td>不适用</td>
+<td>多机分布式训练（当前单卡串行队列）；0.8B 独立承担开放域 Agent（TAU2 11.6 分的边界）；需要海量公网语料的预训练</td>
+</tr>
+<tr>
+<td>成本</td>
+<td>0.8B LoRA 全流程显存 ~18G（文本）/34G（视觉），A100 夜间窗口绰绰有余；单案例 3000 条 3 epoch 预计 &lt;1h</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_9">六、指导性意见（何时用/何时不用/替代方案）</h2>
+<ul>
+<li><strong>用</strong>：输出可规则校验的窄任务（SQL/JSON/分数/bbox）；手册/内部文档问答；检索重排降主模型 token；巡检开放词汇初筛（OVD 一类一训太贵，0.8B 临时类别按需问）。</li>
+<li><strong>不用</strong>：复杂多轮 Agent、医疗法律结论、无人值守高风险控制（源笔记反面清单）。</li>
+<li><strong>替代方案</strong>：更小内存（&lt;300MB）看 Needle-2 风格极简模型；要更强推理换 2B（内存×2，先过四问第④条）；云端有公网时大模型 API 直接调（本项目价值恰在<strong>无公网+数据不出局域网</strong>）。</li>
+<li><strong>升级链</strong>：0.8B 零件（端侧 Ollama）→ vLLM :8811 局域网共享 → 云端大模型 → 人工。</li>
+</ul>
+<h2 id="_10">七、案例可寻（本仓库真实示例）</h2>
+<ul>
+<li>四问回答模板：<code>cases/case1_text2sql/config.yaml</code> 的 <code>answers:</code> 段（四条全填，直接可抄）</li>
+<li>任务全生命周期：<code>tests/test_pure_functions.py::TestTaskStore</code>（提交→优先级抢占→终态）</li>
+<li>合成数据生成器：<code>cases/case4_inspection_ovd/make_data.py::draw_scene</code>（拒绝采样防 bbox 重叠）</li>
+<li>难负例构造：<code>cases/case3_reranker/make_data.py</code>（同 topic 不同条目做 hard negative）</li>
+<li>显存调度决策：<code>server/gateway/core.py::decide_schedule</code>（start/preempt/wait 三分支）</li>
+</ul>
+<h2 id="_11">八、使用方法借鉴（可直接抄）</h2>
+<pre><code class="language-bash"># 回归门禁（无 GPU 环境也能跑，CI 可用）
+cd ~/uclaw/project/lan-llm-farm &amp;&amp; /home/jc/miniforge3/bin/python -m pytest tests/ -q
+
+# 单案例 dry-run（无 swift/GPU 时演练全链路：数据→训练跳过→mock评测→报告）
+cd cases/case1_text2sql &amp;&amp; python3 runner.py --dry-run
+
+# 网关手动起（调试用，正式走 systemd）
+cd ~/uclaw/project/lan-llm-farm &amp;&amp; python3 -m uvicorn server.gateway.server:app --host 0.0.0.0 --port 8810
+
+# 评测器独立自测（金标当预测，应得满分；注噪验证 gate 判定）
+cd cases/case1_text2sql &amp;&amp; python3 evaluate.py --mock &amp;&amp; python3 evaluate.py --mock --mock-noise 0.5
+
+# 显存看门狗（cron: */10 * * * *）
+python3 server/ops/gpu_monitor.py --threshold-mb 8000 --webhook &lt;飞书机器人URL&gt;
+</code></pre>
+<h2 id="_12">九、已验证 / 未验证</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>状态</th>
+<th>证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>纯函数层 33 用例</td>
+<td>✅</td>
+<td>pytest 33 passed, exit 0（本机 miniforge 实测）</td>
+</tr>
+<tr>
+<td>case1 mock 端到端</td>
+<td>✅</td>
+<td>金标 1.0 / 注噪 gate 正确 fail</td>
+</tr>
+<tr>
+<td>case2/3/4 数据生成</td>
+<td>✅</td>
+<td>单测断言条数/格式/bbox 规范</td>
+</tr>
+<tr>
+<td>core 网关逻辑 smoke</td>
+<td>✅</td>
+<td>TaskStore+调度+门禁无 GPU 跑通</td>
+</tr>
+<tr>
+<td>真机 A100 训练</td>
+<td>⏳</td>
+<td>待部署：setup 00→03 + 四案例真实训练核对 gate 线</td>
+</tr>
+<tr>
+<td>GGUF 端侧部署</td>
+<td>⏳</td>
+<td>merge_and_quantize 需真产物验证（swift export gguf 兜底 llama.cpp）</td>
+</tr>
+<tr>
+<td>与 OCR 农场联调</td>
+<td>⏳</td>
+<td>/gpu/status 互查 + 单双日轮换实测</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_13">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-14-Qwen3.5-0.8B端侧零件工程使用指南.md">Qwen3.5-0.8B 端侧零件工程使用指南</a> — 理论源头（四类用法+四问过滤器）</li>
+<li><a href="./2026-08-15-局域网A100算力池×双OCR-批量文档与微调业务流程.md">局域网A100算力池×双OCR-批量文档与微调业务流程</a> — 姊妹项目（推理为主，端口 8800 段）</li>
+<li><a href="./2026-08-12-DeepSeek-V4-Flash-A100部署-推理框架与基础设施形态对比.md">DeepSeek-V4-Flash A100部署-推理框架与基础设施形态对比</a> — A100 部署形态参考</li>
+</ul>
+</body>
+</html>
