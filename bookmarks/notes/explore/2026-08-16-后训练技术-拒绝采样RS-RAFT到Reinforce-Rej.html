@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>后训练技术-拒绝采样RS-RAFT到Reinforce-Rej</title>
+
+<meta property="og:title" content="后训练技术-拒绝采样RS-RAFT到Reinforce-Rej" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="raft-reinforce-rej">后训练技术：拒绝采样 —— 从 RAFT 到 Reinforce-Rej 的谱系</h1>
+<blockquote>
+<p>探索日期 2026-08-16 | 兴趣等级 L3 | 来源 2 篇深度 + 1 代码库 | 前序笔记：<code>notes/2026-07-18-LLM推理模型RL训练前沿-从GRPO到DAPO与异步系统.md</code>、<code>notes/2026-08-02-LLM后训练RL框架2026全景-slime-Miles-verl-vime生态.md</code></p>
+</blockquote>
+<hr />
+<h2 id="_1">摘要</h2>
+<p>拒绝采样（Rejection Sampling, RS）是后训练中被使用最广却文档最少的方法：<strong>采样多个候选回答 → 用奖励模型/验证器过滤 → 只在优质样本上做 SFT</strong>。本文增量补充现有 GRPO/DAPO 笔记未覆盖的谱系：RAFT（纯 RS 基线）→ RAFT++（+重要性采样与 clip）→ Reinforce-Rej（过滤全对全错）→ GRPO（组内归一化隐式实现了同样的过滤）→ DAPO 动态采样（重采样替换无效组）。核心结论：<strong>GRPO 相对简单 RS 的优势主要来自"丢弃全错 prompt 组"，而非奖励归一化本身</strong>——这重塑了对 RL 训练本质的理解。</p>
+<h2 id="4">关键发现（4 个）</h2>
+<h3 id="1-rs-4">1. RS 是"计算统计学"思想的迁移，流水线只有 4 步</h3>
+<p>源自 Gilks &amp; Wild 1992 的自适应拒绝采样：无法直接从复杂分布采样时，从简单分布采样 + 启发式过滤。LLM 场景映射：</p>
+<pre><code>目标分布   = 高质量回答
+采样分布   = 当前模型 πθ
+过滤器     = 奖励模型 RM 或可验证奖励 (verifier)
+</code></pre>
+<p>四步流水线（rlhfbook Ch.9）：<br />
+1. 选 prompt（通常复用 SFT/IFT 集，注意过拟合风险）<br />
+2. 从待优化 checkpoint 生成 N 个候选（temperature 0.7–1.0，每 prompt 10–30+ 个）<br />
+3. RM 打分排序，两种选择策略（见下）<br />
+4. 在选中样本上做标准指令微调</p>
+<p><strong>选择策略对比</strong>：<br />
+- <strong>Top per prompt</strong>：每个 prompt 取 argmax reward，保证覆盖均衡<br />
+- <strong>Top-K overall</strong>：全局取 K 个最高分对，<code>argsort(R_flat)[-K:]</code>，可能集中在少数 prompt 上<br />
+- 单 prompt Best-of-N 场景下两者等价（K=1 时退化）</p>
+<p><strong>历史地位</strong>：WebGPT、Anthropic HH (Helpful and Harmless)、OpenAI PRM 论文（Let's Verify Step by Step）、Llama 2 Chat 全部以 RS 为核心组件；RAFT (Dong et al. 2023) 将其形式化到多模态对齐，RSO (Liu et al. 2024) 给出与其他偏好学习目标的原则性统一。</p>
+<h3 id="2-raft-grpoppoarxiv-250411343">2. 惊人实证：纯 RAFT 基线可打平 GRPO/PPO（arXiv 2504.11343）</h3>
+<p>RLHFlow 团队的消融研究：<br />
+- <strong>RAFT（只在正奖励样本上 SFT）性能与 GRPO、PPO 相当</strong><br />
+- 分解 GRPO 组件后发现：其优势主要来自<strong>隐式丢弃"全错"prompt 组</strong>（组内全错 → 归一化后 advantage 无梯度信号），而非 reward normalization 本身<br />
+- 据此提出 <strong>Reinforce-Rej</strong>：极简策略梯度扩展，<strong>同时过滤全错与全对样本</strong>（全对组 advantage 恒零，同样无学习信号），KL 效率与稳定性优于 GRPO/PPO，已发布 Qwen2.5-Math-7B-Zero-Reinforce-Rej 模型</p>
+<blockquote>
+<p>与 DAPO 动态采样的关系（作者亲自回应社区提问）：DAPO dynamic sampling 是<strong>重采样新数据替换</strong>无效组；Reinforce-Rej 是<strong>直接置零 advantage 跳过</strong>。两者本质同源（都源于 GRPO 的 mean-zero 隐式过滤），可组合使用。这条问答直接打通了本文与 7-18 DAPO 笔记的知识链。</p>
+</blockquote>
+<h3 id="3-raft-cliprlhflowminimal-rl">3. RAFT++ = 拒绝采样 + 重要性采样 + clip（RLHFlow/Minimal-RL）</h3>
+<p>Minimal-RL 仓库将 RAFT 定位为"LLM 后训练最基础的 RL 算法"，并给出增强变体：</p>
+<pre><code>RAFT:    只取正样本 → SFT（离线，无 off-policy 校正）
+RAFT++:  在 RAFT 上加 importance sampling ratio + clipping
+         st(θ) = πθ(at|x) / πold(at|x)   ← 与 GRPO 的 token 级 ratio 同构
+</code></pre>
+<p>谱系一图流：</p>
+<pre><code>SFT → RAFT(纯RS, 只学正样本)
+        ↓ +重要性采样+clip
+      RAFT++（接近离线策略梯度）
+        ↓ +过滤全对全错
+      Reinforce-Rej（极简在线 RL）
+        ↓ +组内归一化(隐式过滤)
+      GRPO（DeepSeek-R1 同款）
+        ↓ +动态重采样+解耦clip
+      DAPO（工业级，见 7-18 笔记）
+</code></pre>
+<p>关键洞察：<strong>这条谱系不是算法更替，而是"如何处理负样本"的渐进设计</strong>。RAFT 丢弃负样本；GRPO 用负样本做 baseline 但隐式丢弃无效组；论文主张未来方向是"更原则性的负样本利用"而非无差别使用。</p>
+<h3 id="4-rs-best-of-n">4. RS 与 Best-of-N 是训练时/推理时的对偶</h3>
+<ul>
+<li><strong>Best-of-N</strong>：同样的 generate-and-score，但<strong>不训练</strong>，推理时选最优（"Pro" 档模型常用，额外算力换更好回答）</li>
+<li><strong>RS/RAFT</strong>：把 BoN 的选出的优质样本<strong>沉淀回模型权重</strong></li>
+<li>BoN 是评估 RLHF 训练方法的合法 baseline（模型不变，仍可测 KL 距离）</li>
+<li>实操细节：batch RM 推理时按 completion 长度排序组 batch，减少 padding，吞吐显著提升</li>
+</ul>
+<h2 id="_2">与现有工作的关联（增量定位）</h2>
+<p><strong>P1 — 补全后训练技术栈拼图</strong>：现有笔记覆盖了 SFT→DPO→GRPO/RLVR 主线（7-18 训练范式笔记）与 DAPO 四改进（7-18 RL前沿笔记），但缺失"GRPO 之前的简单方法为什么也有效"。本笔记的谱系分析填补该空白，且 Reinforce-Rej ↔ DAPO dynamic sampling 的同源性问答是两篇笔记间的关键交叉链接。</p>
+<p><strong>P1 — Jetson 端侧/小模型的实操启示</strong>：RAFT 不需要 critic、不需要复杂 RL 基础设施，仅需"生成 + 验证 + SFT"循环。对于 LFM2.5 端侧 Agent 模型（8-08 笔记）的持续训练场景，RAFT 是算力受限下的首选基线——用 TRL 的 <code>RejectionSamplerTrainer</code> 或 Minimal-RL 代码库即可启动。</p>
+<p><strong>P2 — 对 self-evolution 闭环的方法论输入</strong>：Hermes 的 evolver/skill-stress-test 机制本质是"生成变体 → 验证 → 保留优质"，与 RS 同构。Reinforce-Rej 的发现提示：<strong>验证信号二元化（全对/全错）的样本对进化无增益，应聚焦"部分成功"的边界样本</strong>——这直接适用于 skill A/B 测试的样本筛选策略。</p>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li><strong>实验入口</strong>：<code>github.com/RLHFlow/Minimal-RL</code>（RAFT/RAFT++/Reinforce-Rej/GRPO 四算法统一实现）+ rlhfbook 配套 <code>code/rejection_sampling/</code>（GSM8K 完整管线，含 random control 对照）</li>
+<li><strong>匹配对照实验设计</strong>：rlhfbook 的 treatment/control 配对法（top_per_prompt vs random_per_prompt）可直接迁移到 skill 有效性验证——"奖励选择的样本没跑赢随机基线 = 信号无用"</li>
+<li><strong>超参速记</strong>：temperature 0.7–1.0；每 prompt 采样 10–30+；太少则训练有偏/噪声大</li>
+<li><strong>RL 不收敛时降级路径</strong>：GRPO 训练不稳定时先退回 RAFT 验证奖励信号质量，再逐步加组件（与"先跑通再优化"原则一致）</li>
+</ol>
+<h2 id="_3">关键风险与盲点</h2>
+<ul>
+<li><strong>RS 偏向简单任务</strong>（emergentmind 综述指出 oversampling simpler tasks 风险）：正样本天然集中在模型已会的简单题，长尾难题持续无梯度——与 DAPO 动态采样要解决的是同一个问题（官方论文验证 ✅）</li>
+<li><strong>奖励模型质量决定上限</strong>：RM 打分无信号时 RS 退化为随机 SFT（rlhfbook 强调用 random control 检测，官方建议 ✅）</li>
+<li><strong>Reinforce-Rej 的负样本丢弃策略仍有争议</strong>：论文自己承认"无差别使用负样本"不可取，但"原则性利用"的方案尚未收敛（社区讨论，未定论 ⚠️）</li>
+<li><strong>异构模型生成</strong>（多模型产候选）的最佳实践未建立（官方文档确认空白 ⚠️）</li>
+</ul>
+<h2 id="_4">一页速查</h2>
+<blockquote>
+<p><strong>拒绝采样 = 生成 N 候选 → RM/verifier 过滤 → 优质样本 SFT</strong>。<br />
+四步：选prompt → 采样(0.7–1.0温度, 10–30个/prompt) → 选择(top-per-prompt 或 top-K overall) → SFT。<br />
+谱系：RAFT → RAFT++(+IS+clip) → Reinforce-Rej(滤全对全错) → GRPO(组归一化隐式过滤) → DAPO(重采样)。<br />
+核心实证：纯 RAFT ≈ GRPO/PPO；GRPO 优势主来自丢弃全错组而非归一化。<br />
+BoN = 推理时版 RS（不训练）；RS = 把 BoN 结果写进权重。<br />
+降级路径：RL 不稳 → 先 RAFT 验证奖励信号。</p>
+</blockquote>
+<h2 id="_5">待深入</h2>
+<ul>
+<li>RSO (Statistical Rejection Sampling Optimization) 与 DPO 的数学关系（Liu et al. ICLR 2024）</li>
+<li>ReST-EM (Google 自我蒸馏迭代版 RS) 在 Agent 场景的应用</li>
+<li>负样本的原则性利用：对比学习式 reward shaping vs 简单丢弃</li>
+</ul>
+<h2 id="_6">来源</h2>
+<ol>
+<li>Lambert, N. <em>RLHF Book</em> Ch.9 Rejection Sampling — rlhfbook.com/c/09-rejection-sampling（2026 Manning 出版配套在线版）</li>
+<li>Liu, Z. et al. <em>A Minimalist Approach to LLM Reasoning: from Rejection Sampling to Reinforce</em> — arXiv:2504.11343 + HuggingFace 论文页作者问答</li>
+<li>RLHFlow/Minimal-RL 代码库 — github.com/RLHFlow/Minimal-RL（RAFT++/Reinforce-Rej 官方实现）</li>
+</ol>
+</body>
+</html>
