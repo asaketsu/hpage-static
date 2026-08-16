@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投机解码生产化指南-EAGLE-3到P-EAGLE的vLLM实践</title>
+
+<meta property="og:title" content="投机解码生产化指南-EAGLE-3到P-EAGLE的vLLM实践" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-17-%E6%8A%95%E6%9C%BA%E8%A7%A3%E7%A0%81%E7%94%9F%E4%BA%A7%E5%8C%96%E6%8C%87%E5%8D%97-EAGLE-3%E5%88%B0P-EAGLE%E7%9A%84vLLM%E5%AE%9E%E8%B7%B5.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="-eagle-3p-eaglevllm">投机解码生产化指南-EAGLE-3到P-EAGLE的vLLM实践</h1>
+<p><strong>标签</strong>：#投机解码 #vLLM #SGLang #推理优化 #EAGLE #LLM部署 #A100</p>
+<blockquote>
+<p><strong>出处</strong>：<br />
+- Spheron《Speculative Decoding Production Guide: 2-5x Faster LLM Inference》(2026-03-26, www.spheron.network/blog/speculative-decoding-production-guide)<br />
+- AWS ML Blog《P-EAGLE: Faster LLM Inference with Parallel Speculative Decoding in vLLM》(2026-03, vLLM v0.16.0 PR#32887)<br />
+- vLLM 官方文档 docs.vllm.ai/en/latest/features/speculative_decoding<br />
+<strong>记录日期</strong>：2026-08-17（夜间自学习）</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心原理（为什么能加速）</h3>
+<p>LLM 解码是<strong>显存带宽瓶颈</strong>（memory-bandwidth-bound）：每生成一个 token 都要把全部模型权重从 VRAM 加载一遍。投机解码的洞见：<strong>验证 N 个候选 token 的成本 ≈ 从头生成 1 个 token</strong>。</p>
+<pre><code>草稿模型: [tok1] [tok2] [tok3] [tok4] [tok5] ← 快速生成
+目标模型: ✓    ✓    ✓    ✗              ← 单次前向全验证
+结果: tok1-3 接受；从 tok4 起重生成
+</code></pre>
+<p><strong>数学保证</strong>：输出与标准自回归解码<strong>逐 token 等价</strong>（无损），拒绝的 token 由目标模型分布替换。</p>
+<p><strong>吞吐公式</strong>：接受率 α，每步期望接受 <code>(1 - α^(N+1)) / (1 - α)</code> 个 token。α=0.8、N=5 时 ≈3.7 token/步，即理论 3.7× 加速（未扣草稿模型开销）。</p>
+<h3 id="12">1.2 技术演进谱系（功能清单）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>机制</th>
+<th>加速比</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Draft Model</td>
+<td>独立小模型（1B-3B）逐 token 草拟</td>
+<td>2-3×</td>
+<td>生产成熟，最易上手</td>
+</tr>
+<tr>
+<td>Self-Speculation/Lookahead</td>
+<td>目标模型自身浅层/n-gram</td>
+<td>1.5-2×</td>
+<td>生产框架支持有限</td>
+</tr>
+<tr>
+<td>Medusa</td>
+<td>并行解码头，需微调</td>
+<td>2-3×</td>
+<td>任务特定，较少用</td>
+</tr>
+<tr>
+<td>EAGLE/EAGLE-2</td>
+<td>草稿器吃目标模型<strong>内部特征向量</strong>（非 token embedding）+ 动态候选树</td>
+<td>3×+</td>
+<td>HF 有 Llama/Qwen/Mistral checkpoint</td>
+</tr>
+<tr>
+<td><strong>EAGLE-3</strong></td>
+<td>特征预测→<strong>直接 token 预测</strong>，多层隐状态融合输入</td>
+<td>3.5-5×（HumanEval 报告 4.8×）</td>
+<td>当前生产主力</td>
+</tr>
+<tr>
+<td><strong>P-EAGLE</strong></td>
+<td>草稿 K 个 token <strong>单次前向并行生成</strong>（自回归→并行）</td>
+<td>比 EAGLE-3 再 +20-30%，B200 上 1.05-1.69×</td>
+<td>AWS 2026 初贡献进 vLLM 主线</td>
+</tr>
+<tr>
+<td>DFlash</td>
+<td>块扩散投机解码</td>
+<td>6×（有 checkpoint 时）</td>
+<td>新兴</td>
+</tr>
+<tr>
+<td>MTP</td>
+<td>模型自带 multi-token prediction 头</td>
+<td>免外部草稿模型</td>
+<td>vLLM/SGLang 均原生支持，DeepSeek/GLM 系自带</td>
+</tr>
+<tr>
+<td>Suffix Decoding</td>
+<td>后缀树匹配，agent 重复查询场景</td>
+<td>SWE-Bench 端到端 1.8-4.5×</td>
+<td>Snowflake Arctic Inference 插件</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13">1.3 实测性能与成本（硬数据）</h3>
+<p>Llama 3.3 70B Instruct @FP8，H100 PCIe $2.01/hr，batch 1-4（Spheron 2026-03 实测）：</p>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>tokens/sec</th>
+<th>TTFT p50</th>
+<th>$/1M 输出 token</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>标准解码</td>
+<td>~1,200</td>
+<td>~45ms</td>
+<td>~$0.46</td>
+</tr>
+<tr>
+<td>Draft(1B)</td>
+<td>~2,600</td>
+<td>~20ms</td>
+<td>~$0.21</td>
+</tr>
+<tr>
+<td>EAGLE-3</td>
+<td>~3,600</td>
+<td>~15ms</td>
+<td>~$0.15</td>
+</tr>
+<tr>
+<td>DFlash</td>
+<td>~9,000</td>
+<td>~8ms</td>
+<td>~$0.06</td>
+</tr>
+</tbody>
+</table>
+<p>成本公式：`cost_per_1M = ($/hr / 3600) / (tok/s / 1_000_000)`。L40S 上 8B 模型 EAGLE-3 达 ~10,000 tok/s、$0.06/1M——小模型+投机解码是极致性价比档。</p>
+<h3 id="14-p-eagle-aws">1.4 P-EAGLE 关键细节（AWS 博客增量）</h3>
+<ul>
+<li><strong>架构</strong>：两步走。Step1 目标模型正常 prefill 并捕获 <code>h_prompt</code>/<code>h_context</code> 隐状态；Step2 草稿器对每个位置并行构造输入（prompt 位置用 token emb+对应隐状态；位置 2~K 的 MTP 输入不存在，用两个<strong>可学习共享占位向量</strong> <code>emb(mask)</code>/<code>h_shared</code> 填充），N 层 transformer 一次前向吐出 K 个草稿 token。</li>
+<li><strong>训练难点</strong>：N=8192、K=8 时单样本 65,536 位置，attention 矩阵 65K×65K = 40 亿元素（bf16 8GB）。解法是<strong>序列内分区算法</strong>（intra-sequence splitting）：把 N×K 位置切连续块、保持跨块 attention 依赖、块间梯度累积。</li>
+<li><strong>可用 checkpoint</strong>（HF 已开放）：<code>amazon/gpt-oss-120b-p-eagle</code>、<code>amazon/GPT-OSS-20B-P-EAGLE</code>、<code>amazon/Qwen3-Coder-30B-A3B-Instruct-P-EAGLE</code>。</li>
+<li><strong>B200 实测</strong>：GPT-OSS 20B 上 MT-Bench/HumanEval/SpeedBench 比 vanilla EAGLE-3 快 1.05-1.69×。</li>
+</ul>
+<h3 id="15">1.5 使用方法借鉴（可抄命令）</h3>
+<p>vLLM draft model（最易上手）：</p>
+<pre><code class="language-bash">vllm serve meta-llama/Llama-3.3-70B-Instruct \
+  --quantization fp8 \
+  --speculative-model meta-llama/Llama-3.2-1B-Instruct \
+  --num-speculative-tokens 5 \
+  --speculative-draft-tensor-parallel-size 1 \
+  --max-model-len 8192 --gpu-memory-utilization 0.94 \
+  --max-num-seqs 32 --host 0.0.0.0 --port 8000
+</code></pre>
+<p>vLLM EAGLE-3（更高接受率）：</p>
+<pre><code class="language-bash">--speculative-model yuhuili/EAGLE3-LLaMA3.3-Instruct-70B \
+--num-speculative-tokens 6
+</code></pre>
+<p>vLLM P-EAGLE（v0.16.0+，单行开启并行草稿）：</p>
+<pre><code class="language-bash">vllm serve openai/gpt-oss-20b \
+--speculative-config '{&quot;method&quot;: &quot;eagle3&quot;, &quot;model&quot;: &quot;amazon/gpt-oss-20b-p-eagle&quot;, &quot;num_speculative_tokens&quot;: 5, &quot;parallel_drafting&quot;: true}'
+</code></pre>
+<p>SGLang EAGLE-3（树注意力，多分支延续场景更强）：</p>
+<pre><code class="language-bash">python -m sglang.launch_server \
+  --model-path meta-llama/Llama-3.3-70B-Instruct --quantization fp8 \
+  --speculative-algorithm EAGLE3 \
+  --speculative-draft-model-path yuhuili/EAGLE3-LLaMA3.3-Instruct-70B \
+  --speculative-num-draft-tokens 6 --host 0.0.0.0 --port 30000
+</code></pre>
+<p>监控（Prometheus）：</p>
+<pre><code class="language-bash">curl http://localhost:8000/metrics | grep spec_decode
+# vllm:spec_decode_draft_acceptance_rate  目标 &gt;0.70；&lt;0.50 换草稿模型或降到 N=3
+# vllm:spec_decode_efficiency             投机路径产出 token 占比
+# vllm:gpu_cache_usage_perc               双模型同时驻留的显存压力
+</code></pre>
+<h2 id="_2">二、使用性评估与指导性意见</h2>
+<h3 id="21">2.1 何时用/何时不用（决策规则）</h3>
+<pre><code>if batch_size &gt; 32 or output_tokens &lt; 50 or task == &quot;embedding&quot;:
+    用标准解码
+else:
+    开投机解码，从 N=5 起调
+</code></pre>
+<ul>
+<li>✅ <strong>适用</strong>：低并发交互 API、指令跟随、代码生成、<strong>reasoning/thinking 模型</strong>（思维链 pattern 可预测→接受率高）、agent 场景（重复查询用 Suffix Decoding 更佳）</li>
+<li>❌ <strong>不适用</strong>：高并发批处理（&gt;32 并发变 compute-bound，草稿开销纯亏）、输出 &lt;50 token、高熵任务（随机种子/对抗 prompt，α&lt;0.5 时反而降吞吐）、显存已 &gt;90% 的场景（加草稿模型会 OOM 或碎片化 KV cache）</li>
+</ul>
+<h3 id="22">2.2 调参要点</h3>
+<ul>
+<li><code>--num-speculative-tokens</code>：从 5 起；α 持续 &gt;0.8 升到 7-8；α &lt;0.5 降到 3</li>
+<li><code>--gpu-memory-utilization 0.94</code>（比默认 0.90 高，为塞下双模型）</li>
+<li><code>--speculative-draft-tensor-parallel-size 1</code>：草稿模型永远单卡，目标模型 TP 不影响它</li>
+<li><code>--speculative-disable-by-batch-size 32</code>：<strong>生产必备</strong>——并发超阈值自动回退标准解码，100+ 并发时不开此开关会降 30-40% 吞吐</li>
+<li>草稿模型可先量化到 FP8/INT4（ModelOpt PTQ）再加载，降草稿延迟</li>
+</ul>
+<h3 id="23-a100">2.3 与 A100 场景的适配判断</h3>
+<ul>
+<li>A100（SM80）无 FP8 硬件加速，但投机解码<strong>不依赖 FP8</strong>——bf16 + draft model / EAGLE-3 照常工作，是 A100 上比量化更普适的加速路径</li>
+<li>8×A100 80GB 跑 70B：TP=8 时留 1 卡余量给草稿模型绰绰有余；实际 2 卡 TP（160GB）即可跑 FP16 70B+草稿</li>
+<li>高并发多人共用场景（&gt;10 人）反而该保持标准解码——与昨日 DeepSeek-V4-Flash 部署笔记的「vLLM 高并发选型」结论互补：<strong>并发低要延迟→投机解码；并发高要吞吐→PagedAttention 标准解码</strong></li>
+</ul>
+<h2 id="_3">三、查询拓展</h2>
+<ol>
+<li><strong>MTP vs 外挂草稿</strong>：DeepSeek V4/GLM-5.1 等 MoE 模型自带 MTP 头，专家路由让外部草稿预测变难——自带 MTP 是 MoE 时代的正解，部署这系模型优先查 MTP 支持而非找 EAGLE checkpoint</li>
+<li><strong>Suffix Decoding（Snowflake Arctic Inference）</strong>：针对 agent 重复查询（工具调用格式高度重复）用后缀树做零成本草稿，SWE-Bench 端到端 1.8-4.5×——Hermes Gateway 这类高频工具调用流量是该技术的典型画像</li>
+<li><strong>XGrammar 约束解码</strong>：结构化输出（JSON/SQL）与投机解码叠加是 agent 工具调用精度+速度的组合拳，已是 vLLM/SGLang 默认后端</li>
+<li><strong>Prefill-Decode 分离</strong>（disaggregated serving）：与投机解码正交，可叠加；2× 吞吐的另一条线</li>
+<li><strong>DFlash/块扩散</strong>：diffusion LLM 并行去噪路线，6× 但 checkpoint 生态尚薄，观察项</li>
+</ol>
+<h2 id="_4">四、归纳总结</h2>
+<p><strong>一句话</strong>：投机解码 2026 已完成「实验室→生产」三连跳——EAGLE-3（特征→直接 token 预测，3.5-5×）→ P-EAGLE（草稿单次前向并行生成，进 vLLM v0.16.0 主线，再 +20-30%）→ DFlash（块扩散，6×）；H100 上 70B 模型输出成本从 $0.46/1M 压到 $0.15/1M（EAGLE-3），适用边界清晰：低并发、长输出、pattern 可预测（代码/reasoning/agent），高并发批处理禁用（<code>--speculative-disable-by-batch-size 32</code> 兜底）。</p>
+<p><strong>结构记忆</strong>：<br />
+- 原理一句话：验证 N 个 token ≈ 生成 1 个 token 的成本（显存带宽瓶颈的攻击面）<br />
+- 公式：<code>(1-α^(N+1))/(1-α)</code>，α&gt;0.8 升 N、α&lt;0.5 降 N<br />
+- 三档选型：draft model（最易）→ EAGLE-3（生产主力）→ P-EAGLE（并行草稿，v0.16.0+）<br />
+- 两条铁律：acceptance rate &gt;0.70 是健康线；生产必开 disable-by-batch-size<br />
+- A100 适配：不依赖 FP8，bf16 照用，是 A100 比量化更普适的加速路线</p>
+<h2 id="_5">五、趋势判断</h2>
+<ol>
+<li><strong>草稿器并行化是终局方向</strong>：自回归草稿延迟随投机深度线性涨是结构性天花板，P-EAGLE 的单次前向 K token 生成 + 可学习占位向量设计会成为 EAGLE 系标配</li>
+<li><strong>MTP 头内置化</strong>：新一代模型（DeepSeek/GLM/GPT-OSS）出厂自带 MTP，「外挂草稿模型」将退化为旧模型的兼容方案</li>
+<li><strong>agent 流量是投机解码新主场</strong>：工具调用 JSON 高度重复（Suffix Decoding 1.8-4.5×）+ thinking pattern 可预测，agent 网关侧推理服务的默认加速组合会是 Suffix/EAGLE + XGrammar</li>
+<li><strong>推理引擎趋同</strong>：vLLM 与 SGLang 在连续批处理/PagedAttention/RadixAttention/投机解码/CUDA Graph/算子栈（FlashInfer/FlashAttention/DeepGEMM）上已全面重叠，竞争转向 checkpoint 生态与插件速度（AWS P-EAGLE、Snowflake Arctic 均以 vLLM 插件形式首发）</li>
+<li><strong>成本曲线</strong>：$0.46→$0.06/1M（标准→DFlash）意味着同价位 7× token 产能，端侧小模型+云端投机解码的成本交叉点继续下移</li>
+</ol>
+<h2 id="_6">六、关联</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-08-16-A100局域网部署DeepSeek-V4-Flash</td>
+<td>直接续篇：该笔记定框架选型（vLLM/SGLang/Ollama），本笔记补推理加速层；「高并发 vLLM 标准解码、低延迟投机解码」互补成完整决策树</td>
+</tr>
+<tr>
+<td>lan-llm-farm 项目</td>
+<td>serve_local.sh 部署链可加 <code>--speculative-config</code> 档位；0.8B 锻造模型 serving 时配 draft/自投机可再压延迟</td>
+</tr>
+<tr>
+<td>a100-training-playbook</td>
+<td>训练层与推理加速正交；P-EAGLE 训练的序列内分区算法对 K 并行组显存爆炸的处理可借鉴到多任务头训练</td>
+</tr>
+<tr>
+<td>Hermes Gateway</td>
+<td>网关侧 LLM API 调用若迁到自建 vLLM，agent 工具调用流量适合 Suffix Decoding；当前智谱 API 侧不可控</td>
+</tr>
+<tr>
+<td>llm-inference-optimization skill</td>
+<td>该 skill 理论层已有 PagedAttention/量化/推测解码框架，本笔记提供 2026 生产级命令与实测数据增量</td>
+</tr>
+<tr>
+<td>为什么RL重要笔记</td>
+<td>thinking token pattern 可预测→投机解码对 reasoning 模型收益更高，与 RL 训出的规整 cot pattern 形成正向循环</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">七、行动清单</h2>
+<ul>
+<li style="list-style:none"><input type="checkbox" disabled checked> 三源交叉验证（Spheron 实测 + AWS 官方 + vLLM 文档）</li>
+<li style="list-style:none"><input type="checkbox" disabled> A100 真机：70B + EAGLE-3 实测 acceptance rate 与吞吐（对照 H100 数据折算）</li>
+<li style="list-style:none"><input type="checkbox" disabled> lan-llm-farm serve_local.sh 增加 speculative 档位</li>
+<li style="list-style:none"><input type="checkbox" disabled> 观察 DFlash checkpoint 生态与 Qwen 系 P-EAGLE 头开放进度</li>
+</ul>
+<hr />
+<h2 id="_8">八、一句话总结</h2>
+<blockquote>
+<p>投机解码生产化口诀——验证 N 个 token 等于生成 1 个的成本；draft model 最易、EAGLE-3 主力、P-EAGLE 并行草稿再快三成；α&gt;0.7 健康、并发&gt;32 禁用、<code>disable-by-batch-size</code> 保命；A100 不靠 FP8 也能吃到 2-4× 加速。</p>
+</blockquote>
+</body>
+</html>
