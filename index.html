@@ -554,6 +554,21 @@
                 ${item.folder ? `<span class="path">${item.folder}</span>` : ''}
             </div>`;
             }
+            if (type === 'paper') {
+                const href = item.html || '';
+                const abs = item.abstract ? esc(item.abstract.length > 220 ? item.abstract.slice(0, 220) + '…' : item.abstract) : '';
+                const hlTxt = item.highlight ? esc(item.highlight) : '';
+                return `<a class="card-title" href="${href}" target="_blank">${hl(item.title_cn || item.title_en, q)}</a>
+            <div class="en-title" style="font-size:13px;color:#777;font-weight:normal;margin:2px 0 6px">${hl(item.title_en || '', q)}</div>
+            <div class="card-meta">
+                <span class="card-date">${item.push_date || ''}</span>
+                <span class="badge b-topic">📚 Paper</span>
+                <span class="arxiv" style="font-family:monospace;background:#eef3ff;padding:1px 8px;border-radius:10px;font-size:12px">${item.arxiv_id || ''}</span>
+                ${item.authors ? `<span class="path" style="font-size:12px">${esc(item.authors)}</span>` : ''}
+            </div>
+            ${abs ? `<div class="card-desc" style="display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden">${abs}</div>` : ''}
+            ${hlTxt ? `<div class="card-desc" style="color:#b8860b;font-size:13px;margin-top:4px">💡 ${hlTxt.length > 120 ? hlTxt.slice(0, 120) + '…' : hlTxt}</div>` : ''}`;
+            }
             return '';
         }
 
@@ -589,11 +604,12 @@
             if (activeTab === 'projects') items = DATA.projects.slice();
             if (activeTab === 'notes') items = DATA.notes.slice();
             if (activeTab === 'ubot') items = (DATA.ubot_topics || []).slice();
-            // Public mode: force notes only, ignore other tabs
-            if (IS_PUBLIC && activeTab !== 'notes') { items = DATA.notes.slice(); activeTab = 'notes'; }
+            if (activeTab === 'papers') items = (DATA.papers || []).slice();
+            // Public mode: allow notes + papers only, force back to notes otherwise
+            if (IS_PUBLIC && activeTab !== 'notes' && activeTab !== 'papers') { items = DATA.notes.slice(); activeTab = 'notes'; }
             if (q) {
                 items = items.filter(i => {
-                    const hay = [i.title, i.name, i.desc, i.theme, i.file, i.path, i.subdir]
+                    const hay = [i.title, i.title_cn, i.title_en, i.name, i.desc, i.theme, i.file, i.path, i.subdir, i.abstract, i.authors]
                         .filter(Boolean).join(' ').toLowerCase();
                     return hay.includes(q);
                 });
@@ -611,16 +627,20 @@
 
         function buildUI() {
             if (IS_PUBLIC) {
-                // Public: hide header + tab bar, only notes
+                // Public: hide header, show notes + papers tabs only
                 document.getElementById('pageHeader').style.display = 'none';
-                document.getElementById('tabBar').style.display = 'none';
+                document.getElementById('tabBar').innerHTML = `
+        <div class="tab${activeTab === 'notes' ? ' active' : ''}" data-tab="notes" onclick="setTab('notes')">📝 笔记<span class="count">${DATA.stats.notes}</span></div>
+        <div class="tab${activeTab === 'papers' ? ' active' : ''}" data-tab="papers" onclick="setTab('papers')">📚 Paper<span class="count">${DATA.stats.papers || 0}</span></div>`;
+                document.getElementById('tabBar').style.display = '';
             } else {
                 // LAN: show all tabs
                 document.getElementById('tabBar').innerHTML = `
         <div class="tab${activeTab === 'topics' ? ' active' : ''}" data-tab="topics" onclick="setTab('topics')">🐱 jbot<span class="count">${DATA.stats.topics}</span></div>
         <div class="tab${activeTab === 'ubot' ? ' active' : ''}" data-tab="ubot" onclick="setTab('ubot')">🤖 ubot<span class="count">${DATA.stats.ubot_topics || 0}</span></div>
         <div class="tab${activeTab === 'projects' ? ' active' : ''}" data-tab="projects" onclick="setTab('projects')">🚀 项目<span class="count">${DATA.stats.projects}</span></div>
-        <div class="tab${activeTab === 'notes' ? ' active' : ''}" data-tab="notes" onclick="setTab('notes')">📝 笔记<span class="count">${DATA.stats.notes}</span></div>`;
+        <div class="tab${activeTab === 'notes' ? ' active' : ''}" data-tab="notes" onclick="setTab('notes')">📝 笔记<span class="count">${DATA.stats.notes}</span></div>
+        <div class="tab${activeTab === 'papers' ? ' active' : ''}" data-tab="papers" onclick="setTab('papers')">📚 Paper<span class="count">${DATA.stats.papers || 0}</span></div>`;
             }
 
             const footer = document.getElementById('footer');
@@ -644,6 +664,7 @@
                 DATA.projects.forEach(i => i._type = 'project');
                 DATA.topics.forEach(i => i._type = 'topic');
                 (DATA.ubot_topics || []).forEach(i => i._type = 'ubot');
+                (DATA.papers || []).forEach(i => i._type = 'paper');
                 buildUI();
                 filter();
             })
