@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>从RL到蒸馏到软蒸馏-Why-RL-Matters</title>
+
+<meta property="og:title" content="从RL到蒸馏到软蒸馏-Why-RL-Matters" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="rl-why-rl-mattersposttrain">从 RL 到蒸馏再到软蒸馏：Why RL Matters（posttrain 定位全解）</h1>
+<blockquote>
+<p><strong>出处</strong>：@qingke_ai（青稞社区）X 长文 2026-08-15，作者 ybq，知乎原文 zhuanlan.zhihu.com/p/2067725096886785009<br />
+<strong>原文链接</strong>：https://x.com/qingke_ai/status/2088637945972654080<br />
+<strong>记录日期</strong>：2026-08-16</p>
+</blockquote>
+<p><strong>标签</strong>：#RL #蒸馏 #软蒸馏 #posttrain #CoT-pattern #GRPO #agent训练</p>
+<hr />
+<h2 id="_1">一、原文核心内容（完整还原）</h2>
+<h3 id="11-sft-pattern-rl">1.1 核心论点：SFT 定 pattern 上限，RL 做本土化+可控化</h3>
+<p>文章用一条主线串起 posttrain 全景：<strong>SFT 定型 cot pattern（决定上限）→ RL 把 pattern 改造成模型自身的最佳表达（本土化）+ 压制坏 pattern（可控化）→ 蒸馏是偷看学习笔记（捷径）→ 软蒸馏是借 SOTA 之力（明牌竞争）</strong>。</p>
+<h3 id="12-cot-pattern">1.2 CoT Pattern 三分法（原文最精彩的例子）</h3>
+<p>给定 997 × 1003，三种 pattern：</p>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>解法</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>good</strong></td>
+<td>(1000−3)(1000+3) = 1000²−3² = 999991</td>
+<td>短、准、易泛化</td>
+</tr>
+<tr>
+<td><strong>mediocre</strong></td>
+<td>1003×(900+90+7) 逐项展开</td>
+<td>步骤多→出错率高→token 效率低</td>
+</tr>
+<tr>
+<td><strong>bad</strong></td>
+<td>直接 = 999991</td>
+<td>记答案不学法——小模型学到后见 997×任何数都答 999991</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键论断</strong>：好的 cot pattern = 更短 + 更准 + 更易泛化。SFT 阶段的 pattern 定型<strong>几乎决定 posttrain 效果上限</strong>；很多优质 pattern 在 RL 阶段无法靠 explore 撞出来（agent 训练同理：不教，main agent 想不到开 sub_agent）。</p>
+<p><strong>Agent 时代延续</strong>：构造 environment trajectories 本质仍是"寻找更优质的 cot pattern"——reasoning 与 agent 是同一件事。</p>
+<h3 id="13-rl">1.3 RL 的四大作用</h3>
+<ol>
+<li><strong>本土化改造</strong>：同一 pattern（99×99=99×(100−1)），强模型一步到 9900−99=9801；弱模型要写 5 步。SFT 数据多来自强模型/人工（极简优雅），弱模型消化不了，需 RL explore 找到与自身知识量+tokenizer 契合的表达</li>
+<li><strong>解释"SFT 起点低 RL 终点高"</strong>：起点低是 pattern 与能力不匹配，不是数据质量差</li>
+<li><strong>基因突变+进化</strong>：算力够大 rollout_n 够大，RL 总能 explore 到新优质 pattern，GRPO 负责给强学习信号</li>
+<li><strong>可控化（被低估的作用）</strong>：pretrain 几十 T 语料里的坏 pattern（多个 think 标签/中英混杂/反思次数失控），SFT <strong>没有打压能力</strong>只能靠 RL 惩罚 loss 压制；"思考档位"= RL 给不同档位配不同上下文窗口即可实现</li>
+</ol>
+<h3 id="14">1.4 蒸馏：偷看学习笔记</h3>
+<ul>
+<li><strong>RL 收益可被蒸馏窃取</strong>：RL 本质是找更好 pattern，寻找过程不具价值——用 RL 后模型当 teacher 蒸馏，student 指标接近 teacher</li>
+<li><strong>业界合版标配</strong>：多个 RL 子模型 reject sampling SFT（或 OPD）</li>
+<li><strong>1T→100B 的 pattern 平移</strong>：大模型 explore 的 pattern 更丰富，喂给小模型+RL 适配表达（同尺寸同词表屡试不爽）</li>
+<li><strong>student 可超 teacher</strong>：改数据分布（如只保留英文 cot）——但作者警告：任何让 student 超 teacher 的操作应回流去提升 teacher</li>
+<li><strong>金句</strong>：认为蒸馏无用，大抵没亲自训过大模型；认为蒸馏是全部，大抵只想做追赶者</li>
+</ul>
+<h3 id="15-sota">1.5 软蒸馏：借 SOTA 之力（明牌竞争）</h3>
+<p>高级蒸馏不止学 response：用 SOTA 合成能力边界数据 / 分析自家 pattern 缺点 / 优化 RL verifier。<br />
+"任何国内厂商都不敢说自己没用 GPT/Claude 的帮助。"<br />
+<strong>终局判断</strong>：纯训练阶段已是明牌竞争——比谁更能 scaling（model parameters / RL data / agent environments）；领头羊必须重投 RL 摆脱（软）蒸馏依赖，应用价值追赶者蒸馏即是最好选择。</p>
+<hr />
+<h2 id="_2">二、五要素展开</h2>
+<h3 id="21">2.1 功能清单（本文提供的认知工具）</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cot pattern 三分法</td>
+<td>评估 SFT 数据质量的直观框架</td>
+</tr>
+<tr>
+<td>RL 四作用模型</td>
+<td>本土化/进化/可控化/解释起点低现象</td>
+</tr>
+<tr>
+<td>蒸馏=偷笔记 心智模型</td>
+<td>快速理解 reject sampling/合版/1T→100B 平移</td>
+</tr>
+<tr>
+<td>软蒸馏清单</td>
+<td>合成边界数据/找 pattern 缺点/优化 verifier</td>
+</tr>
+<tr>
+<td>决策规则</td>
+<td>领头羊投 RL vs 追赶者用蒸馏</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 使用性评估</h3>
+<p><strong>强项</strong>：一线 posttrain 从业者的实操视角（"sft 后多 think 标签""中英混杂屡教不改"全是真实生产 pain point）；三分法例子极好传播；把 reasoning/agent/posttrain 统一进"pattern"单一框架，解释力强。</p>
+<p><strong>局限（原文自认"个人观点未必正确"）</strong>：<br />
+- "RL 收益可被蒸馏窃取"成立的前提是 teacher 的 pattern 已收敛——若 RL 还在持续 explore（前沿能力），蒸馏只能拿到快照<br />
+- 无实验数据/引用支撑，是经验之谈（知乎体）<br />
+- "SFT 定上限"与业界"RLVR 涌现超越 SFT 上限"的报告（如 DeepSeek-R1 zero）存在张力，原文未处理<br />
+- 软蒸馏部分受限于国内视角，"国内 vs 国外"框架对通用读者有场景依赖</p>
+<h3 id="23">2.3 指导性意见</h3>
+<ul>
+<li><strong>做小模型/垂直应用</strong>：蒸馏路线（强 teacher + reject sampling + RL 适配）性价比最高——这正是我们 lan-llm-farm 0.8B 零件锻造的路线印证</li>
+<li><strong>做 SFT 数据</strong>：用三分法审查每条轨迹——尤其剿灭 bad pattern（记答案型），它对同分布是毒药</li>
+<li><strong>agent 训练</strong>：SFT 必须显式教"何时开 sub_agent / 怎么交换信息"，这些 explore 不出来；RL 只负责本土化"怎么用"</li>
+<li><strong>评估 posttrain 方案</strong>：先问"pattern 由谁定"——teacher 定（蒸馏）还是自己 explore（RL），再谈算力分配</li>
+<li><strong>可控性问题</strong>（格式混乱/语言混杂）：别再加 SFT 数据了，直接 RL 惩罚——SFT 无打压能力是本文最实用的工程结论</li>
+</ul>
+<h3 id="24">2.4 案例可寻</h3>
+<ul>
+<li>997×1003 三分法（可直接用于团队培训的示例）</li>
+<li>1T model rl pattern → 100B student + RL 适配（同尺寸同词表屡试不爽——合版工程实践）</li>
+<li>思考档位实现：RL 不同档位给不同上下文窗口（产品化细节）</li>
+<li>中英 teacher 只留英文 cot 蒸馏出更强 student（数据分布改造案例）</li>
+</ul>
+<h3 id="25">2.5 使用方法借鉴</h3>
+<p><strong>SFT 数据审查 checklist（从三分法衍生）</strong>：<br />
+1. 抽样轨迹问：这条是 good/mediocre/bad？<br />
+2. bad（直给答案无推理）→ 删<br />
+3. mediocre（步骤冗余但可学）→ 标注保留，量多时降权<br />
+4. good（简洁优雅）→ 优先，但注意超出学生消化力的"过优雅"需 RL 本土化</p>
+<p><strong>posttrain 路线决策树</strong>：</p>
+<pre><code>目标 = 应用价值/追赶 → 蒸馏（SOTA teacher + reject sampling + 小规模 RL 适配）
+目标 = 领头羊/前沿能力 → 重投 RL（scaling rollout + GRPO 信号工程）
+混合现实 → SFT 定 pattern（teacher 数据）+ RL 本土化+可控化 + 软蒸馏优化 verifier
+</code></pre>
+<hr />
+<h2 id="_3">三、查询拓展</h2>
+<ol>
+<li><strong>R1-zero 的反例张力</strong>：DeepSeek-R1-Zero 纯 RL（无 SFT）也涌现出长反思 pattern——说明"优质 pattern 只能 SFT 给"不是铁律，算力极大时 RL 也能 explore 出（原文"基因突变"段其实自洽：rollout_n 足够大）</li>
+<li><strong>OPD（On-Policy Distillation）</strong>：文中提到但未展开——student 用 teacher 的 token 级分布做 on-policy 修正，是 2025-2026 蒸馏研究热点，比 response-level SFT 更贴近 RL</li>
+<li><strong>reject sampling 合版</strong>：多个 RL 子模型各自 explore 不同 pattern → 采样优质 response 合并 SFT——本质是"并行探索+串行收割"，与遗传算法的 population 思想同构</li>
+<li><strong>GRPO 细节</strong>：文中只点到"把握高质量数据给强信号"——GRPO 组内相对优势无需 value model，与"记住突变 pattern"的需求匹配</li>
+<li><strong>对 Agent 训练的推论</strong>：environment trajectories = agent 时代的 cot pattern → 谁掌握大量高质量 agent 轨迹（工具调用/委派/交换信息），谁就握住 agent 模型的"SFT 上限"——这解释了各家疯抢 agent 环境数据的现象</li>
+</ol>
+<hr />
+<h2 id="_4">四、内容整理</h2>
+<p><strong>原文信息架构</strong>：cot pattern 定义（三分法例子）→ SFT 定上限论 → RL 四作用（本土化/进化/可控化/解释现象）→ 蒸馏本质（偷笔记/可窃取 RL 收益/合版标配）→ 软蒸馏（借 SOTA/明牌 scaling 竞争）→ 决策规则（领头羊 vs 追赶者）。</p>
+<p><strong>本笔记重组</strong>：论点 → 证据强度分层（一线经验强/无数据支撑弱）→ 工程可抄物（checklist/决策树）→ 与 R1-zero 张力的补全。</p>
+<p><strong>核心增量判断</strong>：本文的最大价值不是"RL 有没有用"的站队，而是给出了<strong>分工模型</strong>——SFT 管 pattern 供给、RL 管表达适配与压制、蒸馏管跨模型搬运、软蒸馏管借力优化。四个组件各有不可替代位，争论"谁更 matter"是把分工问题误读为替代问题。</p>
+<hr />
+<h2 id="_5">五、趋势判断</h2>
+<ol>
+<li><strong>"思考档位"类产品化能力会成为 RL 阶段标配</strong>：上下文窗口分档这种低成本可控化手段，会被所有推理产品复制</li>
+<li><strong>蒸馏与 RL 的边界继续模糊</strong>：OPD/on-policy 修正让蒸馏越来越"像"RL——未来 posttrain 流水线是连续谱而非 SFT/RL 二分</li>
+<li><strong>agent trajectories 数据成为新护城河</strong>：environment trajectories = agent 版 cot pattern，数据工程的竞争从"题目+答案"升级为"环境+轨迹"</li>
+<li><strong>可控化 RL 需求暴涨</strong>：合成语料污染 pretrain 的坏 pattern 问题随语料规模恶化——RL 惩罚是唯一压制手段，这条工程刚需独立于"RL 提升智能"的争论</li>
+<li><strong>scaling 明牌化利好算力持有者</strong>：pattern/数据/环境三元 scaling 都是算力函数——8×A100 级别的局域网农场在"小模型+蒸馏+RL 适配"生态位有明确价值</li>
+</ol>
+<hr />
+<h2 id="_6">六、归纳总结</h2>
+<p><strong>一句话</strong>：SFT 定 cot pattern 上限、RL 做本土化改造+可控化压制、蒸馏偷学习笔记跨模型搬运、软蒸馏借 SOTA 之力——四者是不可替代的分工而非替代关系；纯训练已是明牌 scaling 竞争（参数/RL 数据/agent 环境）。</p>
+<p><strong>结构记忆</strong>：<br />
+- 三分法：good（短准泛化）/ mediocre（冗长易错）/ bad（记答案毒药）<br />
+- RL 四作用：本土化 / 基因突变 / 可控化（SFT 无打压能力）/ 解释起点低<br />
+- 蒸馏一句：偷笔记——RL 的收益可窃取，寻找过程不具价值<br />
+- 软蒸馏清单：合成边界数据 / 找 pattern 缺点 / 优化 verifier<br />
+- 决策规则：领头羊投 RL，追赶者用蒸馏</p>
+<hr />
+<h2 id="_7">七、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AI4AI at Test-Time</td>
+<td>同构映射：强模型造 harness（AI4AI）≈ 强模型当 teacher（蒸馏）——都是"借强者的结构化产出"</td>
+</tr>
+<tr>
+<td>lan-llm-farm 0.8B 锻造</td>
+<td>路线印证：小模型蒸馏+RL 适配正是"应用价值追赶者"的最优解</td>
+</tr>
+<tr>
+<td>Lean×AI</td>
+<td>Lean 内核=确定性 verifier——软蒸馏"优化 RL verifier"的极致形态（零幻觉验证信号）</td>
+</tr>
+<tr>
+<td>a100-training-playbook</td>
+<td>算力承接：scaling rollout_n/pattern explore 的底层是训练工程</td>
+</tr>
+<tr>
+<td>MIT 推理笔记</td>
+<td>哲学对照：cot pattern=语言外壳的推理表达，RL 本土化=把表达适配到模型自身"非语言机制"</td>
+</tr>
+<tr>
+<td>Qwen3.8-27B 部署</td>
+<td>上下游：posttrain 成品（qwen 系列）的部署端消费</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">八、行动清单</h2>
+<ul>
+<li style="list-style:none"><input type="checkbox" disabled checked> X 长文全文提取（r.jina.ai）+ 7 模块笔记</li>
+<li style="list-style:none"><input type="checkbox" disabled> lan-llm-farm SFT 数据加"三分法审查"步骤（剿灭 bad pattern）</li>
+<li style="list-style:none"><input type="checkbox" disabled> posttrain 路线决策树挂入飞机设计实验室知识库</li>
+<li style="list-style:none"><input type="checkbox" disabled> 追踪 OPD（on-policy distillation）研究进展</li>
+<li style="list-style:none"><input type="checkbox" disabled> agent 环境轨迹数据建设纳入技术雷达</li>
+</ul>
+<hr />
+<h2 id="_9">九、一句话总结</h2>
+<blockquote>
+<p>SFT 供给 pattern、RL 适配表达并压制劣习、蒸馏搬运强者的学习笔记、软蒸馏借 SOTA 之力——posttrain 四件套各司其职；争论"RL 还是蒸馏更 matter"是把分工误读成了替代。</p>
+</blockquote>
+</body>
+</html>
