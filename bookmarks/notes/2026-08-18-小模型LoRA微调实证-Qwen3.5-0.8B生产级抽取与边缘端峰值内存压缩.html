@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小模型LoRA微调实证-Qwen3.5-0.8B生产级抽取与边缘端峰值内存压缩</title>
+
+<meta property="og:title" content="小模型LoRA微调实证-Qwen3.5-0.8B生产级抽取与边缘端峰值内存压缩" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-18-%E5%B0%8F%E6%A8%A1%E5%9E%8BLoRA%E5%BE%AE%E8%B0%83%E5%AE%9E%E8%AF%81-Qwen3.5-0.8B%E7%94%9F%E4%BA%A7%E7%BA%A7%E6%8A%BD%E5%8F%96%E4%B8%8E%E8%BE%B9%E7%BC%98%E7%AB%AF%E5%B3%B0%E5%80%BC%E5%86%85%E5%AD%98%E5%8E%8B%E7%BC%A9.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="lora-qwen35-08b-26">小模型 LoRA 微调实证：Qwen3.5-0.8B 达生产级抽取精度 + 边缘端峰值内存压缩 26×</h1>
+<blockquote>
+<p>出处：arXiv 2606.08051《How Small Can You Go? LoRA Fine-Tuning 270M–8B Models for Merchant Information Extraction in Financial Transactions》（Mastercard 生产系统团队）<br />
+arXiv 2606.19528《Techniques for Peak Memory Reduction for LoRA Fine-tuning of LLMs on Edge Devices》（Qualcomm AI Research）<br />
+标签：#LoRA #小模型 #Qwen3.5 #边缘部署 #微调 #量化</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11-26060805108b">1.1 论文一（2606.08051）：0.8B 能否扛起生产级信息抽取？</h3>
+<p><strong>任务背景</strong>：Mastercard 生产系统用 LoRA 微调 LLaMA 3.1-8B 做银行交易字符串的商户信息抽取（一条噪声字符串拆出 10 个实体字段：商户名/州/市/街道/电话/邮编/国家/网站/中介/动态描述符），F1=96.95%。但 8B 模型半精度要 16+GB 显存、日处理数百万笔交易时推理吞吐和能耗都是问题——于是系统研究：<strong>最小多大模型能维持生产级精度？</strong></p>
+<p><strong>实验规模</strong>：24 个模型变体 × 4 模型家族（Gemma 3: 270M/1B/4B；Qwen 3.5: 0.8B/2B/4B；Aya 3.35B；LLaMA 3.1-8B）× 2 种 prompt 策略（Free-Thinking 带思维链 / JSON-Only 直出）× 2 种训练模板（Think/Nothink）。数据集 8,015 条标注交易串（6,125 训练 / 668 验证 / 1,213 测试）。训练用 LLaMA-Factory，跑在 NVIDIA DGX Spark（GB10 Blackwell 芯片、128GB 统一内存）上，共 462 GPU 时训练 + 195 GPU 时评估。</p>
+<p><strong>核心结果表</strong>（F1 / 吞吐 samples per second，DGX Spark batch=4 确定性解码）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>策略</th>
+<th>F1</th>
+<th>s/s</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LLaMA 3.1-8B</td>
+<td>FT (rank32 生产基线)</td>
+<td>.9695</td>
+<td>—</td>
+<td>生产现状</td>
+</tr>
+<tr>
+<td>LLaMA 3.1-8B</td>
+<td>FT (rank8)</td>
+<td>.9675</td>
+<td>0.13</td>
+<td>rank8 仅差 0.20</td>
+</tr>
+<tr>
+<td><strong>Qwen 3.5 4B</strong></td>
+<td><strong>JO</strong></td>
+<td><strong>.9660</strong></td>
+<td><strong>0.51</strong></td>
+<td><strong>最佳 sub-8B，差 0.35</strong></td>
+</tr>
+<tr>
+<td>Qwen 3.5 4B</td>
+<td>JO NT</td>
+<td>.9624</td>
+<td>0.53</td>
+<td>Nothink 同分更快</td>
+</tr>
+<tr>
+<td>Aya 3.35B</td>
+<td>FT</td>
+<td>.9572</td>
+<td>0.33</td>
+<td>生产部署掉 3-5 分（唯一异类）</td>
+</tr>
+<tr>
+<td>Qwen 3.5 2B</td>
+<td>FT NT</td>
+<td>.9518</td>
+<td>0.98</td>
+<td>2B 即上 95+</td>
+</tr>
+<tr>
+<td><strong>Qwen 3.5 0.8B</strong></td>
+<td><strong>FT NT</strong></td>
+<td><strong>.9475</strong></td>
+<td><strong>1.32</strong></td>
+<td><strong>0.8B 匹敌 2-4×大模型</strong></td>
+</tr>
+<tr>
+<td>Gemma 3 1B</td>
+<td>FT</td>
+<td>.9393</td>
+<td>2.16</td>
+<td>传统架构 1B 落后 0.8B Qwen</td>
+</tr>
+<tr>
+<td>Gemma 3 270M</td>
+<td>FT</td>
+<td>.8735</td>
+<td>4.09</td>
+<td>270M 已到 87 分</td>
+</tr>
+</tbody>
+</table>
+<p><strong>五大硬结论</strong>：</p>
+<ol>
+<li><strong>LoRA rank 8 就够</strong>：LLaMA 8B rank8 vs rank32 只差 0.20 F1；Aya 3.35B 上 rank32 (60.5M 可训练参数, 1.8%) vs rank8 差距在噪声内。rank8 适配器存储省 4×，版本管理更简单——生产直接可用。</li>
+<li><strong>Qwen 3.5 0.8B 是异类</strong>：0.8B 拿 94.75 F1，几乎追平自家 2B（95.18），还超过大 25% 的 Gemma 3 1B（93.93）。归因于 <strong>hybrid Mamba-attention 混合架构</strong>——线性时间序列建模 + 精确位置注意力，对「在噪声输入里定位特定子串」的结构化抽取特别有利。</li>
+<li><strong>CoT 微调增益与模型大小反相关</strong>：FT（带思维链指令）对多数模型 +0.18~+1.82 F1，小模型受益更大（Gemma 270M +1.82）；但 <strong>Qwen 3.5 4B 反转</strong>——JO 直出反而高 0.45 分，说明容量足够时混合架构能内化抽取逻辑，短 prompt 还能把更多窗口留给任务本身。</li>
+<li><strong>Think/Nothink 几乎无差</strong>：Qwen 3.5 全部 6 个配置 ΔF1 &lt; 0.004。更有趣的是 SFT 后 Think 训练的模型推理时全部输出<strong>空思考块</strong>（<code>&lt;think&gt;\n\n&lt;/think&gt;</code> 直接接 JSON）——模型自己学会了对结构化抽取任务推理无益。Nothink 推理快 1.0-2.9×。</li>
+<li><strong>基准分能迁移到生产</strong>：14 个 sub-8B 变体部署为 Databricks Model Serving 端点后重测，平均 F1 只掉 0.8 分；唯一例外是 Cohere2 架构的 Aya（掉 3-5 分）。<strong>Pareto 头部</strong>：LLaMA 8B FT（7.46s, 96.75）→ Qwen 3.5 4B JO（1.97s, 96.60），只让 0.15 分换 <strong>3.8× 延迟降低</strong>。</li>
+</ol>
+<p><strong>训练配方</strong>（可直接抄）：LoRA r=8, α=16（scaling α/r=2.0）、6 epoch（2298 步）、LR 1e-4 cosine、有效 batch 16（4×4 梯度累积）、每 200 步存 checkpoint（12 个/模型）。<strong>峰值普遍出现在 step 1400-2000（epoch 3.7-5.2），之后轻度过拟合</strong>——生产管线必须做系统性 checkpoint 选择。</p>
+<p><strong>逐字段规律</strong>：State（0.983-0.996）和 Zip（0.954-0.995）连 270M 都接近满分；Country 字段方差最大（0.700-1.000，因出现率仅 12.7%）；Merchant_Name 和 Street 在 1B 以下急剧劣化（0.834/0.754）。</p>
+<h3 id="12-260619528-lora-26-28">1.2 论文二（2606.19528）：边缘设备 LoRA 微调峰值内存暴降 26-28×</h3>
+<p><strong>问题</strong>：LoRA 只解决「可训练参数少」，但反向传播要存前向激活值，长上下文下 3B 模型微调照样 OOM。瓶颈在激活值而非权重。</p>
+<p><strong>四件套技术</strong>（叠加生效，Llama-3.2 3B 实测峰值内存，单位 GB，列为上下文长度）：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>1024</th>
+<th>2048</th>
+<th>4096</th>
+<th>8192</th>
+<th>16384</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP32 基线</td>
+<td>27.60</td>
+<td>29.97</td>
+<td>47.96</td>
+<td>OOM</td>
+<td>OOM</td>
+</tr>
+<tr>
+<td>+ LoRA (r=16)</td>
+<td>19.10</td>
+<td>26.20</td>
+<td>40.41</td>
+<td>68.83</td>
+<td>OOM</td>
+</tr>
+<tr>
+<td>+ 量化（QDQ 即时反量化）</td>
+<td>8.80</td>
+<td>14.68</td>
+<td>27.48</td>
+<td>53.07</td>
+<td>OOM</td>
+</tr>
+<tr>
+<td>+ Checkpointing（选择性激活缓存+磁盘 offload）</td>
+<td>2.37</td>
+<td>3.33</td>
+<td>6.29</td>
+<td>12.21</td>
+<td>24.05</td>
+</tr>
+<tr>
+<td>+ Softmax 近似（语义相关 token 子集）</td>
+<td>1.30</td>
+<td>2.43</td>
+<td>5.41</td>
+<td>11.58</td>
+<td>23.79</td>
+</tr>
+<tr>
+<td>+ Logits 掩码（只在金标 token 上算损失）</td>
+<td><strong>0.70</strong></td>
+<td><strong>1.02</strong></td>
+<td><strong>1.59</strong></td>
+<td><strong>3.24</strong></td>
+<td><strong>6.95</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Qwen-2.5 3B 同样 26.20→1.01GB（28×）。<strong>3B 模型 2048 上下文微调从 26GB 压到 1GB</strong>——手机/Jetson 级设备直接可跑。</p>
+<p><strong>四项技术各自原理</strong>：<br />
+- <strong>基座量化 + on-the-fly 反量化（QDQ）</strong>：权重存量化形式，前向时动态反量化。省的是权重驻留内存。<br />
+- <strong>记忆高效 checkpointing</strong>：不是传统全部重算——选择性缓存部分激活 + 磁盘 offload。附录 B.3 证明比纯 gradient checkpointing（省 10× 但多 33% 计算）进一步大幅降峰值，代价是额外 I/O。<br />
+- <strong>Softmax 近似</strong>：不用层级 softmax/负采样，直接用预训练 LLM 学到的 token 相似度挑「语义相关 token 子集」算交叉熵——论文实验证明优于负采样。复杂度从 O(V) 降到 O(k)。<br />
+- <strong>Logits 掩码</strong>：只在金标 token 上计算损失（系统/用户 prompt token 掩为 -100），logits 张量从 V×L 缩到 V×k。文中 70B 模型也用 rank-16 LoRA + 梯度 checkpointing + device_map=auto 双卡跑通。</p>
+<p><strong>与其他方法的关系</strong>：与 QLoRA/LoRA-FA/HyC-LoRA 正交可叠加；与 Zero-Offload（优化器状态卸载到 CPU，边缘设备 CPU 内存也不够）和 NNTrainer（PyTorch 生态集成差）对比各有取舍。<strong>框架无关，可直接集成进 PyTorch。</strong></p>
+<p><strong>实验配置细节</strong>：所有微调 rank-16 adapter 挂 Q/V 投影、α=16 无 dropout；上下文 2048 右 padding；Llama tokenize 时加 EOS、Qwen 不加；训练步数按数据集 500-2813 步（GSM8K 1000 / MATH 2813 / XSum 1000 / SQuAD 500）。</p>
+<h2 id="_2">二、查询拓展</h2>
+<ul>
+<li>Qwen 3.5 的 hybrid Mamba-attention 架构细节：0.8B 里 Mamba 层与 attention 层的比例是多少？长序列下 KV cache 占用是否也随 Mamba 占比下降？（对 Jetson 部署显存预算关键）</li>
+<li>LLaMA-Factory 的 <code>qwen3_5_nothink</code> 模板在 ms-swift 里的等价物（lan-llm-farm 用的是 ms-swift ≥3.10）</li>
+<li>DGX Spark（GB10, 128GB 统一内存）作为「实验与生产分离」工作流的性价比：论文算的 MSRP 几百到几千 GPU 时回本，对比租 A100</li>
+<li>2606.19528 的 softmax 近似是否已开源？语义相关 token 子集的预计算脚本（余弦相似度 top-k 索引）能否套在中文词表上</li>
+<li>Mastercard 场景的「生产迁移验证」方法论：14 端点重测平均 -0.8 分——自己部署时是否也该建立「基准→服务」双测纪律</li>
+<li>Aya（Cohere2 架构）为何在生产 serving 掉 3-5 分：容器化/逐请求执行与批量推理的差异假设</li>
+</ul>
+<h2 id="_3">三、归纳总结</h2>
+<ol>
+<li><strong>0.8B 零件的工程上限被正式标定</strong>：结构化窄任务（可校验输出：JSON/SQL/bbox）上 0.8B LoRA 后达 94.75 F1，距 8B 基线仅 2.2 分，推理快 10×。这为「小模型当零件不当全能助手」提供了最硬的生产级数据支撑。</li>
+<li><strong>适配器经济学</strong>：rank8≈rank32（Δ&lt;0.2），训练峰值在 epoch 3.7-5.2，checkpoint 选择必须制度化。LoRA 的成本大头不在训练而在「选哪个 checkpoint」。</li>
+<li><strong>推理监督不是免费的但也不贵</strong>：CoT 指令对 &lt;4B 模型稳定 +0.3~1.8 分（即使输出不含推理），对足容量的混合架构反而负贡献——prompt 策略要按「模型容量×架构类型」选，不是越大越要 CoT。</li>
+<li><strong>边缘微调的内存公式变了</strong>：权重只占小头，激活值才是 boss。四件套（QDQ 量化 + 选择性 checkpointing + softmax 近似 + logits 掩码）把 3B/2048 从 26GB 压到 1GB，手机级设备可以本地个性化微调，隐私数据不出设备。</li>
+<li><strong>两篇论文组合拳</strong>：0.8B 小模型负责「精度够用」，内存四件套负责「哪里都能训」——端侧个性化（数据不出网）+ 局域网训练农场（A100 批量锻造）形成完整光谱。</li>
+</ol>
+<h2 id="_4">四、趋势判断</h2>
+<ul>
+<li><strong>sub-4B 生产部署将成为默认</strong>：Pareto 数据（0.15 分换 3.8× 延迟）对任何日处理百万级请求的系统都是不可拒绝的交易。预计 2026 下半年更多生产系统把 8B 降到 2-4B 混合架构模型。</li>
+<li><strong>Mamba-attention 混合架构在端侧继续扩大份额</strong>：Qwen 3.5 全系 hybrid 化且 0.8B 表现异常强，线性注意力对长上下文 KV cache 的节省正是端侧最痛的点。</li>
+<li><strong>on-device fine-tuning 从 demo 走向产品</strong>：26× 内存压缩 + 手机 8-12GB RAM 的现实，意味着「本地个性化」在 2026-2027 成为隐私敏感场景（输入法/相册/健康）标配能力。</li>
+<li><strong>「实验-部署」两阶段工作流固化</strong>：DGX Spark 类桌面工作站（统一内存大、无策略限制）做实验筛选 + 生产环境只收编最优适配器——中小团队不再需要云 GPU 蹲点。</li>
+<li><strong>评估纪律升级</strong>：基准→生产 serving 必须双测（平均 -0.8 分但 Aya -5 分的教训），端到端验证成为部署 gate 的一部分。</li>
+</ul>
+<h2 id="_5">五、关联分析</h2>
+<ul>
+<li><strong>lan-llm-farm 项目（2026-08-16 笔记）</strong>：四案例正是「0.8B 当零件」路线，本文给它的四问门禁第④条（0.8B 选型理由）补上了最硬的证据——case1 Text-to-SQL 与本文商户抽取同属结构化窄任务，本文 94.75 F1 直接可用作 gate 线参考（≥85% 的设定偏保守，可按字段难度分层）。训练配方（r=8, α=16, LR 1e-4, 峰值 epoch 3.7-5.2）可直接写进 generic_runner.py 的默认超参。</li>
+<li><strong>Jetson 端侧部署链</strong>：lan-llm-farm 的 merge_and_quantize.sh 产出 Q4_K_M GGUF；本文内存四件套补上「训练侧」的端侧化——如果未来要做「Jetson 上就地微调」（比如巡检场景新类别当日适配），checkpointing+softmax 近似+logits 掩码是必抄组合。Orin Nano 8GB 跑 0.8B LoRA（估算 &lt;2GB 峰值）完全可行。</li>
+<li><strong>Hermes 自身的小模型策略</strong>：nexa-local-inference skill 用 Ollama 跑本地模型做轻量任务；本文提示可以在局域网 A100 用 LLaMA-Factory 批量锻造多个 rank8 适配器（每个仅几十 MB），按任务热插拔——「一个基座 + N 个零件适配器」比「N 个全量模型」省一个数量级存储。</li>
+<li><strong>DeepSeek-V4-Flash A100 部署笔记（2026-08-12）</strong>：大模型推理优化与小模型锻造是互补而非替代——大模型做编排/复杂推理，0.8B 零件做批量结构化抽取，路由层按「输出可校验性」分流。</li>
+<li><strong>Agentic Context Engineering</strong>：本文的 logits 掩码（只学 assistant token）与 context engineering 里「只对响应部分做梯度」的思想同源，训练侧和推理侧的上下文治理正在合流。</li>
+</ul>
+<hr />
+<p><em>笔记生成：2026-08-18 夜间自学习 cron（jbot）｜主题来源：用户近期 lan-llm-farm / Jetson 端侧部署工作线</em></p>
+</body>
+</html>
