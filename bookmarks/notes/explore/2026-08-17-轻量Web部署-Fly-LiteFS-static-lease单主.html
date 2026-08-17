@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轻量Web部署: Fly LiteFS（static-lease 单主架构）</title>
+
+<meta property="og:title" content="轻量Web部署: Fly LiteFS（static-lease 单主架构）" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-17-%E8%BD%BB%E9%87%8FWeb%E9%83%A8%E7%BD%B2-Fly-LiteFS-static-lease%E5%8D%95%E4%B8%BB.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="web-fly-litefsstatic-lease">轻量Web部署: Fly LiteFS（static-lease 单主架构）</h1>
+<blockquote>
+<p>日期: 2026-08-17 | 类型: auto-explore | 前序: <a href="2026-08-16-轻量Web部署-Turso-Embedded-Replic.md">Turso Embedded Replicas</a>（互补对照）</p>
+</blockquote>
+<ul>
+<li>来源: <a href="https://fly.io/docs/litefs/config">LiteFS Config Reference</a> / <a href="https://fly.io/blog/introducing-litefs">Introducing LiteFS (Ben Johnson)</a> / <a href="https://community.fly.io/t/sunsetting-litefs-cloud/20829">Fly 社区: Sunsetting LiteFS Cloud</a></li>
+</ul>
+<h2 id="_1">摘要</h2>
+<p>LiteFS 是 Fly.io 开源的分布式 SQLite 文件系统：通过 FUSE 挂载拦截文件系统调用，把 SQLite 事务打包成 LTX 文件复制到多节点。static-lease 模式 = 单一固定主节点 + 只读副本，不依赖 Consul、无自动故障转移，是"读多写少 + 可容忍主库短暂停机"场景的最简部署形态。与昨日 Turso Embedded Replicas 同属"SQLite 复制"赛道，但 LiteFS 完全自托管、无 SDK 侵入（应用无感知），Turso 是托管云服务。注意 LiteFS Cloud 已 sunset，备份需自建 Litestream → S3/Tigris。</p>
+<h2 id="_2">关键发现</h2>
+<p><strong>1. 架构：FUSE 透传层 + LTX 事务文件</strong><br />
+- LiteFS 不是新数据库，是应用与磁盘之间的"文件系统代理"：拦截 <code>-journal</code> 文件创建/删除来识别事务边界，把变更页打包为 LTX 文件复制<br />
+- 选择 FUSE 而非 SQLite VFS 的原因：VFS 需要每个进程（含 sqlite3 CLI）记得显式加载；FUSE 挂载后任何进程零改动可用，且天然解决"谁跑 API server"的多进程问题<br />
+- 应用把数据库路径指向 <code>/litefs</code> 挂载点即可，完全无感知</p>
+<p><strong>2. static lease vs consul lease（核心分野）</strong></p>
+<pre><code>consul: 候选节点抢时间租约 → 主可漂移 → 自动故障转移（需跑 Consul，TTL≥10s）
+static: candidate=true 的那个节点永远为主 → 副本 candidate=false 永不晋升 → 无故障转移
+</code></pre>
+<ul>
+<li>static 配置极简：主节点设 <code>lease.type: "static"</code> + <code>candidate: true</code> + <code>hostname</code> + <code>advertise-url</code>，副本只设 <code>candidate: false</code>，无需任何额外配置节</li>
+<li>主挂了副本就一直只读等着，主恢复后自动追同步——适合"rarely up"架构（写频率极低、主库恢复即可接受）</li>
+<li>生产建议仍是 Consul（部署时主可无缝交接租约），static 是用可用性换运维简单性</li>
+</ul>
+<p><strong>3. 一致性防御：XOR 页校验和</strong><br />
+- 每个数据库维护全量校验和：<code>chksum = XOR(crc64(page.number, page.data))</code>，增量维护（旧页 XOR 掉、新页 XOR 进来）<br />
+- LTX 文件乱序应用会校验失败 → 防脑裂损坏；启动时校验，保证副本字节级一致<br />
+- 异步复制，用持久性换性能和运维简单（写确认 ≠ 已复制）</p>
+<p><strong>4. 运维要点（来自官方文档+社区）</strong><br />
+- 内部数据目录（含 LTX）必须放持久卷 <code>/var/lib/litefs</code>；LTX 默认 LZ4 压缩，retention 默认 10m<br />
+- HTTP API 端口 20202 节点间通信，<strong>绝不可公网暴露</strong>；内置 proxy 可做写转发 + 副本一致性（<code>primary-redirect-timeout: 5s</code>）<br />
+- LiteFS Cloud 已关停：备份方案 = 在 static 主节点上跑 Litestream → Tigris/S3；官方同时承认想要全托管就去看 Turso<br />
+- 已知坑：候选过滤 <code>databases: [...]</code> 只能在非 candidate 节点用；<code>skip-sync</code> 可跳过等主启动（调试用）</p>
+<p><strong>5. 与 Turso Embedded Replicas 对照（昨日笔记增量）</strong></p>
+<ul>
+<li>复制单位：LiteFS 复制 LTX（事务级，含多页变更）；Turso ER 复制 4KB 物理页（官方自曝缺陷：写 1 字节传整页）</li>
+<li>侵入性：LiteFS 零 SDK（FUSE 层，任意语言/进程可用）；Turso 需专用 SDK（<code>@libsql/client</code>）</li>
+<li>主库位置：LiteFS 主库在自己 VM 上（数据主权完整）；Turso 主库在 Turso 云</li>
+<li>演进状态：LiteFS 稳定但云服务已撤；Turso ER 被官方判死、主推 Turso Sync（CDC）</li>
+<li>共同本质：都是"本地读 + 单点写"的 SQLite 单写者范式扩展</li>
+</ul>
+<h2 id="_3">对工作的价值</h2>
+<ul>
+<li><strong>内网多机 SQLite 复制的零依赖方案</strong>：三台 Hermes（jbot/ubot/abot）共享 NFS，若有需一致读的 SQLite 数据（如经验池索引、任务状态），LiteFS static lease 可在 LAN 内做"1 写 N 读"，比 NFS 上的并发 SQLite 访问安全（NFS + SQLite WAL 是公认的损坏组合，LiteFS 恰好规避）</li>
+<li><strong>Jetson 自托管场景</strong>：LiteFS 开源且不锁 Fly.io，ARM64 可编译，适合边缘集群里给只读副本分发数据（如行情快照库：主节点写入，其余节点本地微秒读）</li>
+<li><strong>架构参考价值</strong>：FUSE 拦截 + 事务打包（LTX）+ XOR 增量校验和，是"不侵入应用做数据复制"的经典设计，可借鉴到自研同步层</li>
+</ul>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li>三机集群若出现"多机读同一 SQLite"需求，优先评估 LiteFS static lease 替代 NFS 直读（防 SQLite-on-NFS 损坏）</li>
+<li>任何 LiteFS 部署必须配 Litestream 备份到对象存储——LiteFS Cloud 已死，无官方托管备份</li>
+<li>读多写少 + 需要数据完全自托管 → LiteFS；能接受托管云 + 要 CDC 语义 → Turso Sync；单机 → 直接 Litestream</li>
+</ol>
+</body>
+</html>
