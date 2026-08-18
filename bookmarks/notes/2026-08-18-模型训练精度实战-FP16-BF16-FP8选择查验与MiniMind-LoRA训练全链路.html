@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>模型训练精度实战-FP16-BF16-FP8选择查验与MiniMind-LoRA训练全链路</title>
+
+<meta property="og:title" content="模型训练精度实战-FP16-BF16-FP8选择查验与MiniMind-LoRA训练全链路" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="fp16-bf16-fp8-minimind-lora">模型训练精度实战 — FP16-BF16-FP8 选择、精度查验与MiniMind LoRA训练全链路</h1>
+<h1 id="fp16-bf16-fp8-mixed-precision-lora-minimind-safetensors-trainingarguments">训练精度 #FP16 #BF16 #FP8 #mixed-precision #LoRA #MiniMind #safetensors #TrainingArguments #显存优化 #训练实战</h1>
+<blockquote>
+<p><strong>出处</strong>：主体来自飞书知识库文档《train_fp》（本人训练实操笔记，wiki token YYknwARVDiApYckBhnzcr4T7nHe，revision 11，含嵌入表格《训练精度参数对照》PbqosnpPJh0JdStqsricsX6WnKf），<br />
+链接：https://jcn7kakdef35.feishu.cn/wiki/YYknwARVDiApYckBhnzcr4T7nHe<br />
+补充内容综合 transformers/accelerate 官方口径与 PEFT 实践整理。<br />
+关联实操背景：<code>F:\TinyML\training\AM_LoRA_offline\output\minimind-finetuned</code>（RTX 3090 平台）<br />
+主题：训练精度怎么选（FP16/BF16/FP8/FP32）、怎么查验已训练模型的真实精度、MiniMind+LoRA 微调的训练全链路要点</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="0">0. 核心结论</h3>
+<p><strong>消费级卡（3090/4090）+ 小模型 LoRA 微调：<code>fp16=True</code>（3090）或 <code>bf16=True</code>（4090）就是最佳答案</strong>。FP8 是 H100/L40S/Ada+ 的大模型预训练武器，小模型 LoRA 微调用 FP8 几乎零收益还引入量化噪声风险。精度查验以 <strong>safetensors 的 dtype 为准</strong>——它比训练日志更可靠（日志说"用了 fp16"不代表保存时没被升回 FP32）。</p>
+<h3 id="1">1. 如何查验已训练模型的精度（三种方法，可靠性递减）</h3>
+<p><strong>方法一：直接检查权重文件（最可靠）</strong></p>
+<pre><code class="language-python">from safetensors import safe_open
+
+path = r&quot;F:\TinyML\training\AM_LoRA_offline\output\minimind-finetuned\adapter_model.safetensors&quot;
+with safe_open(path, framework=&quot;pt&quot;) as f:
+    for key in f.keys():
+        tensor = f.get_tensor(key)
+        print(f&quot;{key}: {tensor.dtype}&quot;)   # ← 看这里
+        break  # 只看第一个即可，LoRA 所有层精度一致
+</code></pre>
+<p>dtype → 精度对照：</p>
+<table>
+<thead>
+<tr>
+<th>tensor.dtype</th>
+<th>精度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>torch.float16</code></td>
+<td>FP16（半精度，5 位指数+10 位尾数）</td>
+</tr>
+<tr>
+<td><code>torch.bfloat16</code></td>
+<td>BF16（脑浮点，8 位指数+7 位尾数）</td>
+</tr>
+<tr>
+<td><code>torch.float32</code></td>
+<td>FP32（全精度）</td>
+</tr>
+<tr>
+<td><code>torch.float8_e4m3fn</code></td>
+<td>FP8（4 位指数+3 位尾数）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>方法二：查 adapter_config.json / 训练日志</strong></p>
+<pre><code class="language-powershell">cat F:\TinyML\training\AM_LoRA_offline\output\minimind-finetuned\adapter_config.json | Select-String &quot;torch_dtype&quot;
+</code></pre>
+<p>训练启动时 Trainer 会打印：</p>
+<pre><code>***** Running training *****
+  Num trainable parameters = 1,234,567
+  Training with fp16 mixed precision
+</code></pre>
+<p><strong>⚠️ 关键区分：LoRA adapter 的精度 ≠ 基座模型的精度</strong>。即使基座是 FP32，LoRA 也可以以 FP16 训练并保存为 FP16——两者独立控制、独立查验。</p>
+<h3 id="2-trainingarguments">2. 训练时自定义精度（TrainingArguments）</h3>
+<pre><code class="language-python">TrainingArguments(
+    output_dir=&quot;./output&quot;,
+    fp16=True,              # ← FP16 混合精度
+    # bf16=True,            # ← 或 BF16（二选一，不要同时开）
+    torch_dtype=&quot;auto&quot;,     # ← 基座模型加载精度
+    ...
+)
+</code></pre>
+<p><strong>参数对照表</strong>（原文档嵌入表格全文照录）：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>效果</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fp16=True</code></td>
+<td>FP16 混合精度训练</td>
+<td>NVIDIA GPU（V100/T4/3090等）</td>
+</tr>
+<tr>
+<td><code>bf16=True</code></td>
+<td>BF16 混合精度训练</td>
+<td>Ampere+ GPU（A100/4090/H100）</td>
+</tr>
+<tr>
+<td>都不设</td>
+<td>FP32 全精度</td>
+<td>CPU / 调试 / 显存充足</td>
+</tr>
+<tr>
+<td><code>fp16_full_eval=True</code></td>
+<td>评估也用 FP16</td>
+<td>加速 eval</td>
+</tr>
+</tbody>
+</table>
+<p><strong>混合精度的本质</strong>：前向/反向用低精度（快、省显存），权重更新和 loss 计算保持 FP32（稳）——所以叫"混合"而不是"纯低精度"。AMP 由 PyTorch autocast 自动管理。</p>
+<h3 id="3-fp8">3. FP8 的真相（原文档核心增量）</h3>
+<p>FP8 训练<strong>不是</strong>通过 <code>TrainingArguments</code> 设置的，需要三个额外条件：</p>
+<table>
+<thead>
+<tr>
+<th>条件</th>
+<th>要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>硬件</td>
+<td>H100 / L40S / RTX 4090（Ada Lovelace+ 架构）</td>
+</tr>
+<tr>
+<td>库</td>
+<td><code>transformer-engine</code> 或 <code>bitsandbytes</code> FP8 支持</td>
+</tr>
+<tr>
+<td>代码</td>
+<td>需用 <code>te.Linear</code> 替换 <code>nn.Linear</code>，或通过 <code>accelerate</code> 配置</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash"># accelerate config 中启用 FP8（H100 专属）
+accelerate config default --mixed_precision fp8
+</code></pre>
+<p><strong>💡 原文档判断（照录）</strong>：对于 minimind + LoRA 微调，<strong>FP16 或 BF16 就是最佳选择</strong>。FP8 主要面向大模型预训练，小模型 LoRA 微调用 FP8 几乎没有收益，反而可能因量化噪声影响收敛。RTX 3090 不支持原生 FP8，用 <code>fp16=True</code> 即可。</p>
+<h3 id="4-minimind-lora">4. 补充：MiniMind + LoRA 训练全链路要点（结合实操路径补全）</h3>
+<p><strong>目录结构还原</strong>（从 <code>AM_LoRA_offline</code> 命名推断：离线环境 + AM 数据集 LoRA）：</p>
+<pre><code>F:\TinyML\training\AM_LoRA_offline\
+├── output\
+│   └── minimind-finetuned\
+│       ├── adapter_model.safetensors   # LoRA 权重（精度查验对象）
+│       └── adapter_config.json         # LoRA 配置（r/alpha/target_modules/torch_dtype）
+└── ...（训练脚本、数据）
+</code></pre>
+<p><strong>训练前精度决策树</strong>：</p>
+<pre><code>你的 GPU 是什么？
+├─ 3090（Turing/Ampere 前）→ fp16=True
+├─ 4090/A100（Ampere+）    → bf16=True（数值范围大，不易溢出，首选）
+├─ H100/L40S               → bf16=True；大模型预训练才考虑 FP8
+└─ CPU / 调试              → 都不设（FP32）
+</code></pre>
+<p><strong>为什么 4090+ 优先 BF16 而不是 FP16</strong>：<br />
+- FP16：5 位指数 → 数值范围窄（max ~65504），大 loss/大梯度易溢出（inf/nan），需要 loss scaling<br />
+- BF16：8 位指数（与 FP32 同范围）+ 7 位尾数（精度低但范围大），<strong>不需要 loss scaling，训练更稳</strong><br />
+- 两者显存/速度基本等同，Ampere+ 硬件 BF16 原生支持</p>
+<p><strong>LoRA 专显存账（3090 24GB + MiniMind 64M-145M 级）</strong>：<br />
+- 基座冻结（FP16 加载）：~0.2GB 级<br />
+- LoRA 可训练参数 + 优化器状态（AdamW FP32 双状态）：可训练参数 × 12 字节左右<br />
+- 激活值（batch×seq_len 主导）：MiniMind 级模型即使 batch 32 也很小<br />
+- 结论：MiniMind + LoRA 在 3090 上显存占用 &lt;2GB，瓶颈根本不在精度——<strong>fp16=True 纯粹为了提速</strong></p>
+<p><strong>训练后验收清单</strong>：<br />
+1. <code>safe_open</code> 查 adapter dtype（本文方法一）<br />
+2. 对比训练前后 eval 指标（确认没被量化/精度问题拖垮）<br />
+3. 加载合并测试：<code>PeftModel.from_pretrained</code> → merge → 推理冒烟<br />
+4. 保存 <code>adapter_config.json</code> 时确认 <code>torch_dtype</code> 字段与实际一致（部署侧会按它加载）</p>
+<h3 id="5">5. 精度选择速查总表</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3090 + 小模型 LoRA</td>
+<td><code>fp16=True</code></td>
+<td>原文档结论；Turing/Ampere 前最优解</td>
+</tr>
+<tr>
+<td>4090/A100 + 任意微调</td>
+<td><code>bf16=True</code></td>
+<td>范围大免 loss scaling，训练稳</td>
+</tr>
+<tr>
+<td>H100 + 大模型预训练</td>
+<td>FP8（te.Linear）</td>
+<td>显存/速度收益才配得上工程成本</td>
+</tr>
+<tr>
+<td>CPU / 数值调试</td>
+<td>FP32</td>
+<td>排除精度变量</td>
+</tr>
+<tr>
+<td>显存极限救急</td>
+<td>QLoRA（4bit 基座）+ BF16 LoRA</td>
+<td>精度手段之外的另一维度</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li><code>torch_dtype="auto"</code> 在 transformers 新版的行为——加载时跟随 config.json 还是 checkpoint 实际 dtype</li>
+<li>LoRA adapter 保存时 dtype 由什么决定（训练精度 or save_pretrained 参数），能否训练 FP16 保存 FP32</li>
+<li>FP8 e4m3 vs e5m2 两种格式的适用差异（前向权重 vs 梯度/激活）</li>
+<li>loss scaling 在 fp16 AMP 中的自动策略（GradScaler 动态缩放因子）与何时会失效</li>
+<li>MiniMind 的 LoRA 从0实现与 PEFT 库实现，在 dtype 处理上有什么差别</li>
+<li>transformer-engine 的 <code>te.Linear</code> 延迟精度转换（DelayScaling）机制</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>3090 用 fp16、4090+ 用 bf16、H100 大预训练才碰 FP8；查验精度以 safetensors dtype 为准</td>
+</tr>
+<tr>
+<td>查验优先级</td>
+<td>权重文件 dtype &gt; adapter_config.json &gt; 训练日志（日志只说过程，文件才是结果）</td>
+</tr>
+<tr>
+<td>关键区分</td>
+<td>LoRA adapter 精度与基座精度独立——分别查验，别混为一谈</td>
+</tr>
+<tr>
+<td>FP16 vs BF16</td>
+<td>同速同显存；FP16 范围窄需 loss scaling，BF16 范围=FP32 更稳（Ampere+ 首选）</td>
+</tr>
+<tr>
+<td>FP8 门槛</td>
+<td>硬件（Ada+）+ 库（te/bnb）+ 代码（te.Linear）三条件缺一不可；小模型 LoRA 无收益</td>
+</tr>
+<tr>
+<td>MiniMind 场景</td>
+<td>3090 + MiniMind LoRA 显存 &lt;2GB，fp16 纯为提速，精度不是瓶颈</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>BF16 正在成为训练默认</strong>：Ampere+ 普及后，"fp16 需 loss scaling"的心智负担正在消失；transformers 新版已倾向 auto bf16</li>
+<li><strong>FP8 从 H100 专属下沉到 4090</strong>：Ada 架构消费卡已支持 FP8 tensor core，2026 会看到更多消费级 FP8 微调实验——但"能用"≠"值得用"，小模型收益仍存疑</li>
+<li><strong>精度查验工具链标准化</strong>：safetensors 取代 pickle 成权重容器标准，dtype 一行代码可查——"训练完不知道精度"的混沌时代结束</li>
+<li><strong>精度成为部署合同的一部分</strong>：GGUF/AWQ/GPTQ 量化与训练精度解耦，但 adapter_config.json 的 dtype 字段正被 vLLM/ollama 当部署依据——写错字段=部署侧错精度</li>
+<li><strong>小模型训练"精度钝感"</strong>：MiniMind 级模型 FP16/BF16/FP32 训出来差异在噪声内——精度优化的注意力应让位于数据质量与超参</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>飞书 wiki《train_fp》</strong>（本笔记母本）</td>
+<td>本人实操笔记：safetensors 查验/TrainingArguments/FP8 三节 + 嵌入表格，本笔记全量收录并扩展</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-MiniMind评价与消费级可用小模型微调选型》</td>
+<td>直接续篇：该笔记定"选 MiniMind 学原理"，本笔记补"训练时精度怎么配"——同一 <code>minimind-finetuned</code> 产物的实操层</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-主流LLM微调方法全景》</td>
+<td>方法学总纲；本笔记是其"训练精度"维度的落地深化（QLoRA 的 4bit 基座 + BF16 adapter 即本文精度组合）</td>
+</tr>
+<tr>
+<td>skill <code>peft-fine-tuning</code></td>
+<td>LoRA 代码模板；其 BitsAndBytesConfig(bnb_4bit_compute_dtype="bfloat16") 正是本文 bf16 判断的量化版应用</td>
+</tr>
+<tr>
+<td>项目 <code>tinyml-vibration-mcu</code></td>
+<td>同周训练实操：INT8 量化（推理侧压缩）与本文训练精度（训练侧选择）互为镜像——都是"精度换资源"</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-TinyMCU跑AI全流程》</td>
+<td>量化坑#2"量化参数必须与训练一致"= 本文"adapter 精度≠基座精度"同一原则在 MCU 侧的体现</td>
+</tr>
+<tr>
+<td>jetson-orin-platform skill</td>
+<td>本仓 GPU 环境的 bf16 支持判断（Orin=Ampere 级，可 bf16）</td>
+</tr>
+</tbody>
+</table>
+<p>→ 实操母本：https://jcn7kakdef35.feishu.cn/wiki/YYknwARVDiApYckBhnzcr4T7nHe<br />
+→ 相关：2026-08-18-MiniMind评价与消费级可用小模型微调选型-教学脚手架不等微调基座.md<br />
+→ 相关：2026-08-18-主流LLM微调方法全景-全参-LoRA-QLoRA-DoRA-SFT-DPO-GRPO.md</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 直接复用场景</strong><br />
+- <strong>任何微调后验收</strong>：把方法一的 <code>safe_open</code> 三行封装成 <code>check_dtype(path)</code> 小工具，训练完必跑——10 秒确认产物精度与预期一致<br />
+- <strong>部署前合同检查</strong>：CI 里加一步"adapter_config.json 的 torch_dtype == 实际权重 dtype"，防止部署侧按错精度加载<br />
+- <strong>训练脚本模板化</strong>：把 <code>fp16/bf16</code> 选择写成 GPU 检测函数（<code>torch.cuda.get_device_capability()</code> ≥ (8,0) → bf16 else fp16），一份脚本跨 3090/4090/H100 通用</p>
+<p><strong>② 延伸实验（低成本可做）</strong><br />
+- <strong>MiniMind 精度钝感验证</strong>：同一数据集分别 fp16/bf16/fp32 训 MiniMind LoRA，对比 eval 曲线——预期差异在噪声内，可亲手验证"小模型精度钝感"<br />
+- <strong>loss scaling 失效复现</strong>：fp16 + 大 LR 训练，观察 GradScaler skip step 现象，直观理解 bf16 的稳定性优势<br />
+- <strong>AM_LoRA_offline 迁移</strong>：实操路径已在 3090 验证；换 Orin（bf16）重训对比速度</p>
+<p><strong>③ 参数速查卡（贴墙版）</strong></p>
+<table>
+<thead>
+<tr>
+<th>卡</th>
+<th>fp16</th>
+<th>bf16</th>
+<th>FP8</th>
+<th>FP32</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3090</td>
+<td>✅</td>
+<td>❌ 慢(仿真)</td>
+<td>❌</td>
+<td>✅ 慢</td>
+</tr>
+<tr>
+<td>4090/A100</td>
+<td>✅</td>
+<td>✅ <strong>首选</strong></td>
+<td>实验性</td>
+<td>✅ 慢</td>
+</tr>
+<tr>
+<td>H100</td>
+<td>✅</td>
+<td>✅ <strong>首选</strong></td>
+<td>✅ 大模型</td>
+<td>✅ 慢</td>
+</tr>
+<tr>
+<td>CPU</td>
+<td>❌</td>
+<td>❌</td>
+<td>❌</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>训练精度配置流程（从零到验收）</strong></p>
+<table>
+<thead>
+<tr>
+<th>步</th>
+<th>动作</th>
+<th>命令/检查</th>
+<th>陷阱</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>查 GPU 架构</td>
+<td><code>torch.cuda.get_device_capability()</code></td>
+<td>3090=(8,6) 但非 Ampere 完整体→仍选 fp16</td>
+</tr>
+<tr>
+<td>2</td>
+<td>选精度写参数</td>
+<td>3090→fp16 / 4090+→bf16</td>
+<td>fp16 与 bf16 二选一，同时开报错</td>
+</tr>
+<tr>
+<td>3</td>
+<td>基座加载精度</td>
+<td><code>torch_dtype="auto"</code> 或显式 float16</td>
+<td>auto 跟 checkpoint，可能与训练精度不一致</td>
+</tr>
+<tr>
+<td>4</td>
+<td>训练中监控</td>
+<td>loss 曲线 + GradScaler scale 值</td>
+<td>fp16 的 scale 持续下降=溢出频繁，考虑降 LR</td>
+</tr>
+<tr>
+<td>5</td>
+<td>训练后查验</td>
+<td><code>safe_open</code> 看 dtype</td>
+<td>别信日志——保存阶段可能升/降精度</td>
+</tr>
+<tr>
+<td>6</td>
+<td>验收 eval</td>
+<td>对比训练前后指标</td>
+<td>精度问题常表现为 eval 卡住不涨</td>
+</tr>
+<tr>
+<td>7</td>
+<td>部署对齐</td>
+<td>config dtype == 权重 dtype</td>
+<td>字段错=部署侧加载错精度</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不同读者的用法</strong><br />
+- <strong>MiniMind/小模型微调者</strong>：记住结论"fp16=True 即可"（3090），其余时间花在数据上<br />
+- <strong>4090 用户</strong>：无脑 <code>bf16=True</code>，跳过 loss scaling 心智负担<br />
+- <strong>想上 FP8 的</strong>：先自问三个条件（硬件/库/代码改造）齐了吗；齐了也只在预训练或 70B 级微调算账<br />
+- <strong>排障者</strong>：eval 不涨/loss nan/结果异常 → 第一反应查 dtype 链路（基座加载→训练→保存→部署四点）</p>
+<p><strong>精度排障速查</strong></p>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>首查</th>
+<th>次查</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>loss 变 nan</td>
+<td>fp16 溢出（GradScaler 日志）</td>
+<td>LR 过大 / 数据异常</td>
+</tr>
+<tr>
+<td>eval 精度低于预期</td>
+<td>权重实际 dtype（safe_open）</td>
+<td>部署侧加载精度</td>
+</tr>
+<tr>
+<td>显存爆</td>
+<td>基座加载精度（torch_dtype）</td>
+<td>batch/seq_len；QLoRA 救急</td>
+</tr>
+<tr>
+<td>速度没提升</td>
+<td>是否真的开了混合精度</td>
+<td>CPU offload 抢占</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
