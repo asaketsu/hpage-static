@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HarnessVLA无需训练-冻结VLA封装成可调用原语与记忆引导Agent</title>
+
+<meta property="og:title" content="HarnessVLA无需训练-冻结VLA封装成可调用原语与记忆引导Agent" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-18-HarnessVLA%E6%97%A0%E9%9C%80%E8%AE%AD%E7%BB%83-%E5%86%BB%E7%BB%93VLA%E5%B0%81%E8%A3%85%E6%88%90%E5%8F%AF%E8%B0%83%E7%94%A8%E5%8E%9F%E8%AF%AD%E4%B8%8E%E8%AE%B0%E5%BF%86%E5%BC%95%E5%AF%BCAgent.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="harness-vla-vlaagent">Harness VLA无需训练 — 冻结VLA封装成可调用原语+记忆引导Agent</h1>
+<h1 id="harnessvla-vla-agenticplanner-primitive">HarnessVLA #冻结VLA #AgenticPlanner #Primitive #记忆复用 #长程操作 #清华大学 #免训练部署</h1>
+<blockquote>
+<p><strong>出处</strong>：微信公众号「CCF学术组委会」，2026-08-17 11:40 发布（论文精读）<br />
+原文链接：https://mp.weixin.qq.com/s/hSPyX_zRAQD3t9XLvciG3g<br />
+论文：Harness VLA: Steering Frozen VLAs into Reliable Manipulation Primitives via Memory-Guided Agents（arXiv:2607.08448v3, 2026，于超团队清华大学）<br />
+抓取方式：移动 UA 直接 curl（3.4MB 全文）<br />
+主题：参数完全冻结的 VLA 不重训练，封装成 primitive + Agentic Planner 编排 + 双层记忆复用——LIBERO-Pro 上把冻结 VLA 从 50% 拉到 82.4%</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="0">0. 核心思路</h3>
+<blockquote>
+<p>不要求一个 VLA 独自完成整条长程任务。<strong>冻结的 VLA 封装成可调用原语（vla_act）处理 contact-rich 局部交互；确定性 analytic primitives 负责移动/旋转/导航/释放；最上层 Agentic Planner 决定下一步调用谁</strong></p>
+</blockquote>
+<p>解决的问题：已训练好、参数冻结的 VLA，在任务和场景变化后（Semantic Retargeting / Goal Re-binding / Spatial-layout Shift / Unstable Local Contact）如何继续完成任务——很多 VLA 本来就有抓取/按按钮/开抽屉的局部能力，缺的是<strong>把已有能力按新目标重新组织</strong>。</p>
+<h3 id="1">1. 系统架构（三层闭环）</h3>
+<pre><code>Task(自然语言) + RGB-D + Robot State + Memory
+        ↓
+   Agentic Planner（不输出 joint/torque/action chunk）
+        ↓ 从固定 Primitive Library 选一个 + 结构化 JSON 参数
+   ┌─ Analytic Primitives（运动学/模型控制器，免学习）
+   │   move_to / move_pose / rotate_wrist / rotate_pitch
+   │   set_gripper / release / navigate_to / move_base
+   └─ vla_act（冻结 VLA 统一封装）
+        prompt + max_chunks + stop predicate
+        ↓
+   环境/机器人执行 → 新 RGB-D + Robot State → Planner 验证
+   → 继续 / Re-stage / Retry（直到任务达成或预算耗尽）
+</code></pre>
+<p>调用示例：<code>{"action": "vla_act", "prompt": "grasp the red mug", "max_chunks": 4, "stop": "object securely grasped"}</code></p>
+<h3 id="2-primitive">2. 两类 Primitive 分工</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>承担</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Analytic</strong></td>
+<td>Free-space Transport / Staging / 姿态调整 / Navigation / Release</td>
+<td>几何目标清楚、接触少——运动学直接解</td>
+</tr>
+<tr>
+<td><strong>vla_act</strong></td>
+<td>抓取 / 紧约束放置 / 按钮按压 / 门-抽屉 / 插入 / 铰接物体</td>
+<td>contact-rich——训练好的 VLA 才会</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键设计——staging/re-staging</strong>：VLA 调用前后的机器人状态由 Planner 主动改变——先把机器人送进更适合调用 VLA 的局部状态（后退→重新定位→调 wrist→改 pre-contact pose→再调 vla_act）。一次 VLA invocation 只是 agent rollout 中的一次局部尝试。</p>
+<h3 id="3-memory">3. 双层 Memory（存执行经验不存参数）</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>内容</th>
+<th>形态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Task Specific Memory</strong></td>
+<td>"这件事通常怎么做"——primitive 执行结构</td>
+<td>reference seed 上 exploratory bootstrapping（允许 reset+反复尝试），成功后存 JSONL trace；<strong>空间坐标替换成 symbolic perception query</strong>（"Move above current mug position"），新场景重新 grounding</td>
+</tr>
+<tr>
+<td><strong>Global Memory</strong></td>
+<td>"用这些 primitives 时要记住什么"——跨任务复用</td>
+<td>Success Rules + Failure Models：怎么写完整 task prompt、识别 empty grasp、避免 false success、何时 re-stage</td>
+</tr>
+</tbody>
+</table>
+<p>新 seed/目标位置/perturbation 部署时：读两类 memory + 当前 RGB-D 重新 grounding——<strong>复用"执行结构和经验"，不重放固定坐标</strong>（Mug 左边换右边，结构不变坐标重算）。</p>
+<h3 id="4">4. 测试阶段约束</h3>
+<ul>
+<li>Reset Primitive 禁用 + 执行预算收紧</li>
+<li>闭环执行：Stage → vla_act → 观察 Contact Outcome → 满足成功条件继续；empty grasp/unstable contact/wrong pose → Re-ground / Re-stage / Retry</li>
+</ul>
+<h3 id="5-benchmark">5. 实验结果（四 benchmark）</h3>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th>Frozen VLA 裸跑</th>
+<th>Harness VLA</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LIBERO（标准桌面）</td>
+<td>RLinf 95.3%</td>
+<td>Claude Code <strong>96.0%</strong></td>
+<td>+0.7</td>
+</tr>
+<tr>
+<td><strong>LIBERO-Pro</strong>（指令重定向+位置交换）</td>
+<td>RLinf 50.0%</td>
+<td>Claude Code <strong>82.4%</strong></td>
+<td>+32.4（较对照最高 +38.6pp）</td>
+</tr>
+<tr>
+<td><strong>RoboCasa365</strong>（家庭厨房长程）</td>
+<td>RLDX-1 30.0%</td>
+<td>Codex <strong>55.4%</strong></td>
+<td>+25.4</td>
+</tr>
+<tr>
+<td>RoboTwin C2R（双臂 Clean→Randomized 迁移）</td>
+<td>—</td>
+<td><strong>58.4%</strong>（clean 的 memory 直接迁移）</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Backend 无关性</strong>：VLA 换 RLinf/RPent/RLDX-1/LingBot-VLA 任一，Planner（Codex/Claude Code）看到的接口统一是 vla_act——上层只需知道何时调用+如何组织状态。</p>
+<h3 id="6">6. 核心结论（作者定位）</h3>
+<blockquote>
+<p>Harness VLA 解决的不是"怎样训练一个更大的 VLA"，而是<strong>"怎样把已存在的 VLA 能力组织成有任务分解、记忆、闭环反馈和失败恢复能力的执行系统"</strong>。四不变量：参数不改变｜Primitive 词表不扩张｜Agent 重新 ground 场景｜Memory 复用已验证经验</p>
+</blockquote>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li><strong>staging 状态空间的最优搜索</strong>：Re-stage 的候选动作（后退/旋转/换 pre-contact pose）有无系统性排序策略，还是全靠 LLM 先验？</li>
+<li><strong>Memory 的泛化边界</strong>：Task Specific Memory 的 primitive 结构在多大概的场景分布偏移下失效（如桌面→货架）？</li>
+<li><strong>与 DIMOS/ROS 技能栈的融合</strong>：vla_act 作为 DimOS Skill 暴露、Analytic primitive 走 Stream 控制是否等价于本文架构的工程化？</li>
+<li><strong>执行预算与安全约束</strong>：预算耗尽前的失败判定；真机上 retry 循环的物理安全边界（连续失败时急停条件）</li>
+<li><strong>LLM Planner 的延迟代价</strong>：每步 primitive 切换都要过一次 LLM 推理（秒级）——长程任务的端到端时间与实时性的权衡</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>冻结 VLA 封装成 vla_act 原语 + 解析式原语库 + Agentic Planner 编排 + 双层记忆——免训练把长程任务成功率最高拉 +38.6pp</td>
+</tr>
+<tr>
+<td>架构</td>
+<td>Planner（Claude Code/Codex）只选 primitive 给 JSON 参数；Analytic 管几何明确的；vla_act 管 contact-rich 的</td>
+</tr>
+<tr>
+<td>天才处</td>
+<td>①staging/re-staging 主动构造 VLA 的有利初始状态 ②记忆存结构不存坐标（symbolic query 化）③接口统一使 VLA backend 可插拔</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>LIBERO-Pro 50→82.4%；RoboCasa365 30→55.4%；RoboTwin C2R 迁移 58.4%</td>
+</tr>
+<tr>
+<td>边界</td>
+<td>不解决"训练更大 VLA"；记忆泛化有限；LLM 每步规划有延迟；测试时禁 reset</td>
+</tr>
+<tr>
+<td>定位</td>
+<td>与 AI4AI 同一哲学的机器人版：能力转移不靠改参数，靠组织方式（harness）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>"冻结模型+Agent 编排"成为 2026 具身智能主流路线</strong>：重训练成本高企（97 万数据+8×A100），Harness 类方案零训练成本拿 +30pp——ROI 压倒性优势下，"模型即插即用+上层编排"将成部署默认</li>
+<li><strong>VLA 的商品化接口正在形成</strong>：vla_act（prompt+max_chunks+stop predicate）事实上定义了 VLA 的"调用协议"——如同 LLM 的 function calling 之于 ChatGPT，VLA 生态会出现统一的 primitive calling 标准</li>
+<li><strong>记忆=结构不存坐标 是跨场景迁移的通用范式</strong>：symbolic perception query 化的记忆与 AI4AI 的"脚手架捕获可复用任务结构"完全同构——两大顶会路线在 2026 汇流到同一结论</li>
+<li><strong>Coding Agent（Claude Code/Codex）作为机器人大脑的合法性确立</strong>：论文直接用 Claude Code 当 Planner 并给出硬数据——通用 Coding Agent 下场机器人编排，ROS 工程师的角色向"Primitive 提供者"迁移</li>
+<li><strong>与端到端 VLA 的分层共存格局</strong>：OpenVLA/π0 卷模型能力，Harness/DimOS 卷组织能力——最终形态是 DimOS 提供运行时骨架 + Harness 提供编排策略 + VLA 提供局部技能的三层栈</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="_6">与已有笔记/体系的关联</h3>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>笔记《2026-08-18-AI4AI测试时能力迁移》</td>
+<td>同一哲学双实例</td>
+<td>AI4AI：强模型为弱模型搭推理脚手架（0.49→0.91）；Harness VLA：Agent 为冻结 VLA 搭操作脚手架（50→82.4%）——<strong>"不改参数改组织"范式在 NLP 与机器人双领域同年验证</strong></td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-SEAL自适配语言模型》</td>
+<td>对照路线</td>
+<td>SEAL 走权重层自进化（改参数）；Harness 走环境层编排（不改参数）——两条路线的成本差（重训练 vs 零训练）决定后者先落地</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-DimOS双神经系统架构》</td>
+<td>运行时+策略互补</td>
+<td>DimOS 提供 Module/Stream/RPC/Skill 运行时骨架，Harness VLA 提供 Planner 编排策略——vla_act 就是 DimOS @skill 的机器人实例，两层可组合成完整栈</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-OpenVLA架构解剖》</td>
+<td>技能层直接关联</td>
+<td>OpenVLA 类冻结 VLA 正是 vla_act 的候选 backend——解剖它的三笔代价（慢/量化误差/无本体）由 Analytic primitive+staging 补偿</td>
+</tr>
+<tr>
+<td>Hermes skill 体系</td>
+<td>同构映射</td>
+<td>Task Specific Memory=experience-bank（任务经验卡）；Global Memory=error-case-library（跨任务失败模式）；staging=skill 的前置条件设计；Planner 决策树=iron_rules_engine 的模式路由</td>
+</tr>
+<tr>
+<td>skill <code>subtask-lifecycle</code> / <code>agent-workflow-orchestration</code></td>
+<td>编排工程对照</td>
+<td>Harness 的 primitive 选择循环与我们的子任务生命周期管理同构——"预算收紧+禁 reset"对应生产环境的资源约束设计</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">对我们的直接价值（吸收+优化自我）</h3>
+<ol>
+<li><strong>"记忆存结构不存坐标"直接平移到 experience-bank</strong>：经验卡应记录"这类问题通常的解决路径"（symbolic 步骤），参数值（具体路径/版本号）现场重新 ground——修复记忆的时效性问题时照此改造</li>
+<li><strong>staging 思维用于任务编排</strong>：调用重操作（如 hermes 升级/模型切换）前主动构造有利初始状态（备份/健康检查/预热），失败后不盲目重试而是 re-stage（改前置条件再试）——可写进 subtask-lifecycle 的失败恢复模式</li>
+<li><strong>接口统一化使 backend 可插拔</strong>：sensenova/zai/openrouter 的模型调用应统一成 <code>model_act(prompt, max_tokens, stop)</code> 式单一接口——fallback 链切换时上层逻辑零改动</li>
+<li><strong>"冻结+编排"的经济启示</strong>：与其等更大的 glm-6，不如把现有 glm-5.3 用 harness 组织好——我们的 skill 体系正是在做这件事，本文给了机器人侧的硬数据背书</li>
+</ol>
+<p>→ 相关：2026-08-18-AI4AI测试时能力迁移-强模型为弱模型搭推理脚手架.md<br />
+→ 相关：2026-08-18-DimOS双神经系统架构-Agent离散思考与物理连续世界的共存设计.md<br />
+→ 相关：2026-08-18-OpenVLA架构解剖-7B-VLA透明样本的完整链路与OFT手术.md<br />
+→ 相关：2026-08-18-SEAL自适配语言模型-LLM部署后持续自我进化的双循环架构.md</p>
+</body>
+</html>
