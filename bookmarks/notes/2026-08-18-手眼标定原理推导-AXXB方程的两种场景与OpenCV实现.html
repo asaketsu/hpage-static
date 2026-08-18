@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手眼标定原理推导-AXXB方程的两种场景与OpenCV实现</title>
+
+<meta property="og:title" content="手眼标定原理推导-AXXB方程的两种场景与OpenCV实现" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-18-%E6%89%8B%E7%9C%BC%E6%A0%87%E5%AE%9A%E5%8E%9F%E7%90%86%E6%8E%A8%E5%AF%BC-AXXB%E6%96%B9%E7%A8%8B%E7%9A%84%E4%B8%A4%E7%A7%8D%E5%9C%BA%E6%99%AF%E4%B8%8EOpenCV%E5%AE%9E%E7%8E%B0.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="axxbopencv">手眼标定原理推导 — AX=XB方程的两种场景与OpenCV实现</h1>
+<h1 id="axxb-opencv">手眼标定 #AXXB #眼在手上 #眼在手外 #齐次变换矩阵 #机械臂 #OpenCV #机器视觉</h1>
+<blockquote>
+<p><strong>出处</strong>：微信公众号「艳鹏AI笔记」，2026-07-20 22:12 发布<br />
+原文链接：https://mp.weixin.qq.com/s/AQPC2OgryNuonTcXTHfJXg<br />
+抓取方式：移动 UA 直接 curl（3.1MB 全文）<br />
+主题：手眼标定的完整数学推导——眼在手上/眼在手外两种场景统一到 AX=XB 方程，附 OpenCV calibrateHandEye 接口对照<br />
+前置阅读：本笔记是《相机标定底层原理》（内参/畸变）的进阶篇——内参标定解决"相机看清世界"，手眼标定解决"相机与机械臂坐标系统一"</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="0">0. 手眼标定解决什么</h3>
+<p>将<strong>机械臂末端、相机、棋盘格三者坐标系统一</strong>到一个坐标系下。两种场景：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>相机位置</th>
+<th>不变的量（待求 X）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>眼在手上（eye in hand）</strong></td>
+<td>装在机械臂末端</td>
+<td>相机与末端的相对位置 T_cam2ee</td>
+</tr>
+<tr>
+<td><strong>眼在手外（eye to hand）</strong></td>
+<td>装在机械臂外固定处</td>
+<td>相机与基座的相对位置 T_cam2base</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心思想一句话</strong>：手眼标定的原理就是在找<strong>相对位置固定不变的量</strong>。</p>
+<h3 id="1">1. 前置知识：齐次变换矩阵</h3>
+<ul>
+<li>4×4 变换矩阵描述两坐标系相对关系 = 旋转 R + 平移 t</li>
+<li>T 的作用：把 A 坐标系下的点转换到 B 坐标系；<strong>矩阵的逆</strong>反向转换</li>
+<li>关键认知：<strong>点还是那个点，客观存在</strong>——只是在不同坐标系下有不同坐标值，T 只做坐标系转换</li>
+<li>链式法则（变换复合，顺序从右往左）：T_C2A = T_B2A · T_C2B</li>
+<li>符号约定：<strong>上标=去哪（目标坐标系），下标=从哪来（源坐标系）</strong></li>
+</ul>
+<h3 id="2-axxb">2. 眼在手上推导（AX=XB）</h3>
+<p><strong>四个坐标系</strong>：base（基座）/ ee（末端）/ cam（相机）/ target（棋盘格）</p>
+<p><strong>已知/未知</strong>：<br />
+| 量 | 来源 |<br />
+|---|---|<br />
+| T_ee2base（每组不同） | 机械臂 SDK 读取，或 URDF+关节角正运动学算出 |<br />
+| T_cam2target（每组不同） | PnP 从图像解出（依赖内参标定） |<br />
+| <strong>T_cam2ee（固定，即 X）</strong> | 待求 |</p>
+<p><strong>推导路径</strong>：点 P 从棋盘格到基座的链路：<code>target → cam → ee → base</code>，等式两边 P 约掉得：</p>
+<pre><code>T_ee2base(1) · X · T_target2cam(1) = T_ee2base(2) · X · T_target2cam(2)
+（两组姿态下 T_target2base 不变）
+</code></pre>
+<p>移项整理成经典 <strong>AX=XB</strong>。</p>
+<p><strong>实操铁律</strong>：<br />
+- 一组数据 = 机械臂末端位姿 + 同一时刻拍的棋盘格图片<br />
+- ⚠️ <strong>棋盘格千万别动</strong>——保证 T_target2base 不变，方程组才能成立<br />
+- 需多组不同姿态的数据构建方程组</p>
+<p><strong>OpenCV 实现</strong>：</p>
+<pre><code class="language-python">R_cam2ee, t_cam2ee = cv2.calibrateHandEye(
+    R_ee2base_list, t_ee2base_list,   # 各姿态末端位姿
+    R_target2cam_list, t_target2cam_list,  # 各姿态PnP结果
+    method=method)  # 5种经典方法，差异在旋转/平移方程的解耦或联立
+</code></pre>
+<h3 id="3">3. 眼在手外推导</h3>
+<p><strong>关键差异</strong>：不变量是 T_cam2base（X）；<strong>棋盘格固定在机械臂末端上</strong>（不能动）</p>
+<p><strong>双路径等式</strong>：<br />
+- 路径 1：<code>target → ee → base</code>（棋盘格随末端动，经正运动学）<br />
+- 路径 2：<code>target → cam → base</code>（经相机观测）</p>
+<p>两路径等式含两个未知量（X=T_cam2base 和 Y=T_target2ee），<strong>取两组姿态消去 Y</strong> 后移项得 AX=XB 标准形式——此处 A 的两个矩阵都是求逆过的（与眼在手上不同）。</p>
+<p><strong>OpenCV 实现</strong>（同一个接口，参数方向相反）：</p>
+<pre><code class="language-python">R_cam2base, t_cam2base = cv2.calibrateHandEye(
+    R_base2gripper_list, t_base2gripper_list,  # 注意：与眼在手上相反，求逆即可
+    R_target2cam_list, t_target2cam_list,
+    method=method)
+</code></pre>
+<h3 id="4">4. 两种场景对照表（自行归纳）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>眼在手上</th>
+<th>眼在手外</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>相机安装</td>
+<td>机械臂末端</td>
+<td>外部固定</td>
+</tr>
+<tr>
+<td>待求 X</td>
+<td>T_cam2ee</td>
+<td>T_cam2base</td>
+</tr>
+<tr>
+<td>棋盘格位置</td>
+<td><strong>外部固定不动</strong></td>
+<td><strong>固定在末端不动</strong></td>
+</tr>
+<tr>
+<td>已知输入</td>
+<td>T_ee2base + T_target2cam</td>
+<td>T_ee2base + T_target2cam</td>
+</tr>
+<tr>
+<td>A 矩阵构成</td>
+<td>T_ee2base 差分</td>
+<td>求逆后的差分</td>
+</tr>
+<tr>
+<td>代码参数</td>
+<td>R_ee2base_list</td>
+<td>R_base2gripper_list（反向）</td>
+</tr>
+<tr>
+<td>视野特点</td>
+<td>随臂移动视野变</td>
+<td>固定全局视野</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li><strong>OpenCV 5 种 method 的差异</strong>：TSAI/PARK/HORAUD/DANIILIDIS/ANDREFF 各自如何解耦旋转平移——精度与鲁棒性对比</li>
+<li><strong>AX=XB 的解存在性条件</strong>：旋转轴退化情形（两组姿态旋转轴平行时方程病态）——数据采集的姿态多样性要求</li>
+<li><strong>手眼标定精度评估</strong>：重投影误差之外的验证方法（已知距离测量/重复定位精度测试）</li>
+<li><strong>动态手眼标定</strong>：机器人运动过程中在线标定（不用停机采集）的研究进展</li>
+<li><strong>与 servo-arm-control 的 DH 参数关系</strong>：URDF 正运动学（T_ee2base 来源）与 DH 建模的一致性校验</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>手眼标定 = 找"相对位置固定不变的量"，两种场景统一为 AX=XB 齐次变换方程求解</td>
+</tr>
+<tr>
+<td>数学核心</td>
+<td>多组姿态数据构建方程组消元；眼在手外多一步消去棋盘格-末端关系 Y</td>
+</tr>
+<tr>
+<td>最大坑</td>
+<td>棋盘格必须绝对静止（眼在手上场景）——动了就全废</td>
+</tr>
+<tr>
+<td>工程链路</td>
+<td>内参标定 → PnP 解 T_target2cam → 机械臂 SDK 读 T_ee2base → calibrateHandEye 解 X</td>
+</tr>
+<tr>
+<td>认知要点</td>
+<td>点是客观存在，坐标值随坐标系变——变换矩阵只做坐标系转换，链式法则从右往左复合</td>
+</tr>
+<tr>
+<td>接口统一</td>
+<td>OpenCV 一个 calibrateHandEye 通吃两种场景，只差参数方向（求逆）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>手眼标定从"专业操作"走向"开机自检"</strong>：协作臂厂商（UR/遨博）已把一键手眼标定内置——但理解 AX=XB 原理仍是诊断精度问题的唯一路径，"会调包"与"能排错"的分界线</li>
+<li><strong>EiT 方案（眼在手外+固定相机）在工业检测中占比上升</strong>：全局视野稳定、标定一次长期有效——缺点是盲区，与 eye-in-hand 的局部高清互补，双相机融合方案渐成标配</li>
+<li><strong>VLA 时代手眼标定依然不可替代</strong>：Harness VLA/OpenVLA 类系统的 RGB-D 输入、staging 状态判断全部建立在相机-基座坐标系统一之上——端到端模型消化不掉坐标系问题</li>
+<li><strong>标定自动化的"最后一公里"是姿态多样性自动规划</strong>：采集哪些姿态能让方程组病态性最低——主动标定（active calibration）研究将工程化落地</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="_6">与已有笔记/体系的关联</h3>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>笔记《2026-08-18-相机标定底层原理》</td>
+<td>直接前置</td>
+<td>那篇解决内参/畸变（相机看清世界），本篇解决外参中的手眼关系（相机与机械臂统一）——标定知识链第二环</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-HarnessVLA无需训练》</td>
+<td>上游依赖</td>
+<td>Harness VLA 的 vla_act 调用前 staging（把末端送到有利位姿）依赖准确的手眼标定——T_cam2ee 错了 stage 到错误位置</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-OpenVLA架构解剖》</td>
+<td>输入质量链</td>
+<td>OpenVLA 的 224px RGB 输入若来自臂载相机，畸变+手眼误差双重污染空间理解</td>
+</tr>
+<tr>
+<td>skill <code>servo-arm-control</code>（6-DOF 机械臂 DH 运动学）</td>
+<td>直接技术对接</td>
+<td>T_ee2base 由 DH 正运动学或 URDF 计算——本 skill 的逆解/轨迹规划输出正是手眼标定的输入源</td>
+</tr>
+<tr>
+<td>skill <code>dual-mcu-robot-architecture</code> / <code>embodied-ai-control</code></td>
+<td>系统集成</td>
+<td>ESP32+STM32 双 MCU 方案中相机若装云台/臂上即 eye-in-hand 场景；ROS2 TF 树的 static_transform 即手眼标定结果的运行时形态</td>
+</tr>
+<tr>
+<td>笔记《2026-08-18-DimOS双神经系统架构》</td>
+<td>基础事实层呼应</td>
+<td>DimOS 把 TF 坐标变换"收回成普通数据流"——TF 的参数正来自内参+手眼标定，是机器人世界的"基础事实"</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">对我们的直接价值（吸收+优化自我）</h3>
+<ol>
+<li><strong>机器人项目 SOP 补全</strong>：robotics-project-setup 流程应加"标定检查链"——内参标定→手眼标定→TF 静态变换发布，缺环即视觉任务精度不可控</li>
+<li><strong>"找不变量"的建模思维可平移</strong>：手眼标定本质是"从变化中找不变"——同构于量化中的协整关系（价差均值回归）与系统监控的基线提取（从波动指标中找稳定阈值）</li>
+<li><strong>OpenCV calibrateHandEye 代码段直接可用</strong>：servo-arm-control 若加装 esp32-cam 即可按本文路径实现——先内参（棋盘格 20 张）再手眼（姿态 10+ 组）</li>
+<li><strong>棋盘格静止铁律的元教训</strong>：数据采集协议中的"保持不变量真的不变"是所有标定/校准类任务的第一坑——量化回测的"未来函数"错误同源（不小心让未来信息混入训练集）</li>
+</ol>
+<p>→ 相关：2026-08-18-相机标定底层原理-一张棋盘格如何算尽相机所有参数.md<br />
+→ 相关：2026-08-18-HarnessVLA无需训练-冻结VLA封装成可调用原语与记忆引导Agent.md<br />
+→ 相关：2026-08-18-DimOS双神经系统架构-Agent离散思考与物理连续世界的共存设计.md</p>
+</body>
+</html>
