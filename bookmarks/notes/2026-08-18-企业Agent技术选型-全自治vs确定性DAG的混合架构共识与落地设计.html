@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>企业Agent技术选型-全自治vs确定性DAG的混合架构共识与落地设计</title>
+
+<meta property="og:title" content="企业Agent技术选型-全自治vs确定性DAG的混合架构共识与落地设计" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-18-%E4%BC%81%E4%B8%9AAgent%E6%8A%80%E6%9C%AF%E9%80%89%E5%9E%8B-%E5%85%A8%E8%87%AA%E6%B2%BBvs%E7%A1%AE%E5%AE%9A%E6%80%A7DAG%E7%9A%84%E6%B7%B7%E5%90%88%E6%9E%B6%E6%9E%84%E5%85%B1%E8%AF%86%E4%B8%8E%E8%90%BD%E5%9C%B0%E8%AE%BE%E8%AE%A1.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-vsdag">企业Agent技术选型 — 全自治vs确定性DAG的混合架构共识与落地设计</h1>
+<h1 id="agent-langgraph-hermes-dag-mcp-deepseek-human-in-the-loop">企业Agent #技术选型 #LangGraph #Hermes #确定性DAG #控制平面 #混合架构 #MCP #DeepSeek #研发自动化 #human-in-the-loop #编排模式 #确定性护栏</h1>
+<blockquote>
+<p><strong>出处</strong>：用户提供的企业场景与技术讨论（2026-08-18，含四条论点）——百人研发部门 AI 流程自动化选型：Hermes 全自治 vs LangGraph 确定性 DAG<br />
+场景：项目管理软件 issue 自动触发 Agent → 调用内部工具/数据 → 判断/统计/代码追踪 → 结论写回项目记录；生产环境限定开源模型（DeepSeek V4 Flash）<br />
+分析依据：本仓 agent-orchestration-pattern skill（Beam AI 生产报告/Deloitte/Gartner 数据）+ deterministic-guardrails skill + 2026 H2 "Harness = Control Plane" 行业共识<br />
+主题：结合四条论点分析"全自治 vs 确定性工作流"之争，给出混合架构的完整落地方案</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="0">0. 问题还原</h3>
+<p><strong>现状</strong>：百人研发部门，domain knowledge 深，已积累 Skill 和 RAG；Agent 能完成阶段性任务，完整流程需人类接力。</p>
+<p><strong>目标链路</strong>：</p>
+<pre><code>项目管理软件 issue（自动触发）
+→ Agent 调用内部工具和数据
+→ 判断、统计、代码追踪
+→ 结论写回项目记录
+</code></pre>
+<p><strong>两条候选路线</strong>：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>路线 1：Hermes 全自治</th>
+<th>路线 2：LangGraph 确定性 DAG</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>形态</td>
+<td>Agent + Goal + Cron，补齐 Skill/Codebase/MCP，自己跑完整流程</td>
+<td>确定性 DAG 固定流程，每步独立环境执行和验收</td>
+</tr>
+<tr>
+<td>优势</td>
+<td>灵活、能处理步骤不确定的任务、探索性强</td>
+<td>流程稳定、state 可控、每步可验收可回滚</td>
+</tr>
+<tr>
+<td>风险</td>
+<td>方向错了不知道、审计困难、高风险操作无闸门</td>
+<td>死板、流程变更成本高、探索性任务框不住</td>
+</tr>
+</tbody>
+</table>
+<p><strong>提问者直觉</strong>：固定且高风险的主流程交给 LangGraph，探索性强、步骤不确定的任务交给 Hermes。</p>
+<p><strong>四条论点</strong>（讨论回复）：<br />
+1. "一般是两者结合，开放性任务交给主 agent，固定的 workflow 可以作为 agent 的子 agent、mcp 工具"<br />
+2. "技术角度按照 tools/mcp connector/skills → agent 的形式。agent 采用 langgraph + deepagents：langgraph 流程稳定+state 可控；deepagents 偏探索性发散性任务"<br />
+3. "知识库，自身团队 domain Knowledge 强是优势，但还是脏活累活辛苦活"<br />
+4. "企业 Agent 别一上来就全自治。固定主流程、高风险节点必须用 LangGraph 这类确定性 DAG 锁死，探索性任务再交给 Hermes"</p>
+<h3 id="1">1. 论点分析：四条回复其实收敛到同一个架构</h3>
+<p><strong>表面分歧，实质一致</strong>。拆开看：</p>
+<table>
+<thead>
+<tr>
+<th>论点</th>
+<th>关键词</th>
+<th>指向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①</td>
+<td>两者结合 + workflow 作为子 agent/mcp 工具</td>
+<td>组合关系：agent 与 workflow 互为组件</td>
+</tr>
+<tr>
+<td>②</td>
+<td>tools/mcp/skills → agent 分层 + langgraph+deepagents</td>
+<td>技术栈分层：工具层→编排层→探索层</td>
+</tr>
+<tr>
+<td>③</td>
+<td>domain knowledge 强但是脏活累活</td>
+<td>知识治理是被低估的成本中心</td>
+</tr>
+<tr>
+<td>④</td>
+<td>别一上来全自治，高风险节点锁死</td>
+<td>风险分级：确定性优先，自治渐进</td>
+</tr>
+</tbody>
+</table>
+<p>四条论点合成一句话：<strong>确定性 DAG 做骨架（控制平面），自治 agent 做肌肉（数据平面），工具/MCP/skills 做手脚（执行层），知识治理做血液</strong>。</p>
+<p>这与 2026 H2 行业共识完全吻合：<br />
+- <strong>Harness = Control Plane</strong>（OpenAI/Snowflake/Augment Code 共同提出）：生产级 Agent 成败 90% 取决于控制平面设计；模型是数据平面（执行推理），Harness 是控制平面（约束、路由、验证、回滚、监控）<br />
+- <strong>STAR-PólyaMath 同构</strong>：Orchestrator 只管流程控制不调用 LLM 推理——控制与推理分离<br />
+- <strong>Deloitte 自主性光谱</strong>：In the Loop → On the Loop → Out of the Loop 渐进，不能跳级</p>
+<h3 id="2">2. 数据支撑：为什么"别一上来就全自治"是对的</h3>
+<p>来自本仓 agent-orchestration-pattern skill 的 2026 生产数据：</p>
+<table>
+<thead>
+<tr>
+<th>数据</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>40% 多 Agent 试点 6 个月内失败</strong>（Gartner）</td>
+<td>编排复杂度是主要死因</td>
+</tr>
+<tr>
+<td><strong>88% Agent 试点失败率</strong>（Forrester 2026）</td>
+<td>试点到生产的鸿沟</td>
+</tr>
+<tr>
+<td><strong>单 Agent 在 64% 基准中匹敌或超越多 Agent</strong>（Princeton NLP）</td>
+<td>多 Agent 不是默认答案</td>
+</tr>
+<tr>
+<td><strong>非确定性输出被 70% 企业领导者列为最大障碍</strong></td>
+<td>全自治的天然天花板</td>
+</tr>
+<tr>
+<td>Sequential Pipeline：4 Agent 流水线 950ms 协调开销 vs 500ms 实际处理</td>
+<td>编排层本身有成本</td>
+</tr>
+<tr>
+<td>3 Agent 消耗 29K tokens vs 单 Agent 10K</td>
+<td>token 成本 3 倍</td>
+</tr>
+<tr>
+<td>最成功部署是最窄范围：明确输入、可测量输出、低爆炸半径</td>
+<td>范围控制 &gt; 能力堆叠</td>
+</tr>
+</tbody>
+</table>
+<p><strong>反向证据也成立</strong>：全确定性 DAG 处理不了"判断、统计、代码追踪"中判断的部分——issue 千奇百怪，穷举分支会把 DAG 变成维护噩梦。所以混合是必然。</p>
+<h3 id="3">3. 解决方案：混合架构完整设计</h3>
+<p><strong>总体架构（五层）</strong>：</p>
+<pre><code>┌────────────────────────────────────────────────────────────┐
+│ 触发层：项目管理软件 webhook / 轮询 cron → issue 入队        │
+├────────────────────────────────────────────────────────────┤
+│ 控制平面：LangGraph 确定性 DAG（主流程骨架）                 │
+│  ┌──────┐ ┌──────┐ ┌──────────┐ ┌──────┐ ┌──────┐ ┌─────┐│
+│  │分类   │→│数据  │→│分析判断   │→│统计  │→│结论  │→│写回 ││
+│  │路由   │ │收集  │ │(子agent)  │ │验证  │ │生成  │ │+审计││
+│  └──────┘ └──────┘ └──────────┘ └──────┘ └──────┘ └─────┘│
+│   确定性    确定性    探索性节点     确定性    半确定   确定性 │
+│   小模型    工具调用  (deepagents/   沙箱执行  模板约束  护栏+ │
+│   /规则             Hermes子agent)           +人审门  人工确认│
+├────────────────────────────────────────────────────────────┤
+│ 数据平面：自治子 agent（探索性任务）                          │
+│  - 输入：DAG 节点的结构化 context（目标+约束+验收标准）       │
+│  - 输出：必须返回可追溯 evidence（结论+依据+置信度）          │
+│  - 沙箱：独立环境执行，超时/超预算自动终止                    │
+├────────────────────────────────────────────────────────────┤
+│ 执行层：tools / MCP connector / skills（统一工具协议）        │
+│  - 内部 API、DB 查询、代码库检索、项目管理软件写回           │
+│  - 每个工具 &lt;10 个/agent（15-tool ceiling 硬约束）           │
+├────────────────────────────────────────────────────────────┤
+│ 知识层：domain RAG + Skill 库（脏活累活，需要治理）           │
+│  - 负责人/有效期/分级分类（权限进索引）                      │
+│  - 原始资料层 vs 核验结论层分离                              │
+└────────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>各节点设计要点</strong>：</p>
+<p><strong>节点 1：分类路由（确定性）</strong><br />
+- 不用大模型自由分类——规则优先（label/关键词命中），未命中再走 DeepSeek V4 Flash 低温度分类<br />
+- 输出：issue 类型 → 子图路由（bug 分析/统计报表/代码追踪/需求澄清，各走不同分支）<br />
+- 这是 LangGraph conditional edge 的标准用法</p>
+<p><strong>节点 2：数据收集（确定性）</strong><br />
+- 纯工具调用：内部 API/DB 查询/代码库 grep——写成确定性节点而非让 agent 自由探索<br />
+- <strong>MCP token 成本警示</strong>（本仓 skill 数据）：MCP 工具加载 schema 开销 32K-82K token，CLI 直接调用等效操作仅 200 token——<strong>能用 CLI/内部 SDK 就别包 MCP</strong>；MCP 只用于必须标准化的跨系统连接器</p>
+<p><strong>节点 3：分析判断（探索性 → 自治子 agent）</strong><br />
+- 这里是 Hermes/deepagents 的位置：步骤不确定（要追多少层代码、查多少关联 issue 由内容决定）<br />
+- <strong>契约式委派</strong>（SearchSwarm 四原则）：主 DAG 传入完整简报（目标+约束+已有数据+验收标准），子 agent 返回带 evidence 的报告<br />
+- <strong>独立环境</strong>（路线 2 的核心优势保留）：容器化执行，读权限白名单，超时/超 token 预算强制终止<br />
+- <strong>并发限制</strong>：DeepSeek V4 Flash 本地部署的并发上限要实测（本仓经验：智谱系模型并发&gt;1 直接报错），DAG 内并行节点数按实测降级</p>
+<p><strong>节点 4：统计验证（确定性）</strong><br />
+- 统计计算用代码不用模型——execute_code 节点跑 pandas/SQL，结果确定性可复现<br />
+- <strong>Evaluator-Optimizer 可选</strong>：质量不达标带反馈重跑节点 3（≤3 轮）</p>
+<p><strong>节点 5：结论生成（半确定）</strong><br />
+- 模板约束 + 引用强制：每个结论必须挂节点 2/3/4 的证据 ID（对应《知识库从入门到精通》的"保留来源、暴露冲突、允许拒答"）<br />
+- 证据不足时输出"资料不足以确认"并标记 issue 需人工补充——<strong>拒答是能力不是缺陷</strong></p>
+<p><strong>节点 6：写回 + 审计（确定性 + 人工门）</strong><br />
+- 确定性护栏三件套（deterministic-guardrails skill 模式）：状态机（只允许 completed→writeback 转换）+ 权限检查（写回目标白名单）+ 哈希链审计日志（不可篡改）<br />
+- <strong>分级人工门</strong>：低风险（追加评论）自动写回；中风险（改 issue 状态）@负责人确认；高风险（关闭 issue/改里程碑）必须人工 approve——对应权限矩阵护栏<br />
+- <strong>Lethal Trifecta 检查</strong>：子 agent 若接触私有代码+读外部内容+可外发网络 = 三腿全开，必须切断出站网络腿</p>
+<h3 id="4-3">4. 知识治理（论点 ③ 的展开）</h3>
+<p>"domain Knowledge 强是优势，但还是脏活累活辛苦活"——这句话的价值在于提醒：<strong>知识库是持续成本中心，不是一次性资产</strong>。</p>
+<p>落地要点（引《2026-08-18-知识库从入门到精通》原则）：<br />
+- <strong>元数据六字段</strong>：每份资料有标题/来源/版本/生效日期/负责人/可见范围——缺负责人和有效期的知识库会腐烂<br />
+- <strong>权限进索引</strong>：issue 相关数据按项目/部门分级，检索前过滤而非回答后脱敏（Agent 综合页越权是隐蔽泄露）<br />
+- <strong>两层分离</strong>：原始资料层（代码/文档/issue 原文）与核验结论层（团队判断）分开——RAG 检索原始层，Skill 沉淀结论层<br />
+- <strong>Skill = 已核验的领域判断</strong>：团队 domain knowledge 的最佳载体是 skill（可执行+可审查+可复用），RAG 兜底长尾</p>
+<h3 id="5-deepseek-v4-flash">5. 模型约束下的分层策略（DeepSeek V4 Flash 单模型）</h3>
+<p>生产限定开源模型不等于所有节点用同一配置：</p>
+<table>
+<thead>
+<tr>
+<th>节点</th>
+<th>配置策略</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分类路由</td>
+<td>低温度（0）+ few-shot + 结构化输出</td>
+</tr>
+<tr>
+<td>数据收集</td>
+<td>不用模型（纯工具）或仅做查询生成（低温度）</td>
+</tr>
+<tr>
+<td>分析判断（子 agent）</td>
+<td>中温度（0.3-0.7）+ 充分 context + 强 system prompt</td>
+</tr>
+<tr>
+<td>统计验证</td>
+<td>不用模型（代码执行）</td>
+</tr>
+<tr>
+<td>结论生成</td>
+<td>低温度 + 模板 + 引用强制</td>
+</tr>
+<tr>
+<td>人工门摘要</td>
+<td>低温度 + 字数约束</td>
+</tr>
+</tbody>
+</table>
+<p>单模型的好处：部署/评测/合规成本最低；坏处：无质量分层——用<strong>提示词工程+温度+验收门</strong>补偿。若未来放宽，路由类节点可换本地小模型（3B 级，见《MiniMind 评价》笔记的分水岭判断）省出 V4 Flash 算力给探索性节点。</p>
+<h3 id="6-phase">6. 灰度路径（Phase 设计，回应"别一上来全自治"）</h3>
+<pre><code>Phase 1（第 1-4 周）：影子模式
+  DAG 全流程跑，但只输出不写回——人类并行做同样的事，对比差异
+  验收：结论一致率 &gt;80% 才进 Phase 2
+
+Phase 2（第 5-8 周）：半自动
+  低风险写回自动（追加评论），中高风险人工门
+  验收：误报率 &lt;5%、人工修正率逐周下降
+
+Phase 3（第 9-12 周）：扩大范围
+  按 issue 类型逐类放开自动化（从统计类→代码追踪类→判断类）
+  每类放开前跑 20-50 个真实 issue 的评测集
+
+Phase 4（3 个月后）：On the Loop
+  人类从每步审批退到遥测监控+异常处理
+  保持：高风险节点人工门永不撤、审计日志永不删
+</code></pre>
+<p>对应 CHAP 协议的 Modes 三级阶梯：Shadow → Trial → Production——与 Deloitte 自主性光谱一致。</p>
+<h3 id="7">7. 两条原始路线的修正</h3>
+<table>
+<thead>
+<tr>
+<th>原路线</th>
+<th>修正</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>路线 1（Hermes 全自治）</td>
+<td>降级为<strong>子 agent 角色</strong>：Hermes 作为 DAG 中探索性节点的执行器（或开发期快速原型工具）；Goal/Cron 保留用于触发层和巡检类任务</td>
+</tr>
+<tr>
+<td>路线 2（LangGraph+OpenCode）</td>
+<td>保留为主架构，但<strong>吸收路线 1 的能力</strong>：探索性节点挂自治 agent（deepagents/Hermes 二选一）；OpenCode 的独立环境执行验收推广到所有非确定性节点</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么主从关系是 DAG 为主、agent 为辅而不是反过来</strong>（论点 ①"workflow 作为 agent 的子 agent"的镜像问题）：<br />
+- 写回项目管理软件是<strong>高风险不可逆操作</strong>——审计要求控制流可解释，DAG 天然满足；自治 agent 的控制流是 emergent 的，事后解释成本高<br />
+- 但反向组合也成立：<strong>开发/探索场景</strong>（如"帮我把这个新流程跑通"）适合 agent 为主、调用固定 workflow 当工具——<strong>生产主流程 DAG 为骨架，开发探索 agent 为骨架</strong>，方向由场景风险决定，不是教条</p>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li>LangGraph 的 checkpointer（状态持久化）与中断恢复——issue 处理中途失败如何从断点续跑（对照 ScienceFlow 存档段思想）</li>
+<li>deepagents 框架与 Hermes 的能力差异——探索性子 agent 选型对比（工具调用可靠性/上下文管理/成本）</li>
+<li>OpenCode 的独立环境隔离机制——容器化执行+验收的门禁设计（exit code 契约）</li>
+<li>DeepSeek V4 Flash 的结构化输出可靠性——JSON mode/function calling 的实测错误率（对照 structured-output-reliability 的四大失败模式）</li>
+<li>项目管理软件（Jira/Linear/飞书项目）的 webhook→写回权限模型——机器人账号的最小权限设计</li>
+<li>issue 自动处理的评测集设计——什么算"结论正确"（对照 RAG 评测的六项检查）</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>确定性 DAG 做控制平面（骨架），自治 agent 做数据平面（探索性节点的执行器），工具/MCP/skills 做执行层，知识治理做底座——四条论点收敛于此</td>
+</tr>
+<tr>
+<td>核心判据</td>
+<td>风险分级：不可逆/可审计要求高的节点锁死为确定性；步骤不确定的节点放开给 agent（沙箱+契约+预算）</td>
+</tr>
+<tr>
+<td>数据背书</td>
+<td>40% 多 Agent 试点 6 个月失败、非确定性输出是 70% 企业最大障碍、Harness=Control Plane 共识</td>
+</tr>
+<tr>
+<td>主从方向</td>
+<td>生产主流程 DAG 为主 agent 为辅（审计可解释）；开发探索 agent 为主 workflow 为辅——方向由场景风险决定</td>
+</tr>
+<tr>
+<td>模型策略</td>
+<td>单模型（V4 Flash）+ 分节点温度/提示词/验收门补偿；统计类节点用代码不用模型</td>
+</tr>
+<tr>
+<td>知识治理</td>
+<td>domain knowledge 是优势更是持续成本：负责人/有效期/权限进索引，Skill 沉淀已核验判断</td>
+</tr>
+<tr>
+<td>灰度路径</td>
+<td>Shadow→Trial→Production；低风险先自动，高风险人工门永不撤</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>"全自治 vs 确定性"之争已在 2026 收敛为伪命题</strong>：行业共识是控制平面/数据平面分离——问"哪种好"的团队还在 Phase 0，问"哪些节点该确定性"的团队已经在正确路径上</li>
+<li><strong>Agent 框架竞争焦点从能力转向可控性</strong>：LangGraph 类状态图编排成为企业默认底座，自治 agent 框架（Hermes/deepagents）定位为"沙箱内的专家执行器"——两者互补而非竞争</li>
+<li><strong>MCP 会在企业内被"选择性使用"</strong>：32K-82K token 的 schema 开销 vs CLI 200 token 的悬殊，使内部工具优先走 SDK/CLI，MCP 只承担跨组织标准化连接——"MCP everywhere"的叙事会修正</li>
+<li><strong>知识治理成为企业 Agent 的隐形胜负手</strong>：domain knowledge 强的团队反而容易高估知识库就绪度——负责人/有效期/权限三缺失会让 RAG 在 3 个月内腐烂</li>
+<li><strong>开源单模型约束催生"节点级优化"工艺</strong>：不能换模型就优化温度/提示词/验收门的分层配置——这套工艺本身会成为可迁移资产</li>
+<li><strong>人工门不会消失，只会变窄</strong>：从每步审批到遥测监控+高风险门——human-in-the-loop 的形态进化而非退场</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>skill <code>agent-orchestration-pattern</code></td>
+<td>本笔记的数据与模式主库：Beam AI 六模式失败率、Blackboard/LangGraph 推荐、15-tool ceiling、CHAP 三级阶梯、SearchSwarm 委派四原则全部用于本设计</td>
+</tr>
+<tr>
+<td>skill <code>deterministic-guardrails</code></td>
+<td>节点 6 写回护栏的直接来源：状态机+权限矩阵+哈希链审计+Lethal Trifecta</td>
+</tr>
+<tr>
+<td>skill <code>harness-architecture</code>（六层）</td>
+<td>总体架构的方法论母体：本设计五层是其企业落地版</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-DeepSeekHarness二十万行拆解》</strong></td>
+<td>深度互证：Harness 二十万行干的正是本笔记控制平面干的事——守卫只能否决（七拦截点）、日志全量 vs 模型投影分离（审计与上下文解耦）、压缩投影（token 治理）。<strong>"循环二十行，其余是心血管系统"= 本笔记"DAG 骨架，agent 肌肉"的另一种表述</strong></td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-ScienceFlow》</strong></td>
+<td>节点级借鉴：ESTRA 存档段机制可加到 DAG（每节点 checkpoint+证据），方向错了回退到有效分支</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-知识库从入门到精通》</strong></td>
+<td>知识治理层的操作手册：元数据六字段/权限进索引/拒答是能力——直接落地本笔记第 4 节</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-LittleLearner》</strong></td>
+<td>提醒边界：子 agent 的能力上限=基座预训练覆盖——V4 Flash 没见过的内部业务知识靠 RAG/Skill 注入，别指望 agent"推理出来"</td>
+</tr>
+<tr>
+<td>Hermes 本仓实践</td>
+<td>触发层 Goal/Cron、子 agent 契约式 delegate_task（上下文一次写透+evidence 返回）、cron 的 deliver 分级——本笔记设计的每个组件在本仓都有运行中的对应物</td>
+</tr>
+<tr>
+<td>skill <code>subtask-lifecycle</code></td>
+<td>子 agent 的生命周期管理（创建/执行/监控/销毁/恢复）对应数据平面设计</td>
+</tr>
+</tbody>
+</table>
+<p>→ 相关：~/.hermes/skills/ai-agents/agent-orchestration-pattern/SKILL.md<br />
+→ 相关：~/.hermes/skills/devops/deterministic-guardrails/SKILL.md<br />
+→ 相关：2026-08-18-DeepSeekHarness二十万行拆解-单文件学习网站与Agent工程可视化.md</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 给该团队的直接落地清单（按周）</strong><br />
+- W1：把现有"阶段性任务"Skill 映射到 DAG 节点——哪些已是确定性（工具调用）、哪些是探索性（agent）；列高风险节点清单（写回/关闭/修改类）<br />
+- W2：LangGraph 搭骨架（分类路由→收集→判断→验证→生成→写回），先全部接 mock，跑通状态流转<br />
+- W3：接真实工具（内部 API/DB/代码库），统计与验证节点用 execute_code；子 agent 沙箱化（容器+白名单+预算）<br />
+- W4：影子模式上线——DAG 输出与人类结论对比，建 20-50 issue 评测集<br />
+- 之后按 Phase 2-4 灰度</p>
+<p><strong>② 本仓可吸收</strong><br />
+- <strong>Hermes 作为子 agent 的契约模板</strong>：delegate_task 的"上下文一次写透（目标+约束+验收标准）+ evidence 返回"模式可固化为 skill（已有 SearchSwarm 四原则，可加沙箱预算条款）<br />
+- <strong>cron 任务的风险分级</strong>：本仓 cron（推送/预警类）可按低/中/高风险分级——低风险自动执行、高风险（写操作类）加确认门<br />
+- <strong>评测集先行</strong>：任何新自动化流程先建 20 个真实样本的影子对比——比上线后修便宜一个数量级</p>
+<p><strong>③ 决策速查（给同类团队）</strong></p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>第一个自动化流程选什么</td>
+<td>统计类 issue（确定性最高、爆炸半径最小）</td>
+</tr>
+<tr>
+<td>子 agent 选 deepagents 还是 Hermes</td>
+<td>看团队栈：Python/LangGraph 生态→deepagents；要成熟 CLI/cron/skill 体系→Hermes</td>
+</tr>
+<tr>
+<td>MCP 用不用</td>
+<td>内部工具走 SDK/CLI；跨系统标准化连接才上 MCP（token 成本差 160-400 倍）</td>
+</tr>
+<tr>
+<td>人工门放哪</td>
+<td>写回前 + 高风险操作（关闭/修改里程碑）——永不撤</td>
+</tr>
+<tr>
+<td>知识库先做什么</td>
+<td>补负责人+有效期两字段——最便宜的防腐</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>选型决策树（任何企业 Agent 项目通用）</strong></p>
+<pre><code>流程步骤是否可枚举？
+├─ 是 → 确定性节点（工具调用/代码执行/规则路由）
+└─ 否 → 步骤是否高风险/不可逆？
+    ├─ 是 → 拆解到可枚举 + 人工门（不允许自治）
+    └─ 否 → 自治子 agent（沙箱+契约+预算+evidence 返回）
+
+主流程怎么定骨架？
+├─ 生产/审计要求 → DAG 为骨架，agent 为节点（本笔记方案）
+└─ 开发/探索场景 → agent 为骨架，workflow 为工具（镜像组合）
+
+什么时候扩大自治范围？
+└─ 该类任务影子对比一致率 &gt;80% 且误报 &lt;5%，逐类放开
+</code></pre>
+<p><strong>三条铁律（从四条论点提炼）</strong><br />
+1. <strong>高风险节点必须确定性锁死</strong>（论点④）——状态机+权限矩阵+审计日志，不依赖模型自觉<br />
+2. <strong>组合方向由场景风险决定</strong>（论点①）——生产 DAG 为主，探索 agent 为主，不要教条化单向包含<br />
+3. <strong>知识治理是持续成本不是一次性资产</strong>（论点③）——立项时就把负责人/有效期/权限预算进去</p>
+<p><strong>避坑清单</strong><br />
+- 不要一开始追求 issue 100% 自动处理——分类路由先做"能处理的类型"白名单，其余转人工<br />
+- 不要让子 agent 直接持有写回权限——写回只在 DAG 的确定性节点发生（最小权限原则）<br />
+- 不要跳过影子模式——直接上线的失败率数据（40%/88%）就是跳级的代价<br />
+- 不要用模型做统计——pandas/SQL 节点确定性且免费<br />
+- 不要忽视单模型并发限制——本地 V4 Flash 的并发要实测，DAG 并行度按实测配置<br />
+- 不要把 MCP 当万能连接器——schema token 开销会在生产账单上现形</p>
+<p><strong>与提问者直觉的最后对照</strong>：直觉"固定高风险→LangGraph，探索性→Hermes"方向完全正确，唯一补充是<strong>主从关系要显式化</strong>——不是两套并行系统，而是 DAG 骨架内嵌 agent 节点的单系统；以及知识治理（论点③）值得从"备注"升级为"立项条件"</p>
+</body>
+</html>
