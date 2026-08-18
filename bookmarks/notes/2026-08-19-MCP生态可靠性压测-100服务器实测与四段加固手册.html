@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP生态可靠性压测-100服务器实测与四段加固手册</title>
+
+<meta property="og:title" content="MCP生态可靠性压测-100服务器实测与四段加固手册" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="mcp-10012000">MCP生态可靠性压测-100服务器12000次实测与四段加固手册</h1>
+<blockquote>
+<p><strong>来源</strong>：Digital Applied 原创研究（2026-04-26 发布）+ MCP Adoption Statistics 2026<br />
+<strong>原文链接</strong>：https://www.digitalapplied.com/blog/mcp-server-reliability-100-server-stress-test-study<br />
+<strong>记录日期</strong>：2026-08-19（夜间自学习）</p>
+</blockquote>
+<p><strong>标签</strong>：#MCP #可靠性工程 #Agent基础设施 #工具链选型 #压测</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 研究设计</h3>
+<p>首个 MCP 生态全面可靠性研究：<strong>100 个生产级 MCP server × 12 任务族 × 12,000 次试验 × 约 60,000 次工具调用</strong>（2026-02 至 04 对生产端点实测）。</p>
+<ul>
+<li><strong>样本</strong>：Smithery 44 个 + Glama 28 个 + Anthropic 参考 12 个 + 自托管 16 个，按 registry/类别/star 数分层抽样，剔除纯 demo 和 12 个月未更新的僵尸</li>
+<li><strong>任务族</strong>：file-system / web-search / calendar / email / db-query / code-exec / image-gen / browser-automation 等 12 类，每类用该类别的主操作（FS: read/write/list/stat/glob…）</li>
+<li><strong>负载</strong>：每任务 50 次试验，并发梯度 1→2→4→8→16→32</li>
+<li><strong>通过判定</strong>：30 秒内返回 schema 合法响应</li>
+<li><strong>失败五分类</strong>：schema 不匹配 / 超时 / auth配额 / 上游 API 故障 / MCP 协议 bug</li>
+</ul>
+<h3 id="12">1.2 核心数字</h3>
+<ul>
+<li><strong>中位通过率 71%</strong>：孤立看可容忍，复合看是灾难——0.71⁵ ≈ 18%，<strong>5 连工具链端到端成功率仅 18%，10 连仅 3%</strong></li>
+<li><strong>分布双峰</strong>：top decile ≥95%，bottom decile 38%——聚成"能用/不能用"两堆，中间态少。差距是结构性的不是随机的</li>
+<li><strong>延迟尾主导</strong>：P50 320ms / P95 1,840ms（5.7×）/ P99 6,200ms。10+ 连调用几乎必然撞上 P95 事件；无显式超时处理的 server P99 可无限拉长</li>
+<li><strong>并发衰减</strong>：中位 server 从 1→32 并发通过率掉 18 个百分点；最差掉 40+；top decile 几乎持平（≤3 点）——<strong>并发平坦度是"为生产而生"的最干净信号</strong></li>
+<li><strong>类别差异 42 个百分点</strong>：file-system 89% 最高（简单+确定），browser-automation 47% 最低（依赖 DOM 稳定性）——浏览器工具天然脆弱，必须配重试/降级/错误预算</li>
+</ul>
+<h3 id="13">1.3 失败归因</h3>
+<p>~3,500 次失败试验的分布：</p>
+<ul>
+<li><strong>schema 不匹配 38%</strong>（最大单因）：绕过 Zod/Pydantic/JSON-Schema 校验手搓 API wrapper 是重灾区</li>
+<li>超时 24%</li>
+<li>auth/配额 19%</li>
+<li>上游 API 故障 12%</li>
+<li>MCP 协议 bug（JSON-RPC 格式错/缺必填字段）7%</li>
+</ul>
+<p><strong>star 数与通过率零相关</strong>：样本中 star 最高的 server 通过率排第 41；Smithery 最热 server 排 27。流行度奖励的是"有哪些工具"（新颖性），不是"工具能不能用"（可靠性）。</p>
+<h3 id="14-top-decile">1.4 四段加固手册（top decile 无一跳步）</h3>
+<ol>
+<li><strong>Schema 先行</strong>：typed schema 在边界上拦住大多数 bug——typed schemas / idempotency / explicit cancellation 是 top decile 共有的三特征，bottom decile 几乎全缺</li>
+<li><strong>幂等第二</strong>：让重试变安全</li>
+<li><strong>取消处理第三</strong>：约束尾延迟</li>
+<li><strong>每工具配额第四</strong>：保护上游 API</li>
+</ol>
+<h3 id="15-adoption-statistics">1.5 生态规模背景（Adoption Statistics 同站姊妹篇）</h3>
+<ul>
+<li>官方 registry latest 记录 9,652 个（含历史版本 28,959），Anthropic 2025-12 官宣 10K+ 活跃公开 server，月 SDK 下载 9700 万+</li>
+<li>GitHub mcp-server topic 仓库 15,926 个；modelcontextprotocol/servers 86K stars</li>
+<li>企业生产：Stacklok 2026 调研——29% 受访组织有限生产 + 12% 广泛生产（替换了此前无来源的"78% 企业采用"夸大宣传）</li>
+<li>治理归属：Anthropic 已把 MCP 捐给 Linux 基金会 Agentic AI Foundation（AAIF），中立托管</li>
+<li>协议演进：传输层 stdio + Streamable HTTP（旧 HTTP+SSE 已废弃）；server 能力 resources/prompts/tools，client 能力 sampling/roots/elicitation</li>
+<li>安全侧：NSA 2026-06 发布 MCP 安全设计考虑文档；OWASP 有对应条目</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-p95-57p50-agent">2.1 为什么 P95 5.7×P50 对 Agent 是致命的</h3>
+<p>人类用户对 300ms 和 1800ms 的差异感知有限，但 Agent 工作流是<strong>串行放大器</strong>：每次工具调用的延迟分位数相乘。链长 5+ 时 P95 就是常态事件而非尾部事件。这解释了为什么"中位数很快"的 server 在真实 Agent 负载下表现崩塌——测均值掩盖了尾部，而 Agent 只活在尾部。</p>
+<h3 id="22-tradetrap-mcp">2.2 与 TradeTrap MCP 劫持的互补（同日笔记）</h3>
+<p>本篇测<strong>非对抗性可靠性</strong>（server 自己坏没坏），TradeTrap 测<strong>对抗性可靠性</strong>（被主动攻击会怎样）。两者合起来是 MCP 工具链风险评估的完整两轴：意外故障 × 恶意操纵。schema 校验 38% 的失败占比恰好也是 TradeTrap 假 MCP 攻击能得手的温床——<strong>不做响应校验的 server，既容易被自己搞坏，也容易被对手利用</strong>。</p>
+<h3 id="23-browser-automation-47">2.3 browser-automation 47% 的含义</h3>
+<p>DOM 依赖使浏览器工具天然脆弱。与本仓 experience 一致：X/Twitter 抓取链 web_extract 直抓 → Playwright 真浏览器 → web_search 补评论的三级降级链，本质就是给 47% 类工具配的"重试+降级+错误预算"。该研究的工程结论反向验证了本仓降级链设计的必要性。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 可靠性分级速查框架</h3>
+<pre><code>通过率语义（Agent 工具链视角）:
+≥95%  top decile——可进生产链
+ 71%  生态中位——5连链18%,不可依赖
+ 38%  bottom——单工具即瓶颈
+类别基线:
+ file-system 89% | browser 47% (差42pp)
+延迟真相: P50 320ms 只是门票,P95 1840ms 才是账单
+</code></pre>
+<h3 id="32-rubric">3.2 选型 rubric（研究者的评估清单直接可用）</h3>
+<ul>
+<li>每 server 跑 12 任务族主操作 × 50 试验，记录通过率 + P50/P95/P99</li>
+<li>并发梯度 1→32 看衰减斜率（&gt;18pp = 未为生产设计）</li>
+<li>检查三特征：typed schema / 幂等 / 取消处理——缺一即降档</li>
+<li>star 数不作为信号（与通过率零相关）</li>
+</ul>
+<h3 id="33">3.3 核心洞察链</h3>
+<ol>
+<li><strong>复合可靠性是 Agent 时代的核心约束</strong>：单工具 71% 在人类场景够用，在 5-20 连 Agent 链里是生产阻断项——需要的单工具基线是 95-99%</li>
+<li><strong>双峰分布说明差距可消除</strong>：不是"运气"是"工程决策清单"——四段手册全部可执行</li>
+<li><strong>流行度≠可靠性</strong>：生态激励错位（star 奖励新颖性），选型必须自测</li>
+<li><strong>最弱链=系统可靠性</strong>：一个 47% 的浏览器工具把整条链拖到 47%</li>
+</ol>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1mcp-server">趋势1：MCP server 可靠性认证/评级会商品化</h3>
+<p>依据：研究方已把内部选型 rubric 产品化发布；registry 治理（信任/策展/僵尸包清理）是 2026 官方明确议题；star 失效后市场需要新信号。</p>
+<h3 id="2agent">趋势2：Agent 工具链需要"错误预算"设计</h3>
+<p>依据：浏览器类 47% 基线 + 尾部延迟主导，迫使 Agent 架构把 per-tool 错误预算（retries/fallbacks/timeouts）作为一等公民——本仓 search-fallback-chain 是先例形态。</p>
+<h3 id="3-mcp">趋势3：企业 MCP 采用进入治理期</h3>
+<p>依据：Stacklok 41% 生产渗透 + NSA 安全指南 + AAIF 中立托管——从"能不能连"转向"registry 审批/审计层/命名空间信任"，写操作闸门是下一个战场。</p>
+<h3 id="4typed-schema-mcp-server">趋势4：typed schema 成为 MCP server 事实准入门槛</h3>
+<p>依据：38% 失败源于 schema 缺失且是"最易预防"类——ROI 最高的加固步，生态自然演化方向。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-hermes">5.1 与 Hermes 工具链的关联</h3>
+<p>本仓 zai MCP（web_search/webReader/zread）+ mcporter + native MCP 客户端构成工具链。直接可操作项：①给高频使用的 MCP server 建通过率台账（复用本研究的 50 试验法小样本版）；②搜索降级链已覆盖浏览器类脆弱性，符合 47% 基线的工程应对。</p>
+<h3 id="52-agent">5.2 与 Agent 工程笔记群的关联</h3>
+<ul>
+<li><a href="2026-08-19-TradeTrap交易Agent可靠性压测-四层攻击面与量化免疫.md">TradeTrap交易Agent可靠性压测</a>——对抗轴 vs 本篇意外故障轴，双轴合璧</li>
+<li><a href="2026-08-18-企业Agent技术选型-全自治vs确定性DAG的混合架构共识与落地设计.md">企业Agent技术选型-全自治vs确定性DAG的混合架构共识与落地设计</a>——混合架构的可靠性论据：确定性通道对工具链尾部的容忍度更高</li>
+<li><a href="2026-08-15-AI落地两道门-权限管理与证据门禁.md">AI落地两道门-权限管理与证据门禁</a>——证据门禁即"响应校验"，与 schema 校验同理</li>
+</ul>
+<h3 id="53">5.3 与量化栈的关联</h3>
+<p>iron_picks.py 等脚本走 tushare 直连不走 MCP，但若未来接入行情 MCP server，本研究的选型 rubric 直接适用——行情数据工具链的可靠性要求实际上高于 95%（每交易日多次调用复合）。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「中位 server 通过 71%。5 连工具链 0.71⁵ ≈ 18%。复合就是全部问题。」</p>
+<p>「Star 数追踪流行度，不追踪通过率。样本中 star 最高的 server 通过率排第 41。」</p>
+<p>「P50 只是门票，P95 才是账单。」</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>给本仓 MCP server 建可靠性台账（P1）</strong>：对 zai search/reader、memorygraph 等高频 server 跑小样本通过率测试（每工具 10-20 试验），记录 P50/P95，低于 90% 的挂降级链</li>
+<li><strong>typed schema 自查（P2）</strong>：本仓自研脚本类工具（iron_rules_engine 等）补 JSON schema 输出校验，防"上游坏数据静默污染"</li>
+<li><strong>浏览器类工具一律配降级（已实现，维持）</strong>：web-content-extraction-recipes 的多策略链是对 47% 基线的正确姿势</li>
+<li><strong>并发平坦度纳入 cron 设计（P2）</strong>：本仓多 cron 并发场景，工具调用错峰已有实践（智谱 API 并发=1 约束），可推广为通用规则</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>Agent 平台选型</strong>：直接搬四段手册评估第三方 MCP server——schema/幂等/取消/配额四查，缺二即拒</li>
+<li><strong>自研 server 作者</strong>：按四段顺序加固，typed schema 投入产出比最高</li>
+<li><strong>研究延伸</strong>：把通过率×攻击面做二维矩阵（本篇 × TradeTrap），给每个常用工具定位风险象限</li>
+<li><strong>本仓落地</strong>：给 search-fallback-chain 补"通过率台账"数据源——降级触发不再只凭错误类型，还看历史通过率</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<p>研究附完整方法论可复刻：分层抽样（registry×类别×star）→ 每类别定义主操作任务集 → 50 试验×6 并发梯度 → schema 合法+30s 双判据 → 失败五分类。落地最小版：<code>for tool in high_freq_tools: run 10 trials, record pass_rate/p95; if pass_rate&lt;0.9: attach fallback</code>。对本仓的指南价值：cron 任务里工具调用失败重试策略（当前 1 次）可升级为"按工具历史通过率自适应重试次数"——71% 工具重试 3 次可达 ~97.6%，95% 工具重试 1 次即 99.75%。</p>
+</body>
+</html>
