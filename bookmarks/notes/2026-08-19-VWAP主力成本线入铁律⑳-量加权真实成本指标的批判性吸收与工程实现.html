@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VWAP主力成本线入铁律⑳-量加权真实成本指标的批判性吸收与工程实现</title>
+
+<meta property="og:title" content="VWAP主力成本线入铁律⑳-量加权真实成本指标的批判性吸收与工程实现" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-19-VWAP%E4%B8%BB%E5%8A%9B%E6%88%90%E6%9C%AC%E7%BA%BF%E5%85%A5%E9%93%81%E5%BE%8B%E2%91%B3-%E9%87%8F%E5%8A%A0%E6%9D%83%E7%9C%9F%E5%AE%9E%E6%88%90%E6%9C%AC%E6%8C%87%E6%A0%87%E7%9A%84%E6%89%B9%E5%88%A4%E6%80%A7%E5%90%B8%E6%94%B6%E4%B8%8E%E5%B7%A5%E7%A8%8B%E5%AE%9E%E7%8E%B0.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="vwap20">VWAP主力成本线入铁律⑳ — 量加权真实成本指标的批判性吸收与工程实现</h1>
+<h1 id="vwap-20-iron_rules_engine">VWAP #主力成本线 #铁律⑳ #量价分析 #日内强度 #技术指标批判 #iron_rules_engine #加分制 #多信号共振 #指标钝化</h1>
+<blockquote>
+<p><strong>出处</strong>：用户提供的技术分析问答（2026-08-19）——"VWAP 是唯一王者指标，机构考核线，价上只多不空，价下只空不多，一切洗盘诱多在 VWAP 面前裸奔"<br />
+落地：铁律⑳已实现于 <code>~/.hermes/skills/quant-trading/stock-iron-rules/scripts/iron_rules_engine.py</code>（fetch_intraday + calc_vwap + score_stock 第三参），SKILL.md 同步更新，全部路径真机实测通过<br />
+主题：对"VWAP 唯一王者论"的批判性吸收——吸收其量加权成本的真实价值，拒绝其绝对化的二元指令</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="0">0. 原文论点拆解</h3>
+<table>
+<thead>
+<tr>
+<th>论点</th>
+<th>原文表述</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VWAP=全天真金白银的量加权平均成本</td>
+<td>"把全天每一笔大单、主力、机构、大户的真实买入价格按成交量轻重加权"</td>
+<td>✅ <strong>事实正确</strong>，吸收</td>
+</tr>
+<tr>
+<td>机构考核标准/专业交易员日内生死线</td>
+<td>"机构操盘的考核标准，日内生死线"</td>
+<td>✅ 基本属实（机构执行算法普遍以 VWAP 为基准），吸收</td>
+</tr>
+<tr>
+<td>普通均线是"瞎平均"</td>
+<td>"只看价格不看成交量"</td>
+<td>✅ 说到本质（等权 vs 量权），吸收表述</td>
+</tr>
+<tr>
+<td>价上 VWAP=强势只做多 / 价下=弱只做空</td>
+<td>"只做多不做空 / 只能空不能多"</td>
+<td>❌ <strong>拒绝</strong>：A股 T+1 无日内做空，二元单指标指令不可执行且危险</td>
+</tr>
+<tr>
+<td>"唯一王者指标，没有任何指标可以替代"</td>
+<td>"所有均线KDJ MACD全是辅助"</td>
+<td>❌ <strong>拒绝</strong>：与多信号共振哲学（8-17 五要素框架笔记）直接矛盾；KDJ⑲ 刚按同理由做成加分项</td>
+</tr>
+<tr>
+<td>"洗盘诱多全部裸奔，骗不了人"</td>
+<td>"唯独成交量堆出来的真实成本骗不了人"</td>
+<td>❌ <strong>拒绝</strong>：尾盘大单可操纵 VWAP（权重攻击），过度绝对</td>
+</tr>
+<tr>
+<td>看多日线周线也可以</td>
+<td>"VWAP 周线也可以"</td>
+<td>⚠️ 存疑：周 VWAP 数据可得性差且机构用法罕见，不实现</td>
+</tr>
+</tbody>
+</table>
+<h3 id="1-20">1. 采纳后的铁律⑳（与原文的差异标注）</h3>
+<p><strong>原文单条件二元</strong> → <strong>实现双条件连续</strong>：</p>
+<pre><code>原文：价在VWAP上 = 强（只多）      价在VWAP下 = 弱（只空）
+实现：价格位置 × 时间强度 双确认：
+  收盘≥VWAP 且 全天≥70%时间在VWAP上 → 日内强势 +10 分
+  收盘≥VWAP 且 50-70%时间在上方      → 弱强势 +5 分
+  收盘&lt;VWAP 且 &lt;30%时间在上方        → 日内弱势 -10 分
+  30-70%拉锯区间                     → 不判（0分）——震荡日不硬贴标签
+</code></pre>
+<p>双条件的必要性（实测发现）：茅台 8-18 收盘 1297.99 &gt; VWAP 1293.04（价在上方），但全天只有 48% 时间在上方——<strong>单看收盘位置会误判为强势</strong>，时间占比揭露了拉锯本质。</p>
+<h3 id="2">2. 工程实现（已落地）</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fetch_intraday(code)</code></td>
+<td>腾讯分时接口，返回 [时间,价格,累计量(手),累计额(元)]，实测 267 条/日</td>
+</tr>
+<tr>
+<td><code>calc_vwap(rows)</code></td>
+<td>VWAP=累计额/(累计量×100)；above_ratio=价≥VWAP 的时间占比；&lt;30 条返回 None</td>
+</tr>
+<tr>
+<td><code>score_stock(…, intraday_rows=None)</code></td>
+<td>第三参可选，不传跳过——历史调用零改动（兼容性实测：两路径同分）</td>
+</tr>
+<tr>
+<td>接入点</td>
+<td>scan 模式 Top3 深度分析 + after_close 候选两个调用点已传分时</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实测记录</strong>：<br />
+- VWAP 计算：600519 全天 1293.04 vs 收盘 1297.99（+0.38%），above 48% → 拉锯不判 ✅<br />
+- 强势构造（全程价≥VWAP×1.005）：above 100% → "VWAP上方+0.5%×100%时间" +10 ✅<br />
+- 弱势构造（全程≤VWAP×0.995）：above 0% → "VWAP下方-0.5%×全天0%时间弱势" -10 ✅<br />
+- 数据不足（10条）：None 静默跳过 ✅</p>
+<h3 id="3">3. 现有铁律冲突审查（用户要求"移除冲突/不可靠/太绝对的铁律"）</h3>
+<p><strong>审查结论：原有 19 条无需移除</strong>。逐条核对的依据：</p>
+<table>
+<thead>
+<tr>
+<th>铁律</th>
+<th>是否绝对化/与VWAP冲突</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①低价&lt;6元不进 / ⑥涨停不追 / ⑫无量别碰</td>
+<td>阈值型过滤，有明确量化条件，非绝对化</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>③亏5%割 / ④赚10%跑一半</td>
+<td>半仓制核心纪律，用户本人制定</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>⑬缩量洗盘/放量跑路</td>
+<td>与 VWAP 同为量价类但视角不同（日线量价 vs 日内成本），<strong>互补</strong></td>
+<td>保留</td>
+</tr>
+<tr>
+<td>⑮-⑱主升浪四条</td>
+<td>有具体量化条件（MA10/翻倍位/上影40%）</td>
+<td>保留</td>
+</tr>
+<tr>
+<td>⑲KDJ超卖金叉</td>
+<td>已含钝化防御注释，纯加分制</td>
+<td>保留</td>
+</tr>
+</tbody>
+</table>
+<p><strong>真正需要"移除绝对化"的是原文自身</strong>——本笔记第 0 节拒绝的三条（唯一王者/二元多空/骗不了人）没有进入铁律⑳的实现。铁律体系的绝对化防线是"加分制而非否决制"：任何单一指标都不能独立触发买卖。</p>
+<h3 id="4-vwap">4. VWAP 与现有指标的协同位</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>视角</th>
+<th>周期</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MA20 方向</td>
+<td>趋势</td>
+<td>日线</td>
+<td>趋势过滤（五要件①）</td>
+</tr>
+<tr>
+<td>量比/换手</td>
+<td>量能异常</td>
+<td>日线</td>
+<td>⑫过滤</td>
+</tr>
+<tr>
+<td>KDJ⑲</td>
+<td>摆动/超卖</td>
+<td>日线</td>
+<td>买点加分</td>
+</tr>
+<tr>
+<td>RSI/BOLL</td>
+<td>动量/位置</td>
+<td>日线</td>
+<td>评分</td>
+</tr>
+<tr>
+<td><strong>VWAP⑳</strong></td>
+<td><strong>日内真实成本</strong></td>
+<td><strong>分时</strong></td>
+<td><strong>日内强度证据</strong>——填补引擎"日内维度"空白</td>
+</tr>
+</tbody>
+</table>
+<p>VWAP 的独特贡献：引擎原有指标全部基于日线，⑳是<strong>第一个分时级数据源</strong>——判断"今天主力整体赚钱还是被套"，正好补上《五要素框架》中"量能确认"的日内粒度。</p>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li>VWAP 的周线版本（周累计额/周累计量）在 A 股的实操有效性——机构是否真用周 VWAP 考核</li>
+<li>尾盘操纵 VWAP 的成本测算——多大资金量能把 above_ratio 从 40% 拉到 75%（权重攻击阈值）</li>
+<li>VWAP 乖离率（price/VWAP-1）作为超买超卖替代 RSI 的对比回测</li>
+<li>开盘 30 分钟（铁律⑦观察期）内 VWAP 的稳定性——早盘 VWAP 是否可靠还是必须等全天</li>
+<li>Anchored VWAP（锚定 VWAP，从事件点起算）——从涨停日/突破日锚定的 VWAP 作为主力成本是否更准</li>
+<li>VWAP + 量价背离组合：价创新高但 VWAP 走平 = 出货信号的量化验证</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>VWAP=全天量加权真实成本，作日内强度加分项入铁律⑳；拒绝"唯一王者/二元多空/骗不了人"三个绝对化</td>
+</tr>
+<tr>
+<td>吸收的核心</td>
+<td>量权 vs 等权的本质差异——普通均线"瞎平均"，VWAP 每一分钟都是真金白银加权</td>
+</tr>
+<tr>
+<td>实现的关键改进</td>
+<td>双条件（价格位置×时间占比）替代单条件——收盘价在上方但全天 48% 时间的拉锯日不会被误判强势</td>
+</tr>
+<tr>
+<td>原有铁律审查</td>
+<td>19 条无一需要移除——绝对化风险在新内容自身，防线是加分制而非否决制</td>
+</tr>
+<tr>
+<td>引擎增量</td>
+<td>第一个分时级数据源，填补日内维度空白</td>
+</tr>
+<tr>
+<td>哲学定位</td>
+<td>单指标给出"证据"，多指标共振给出"判决"——与⑲KDJ 同款防御</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>"唯一指标"叙事是流量密码不是交易方法</strong>：VWAP/KDJ/缠论都经历过"唯一王者"包装——每个指标都有有效视角（VWAP 的日内成本、KDJ 的超卖摆动），但单指标决策的期望收益都跑不过多信号组合</li>
+<li><strong>分时级数据源成为散户武器库升级方向</strong>：日线指标同质化后，VWAP/分时量价/大单流向是下一个信息差层——数据接口可得性（如腾讯分时 267 条/日）决定了工程门槛其实很低</li>
+<li><strong>机构用法与散户用法的错位</strong>：机构用 VWAP 做执行基准（算法拆单追求跑赢 VWAP），散户把它当方向指标——同一指标两种语义，教学者常混用</li>
+<li><strong>指标教学的"批判性吸收"方法论会沉淀</strong>：本仓连续两天（KDJ⑲/VWAP⑳）实践了"拆论点→分判定→保留事实拒绝绝对化→工程防御"流程——可复用为固定模式</li>
+<li><strong>时间占比（above_ratio）类"二阶指标"会流行</strong>：不只看位置还看持续时间——把二元判断变连续谱，是对抗假信号（尾盘拉回）的通用手法</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>笔记《2026-08-18-天才交易员只看5件事》</strong></td>
+<td>直接对立面案例：该推文说"20个指标压缩成五要素共振"，VWAP 原文说"唯一王者抛弃所有指标"——⑳的实现站在前者一边（VWAP 成为五要素中"量能确认"的日内粒度补充）</td>
+</tr>
+<tr>
+<td><strong>铁律⑲ KDJ（2026-08-18）</strong></td>
+<td>同款批判性吸收模式：都是用户提供的"老师论"→拆解→加分制落地→钝化防御注释；连续两天形成方法论惯性</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-LittleLearner》</strong></td>
+<td>跨域印证：单一来源（单指标）的知识边界有限，组合（多信号）才跨得过去——与"预训练边界"同构</td>
+</tr>
+<tr>
+<td>skill <code>stock-iron-rules</code></td>
+<td>本次升级载体：14→20 条铁律演进，评分引擎新增分时数据源</td>
+</tr>
+<tr>
+<td>《五要素框架》笔记</td>
+<td>⑳补齐"量能确认"要素的日内粒度——原引擎只有日线量比</td>
+</tr>
+<tr>
+<td>iron-picks.py（11:05/14:05 推送）</td>
+<td>下游受益：Top3 深度分析的 signals 现在会带 VWAP 日内强度标签</td>
+</tr>
+<tr>
+<td>铁律⑰天量长上影</td>
+<td>协同：假突破的"日级形态"证据 + VWAP 的"日内成本"证据——同一防线的两层</td>
+</tr>
+</tbody>
+</table>
+<p>→ 实现脚本：~/.hermes/skills/quant-trading/stock-iron-rules/scripts/iron_rules_engine.py（fetch_intraday/calc_vwap）<br />
+→ 文档：~/.hermes/skills/quant-trading/stock-iron-rules/SKILL.md 铁律⑳节<br />
+→ 相关：2026-08-18-天才交易员只看5件事-从20个指标到五要素共振框架.md</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 已落地（本次完成）</strong><br />
+- 铁律⑳完整实现+四路径实测+SKILL.md 文档+兼容性回归——iron-picks 推送自动受益，无需改动</p>
+<p><strong>② 后续可做（低成本）</strong><br />
+- <strong>Anchored VWAP</strong>：从"最近涨停日/平台突破日"锚定累计 VWAP——比全天 VWAP 更贴近"本轮主力成本"，fetch_kline 起点改锚定日即可（候选铁律㉑）<br />
+- <strong>VWAP 乖离预警</strong>：持仓股 price/VWAP &gt; +3% 时盘中提示"偏离当日主力成本过远"——加入 stock-iron-rules-alert.py 的盘中检查项<br />
+- <strong>回测验证</strong>：拉取历史分时（腾讯接口支持近日数据），统计"above_ratio≥70% 的次日表现" vs "&lt;30% 的次日表现"——给 ±10 分权重提供数据背书</p>
+<p><strong>③ 使用提醒（给用户的速查卡）</strong></p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>VWAP 读法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>盘中想买</td>
+<td>等价格回踩 VWAP 附近获支撑再上——比追高挂单低 1-2%</td>
+</tr>
+<tr>
+<td>持仓想卖</td>
+<td>价格大幅偏离 VWAP 上方（&gt;+3%）+ 冲高滞涨 = 当日主力有兑现迹象</td>
+</tr>
+<tr>
+<td>判断今日强弱</td>
+<td>不只看收盘在不在上方，看全天时间占比（引擎已自动算）</td>
+</tr>
+<tr>
+<td>假突破识别</td>
+<td>放量突破平台但收盘压回 VWAP 下方 = ⑰+⑳ 双重假信号</td>
+</tr>
+<tr>
+<td>不要做</td>
+<td>把 VWAP 上/下当唯一买卖指令（原文最大陷阱）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>批判性吸收流程（本次实操提炼，可复用于任何"老师论"）</strong></p>
+<pre><code>第1步 拆论点：原文拆成独立可判定命题（本文拆了7条）
+第2步 分类判定：事实✅ / 方法论✅弱化 / 绝对化❌ / 存疑⚠️
+  判定依据三问：有数据支撑吗？A股规则下可执行吗？单一信息源吗？
+第3步 冲突检查：与现有体系逐条对照——冲突的是绝对化本身
+第4步 工程防御：加分制不否决 / 双条件防单点误判 / 数据不足静默
+第5步 实测验证：正常路径+极端构造+兼容回归
+第6步 文档沉淀：SKILL.md 写明&quot;拒绝哪几条绝对化+为什么&quot;
+</code></pre>
+<p><strong>VWAP 三分钟上手（配合引擎）</strong></p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>操作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1 看位置</td>
+<td>收盘 vs VWAP：上方=今日买入者平均赚钱</td>
+</tr>
+<tr>
+<td>2 看时间</td>
+<td>above_ratio：≥70%真强 / 30-70%拉锯 / &lt;30%真弱</td>
+</tr>
+<tr>
+<td>3 看乖离</td>
+<td>(价-VWAP)/VWAP：±3% 以上警惕均值回归</td>
+</tr>
+<tr>
+<td>4 组合判</td>
+<td>必须叠加日线趋势（MA20）与量比——单看 VWAP 不做决定</td>
+</tr>
+</tbody>
+</table>
+<p><strong>避坑</strong><br />
+- 别在开盘 30 分钟内用 VWAP（样本太少波动大，也违反铁律⑦观察期）<br />
+- 别信"骗不了人"——尾盘权重攻击可拉 VWAP，双条件只是降低不是消除<br />
+- 别把 VWAP 当止损线——它是成本参考不是支撑位（支撑要结合平台/均线）<br />
+- 别忽略 A 股 T+1——原文"价下做空"在A股不可执行，弱势的正确动作是减仓不是做空</p>
+</body>
+</html>
