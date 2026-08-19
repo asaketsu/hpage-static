@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>后训练全景SFT-DPO-RLHF原理与实操</title>
+
+<meta property="og:title" content="后训练全景SFT-DPO-RLHF原理与实操" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="sft-dpo-rlhf">后训练全景：SFT / DPO / RLHF 原理与实操（研究笔记）</h1>
+<p class="note-date">生成日期 2026-08-20</p>
+<blockquote>
+<p>主题: 什么是后训练（Post-Training）？与微调（Fine-tuning）的差异？SFT、DPO、RLHF 各自怎么做？<br />
+依据: 本机 TRL skill（含 SFT/DPO/GRPO/reward-modeling 工作流与超参表）+ InstructGPT/DPO/GRPO 论文脉络 + 本周 Scaling Law 系列笔记（GLM-5.3 = 后训练旋钮实证）<br />
+类别: LLM 训练 · 对齐 · 偏好优化</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、什么是后训练（内容整理）</h2>
+<h3 id="11">1.1 定义与位置</h3>
+<p><strong>后训练（Post-Training）= 预训练（从海量无标注语料学语言能力）之后、部署之前的一切训练阶段</strong>。目的：把一个"会说话的"基座模型（Base Model）变成"会干活、对人胃口"的可用模型（Instruct/Chat Model）。</p>
+<pre><code>预训练（Next-Token Prediction，万亿 tokens）
+    ↓ 产出: Base Model（会续写，不会听话）
+后训练（指令/偏好/能力注入）
+    ├─ SFT  → 会遵循指令
+    ├─ 偏好对齐（RLHF / DPO / GRPO…）→ 输出符合人类偏好
+    └─ 能力后训练（代码/数学/Agent/长时域 RL）→ GLM-5.3 旋钮
+    ↓ 产出: Instruct/Chat Model
+</code></pre>
+<h3 id="12-vs">1.2 后训练 vs 微调：辨析（易混点）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>微调 Fine-tuning</th>
+<th>后训练 Post-Training</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>词义范围</td>
+<td><strong>单指技术动作</strong>：在已有模型上继续做监督训练（SFT 就是典型微调）</td>
+<td><strong>指阶段集合</strong>：预训练之后的所有训练阶段（SFT + 对齐 + 能力 RL）</td>
+</tr>
+<tr>
+<td>默认含义</td>
+<td>通常 = 监督学习（有标注对，loss = 交叉熵）</td>
+<td>包含监督（SFT）<strong>和强化学习</strong>（RLHF/GRPO/DPO 对比学习）</td>
+</tr>
+<tr>
+<td>数据形态</td>
+<td>prompt→completion <strong>标准答案对</strong></td>
+<td>SFT 用答案对；对齐阶段用<strong>偏好对</strong>（chosen/rejected）或<strong>只给 prompt</strong>（靠 reward 打分）</td>
+</tr>
+<tr>
+<td>优化目标</td>
+<td>拟合示范答案的分布</td>
+<td>对齐阶段优化的是<strong>相对偏好/奖励</strong>，不是拟合某个标准答案</td>
+</tr>
+<tr>
+<td>语境惯例</td>
+<td>学术圈说"微调一个 7B"一般指 SFT/LoRA</td>
+<td>工业界说"后训练"（如唐杰的"拨后训练旋钮"）= SFT+RL 全家桶</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话辨析</strong>：微调是技术动作（SFT ⊂ 微调），后训练是流程阶段（SFT + 偏好对齐 + 能力 RL ⊂ 后训练）。说"GLM-5.3 只动了后训练"意思是基座权重冻结思路下，SFT/RL 阶段的配方变了——不是只做了一次微调。</p>
+<h3 id="13">1.3 为什么预训练模型不能直接用</h3>
+<p>Base Model 的问题：续写而非回答（问"法国首都"可能续写成"是哪个国家的问题"）、不拒绝有害请求、风格不贴合人类预期。InstructGPT 论文核心发现：<strong>1.3B 参数经后训练的对齐效果可超过 175B 纯预训练模型</strong>——后训练的杠杆极大。</p>
+<h2 id="sft">二、SFT — 监督微调（指南分析）</h2>
+<h3 id="21">2.1 原理</h3>
+<p>给模型看大量「指令 → 高质量回答」对，直接用<strong>交叉熵损失</strong>教它模仿示范答案。本质仍是监督学习：模型学到的是"这个 prompt 下，人类期望的输出分布长什么样"。</p>
+<p><strong>Loss</strong>：<code>L = -Σ log P(y_t | y_&lt;t, x)</code>（对示范答案 y 做 next-token 负对数似然，prompt x 的 token 通常不计 loss——completion-only loss）</p>
+<h3 id="22">2.2 数据格式</h3>
+<pre><code class="language-json">{&quot;prompt&quot;: &quot;什么是法国首都？&quot;, &quot;completion&quot;: &quot;法国的首都是巴黎。&quot;}
+</code></pre>
+<p>对话式（chat template 渲染后训练，assistant 段计 loss）。</p>
+<h3 id="23-trl-sfttrainer">2.3 实操（TRL SFTTrainer，照录可用）</h3>
+<pre><code class="language-python">from transformers import AutoModelForCausalLM, AutoTokenizer
+from trl import SFTTrainer, SFTConfig
+from datasets import load_dataset
+
+model = AutoModelForCausalLM.from_pretrained(&quot;Qwen/Qwen2.5-0.5B&quot;)
+tokenizer = AutoTokenizer.from_pretrained(&quot;Qwen/Qwen2.5-0.5B&quot;)
+dataset = load_dataset(&quot;trl-lib/Capybara&quot;, split=&quot;train&quot;)
+
+training_args = SFTConfig(
+    output_dir=&quot;Qwen2.5-0.5B-SFT&quot;,
+    per_device_train_batch_size=4,
+    num_train_epochs=1,
+    learning_rate=2e-5,
+    logging_steps=10,
+    save_strategy=&quot;epoch&quot;,
+)
+trainer = SFTTrainer(model=model, args=training_args, train_dataset=dataset, tokenizer=tokenizer)
+trainer.train(); trainer.save_model()
+</code></pre>
+<p><strong>超参基准</strong>：lr=2e-5（全参）/ 1e-4~2e-4（LoRA），epoch 1-3，7B+LoRA 约 16GB 显存。</p>
+<h3 id="24-sft">2.4 SFT 的边界</h3>
+<ul>
+<li>只能教"示范里有的行为"——上限 = 数据质量（专家锚定：Garbage in Garbage out）</li>
+<li>无法表达"两个回答都比第三个好，但第一个更好一点"这种<strong>序关系</strong>——这正是偏好优化登场的地方</li>
+</ul>
+<h2 id="rlhf">三、RLHF — 基于人类反馈的强化学习（指南分析）</h2>
+<h3 id="31-instructgpt">3.1 原理（InstructGPT 三步曲）</h3>
+<ol>
+<li><strong>SFT</strong>：先做监督微调得到起点模型</li>
+<li><strong>训练奖励模型 RM</strong>：对同一 prompt 采样多个回答，人工排序 → 训练一个打分模型（Bradley-Terry 损失：<code>L = -log σ(r_chosen - r_rejected)</code>），把"人类偏好"压缩成一个标量函数</li>
+<li><strong>PPO 强化学习</strong>：把 LLM 当策略（policy），RM 当环境奖励，用 PPO 优化策略让回答得分最高，同时加 <strong>KL 惩罚</strong>约束不要偏离 SFT 模型太远（防 reward hacking / 胡言乱语）</li>
+</ol>
+<p><strong>Reward 公式</strong>：<code>R = r_RM(y) - β·KL(π_θ || π_SFT)</code></p>
+<h3 id="32-kl">3.2 为什么必须 KL 惩罚</h3>
+<p>RM 是从有限偏好数据学出的近似——策略一旦找到 RM 的盲区（比如输出复读机式的高分模式），就会刷分作弊（reward hacking）。KL 项把策略拴在 SFT 模型附近，牺牲一点分数换分布不跑飞。</p>
+<h3 id="33-trl">3.3 实操（TRL 完整管线）</h3>
+<pre><code class="language-bash"># Step 2: Reward Model（AutoModelForSequenceClassification, num_labels=1）
+#   RewardConfig(lr=1e-5, epochs=1) + RewardTrainer + ultrafeedback_binarized
+
+# Step 3: PPO
+python -m trl.scripts.ppo \
+    --model_name_or_path Qwen2.5-0.5B-SFT \
+    --reward_model_path Qwen2.5-0.5B-Reward \
+    --output_dir Qwen2.5-0.5B-PPO \
+    --learning_rate 3e-6 \
+    --per_device_train_batch_size 64 \
+    --total_episodes 10000
+</code></pre>
+<p><strong>显存</strong>：PPO 7B ≈ 40GB+（policy + ref + RM + value 同时在线）；<strong>不稳定点</strong>：kl_coef（0.05→0.1 提稳）、cliprange（0.2→0.1 提稳）。</p>
+<h3 id="34-rlhf">3.4 RLHF 的优劣</h3>
+<ul>
+<li>✅ 表达力最强：奖励可来自 RM、可验证任务的真实信号（数学对错/代码测试通过率）、AI 审判（RLAIF）</li>
+<li>❌ 工程复杂度最高：四模型同框、超参敏感、训练易崩</li>
+</ul>
+<h2 id="dpo">四、DPO — 直接偏好优化（指南分析）</h2>
+<h3 id="41">4.1 核心洞察</h3>
+<p>DPO 论文标题即答案：<strong>Your Language Model is Secretly a Reward Model（你的语言模型本身就是个奖励模型）</strong>。数学上可以证明：最优策略与 RM 的关系有闭式解，把 reward 反解出来代入 RL 目标，<strong>RLHF 的目标可以直接改写成只用策略模型自身的对数概率表达的损失</strong>——不需要显式 RM、不需要 PPO 采样循环。</p>
+<h3 id="42">4.2 做法（对比学习）</h3>
+<p>数据 = chosen/rejected 偏好对。损失：</p>
+<p><strong><code>L_DPO = -log σ( β·[ log π_θ(y_w|x)/π_ref(y_w|x) − log π_θ(y_l|x)/π_ref(y_l|x) ] )</code></strong></p>
+<p>直观读法：拉大"好答案相对参考模型的对数概率提升量"与"坏答案的提升量"之差。β 控制偏离参考模型的强度（KL 约束的化身）。</p>
+<h3 id="43-trl-dpotrainer">4.3 实操（TRL DPOTrainer）</h3>
+<pre><code class="language-python">from trl import DPOTrainer, DPOConfig
+config = DPOConfig(output_dir=&quot;Qwen2.5-0.5B-DPO&quot;, beta=0.1,
+                   learning_rate=5e-7, per_device_train_batch_size=4)
+trainer = DPOTrainer(model=model, args=config,
+                     train_dataset=preference_dataset,  # prompt/chosen/rejected
+                     processing_class=tokenizer)
+trainer.train()
+</code></pre>
+<p><strong>要点</strong>：β=0.1 默认（大→保守，小→激进）；lr 极小（5e-7~1e-6，DPO 对 lr 敏感易过拟合）；显存比 PPO 省一半（只需 policy + ref，7B 约 24GB）。</p>
+<p><strong>10+ 变体速览</strong>（本机 dpo-variants 参考）：IPO（防过拟合理论更强）/ Robust（标签噪声）/ Hinge（间隔式）/ BCO（二分类视角）/ DiscoPOP（自动损失发现）——默认 sigmoid 够用，噪声大选 robust，过拟合选 ipo。</p>
+<h3 id="44-dpo">4.4 DPO 的优劣</h3>
+<ul>
+<li>✅ 简单稳定、省显存、无需 RM 和在线采样，开源社区事实标准</li>
+<li>❌ 离线方法：只见过数据里的回答，不能探索新策略；数据外泛化弱于在线 RL；偏好对质量决定一切</li>
+</ul>
+<h2 id="_2">五、三者对比与选择（归纳总结）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>SFT</th>
+<th>DPO</th>
+<th>RLHF(PPO)</th>
+<th>GRPO（附）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据</td>
+<td>prompt+标准答案</td>
+<td>chosen/rejected 对</td>
+<td>排序数据训 RM + prompt</td>
+<td>只需 prompt（组内相对比较）</td>
+</tr>
+<tr>
+<td>损失</td>
+<td>交叉熵</td>
+<td>对比损失（闭式 KL 约束）</td>
+<td>PPO + KL 惩罚</td>
+<td>组相对优势 + KL</td>
+</tr>
+<tr>
+<td>需要显式 RM</td>
+<td>否</td>
+<td>否</td>
+<td><strong>是</strong></td>
+<td>否（规则/可验证信号可直用）</td>
+</tr>
+<tr>
+<td>在线采样</td>
+<td>否</td>
+<td>否</td>
+<td>是</td>
+<td>是</td>
+</tr>
+<tr>
+<td>显存 7B</td>
+<td>16GB(LoRA)</td>
+<td>24GB</td>
+<td>40GB+</td>
+<td>24GB</td>
+</tr>
+<tr>
+<td>稳定性</td>
+<td>高</td>
+<td>高</td>
+<td>低</td>
+<td>中</td>
+</tr>
+<tr>
+<td>表达力</td>
+<td>模仿</td>
+<td>偏好排序</td>
+<td>最强</td>
+<td>强（推理/代码主流）</td>
+</tr>
+<tr>
+<td>典型 lr</td>
+<td>2e-5</td>
+<td>5e-7</td>
+<td>3e-6</td>
+<td>1e-5</td>
+</tr>
+</tbody>
+</table>
+<p><strong>选型口诀</strong>：有标准答案→SFT；有偏好对、要省事→DPO；有可验证任务（数学/代码）→GRPO；要极致对齐且有 infra→PPO-RLHF。真实管线是组合：<strong>SFT 打底 → DPO/GRPO 调偏好/能力</strong>。</p>
+<h2 id="_3">六、与本周笔记群的互证（趋势判断）</h2>
+<ol>
+<li><strong>GLM-5.3 = 后训练旋钮的实证</strong>（唐杰笔记）：同基座 753B/40B 冻结，一个月"长时域环境训练+RL"→ Coding 国产最优——正是表中 GRPO/RL 路线在代码域的规模化应用；Yanhua 补全提醒：n=1 证明余量存在，还不是可外推定律</li>
+<li><strong>Alloomi"经验焊权重"= 机构版后训练</strong>（穷富孩子笔记）：任务现场数据→回放→post-training，飞轮与 InstructGPT 三步曲同构，只是 RM 换成"专家锚定的交付标准"</li>
+<li><strong>后训练 Chinchilla 还没出现</strong>：SFT/RL/环境三类算力的最优配比未知——对应 fine-tuning-with-trl skill 的超参表全是经验值，这轮 alpha 在配方</li>
+<li><strong>显存阶梯决定个人/小团队路线</strong>：SFT(LoRA)→DPO→GRPO 单卡可及，PPO-RLHF 是大厂专属——与"穷人版焊权重"（evolver/skill 固化）形成资源对照</li>
+</ol>
+<h2 id="_4">七、本机验证与工具链（拓展应用推荐）</h2>
+<ul>
+<li>本机 TRL skill（<code>fine-tuning-with-trl</code>）已含全部四个工作流可运行代码：SFTTrainer/RewardTrainer+PPO/DPOTrainer/GRPOTrainer + 10 个 DPO 变体超参表 + GRPO 生产级模板（templates/basic_grpo_training.py）</li>
+<li>显存约束下的可行组合（Jetson 不跑训练，仅列管线供其他机器执行）：QLoRA+SFT（指令注入）→ DPO（偏好）→ GRPO（可验证任务）——对应 USER.md 铁律"代码管线就绪即可，执行留待其他机器"</li>
+<li>评测闭环：对齐后必跑金标集（对应 content-judge skill：多维评分 &lt;阈值标记不合格），防止"对齐税"（能力下降换听话）</li>
+</ul>
+<h2 id="_5">查询拓展与出处（引用与关联）</h2>
+<ul>
+<li>论文: InstructGPT (2022, arXiv:2203.02155) · DPO (2023, arXiv:2305.18290) · GRPO (DeepSeekMath, 2024)</li>
+<li>本机 skill: <code>fine-tuning-with-trl</code>（本文代码与超参来源）及其 references：sft-training / dpo-variants / reward-modeling / online-rl / grpo-training</li>
+<li>本机关联笔记: 2026-08-20《唐杰后训练旋钮时代》+《Yanhua 批判性补全》·《AI也分穷人家孩子和富人家孩子》· 《DeepSeek Harness 四种预设》（极简模式=官方跑分框架）· train-mini-llm/train-lm-pipeline 项目（预训练侧对照）</li>
+<li>术语速查: Base Model=预训练产物 · Post-Training=SFT+对齐+能力RL统称 · Fine-tuning=监督续训动作 · Alignment=让输出符合人类偏好 · RLHF 家族=RM-based(PPO) / RM-free(DPO/GRPO)</li>
+</ul>
+</body>
+</html>
