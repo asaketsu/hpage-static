@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>向量检索不够用GraphRAG才是多跳推理的答案</title>
+
+<meta property="og:title" content="向量检索不够用GraphRAG才是多跳推理的答案" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="graphrag">《向量检索不够用？GraphRAG 才是多跳推理的答案》笔记</h1>
+<p class="note-date">生成日期 2026-08-19</p>
+<blockquote>
+<p>来源: 微信公众号「Java转AI手记」《向量检索不够用？GraphRAG才是多跳推理的答案》<br />
+日期: 2026-08-19 · RAG 系列（Embedding/向量库 → GraphRAG）姊妹篇</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心概念（内容整理）</h2>
+<p>向量 RAG 找的是"像不像"，GraphRAG 找的是"有没有关系"。当问题需要<strong>跨文档实体关联</strong>时（A 用 X、B 依赖 A、C 集成 B），向量检索把相关片段拼不起来，必须上知识图谱。</p>
+<p>微软开源 GraphRAG（2024-2025 年 RAG 领域最重要突破之一，2 万+ star）四阶段流程：</p>
+<pre><code>文档 → ① 文本切分 → ② 实体关系抽取 → ③ 社区检测 → ④ 社区摘要
+                                              ↓
+查询 → 局部检索（实体+关系） 或  全局检索（社区摘要）
+</code></pre>
+<p>判断标准一句话：用户常问"A 和 B 什么关系""整体情况如何""X 影响了哪些东西"，向量 RAG 搞不定 → 上 GraphRAG；只问"退货流程是什么"这种单文档可回答 → 向量 RAG 够了，别折腾。</p>
+<h2 id="_2">二、技术要点（指南分析）</h2>
+<h3 id="21-graphrag-vs-rag">2.1 GraphRAG vs 向量 RAG（原文对比表照录）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>向量 RAG</th>
+<th>GraphRAG</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>擅长问题</td>
+<td>"X 是什么""怎么做 X"</td>
+<td>"X 和 Y 什么关系""整体趋势是什么"</td>
+</tr>
+<tr>
+<td>检索粒度</td>
+<td>文本片段（chunk）</td>
+<td>实体+关系+社区摘要</td>
+</tr>
+<tr>
+<td>全局性问题</td>
+<td>差（只能找局部相似片段）</td>
+<td>强（图结构天然支持全局推理）</td>
+</tr>
+<tr>
+<td>多跳推理</td>
+<td>靠迭代检索，容易丢线索</td>
+<td>图遍历一次到位</td>
+</tr>
+<tr>
+<td>建索引成本</td>
+<td>低（切分+Embedding）</td>
+<td>高（LLM 抽取实体关系）</td>
+</tr>
+<tr>
+<td>索引耗时</td>
+<td>500 篇约 5 分钟</td>
+<td>500 篇约 30-60 分钟</td>
+</tr>
+<tr>
+<td>索引成本</td>
+<td>Embedding API 费用</td>
+<td>LLM 调用费用（抽取很费 token）</td>
+</tr>
+<tr>
+<td>查询延迟</td>
+<td>200-500ms</td>
+<td>500-2000ms（图遍历+社区摘要）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 四阶段关键设计</h3>
+<p><strong>阶段一：文本切分（追求实体完整性，非均匀）</strong></p>
+<p>向量 RAG 追求 chunk 均匀（200-500 字符）；GraphRAG 追求<strong>实体完整性</strong>——一个 chunk 包含完整实体描述和关系。微软默认 <strong>1200 token（约 1800 字符）</strong>，比向量 RAG 大很多。</p>
+<pre><code class="language-python">from langchain_text_splitters import RecursiveCharacterTextSplitter
+def graph_rag_chunking(documents, chunk_size=1200, chunk_overlap=100):
+    &quot;&quot;&quot;GraphRAG 专用切分：chunk 比向量 RAG 大，保证实体完整&quot;&quot;&quot;
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap,
+        separators=[&quot;\n\n&quot;, &quot;\n&quot;, &quot;。&quot;, &quot;；&quot;, &quot;，&quot;, &quot; &quot;],
+    )
+    return splitter.split_documents(documents)
+</code></pre>
+<p>⚠️ <strong>坑 1：chunk 太大导致抽取遗漏</strong>——作者用 2400 字符时 LLM 只抽前半部分关系，后半部分实体被忽略（长文本注意力衰减）。<strong>1200 token 是经验值，别改大。</strong></p>
+<p><strong>阶段二：实体和关系抽取（最核心、成本最高）</strong></p>
+<p>用 LLM 从每个 chunk 抽实体（PERSON/ORGANIZATION/PRODUCT/TECHNOLOGY/CONCEPT/LOCATION）+ 关系（是 CEO/依赖/包含）+ 强度 0-1。Pydantic 结构化输出约束格式。</p>
+<pre><code class="language-python">class Entity(BaseModel):
+    name: str = Field(description=&quot;实体名称&quot;)
+    type: str = Field(description=&quot;实体类型&quot;)
+    description: str = Field(description=&quot;实体描述&quot;)
+class Relationship(BaseModel):
+    source: str; target: str
+    description: str; strength: float = 0.5   # 1=强关系
+def extract_entities_relations(chunks, llm):
+    &quot;&quot;&quot;每个 chunk 调用一次 LLM。500 个 chunk = 500 次，GPT-4o 约 $30-50&quot;&quot;&quot;
+    ...
+</code></pre>
+<p>⚠️ <strong>坑 2：实体名称不统一</strong>——同一实体抽成多个名字 → 图里全是孤立节点。必须加<strong>实体合并层</strong>（归一化 + 别名表；Java 类比：三个系统里同一个用户按手机号归一化）。不合并 = 图白建。</p>
+<p><strong>阶段三：社区检测（社区 = 紧密关联的实体组）</strong></p>
+<p>500 文档可能抽出上万实体/几万关系，直接检索效率低。用 <strong>Leiden 算法</strong>（比 Louvain 更精确）把图分成社区——"产品线 A 相关全部人/技术" = 一个社区。</p>
+<pre><code class="language-python">import networkx as nx
+graph = nx.Graph()
+for e in entities: graph.add_node(e.name, type=e.type, description=e.description)
+for r in relationships:  # 已有边取最大权重
+    ...
+communities = nx.community.greedy_modularity_communities(graph, weight='weight')
+</code></pre>
+<p>⚠️ <strong>坑 3：社区粒度不好控制</strong>——太大丢细节，太小没信息量。微软用<strong>分层社区</strong>：先大社区、再在大社区里检测子社区，查询按问题粒度选层级。</p>
+<p><strong>阶段四：社区摘要（支持全局检索）</strong></p>
+<p>每个社区生成 LLM 摘要作为"这一片的浓缩知识"，全局查询时 Map-Reduce 汇总。</p>
+<p>⚠️ <strong>坑 4：社区摘要成本高</strong>——100 个社区 = 100 次 LLM 调用。<strong>小社区用规则摘要，大社区才用 LLM。</strong></p>
+<h3 id="23-vs">2.3 查询阶段：局部 vs 全局</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>机制</th>
+<th>适合问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>局部检索</strong></td>
+<td>向量检索找起始实体 → 图遍历找关联实体关系</td>
+<td>"A 和 B 什么关系""X 影响了什么"</td>
+</tr>
+<tr>
+<td><strong>全局检索</strong></td>
+<td>Map-Reduce 社区摘要，多社区并行汇总</td>
+<td>"整体趋势""所有产品线依赖"</td>
+</tr>
+</tbody>
+</table>
+<p>智能路由：LLM 判断问题类型（local/global）自动选择。</p>
+<h3 id="24-graphrag">2.4 GraphRAG 成本优化（原文表照录）</h3>
+<table>
+<thead>
+<tr>
+<th>优化手段</th>
+<th>节省比例</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>实体抽取用小模型（GPT-4o-mini）</td>
+<td>省 70%</td>
+<td>抽取质量下降约 15%</td>
+</tr>
+<tr>
+<td>小社区用规则摘要不用 LLM</td>
+<td>省 30%</td>
+<td>小社区摘要质量略差</td>
+</tr>
+<tr>
+<td>增量索引（只处理新文档）</td>
+<td>省 80%+</td>
+<td>需要维护索引版本</td>
+</tr>
+<tr>
+<td>实体抽取缓存（相同 chunk 不重复）</td>
+<td>省 50%</td>
+<td>需要 hash 去重</td>
+</tr>
+<tr>
+<td>批量 API 调用（OpenAI Batch API）</td>
+<td>省 50%</td>
+<td>延迟增加 24 小时</td>
+</tr>
+</tbody>
+</table>
+<p><strong>作者建议</strong>：开发阶段用 GPT-4o-mini 验证效果，确认后再用 GPT-4o 重建索引；或本地模型（Qwen-14B）零 API 成本。</p>
+<h3 id="25">2.5 完整踩坑清单（原文表照录）</h3>
+<table>
+<thead>
+<tr>
+<th>坑</th>
+<th>症状</th>
+<th>解决</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>chunk 太大</td>
+<td>LLM 抽取后半部分实体被忽略</td>
+<td>默认 1200 token 别改大</td>
+</tr>
+<tr>
+<td>实体名称不统一</td>
+<td>图里全是孤立节点</td>
+<td>加实体合并层</td>
+</tr>
+<tr>
+<td>社区粒度不好</td>
+<td>太大丢细节，太小没信息量</td>
+<td>分层社区检测</td>
+</tr>
+<tr>
+<td>社区摘要成本高</td>
+<td>100 社区 100 次 LLM 调用</td>
+<td>小社区规则摘要</td>
+</tr>
+<tr>
+<td>全局检索慢</td>
+<td>Map 阶段串行 10 次 LLM</td>
+<td>asyncio 并行</td>
+</tr>
+<tr>
+<td>增量更新难</td>
+<td>新文档可能影响社区结构</td>
+<td><strong>定期全量重建</strong>（微软增量更新还在迭代）</td>
+</tr>
+<tr>
+<td>图太大查询慢</td>
+<td>上万节点图遍历卡</td>
+<td>图数据库（Neo4j）替代 NetworkX</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">三、复现验证（归纳总结）</h2>
+<p>本文为分析型笔记，无本机运行验证。核心结论链与上篇（Embedding 62→89）一致：<strong>检索方案的收益来自"匹配问题类型"</strong>——Embedding 选型解决"语义距离=语义相关"，GraphRAG 解决"跨文档关系推理"，两者是 RAG 能力栈的不同层而非替代品。</p>
+<h2 id="_4">四、可学到的点（归纳总结·续）</h2>
+<ol>
+<li><strong>问题类型决定架构</strong>：单文档问答 → 向量 RAG；跨文档关系 → GraphRAG；多模态 → 下篇预告。先诊断问题再选方案。</li>
+<li><strong>图的价值在"关系"不在"实体"</strong>：实体抽取只是原料，社区检测 + 社区摘要才是让全局推理可行的关键。</li>
+<li><strong>成本大头在抽取</strong>：500 篇 $30-50（GPT-4o）。开发/生产双模型策略（mini 验证→4o 重建）是标准省钱姿势。</li>
+<li><strong>分层社区 = 多粒度查询自由度</strong>：一个层级不够，微软用分层解决粒度矛盾。</li>
+<li><strong>增量更新仍是痛点</strong>：目前最稳妥是全量重建——社区结构会被新文档影响，这是 GraphRAG 工程化的最大现实约束。</li>
+<li><strong>1200 token chunk 是反直觉经验值</strong>：向量 RAG 习惯小 chunk，GraphRAG 要大 chunk 保实体完整，但过大会因注意力衰减漏抽取。</li>
+</ol>
+<h2 id="_5">五、趋势判断（拓展应用）</h2>
+<ol>
+<li><strong>GraphRAG 与混合检索并行演进</strong>：生产 RAG 已是 BM25+向量+Rerank（Embedding 篇），再叠加图结构 = "三引擎检索"成为知识密集型企业的标准。</li>
+<li><strong>本地模型做抽取是降本终点</strong>：Qwen-14B 等开源模型零 API 成本做实体抽取，与 edge-llm-quantization（Jetson 端侧）趋势一致。</li>
+<li><strong>图数据库回春</strong>：Neo4j/知识图谱场景因 GraphRAG 重新热门，NetworkX 只适合原型。</li>
+<li><strong>多模态 RAG 是下一个前沿</strong>：colpali 视觉检索 + 表格抽取（下篇预告），检索从纯文本走向图文混排。</li>
+</ol>
+<h2 id="_6">查询拓展与出处（引用与关联）</h2>
+<table>
+<thead>
+<tr>
+<th>关联项目/主题</th>
+<th>关联</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rag-index-rebuild</code> / <code>enterprise-rag-knowledge-engine</code></td>
+<td>RAG 基建，GraphRAG 是"关系检索"层增强</td>
+</tr>
+<tr>
+<td><code>hybrid-search</code> skill</td>
+<td>BM25+向量三路融合，与 GraphRAG 局部检索互补</td>
+</tr>
+<tr>
+<td>同日笔记《Embedding 62→89》</td>
+<td>RAG 系列前作：Embedding 选型决定语义质量</td>
+</tr>
+<tr>
+<td>同日笔记《LLM 技术选型决策指南》</td>
+<td>RAG 五法之一，GraphRAG 是 RAG 内部的高级形态</td>
+</tr>
+<tr>
+<td><code>deep-analysis</code> / <code>knowledge-fusion</code></td>
+<td>交叉验证/多源融合的结构化检索场景可借鉴社区摘要</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>原文：微信公众号「Java转AI手记」《向量检索不够用？GraphRAG才是多跳推理的答案》</li>
+<li>相关项目：微软开源 GraphRAG（2 万+ star）</li>
+<li>下篇预告：多模态 RAG（多模态 Embedding、colpali 视觉检索、表格抽取）</li>
+</ul>
+</body>
+</html>
