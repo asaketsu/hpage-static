@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生产环境AB测试模型-TogetherAI端点层分流etag放量与蓝绿扶正全周期</title>
+
+<meta property="og:title" content="生产环境AB测试模型-TogetherAI端点层分流etag放量与蓝绿扶正全周期" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="a-b-togetherai-etag-">生产环境A-B测试模型 — TogetherAI端点层分流-etag放量保护-蓝绿扶正的完整生命周期</h1>
+<p class="tag-line"><span class="tag">#AB测试</span> <span class="tag">#A/BTesting</span> <span class="tag">#TogetherAI</span> <span class="tag">#端点层分流</span> <span class="tag">#蓝绿发布</span> <span class="tag">#影子测试</span> <span class="tag">#featureflag</span> <span class="tag">#模型上线</span> <span class="tag">#流量分配</span> <span class="tag">#etag并发保护</span> <span class="tag">#放量</span> <span class="tag">#ramp</span> <span class="tag">#产品指标</span> <span class="tag">#任务完成率</span> <span class="tag">#LLM服务</span> <span class="tag">#推理平台</span> <span class="tag">#AI工程</span> <span class="tag">#yibie</span></p>
+<p class="note-date">生成日期 2026-08-19</p>
+
+<blockquote>
+<p><strong>出处</strong>：X/Twitter @yibie 转译 Together AI 官方博客《A/B test models in production》（together.ai/blog/a-b-test-…，2026-08-19），作者 Staff AI/ML 工程师 Zain Hasan 等<br />
+<strong>一句话</strong>：把 A/B 分流从应用层搬到<strong>端点层</strong>——一个对照组+最多 20 个变体按固定百分比切流量，放量/扶正/删除全是平台 API，<strong>删除实验的那一刻流量自动 100% 回基线，客户端一行代码不用改</strong><br />
+实测锚点：95/5→80/20→50/50→删除全生命周期，配置 vs 实测占比偏差 &lt;1 个点（1330+ 请求/阶段，3 RPS 稳定流）</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="1">1. 为什么影子流量和应用层分流都不够</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>能回答什么</th>
+<th>回答不了什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>影子测试</strong>（shadow）</td>
+<td>延迟/错误/吞吐等<strong>运营指标</strong>没问题</td>
+<td>质量问题——影子响应被丢弃，没有用户基于它做动作；<strong>留存/点赞率/任务完成率必须真实曝光</strong></td>
+</tr>
+<tr>
+<td><strong>应用层自建</strong>（feature flag + hash-mod-100 + 双端点 + 记录表格）</td>
+<td>能用</td>
+<td>①实验与基础设施纠缠：路由逻辑跟着应用发版 ②分组比例随客户端缓存漂移 ③实验"结束"后分支代码不敢删（没人确定删掉安不安全）</td>
+</tr>
+<tr>
+<td><strong>端点层 A/B</strong>（本文）</td>
+<td>运营+质量双侧</td>
+<td>——客户端无感知（端点名/API/密钥全不变），实验是独立于应用的生命周期对象</td>
+</tr>
+</tbody>
+</table>
+<p>核心追问：新模型对用户真的更好吗？<strong>不是基准分更高，而是产品实际在量的东西</strong>。</p>
+<h3 id="2">2. 机制：实验细分的是对照组的份额</h3>
+<pre><code>请求 → 基础流量分配（按权重/容量解析）
+         ↓ 胜者=某实验的对照组？
+       A/B 实验重采样（按各臂 percent：95% control / 5% variant）
+         ↓
+       滚动发布（蓝绿，源部署↔发布目标之间重采样）——组合顺序固定：分配→实验→发布
+</code></pre>
+<p><strong>五条配置铁律</strong>：<br />
+1. 恰好一个 control + 1-20 个 variant，每个指向一个部署，percent 总和=100<br />
+2. <strong>变体部署必须权重为零</strong>（不出现在基础流量分配里）——变体若还能分到按容量加权流量，测量会悄悄出错<br />
+3. 对照组分配权重为零 = 实验收不到任何流量（实验细分的是对照组份额）<br />
+4. <strong>A/B 百分比是固定流量占比，与副本数无关</strong>——有意区别于按就绪副本走的流量分配权重：实验是测量仪器，测量期间分配必须恒定，不能跟着自动扩缩容漂移<br />
+5. 分组粘性靠请求采样键：<code>prompt_cache_key</code> 或 <code>user</code> 字段——同键请求路由一致（整个会话留在同一臂）；无键按请求随机（他们的验证实验用的就是无键流）</p>
+<h3 id="3">3. 生命周期：创建→放量→测量→收尾</h3>
+<p><strong>创建（95/5 起步）</strong>：</p>
+<pre><code class="language-bash">tg beta endpoints ab my-org/candidate-model \
+  --control $CONTROL_DEPLOYMENT --percent 5
+</code></pre>
+<p><strong>放量=重新发送完整成员列表</strong>（没有单独 ramp API——一次 update 替换整个 members，实验永远恰好等于成员列表所说的样子，每次放量都是可显式审查的变更）：</p>
+<pre><code class="language-python">client.beta.endpoints.ab_experiments.update(
+    id=experiment_id, endpoint_id=endpoint_id,
+    update_mask=&quot;members&quot;,
+    etag=experiment.etag,   # 队友的并发放量会被拒绝而非覆盖
+    members=[
+        {&quot;deployment_id&quot;: control_dep, &quot;percent&quot;: 80, &quot;role&quot;: &quot;AB_EXPERIMENT_MEMBER_ROLE_CONTROL&quot;},
+        {&quot;deployment_id&quot;: variant_dep, &quot;percent&quot;: 20, &quot;role&quot;: &quot;AB_EXPERIMENT_MEMBER_ROLE_VARIANT&quot;},
+    ],
+)
+</code></pre>
+<p><strong>曝光阶梯</strong>（多少流量给 B 组的经典权衡）：<br />
+| 配比 | 信号/风险 | 适用 |<br />
+|---|---|---|<br />
+| 95/5 | 信号慢（需要量/时间），风险最小 | 新模型第一次真实曝光 |<br />
+| 80/20 | 信号中等，风险可控 | 扛过 5% 阶段后要更有分量的读数 |<br />
+| 50/50 | 信号最快，一半用户 | 两个已知都不错选项之间的后期确认 |</p>
+<p>最多 20 变体可跑<strong>多路测试</strong>（如 1 全精度 + 3 个量化变体 V1/V2/V3，总和 100 且恰一对照即可）。</p>
+<p><strong>测量</strong>：平台指标按部署拆分是"过滤器不是项目"（各组延迟/错误/吞吐直接可查）；产品指标是你的活——<strong>连接键=部署 ID</strong>：把响应元数据里的"由哪个部署服务"与评分/重试/任务完成一起记录；平台刻意不猜质量指标，只让归因简单。</p>
+<p><strong>收尾两步</strong>（变体赢）：①滚动发布蓝绿扶正（健康闸门/传播等待/回滚安全照常）②删除实验——所有实验路由消失，100% 走基础分配（已指向赢家）。<strong>变体输</strong>：直接删除，流量全回对照；变体部署缩容到零或删掉：</p>
+<pre><code class="language-bash">tg beta endpoints rm abx_abc123     # 删实验：100% 自动回基线分配
+tg beta endpoints rm dep_variant123 # 或删变体部署：自动解开实验+分配
+</code></pre>
+<h3 id="4-faq">4. 边界情况问答（FAQ 精华）</h3>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>答案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>变体实验中段劣化，爆炸半径？</td>
+<td>只有它那一组——部署独立监控/独立扩缩容；修复=重发去掉病变体的成员列表，其用户在传播时间内回对照组（这也是 5% 起步的理由）</td>
+</tr>
+<tr>
+<td>实测占比真的等于配置？</td>
+<td>有意义的量级上是的；小时间窗有采样噪声（1000 请求的 5% 是小样本）；偏差大且持续偏→查配置规则（多半违反了铁律 2/4）</td>
+</tr>
+<tr>
+<td>A/B 与滚动发布能同端点共存？</td>
+<td>能，组合顺序定义死：基础分配→A/B 实验→滚动发布；每端点仍限一个活跃滚动发布</td>
+</tr>
+<tr>
+<td>分组对用户粘性？</td>
+<td>采样键（prompt_cache_key/user）→ 同键同臂；研究在乎用户一致性（尤其多轮质量对比）就发稳定 user 字段</td>
+</tr>
+<tr>
+<td>分流下自动扩缩容？</td>
+<td>每成员按自己策略/份额扩缩：变体 5% 配 1-2 副本、对照 95% 配 2-8 副本是正常形态——分开盯各组副本数</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5-3-rps">5. 全生命周期实测（3 RPS 稳定流，逐请求归因）</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>配置</th>
+<th>实测</th>
+<th>请求数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>95/5</td>
+<td>95.3/4.7</td>
+<td>1,330</td>
+</tr>
+<tr>
+<td>2</td>
+<td>80/20</td>
+<td>79.2/20.8</td>
+<td>1,348</td>
+</tr>
+<tr>
+<td>3</td>
+<td>50/50</td>
+<td>50.2/49.8</td>
+<td>1,348</td>
+</tr>
+<tr>
+<td>删除后</td>
+<td>100/0</td>
+<td>100.0/0</td>
+<td>360</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三个实操细节</strong>：①每次放量真是一次调用；etag 1→2→3 递增，过期 etag 被拒绝不静默覆盖；②<strong>传播快但非瞬时</strong>——每次更新等约 75 秒再测量，路由层吸收变更的时间尺度与流量分配变更相同（30-60 秒）；③删除后 360 请求全落对照，<strong>没有任何遗留分组逻辑需要收尾</strong>。</p>
+<h3 id="6">6. 上手清单（官方四步）</h3>
+<p>前置：一个对照组部署在服务流量的端点 + 候选部署（创建好、READY、<strong>不在流量分配里</strong>）。<br />
+1. 95/5 创建 → 2. 跑到量够那天（5% 的全部意义=收集数据期间保持低曝光）→ 3. 一次 update 放量；结论定了用滚动发布扶正 → 4. 删除——没有其他要清理的。<br />
+文档：Dedicated Model Inference → A/B tests；控制台入口：端点 Traffic tests 标签页（A/B 与影子测试共用）。</p>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li>Together AI 端点/部署/流量分配的完整对象模型（endpoint-deployment-split 三层）——本文的前置架构</li>
+<li>etag 乐观并发控制在基础设施 API 的其他应用（K8s resourceVersion 同款模式）</li>
+<li>蓝绿发布与金丝雀在 LLM 端点的差异——为什么扶正选蓝绿而非渐进式</li>
+<li>prompt_cache_key 作为采样键的副作用——分组粘性与 KV 缓存命中率的耦合</li>
+<li>统计功效视角：5% 曝光要多少请求才能检出质量差异（样本量计算）</li>
+<li>产品侧质量信号的采集设计：评分/重试/任务完成的埋点模式</li>
+<li>多路测试（20 变体）的 Bonferroni 校正与多重比较问题</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>A/B 分流上移到端点层：实验是平台的独立生命周期对象（创建/放量/删除全是 API），客户端零感知、收尾零残留</td>
+</tr>
+<tr>
+<td>核心设计</td>
+<td>实验细分对照组份额：变体部署权重必须为零，流量完全归实验——污染源被配置规则消灭而非事后过滤</td>
+</tr>
+<tr>
+<td>三条硬规则</td>
+<td>变体权重零 / percent 恒定与副本数无关（测量仪器不许漂移）/ 总和 100 恰一对照</td>
+</tr>
+<tr>
+<td>并发安全</td>
+<td>etag 乐观锁：队友并发放量被拒绝不覆盖——放量=重发完整成员列表，永远可显式审查</td>
+</tr>
+<tr>
+<td>质量测量哲学</td>
+<td>影子只验运营指标；质量（留存/完成率）必须真实曝光——平台只做归因（部署 ID 连接键），评判交给分析系统</td>
+</tr>
+<tr>
+<td>生命周期美学</td>
+<td>建议阶梯 95/5→80/20→50/50；扶正走蓝绿；删除即 100% 回基线——"实验结束"不需要勇气删代码</td>
+</tr>
+<tr>
+<td>实测可信度</td>
+<td>各阶段实测与配置偏差 &lt;1 点；传播 30-60 秒（等 75 秒再测）；删除后零残留</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>A/B 测试正从应用层下沉为推理平台的原语</strong>：feature flag+hash-mod 自建会重演"自己搭负载均衡→云 LB"的历史——端点层分流、影子测试、蓝绿扶正会成为 LLM 平台标配三件套（Traffic tests 标签页已是先声）</li>
+<li><strong>"基准分 vs 产品指标"的裁判权正在转移</strong>：模型上线决策从基准分数转向留存/完成率——平台侧（Together）刻意只做归因不做评判，把质量定义留给产品团队——<strong>评测的最后一公里长在业务系统里</strong></li>
+<li><strong>etag 式可审查变更是基础设施 API 的礼貌</strong>：放量=重发全量成员列表的设计让每次变更可 diff、可拒绝、可审计——"实验永远等于成员列表所说的样子"是对配置漂移的制度性防御</li>
+<li><strong>采样键（prompt_cache_key/user）成为实验分组的通用基础设施</strong>：粘性分组与 KV 缓存命中率共享同一个键——路由层与缓存层的耦合设计会越来越常见</li>
+<li><strong>删除实验的"零收尾"是工程审美的新标准</strong>：应用层自建 A/B 最大的隐性成本是"结束后的分支代码不敢删"——生命周期的干净退出与功能的干净上线同等重要</li>
+<li><strong>多路测试（1 对照+20 变体）预示模型优选的工业化</strong>：量化版本矩阵（全精度+V1/V2/V3）一次实验跑完——模型选择的搜索成本被平台吸收</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>笔记《2026-08-19-物理AI的裁判层提案》</strong></td>
+<td>直接互补：裁判层管"离线评测集"（100 题回归纪律），本文管"在线评测"（真实用户曝光）——离线评测是及格线，A/B 才是最终裁判；"平台不猜质量指标只做归因"=裁判层"评判交给你的分析系统"同款边界自律</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-飞机设计知识库八件套》</strong></td>
+<td>交付物④评测集的线上版：知识库评测集（R4）防回归，A/B 防真实表现漂移——"分数不降才许上线"的模型上线版="A/B 赢了才扶正"；蓝绿扶正的健康闸门=R6 安全检查</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-企业Agent技术选型》</strong></td>
+<td>治理层实例：端点层 A/B 是"确定性 DAG（分流规则）+ 业务判断（质量指标）"的混合架构——平台管确定性，产品团队管判断</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-DFlash2》</strong></td>
+<td>推理栈的两面：DFlash2 压低单位 token 成本，A/B 决定哪个模型值得被服务——优化层与选型层组合成完整的"token 经济学"</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-Unsloth与LLaMA-Factory》</strong></td>
+<td>训练→上线的最后一环：微调出的候选模型（Unsloth GGUF/LF 合并导出）通过端点层 A/B 与基线对决——"基准分不等于用户价值"正是微调工作流的收尾纪律</td>
+</tr>
+<tr>
+<td>skill <code>dogfood</code> / <code>content-judge</code></td>
+<td>质量判定的三层分工：dogfood=探索性 QA（上线前）、content-judge=LLM 评分（辅助）、A/B=真实用户（终审）——评测金字塔</td>
+</tr>
+<tr>
+<td>skill <code>ab-test</code>（skill-ab-testing）</td>
+<td>本仓已有 A/B 技能：候选版本先写候选、验证后替换——与本文 etag 放量纪律同构（可验证的变更才合入）</td>
+</tr>
+<tr>
+<td>本仓模型切换工作流（model-switch / 模型策略记忆）</td>
+<td>本仓自身的"模型切换"目前是额度触发的 fallback 链——端点层 A/B 的思想（按产品指标判高下）可用于评估 fallback 链各档的实际表现</td>
+</tr>
+<tr>
+<td>product-price-monitor / watch 模式</td>
+<td>"测量期间分配恒定"的测量仪器原则与监控采样的稳定性要求同源——观测系统最忌讳被观测对象随观测漂移</td>
+</tr>
+</tbody>
+</table>
+<p>→ 原帖：https://x.com/yibie/status/2089895718895112496<br />
+→ 原文：together.ai/blog/a-b-test-models-in-production（Zain Hasan 等）<br />
+→ 相关：2026-08-19-物理AI的裁判层提案 / 2026-08-19-Unsloth与LLaMA-Factory双框架实战</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 概念迁移（无需 Together 账户即可用）</strong><br />
+- <strong>"实验是独立生命周期对象"</strong>：任何自建网关（nginx/自研路由）都可以把 A/B 从 if-else 升级为带 etag 的配置对象——删除即回收，杜绝僵尸分支<br />
+- <strong>"变体权重必须为零"</strong>：自建分流最常见的静默污染源就是候选还能分到正常流量——本文的配置铁律可直接抄进路由配置校验<br />
+- <strong>测量仪器原则</strong>：分流比例与容量解耦（固定 percent 不跟扩缩容漂移）——自建系统可在配置层强制</p>
+<p><strong>② 若使用 Together AI 平台</strong><br />
+- 四步清单直接可用：95/5 创建→攒量→一次 update 放量→蓝绿扶正+删除<br />
+- 多路测试跑量化矩阵：1 全精度+3 量化变体一次实验出结论<br />
+- 研究多轮质量时务必发稳定 user 字段（粘性分组）</p>
+<p><strong>③ 与本仓体系的组合</strong><br />
+- Hermes 的模型 fallback 链评估：给各档模型记录"部署 ID+质量信号"（用户反馈/任务完成），按连接键归因——低成本版的 A/B 思想<br />
+- skill-ab-testing 技能可补充本文的"放量阶梯+etag 并发纪律+零收尾"三原则</p>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>端点层 A/B 速查卡</strong></p>
+<pre><code>创建:  tg beta endpoints ab &lt;model&gt; --control $CTRL --percent 5
+放量:  update(members=[80/20], etag=当前)   ← 一次调用=一次可审查变更
+扶正:  滚动发布(蓝绿: 对照→变体) + 健康闸门
+删除:  tg beta endpoints rm &lt;实验ID&gt;        ← 100% 自动回基线，零收尾
+
+铁律:  变体权重必须为零 | percent 恒定与副本无关 | 总和100恰一对照
+粘性:  prompt_cache_key / user 字段（多轮质量对比必发 user）
+传播:  30-60 秒——放量后等 75 秒再测量
+阶梯:  95/5(首曝) → 80/20(有分量读数) → 50/50(后期确认)
+</code></pre>
+<p><strong>三条可背的结论</strong><br />
+- 影子流量只验运营指标，质量必须真实曝光——被丢弃的响应教不会你用户怎么想<br />
+- 实验是测量仪器：测量期间分配不许漂移（percent 与副本数解耦）<br />
+- 生命周期的干净退出与干净上线同等重要——删除实验应当是"一次调用+零残留"</p>
+<p><strong>何时重读本篇</strong>：候选模型上线决策时（曝光阶梯）；自建分流系统设计时（五条铁律）；放量出并发事故复盘时（etag 段）；实验结束不敢删代码时（收尾两步）。</p>
+</body>
+</html>
