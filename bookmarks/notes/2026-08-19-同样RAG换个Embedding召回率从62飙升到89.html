@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>《同样 RAG，换个 Embedding 召回率从 62% 飙升到 89%》笔记</title>
+
+<meta property="og:title" content="《同样 RAG，换个 Embedding 召回率从 62% 飙升到 89%》笔记" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="rag-embedding-62-89">《同样 RAG，换个 Embedding 召回率从 62% 飙升到 89%》笔记</h1>
+<blockquote>
+<p>来源: 微信公众号「小黄学编程」《同样 RAG，换个 Embedding 召回率从 62% 飙升到 89%》（RAG 系列第三篇）<br />
+日期: 2026-08-19</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心概念（内容整理）</h2>
+<p>RAG 的"心脏"是 Embedding + 向量数据库。<strong>Embedding 决定向量空间的形状，向量数据库决定能否在这个空间里高效搜索</strong>——两个选对了，检索天花板才够高。</p>
+<p>作者的真实案例：金融 KB 项目，同样的切分、提示词、生成模型，只换了 Embedding 模型，检索准确率从 <strong>62% 涨到 89%</strong>。Embedding 不是"调个 API 都差不多"。</p>
+<p>核心公式：</p>
+<pre><code>用户问题 → Embedding → 向量 → 向量库 Top-K 检索 → 相关文档 chunk → 拼进 prompt → LLM 回答
+</code></pre>
+<p>Embedding 质量直接决定"距离近"是否等价于"语义相关"。</p>
+<h2 id="_2">二、技术要点（指南分析）</h2>
+<h3 id="21-embedding">2.1 Embedding 是什么</h3>
+<p>把文本映射成一组数字（向量），语义相近在向量空间里距离近，语义远则距离远。RAG 检索 = 把用户问题转成向量，找距离最近的文档向量。</p>
+<pre><code>&quot;苹果手机&quot; → [0.12, -0.34, 0.56, ...]  ← 跟下面距离近
+&quot;iPhone&quot;   → [0.15, -0.31, 0.52, ...]  ← 跟上面距离近
+&quot;水果店&quot;   → [-0.23,  0.45, -0.12, ...] ← 跟上面距离远
+</code></pre>
+<h3 id="22-embedding">2.2 主流 Embedding 模型对比（原文三张表照录）</h3>
+<p><strong>英文为主的开源模型</strong></p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>维度</th>
+<th>最大长度</th>
+<th>特点</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bge-large-en-v1.5</td>
+<td>1024</td>
+<td>512 tokens</td>
+<td>英文最强开源</td>
+<td>英文知识库</td>
+</tr>
+<tr>
+<td>e5-large-v2</td>
+<td>1024</td>
+<td>512 tokens</td>
+<td>微软开源，多语言</td>
+<td>通用英文</td>
+</tr>
+<tr>
+<td>nomic-embed-text</td>
+<td>768</td>
+<td>8192 tokens</td>
+<td>超长上下文</td>
+<td>长文档检索</td>
+</tr>
+</tbody>
+</table>
+<p><strong>中文为主的开源模型</strong></p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>维度</th>
+<th>最大长度</th>
+<th>特点</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>bge-m3</strong></td>
+<td>1024</td>
+<td>8192 tokens</td>
+<td>多语言、多功能、长上下文</td>
+<td><strong>中文首选推荐</strong></td>
+</tr>
+<tr>
+<td>bge-large-zh-v1.5</td>
+<td>1024</td>
+<td>512 tokens</td>
+<td>中文 MTEB 榜首</td>
+<td>中文短文本</td>
+</tr>
+<tr>
+<td>gte-Qwen2</td>
+<td>1536</td>
+<td>32768 tokens</td>
+<td>阿里开源，超长上下文</td>
+<td>长文档中文</td>
+</tr>
+</tbody>
+</table>
+<p><strong>商用 API 模型</strong></p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>维度</th>
+<th>特点</th>
+<th>价格</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>text-embedding-3-small</td>
+<td>1536</td>
+<td>性价比高</td>
+<td>便宜</td>
+</tr>
+<tr>
+<td>text-embedding-3-large</td>
+<td>3072</td>
+<td>精度最高</td>
+<td>贵</td>
+</tr>
+<tr>
+<td>Cohere embed-v3</td>
+<td>1024</td>
+<td>多语言好</td>
+<td>中等</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 作者推荐（原文核心结论）</h3>
+<ul>
+<li><strong>中文项目无脑选 bge-m3</strong>：多语言（中英混排不用分库）/ 长上下文 8192 tokens（比 bge-large-zh 长 16 倍）/ 多功能（稠密+稀疏+多向量）/ 免费本地部署</li>
+<li><strong>英文项目或极致方便</strong>：text-embedding-3-small（调 API）</li>
+</ul>
+<p>原文落盘代码：</p>
+<pre><code class="language-python"># bge-m3（推荐）
+from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+embedding = HuggingFaceBgeEmbeddings(
+    model_name=&quot;BAAI/bge-m3&quot;,
+    model_kwargs={&quot;device&quot;: &quot;cuda&quot;},    # 有 GPU 用 GPU，没有用 cpu
+    encode_kwargs={&quot;normalize_embeddings&quot;: True},  # 归一化，余弦相似度
+)
+
+# OpenAI（英文）
+from langchain_openai import OpenAIEmbeddings
+embedding = OpenAIEmbeddings(model=&quot;text-embedding-3-small&quot;)
+</code></pre>
+<h3 id="24-6">2.4 向量数据库选型（原文 6 方案对比表照录）</h3>
+<table>
+<thead>
+<tr>
+<th>数据库</th>
+<th>类型</th>
+<th>特点</th>
+<th>适用场景</th>
+<th>上手难度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Chroma</strong></td>
+<td>嵌入式</td>
+<td>轻量、开箱即用、纯 Python</td>
+<td>开发测试、小规模</td>
+<td>最低</td>
+</tr>
+<tr>
+<td><strong>FAISS</strong></td>
+<td>内存库</td>
+<td>Meta 开源、速度极快、纯内存</td>
+<td>大规模数据、不需持久化</td>
+<td>低</td>
+</tr>
+<tr>
+<td><strong>Milvus</strong></td>
+<td>分布式</td>
+<td>企业级、高性能、云原生</td>
+<td>生产环境、大规模</td>
+<td>中高</td>
+</tr>
+<tr>
+<td>Qdrant</td>
+<td>独立服务</td>
+<td>Rust 实现、过滤能力强、轻量</td>
+<td>需要元数据过滤</td>
+<td>中</td>
+</tr>
+<tr>
+<td>Weaviate</td>
+<td>独立服务</td>
+<td>内置多模态、GraphQL API</td>
+<td>多模态检索</td>
+<td>中</td>
+</tr>
+<tr>
+<td>pgvector</td>
+<td>PG 扩展</td>
+<td>跟 PG 一体、运维简单</td>
+<td>已有 PG 基础设施</td>
+<td>低</td>
+</tr>
+</tbody>
+</table>
+<p><strong>作者选型建议</strong>（Java 类比原文照录）：开发阶段用 HashMap/Caffeine（Chroma/FAISS），生产环境上 Redis 集群（Milvus/Qdrant），已有 Redis 不折腾（pgvector）。别一上来就上 Milvus。</p>
+<p>原文落盘代码：</p>
+<pre><code class="language-python"># Chroma：最简单
+from langchain_community.vectorstores import Chroma
+vectorstore = Chroma.from_documents(
+    documents=chunks, embedding=embedding, persist_directory=&quot;./chroma_db&quot;,
+)
+
+# FAISS：最快
+from langchain_community.vectorstores import FAISS
+vectorstore = FAISS.from_documents(chunks, embedding)
+vectorstore.save_local(&quot;./faiss_db&quot;)
+
+# Milvus
+from langchain_community.vectorstores import Milvus
+vectorstore = Milvus.from_documents(
+    documents=chunks, embedding=embedding,
+    connection_args={&quot;host&quot;: &quot;localhost&quot;, &quot;port&quot;: &quot;19530&quot;},
+    collection_name=&quot;knowledge_base&quot;,
+)
+
+# pgvector
+from langchain_community.vectorstores import PGVector
+vectorstore = PGVector.from_documents(
+    documents=chunks, embedding=embedding,
+    connection_string=&quot;postgresql://user:***@localhost:5432/vectordb&quot;,
+)
+</code></pre>
+<h3 id="25">2.5 向量检索三种方式</h3>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>特点</th>
+<th>代码</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>余弦相似度</strong></td>
+<td>最常用，衡量方向一致性，值域 [-1, 1]</td>
+<td><code>vectorstore.similarity_search(query="...", k=5)</code></td>
+</tr>
+<tr>
+<td><strong>MMR</strong>（最大边际相关性）</td>
+<td>兼顾相关+多样性，避免 5 个几乎一样的 chunk；λ=0 最大多样，λ=1 最大相关</td>
+<td><code>vectorstore.max_marginal_relevance_search(query, k=5, fetch_k=20, lambda_mult=0.5)</code></td>
+</tr>
+<tr>
+<td><strong>相似度+分数阈值</strong></td>
+<td>只返回 &gt;threshold 的结果</td>
+<td><code>similarity_search_with_relevance_scores(query, k=10, score_threshold=0.7)</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="26">2.6 向量库增量更新</h3>
+<p>新增：<code>vectorstore.add_documents(new_chunks)</code><br />
+删除（Chroma）：<code>vectorstore._collection.delete(where={"source": "old_policy.pdf"})</code><br />
+删除（Milvus）：<code>vectorstore.delete(expr='source == "old_policy.pdf"')</code></p>
+<p><strong>生产环境策略</strong>：不要每次重建整个向量库。给每个文档分配唯一 ID（文件名哈希）→ 更新时删旧版本 chunk → 加新版本 chunk → 定时任务扫描目录检测变更 → 大规模用批量写入。</p>
+<h3 id="27-4">2.7 作者踩过的 4 个坑</h3>
+<ol>
+<li><strong>Embedding 维度不一致</strong>：换模型 → 维度变 → 旧向量库不能用。<strong>项目初期定死模型</strong>；必须换就得重建。</li>
+<li><strong>没做归一化</strong>：余弦相似度要求归一化向量，有些模型输出没归一化。<strong><code>encode_kwargs={"normalize_embeddings": True}</code></strong></li>
+<li><strong>中文用错模型</strong>：用英文为主的 embedding（如 ada-002）处理中文，效果惨不忍睹。<strong>中文必用 bge-m3/bge-large-zh</strong></li>
+<li><strong>FAISS 持久化路径</strong>：保存加载路径要一致，会生成多个文件（.faiss + .pkl），移动别漏</li>
+</ol>
+<h2 id="_3">三、复现验证（归纳总结）</h2>
+<p>作者金融 KB 案例：<strong>62% → 89%</strong>（同切分/提示词/生成模型，仅换 Embedding），提升 27pp。</p>
+<h2 id="_4">四、可学到的点（归纳总结·续）</h2>
+<ol>
+<li><strong>Embedding 是 RAG 的第一性</strong>：模型/提示词/切分再精妙，向量空间"形状"不对一切白搭。62%→89% 是"换 Embedding 的杠杆"的直接证据。</li>
+<li><strong>中文项目 bge-m3 是默认答案</strong>：多语言+长上下文 8192+多功能+免费本地，四合一；比 bge-large-zh 在长文本上长 16 倍。</li>
+<li><strong>开发 vs 生产选型分层</strong>：Chroma/FAISS（嵌入式/内存）→ Milvus/Qdrant（独立服务）→ pgvector（已有 PG 则最省事）。别一步到位。</li>
+<li><strong>归一化是余弦检索的前提</strong>：不 normalize 直接算余弦，结果不对——<code>encode_kwargs</code> 里必须加。</li>
+<li><strong>维度换模型 = 重建向量库</strong>：维度是向量库的"硬约束"，选型时一并锁定。</li>
+<li><strong>MMR 是"去重神器"</strong>：检索结果重复度高的场景（法律/政策文档常见问题）用 MMR，λ=0.5 是通用甜点。</li>
+<li><strong>增量更新 = 哈希差量</strong>：给文档分配哈希 ID，避免全量重建——生产环境的成本分水岭。</li>
+</ol>
+<h2 id="_5">五、趋势判断（拓展应用）</h2>
+<ol>
+<li><strong>混合检索是"从能用→好用"的下一步</strong>：BM25 + 向量融合的混合检索 + Rerank 重排序已是生产 RAG 标配（文章下篇预告）。纯向量检索在"精确关键词匹配"上弱于 BM25，两者互补。</li>
+<li><strong>多向量检索（Multi-Vector）兴起</strong>：bge-m3 同时支持稠密+稀疏+多向量，一个模型覆盖三种检索范式——这是 Embedding 模型演进的明确方向。</li>
+<li><strong>本地化部署趋势</strong>：数据不出境要求下，bge 系（免费、可本地 GPU/CPU 部署）在金融/政务场景是刚性需求，商用 API 只适合非敏感场景。</li>
+</ol>
+<h2 id="_6">查询拓展与出处（引用与关联）</h2>
+<table>
+<thead>
+<tr>
+<th>关联项目/主题</th>
+<th>关联</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rag-index-rebuild</code> skill</td>
+<td>增量更新策略（哈希差量 + 重建索引）与本文"增量更新策略"完全对应</td>
+</tr>
+<tr>
+<td><code>rag-index-rebuild-findings</code></td>
+<td>Daemon 分发方式可承载向量库增量重建任务</td>
+</tr>
+<tr>
+<td><code>deep-analysis</code> skill</td>
+<td>深度研究报告的检索可套用本文选型（bge-m3 + pgvector + 混合检索）</td>
+</tr>
+<tr>
+<td><code>enterprise-rag-knowledge-engine</code></td>
+<td>企业级 RAG 架构，bge-m3 + 向量库选型是其核心组件层</td>
+</tr>
+<tr>
+<td><code>hybrid-search</code> skill</td>
+<td>与文章下篇预告（BM25+向量融合）直接对应</td>
+</tr>
+<tr>
+<td><code>knowledge-query</code> skill</td>
+<td>统一知识查询入口的 Embedding 层选型</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>原文：微信公众号「小黄学编程」《同样 RAG，换个 Embedding 召回率从 62% 飙升到 89%》（RAG 系列第三篇）</li>
+<li>系列前篇：RAG 核心原理、文档切分</li>
+<li>下篇预告：混合检索（BM25+向量融合）+ Rerank 重排序</li>
+</ul>
+</body>
+</html>
