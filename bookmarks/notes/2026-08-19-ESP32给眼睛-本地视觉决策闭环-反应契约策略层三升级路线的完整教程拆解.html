@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32给眼睛-本地视觉决策闭环-反应契约策略层三升级路线的完整教程拆解</title>
+
+<meta property="og:title" content="ESP32给眼睛-本地视觉决策闭环-反应契约策略层三升级路线的完整教程拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-19-ESP32%E7%BB%99%E7%9C%BC%E7%9D%9B-%E6%9C%AC%E5%9C%B0%E8%A7%86%E8%A7%89%E5%86%B3%E7%AD%96%E9%97%AD%E7%8E%AF-%E5%8F%8D%E5%BA%94%E5%A5%91%E7%BA%A6%E7%AD%96%E7%95%A5%E5%B1%82%E4%B8%89%E5%8D%87%E7%BA%A7%E8%B7%AF%E7%BA%BF%E7%9A%84%E5%AE%8C%E6%95%B4%E6%95%99%E7%A8%8B%E6%8B%86%E8%A7%A3.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="esp32-">ESP32给眼睛-本地视觉决策闭环 — 反应契约×策略层×三升级路线的完整教程拆解</h1>
+<p class="tag-line"><span class="tag">#ESP32</span> <span class="tag">#机器视觉</span> <span class="tag">#边缘AI</span> <span class="tag">#ESP-WHO</span> <span class="tag">#ESP-DL</span> <span class="tag">#帧差检测</span> <span class="tag">#反应策略</span> <span class="tag">#置信度门</span> <span class="tag">#TinyML</span> <span class="tag">#嵌入式</span> <span class="tag">#ardchain</span> <span class="tag">#本地推理</span> <span class="tag">#PSRAM</span> <span class="tag">#CameraWebServer</span> <span class="tag">#安全设计</span></p>
+<p class="note-date">生成日期 2026-08-19</p>
+
+<blockquote>
+<p><strong>出处</strong>：X/Twitter @ardchain（ard），2026-08-18 12:58，70.4K 阅读 326 赞——《Give your ESP32 eyes: camera, local vision, and reactions》完整教程<br />
+配套项目：<code>~/uclaw/project/esp32-vision-companion/</code>（架构骨架+策略层+主机端单测 ALL PASS）<br />
+一句话：$10 板子+摄像头 = 一个<strong>带镜头的本地决策器</strong>——<code>camera frame → vision result → your rule → action</code></p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="1">1. 定位纠偏（教程的世界观）</h3>
+<table>
+<thead>
+<tr>
+<th>误解</th>
+<th>教程的定位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"ESP32 变成安防服务器/云AI"</td>
+<td>❌ 不是</td>
+</tr>
+<tr>
+<td>$10 板子跑通用视觉</td>
+<td>❌ 做不到</td>
+</tr>
+<tr>
+<td><strong>带镜头的微小本地决策器</strong></td>
+<td>✅ 注意到什么→触发你设计的反应</td>
+</tr>
+<tr>
+<td>动作属于谁</td>
+<td><strong>动作属于你——模型只供应信号，不供应成品</strong></td>
+</tr>
+</tbody>
+</table>
+<p>完整闭环：<code>camera frame → vision result → your rule → physical or network action</code><br />
+实例：人出现→开灯 / QR 码→开对应本地页 / 包裹模型检出→通知 / 红色物体→停小车。</p>
+<h3 id="2">2. 选板两条路</h3>
+<table>
+<thead>
+<tr>
+<th>路线</th>
+<th>板</th>
+<th>首个成果</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主线</td>
+<td><strong>ESP32-S3 摄像头板（带 PSRAM）</strong>——如 ESP32-S3-EYE（8MB PSRAM+8MB flash+屏+麦）</td>
+<td>舒适跑本地视觉模型</td>
+<td>额外内存的价值&gt;微小价差；Espressif 视觉框架围绕支持板构建</td>
+</tr>
+<tr>
+<td>兼容</td>
+<td>AI Thinker ESP32-CAM + USB-UART 编程器</td>
+<td>浏览器看实时流</td>
+<td>低成本备选；编程器不是配件是必需品（板子省了 USB 口）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>铁律：别只看板子照片选型</strong>——摄像头板不像 USB 键盘标准化：引脚/flash/PSRAM/启动接线都可能不同。永远从<strong>以你板子命名</strong>的例程开始。ESP32-CAM 刷不进（卡 Connecting...）：GPIO0 接 GND→复位→上传→<strong>成功后去掉接线再复位</strong>。</p>
+<h3 id="3">3. 视觉任务阶梯（先问最便宜的信号）</h3>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>回答的问题</th>
+<th>首用场景</th>
+<th>需要神经网络？</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>帧差</td>
+<td>场景变了吗？</td>
+<td>包裹/宠物/人到了</td>
+<td><strong>否</strong></td>
+</tr>
+<tr>
+<td>颜色/亮度</td>
+<td>红色/光够吗？</td>
+<td>分拣物体/开灯</td>
+<td><strong>否</strong></td>
+</tr>
+<tr>
+<td>QR 码</td>
+<td>面前是什么码？</td>
+<td>选工具/模式/本地URL</td>
+<td><strong>否</strong></td>
+</tr>
+<tr>
+<td>图像分类</td>
+<td>是这几类中的哪个？</td>
+<td>可回收/厨余/其他；有猫/没猫</td>
+<td>是</td>
+</tr>
+<tr>
+<td>目标检测</td>
+<td>是什么+在哪里？</td>
+<td>跟随目标/仅区域内反应</td>
+<td>是</td>
+</tr>
+<tr>
+<td>人脸识别</td>
+<td>是登记者吗？</td>
+<td>征得同意的识别 demo（<strong>永不作唯一认证</strong>）</td>
+<td>是</td>
+</tr>
+</tbody>
+</table>
+<p><strong>前三档无需神经网络——这不是降级</strong>：简单可解释的规则通常更快/更便宜/更易调试。</p>
+<h3 id="4">4. 反应契约与策略层（教程核心工程思想）</h3>
+<p><strong>VisionResult 契约</strong>：<code>{detected, label, confidence}</code> 是视觉与业务间唯一接口——换视觉引擎不动其余代码（可更换接缝）。</p>
+<p><strong>策略层四门过滤链</strong>（模型分数 ≠ 执行指令）：</p>
+<pre><code>model says &quot;person&quot; 0.86 → 在允许区域内? → 连续3帧? → 冷却过期? → 可逆动作
+</code></pre>
+<ul>
+<li>单个误帧不该开锁/吵醒全家/启动电机</li>
+<li>冷却数秒：一个人走过 ≠ 200 条通知</li>
+<li>无害首响应清单：外置 LED / 低音量蜂鸣 / 私有 dashboard / MQTT 事件（带标签+置信度）/ 纸板指针舵机</li>
+<li>控制市电/锁/工具：视觉结果<strong>永不</strong>是唯一安全条件——物理限位+手动超控+失效默认</li>
+</ul>
+<h3 id="5-ai-sketch">5. 本地 AI 三升级路线（互斥选择，不堆一个 sketch）</h3>
+<table>
+<thead>
+<tr>
+<th>路径</th>
+<th>内容</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A 官方例程</strong></td>
+<td>ESP-WHO（人脸检测/识别/行人检测/QR），底层 ESP-DL 推理运行时；ESP-IDF 构建<strong>禁止粘进 CameraWebServer</strong></td>
+<td>官方例程已接近需求——先 flash 观察，再在结果回调处换动作</td>
+</tr>
+<tr>
+<td><strong>B 自训小模型</strong></td>
+<td>电脑训练→板子只推理。纪律&gt;品牌：窄问题+实际机位实拍+坏光照/阴影/负样本+小量化模型+<strong>先测误触发率</strong>+按 runtime 格式导出</td>
+<td>区分你自己的小物体集（两个垃圾桶/宠物碗/3D打印完成/柜门开关）</td>
+</tr>
+<tr>
+<td><strong>C 板子当摄像头</strong></td>
+<td>ESP32 只拍 JPEG 发给局域网强机（Pi/NAS/服务器）跑大检测器/视觉语言模型，返回 open_gate/notify/ignore 简单指令</td>
+<td>模型不属于 MCU——板子拥有摄像头/本地控制/安全兜底，强机拥有模型</td>
+</tr>
+</tbody>
+</table>
+<p>⚠️ ESP-DL 专属坑：模型必须走它的转换+量化管线，<strong>随机 TFLite 不是 drop-in 兼容</strong>——模型转换是构建的一部分，不是最后一步复制。<br />
+分类 vs 检测：检测多返回框（更贵内存算力）；<strong>摄像头固定+物体总在同位置 → 分类往往够</strong>。</p>
+<h3 id="6">6. 首个项目建议（教程的推荐）</h3>
+<p><strong>桌面物品检测伴生物</strong>：机位看桌面小标记区 → 先运动检测 → 升级为单一窄分类器（"有杯子/没杯子"、"3D打印完成/还在打"）→ 状态灯/MQTT/小网页。<strong>固定机位+窄问题=减少你需要的 AI 量</strong>；先外置 LED 再接任何要紧东西。刻意比"人脸识别门锁"平淡——它教的是真正要紧的部件：摄像头设置→图像尺寸与内存限制→推理/简单视觉→置信度与防抖→你设计的响应。之后<strong>一次只换一个部件</strong>。</p>
+<h3 id="7">7. 排查速查表（五大症状）</h3>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>流空白/花屏</td>
+<td>板型 profile 匹配→稳压→降分辨率→先 stock 例程</td>
+</tr>
+<tr>
+<td>Wi-Fi+摄像头同开复位（Brownout）</td>
+<td>短好线+稳压5V→降图像尺寸/帧缓冲数→确认 PSRAM</td>
+</tr>
+<tr>
+<td>电脑好用板上不行</td>
+<td><strong>预处理一致性</strong>：尺寸/裁剪/颜色顺序/归一化/量化——比"模型烂"常见</td>
+</tr>
+<tr>
+<td>疯狂误触发</td>
+<td>负样本+置信度阈值+连续检测+ROI+冷却</td>
+</tr>
+<tr>
+<td>太慢</td>
+<td>先降输入图——小而可靠 &gt; 雄心模型几秒一帧</td>
+</tr>
+</tbody>
+</table>
+<h3 id="8-esp32-vision-companion">8. 配套项目落地（本仓 esp32-vision-companion）</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>内容</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>src/vision_result.h</code></td>
+<td>响应契约结构体</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>src/reaction_policy.h</code></td>
+<td>四门策略层 C 实现（置信度/连续帧/冷却/ROI）</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>src/motion_rule.ino</code></td>
+<td>帧差运动检测参考实现（无AI路线0）</td>
+<td>✅ 参考实现</td>
+</tr>
+<tr>
+<td><code>tests/test_vision_rule.py</code></td>
+<td>策略层主机端单测</td>
+<td>✅ <strong>4/4 ALL PASS</strong>（真机运行）</td>
+</tr>
+<tr>
+<td><code>src/esp_who_bridge.md</code></td>
+<td>路径A桥接指南</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>models/training_pipeline.md</code></td>
+<td>路径B训练纪律</td>
+<td>✅</td>
+</tr>
+<tr>
+<td><code>docs/troubleshooting.md</code> + <code>docs/safety.md</code></td>
+<td>排查表+安全铁律</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p>按本仓铁律未在 Jetson 上做硬件实测；单测验证了策略层逻辑与教程规格逐门一致。</p>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li>ESP32-S3 的向量指令（SIMD/点积加速）对 ESP-DL 推理速度的实际提升倍数</li>
+<li>ESP-WHO 行人检测（pedestrian_detect）在 S3 上的实测帧率与内存占用</li>
+<li>Edge Impulse vs 自建训练管线导出 ESP-DL 格式的路径对比（路径B工具选型）</li>
+<li>帧差检测在光照渐变（日出/云层）场景的适应性——是否需要背景建模（Running Average）</li>
+<li>路径C的局域网协议选型：JPEG over HTTP/MQTT vs WebRTC 低延迟流</li>
+<li>ESP32-CAM（无PSRAM版）跑帧差检测的最低分辨率-帧率组合</li>
+<li>QR 码识别（ESP-WHO 已含）与 zxing-embedded 嵌入式库的资源对比</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>给 ESP32 一双眼睛：摄像头帧→视觉结果→你的规则→动作——本地决策器而非云AI终端</td>
+</tr>
+<tr>
+<td>核心工程思想</td>
+<td><strong>动作属于你，模型只供应信号</strong>：VisionResult 契约解耦 + 四门策略层（置信度×连续帧×冷却×ROI）隔开分数与执行</td>
+</tr>
+<tr>
+<td>选板纪律</td>
+<td>S3+PSRAM 主线 / AI Thinker 兼容线；永远从以你板子命名的例程开始，别抄他板引脚</td>
+</tr>
+<tr>
+<td>任务阶梯</td>
+<td>先问最便宜的信号：帧差/颜色/QR 无需神经网络（不是降级）；分类/检测才是小模型的地盘</td>
+</tr>
+<tr>
+<td>升级路线</td>
+<td>A 官方例程改回调 / B 自训小模型（纪律&gt;品牌）/ C 板子当摄像头大脑放强机——互斥不堆叠</td>
+</tr>
+<tr>
+<td>安全</td>
+<td>无害首响应；视觉永不作唯一安全条件；人脸识别永不作开锁机制</td>
+</tr>
+<tr>
+<td>实战五坑</td>
+<td>brownout=供电、板行不行=预处理一致性、误触发=缺策略、慢=图太大、花屏=profile错</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>$10 视觉决策器是 2026 嵌入式的普及拐点</strong>：70K 阅读说明需求爆发——S3+PSRAM 把"本地小模型"从极客玩具变成教程级标配，"摄像头+规则"会像 LED 闪烁一样成为入门第一课</li>
+<li><strong>"模型供应信号，策略属于人"会成为边缘 AI 的标准架构</strong>：教程的四门过滤链（置信度/连续/冷却/ROI）实际上是所有边缘反应系统的通用中间层——与物理AI裁判层提案的"分数≠指令"完全同构</li>
+<li><strong>路径C（异构分工）是硬件受限下的主流归宿</strong>：MCU 拥有摄像头与安全兜底、强机拥有模型——与 LEANN"端侧存索引、按需重算"同属"资源错位配置"思路；局域网视觉 API 化会出现标准件</li>
+<li><strong>负样本与实测误触发率进入教程级纪律</strong>：路径B五步纪律里"先测误触发率再接重要东西"——工程界的 Goodhart 防御意识从 ML 平台下沉到爱好者教程</li>
+<li><strong>嵌入式视觉的安全话语权在升级</strong>：人脸识别"永不作唯一认证"进入教程正文——监管压力（EU AI Act）正在改写硬件教程的默认安全姿势</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>笔记《2026-08-19-物理AI的裁判层提案》</strong></td>
+<td>架构同构：物理提案"模型分数不是执行指令，中间加策略层"= 本教程四门过滤链的科研版；覆盖度证书"显式标缺口"= 教程"先测误触发率"的合规版</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-TinyMCU跑AI全流程》（STM32/ESP32振动检测）</strong></td>
+<td>姊妹篇：振动检测走"传感器+TinyML"路线，本篇走"摄像头+本地视觉"——同一 MCU 上的两种感知模态；量化三坑（int8 量化/预处理一致性/内存布局）在本篇排查表重现</td>
+</tr>
+<tr>
+<td>skill <code>esp32-unit-test-mock-setup</code> / <code>tinyml-project-scaffold</code></td>
+<td>本项目沿用同款模式：主机端单测先行（test_vision_rule.py 4/4 PASS）+ 硬件实测延后——pipeline 就绪即交付</td>
+</tr>
+<tr>
+<td>skill <code>dual-mcu-robot-architecture</code></td>
+<td>红色物体→停小车、QR→选模式正是双 MCU 架构的上层视觉输入源；路径C的"局域网强机大脑"= 双 MCU 的第三层扩展</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-WesMcKinney》</strong></td>
+<td>Clanker 宪章#5"测行为不测mock"→ 本教程"先测误触发率再接重要东西"；#2"安全可逆直接做，破坏性才问"→ 无害首响应阶梯</td>
+</tr>
+<tr>
+<td>本仓铁律"不在 Jetson 跑重型 ML"</td>
+<td>项目遵守：纯代码管线+主机端逻辑单测，硬件实测留待有板/授权</td>
+</tr>
+<tr>
+<td>LEANN 笔记</td>
+<td>路径C 同构：端侧（ESP32）拥有数据采集与本地控制，重计算放网络另一端——"资源放对位置"的同一设计观</td>
+</tr>
+</tbody>
+</table>
+<p>→ 原帖：https://x.com/ardchain/status/2089396488656818438<br />
+→ 配套项目：~/uclaw/project/esp32-vision-companion/（INDEX 第 242 项）<br />
+→ 相关：2026-08-18-TinyMCU跑AI全流程-STM32-ESP32振动检测双平台部署四坑验证.md</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 项目已交付（本次完成）</strong><br />
+- <code>esp32-vision-companion</code> 完整骨架：契约头文件+策略层+帧差参考实现+<strong>单测 4/4 PASS</strong>+三路径指南+排查/安全文档——拿到板子即可按 README 路线填充板级初始化</p>
+<p><strong>② 可扩展方向（低成本）</strong><br />
+- <strong>帧差→背景建模升级</strong>：Running Average 背景帧应对光照渐变（云层/日出），一个 alpha 系数的事<br />
+- <strong>MQTT 事件接 Hermes</strong>：视觉事件（label+confidence+时间戳）发 MQTT → 本仓 Hermes 订阅→飞书通知——"包裹到了"推手机的完整链路<br />
+- <strong>QR 模式切换</strong>：贴 QR 码在桌沿切换工作模式（勿扰/会议/录播）——无 AI 的可靠交互</p>
+<p><strong>③ 给入门者的路线图</strong><br />
+1. CameraWebServer 出图（半天）→ 2. 帧差+串口打印（1小时）→ 3. 接策略层+外置 LED（1小时）→ 4. 升级单分类器（1-2天含采图）→ 5. MQTT/网页输出 → 6. 才考虑检测器/路径C<br />
+<strong>顺序本身就是教程的最大价值——每步都可验证再前进。</strong></p>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>ESP32 视觉项目决策树（可直接抄）</strong></p>
+<pre><code>你的问题需要知道&quot;是什么&quot;吗？
+├─ 不需要（变了吗/亮吗/什么码）→ 帧差/颜色/QR，无神经网络，今天就能跑
+└─ 需要 → 固定机位+固定位置？
+    ├─ 是 → 分类器（路径B：窄问题+实拍数据+负样本+量化+测误触发）
+    └─ 否 → 检测器（更贵）或路径C（强机跑）
+哪个板？ S3+PSRAM（主线）/ AI Thinker（低成本，备好 USB-UART 编程器）
+第一反应接什么？ 外置 LED → 蜂鸣/MQTT/网页 → （永远最后）继电器/锁/电机
+</code></pre>
+<p><strong>三条铁律（本教程浓缩）</strong><br />
+- <strong>别抄别的板的引脚</strong>：摄像头板不标准化，从以你板子命名的例程开始<br />
+- <strong>模型分数不是指令</strong>：置信度×连续帧×冷却×ROI 四门全过才允许可逆动作<br />
+- <strong>一次只换一个部件</strong>：视觉引擎/动作/机位分别迭代——多变量同改=不可调试</p>
+<p><strong>何时重读本篇</strong>：拿到任何摄像头板的第一天（选板纪律）；demo 疯狂误触发时（排查表第4行）；想把人脸识别接门锁时（安全铁律第4条——回去读三遍）。</p>
+</body>
+</html>
