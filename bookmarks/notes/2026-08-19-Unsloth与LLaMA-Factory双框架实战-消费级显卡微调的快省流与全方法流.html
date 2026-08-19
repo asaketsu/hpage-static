@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unsloth与LLaMA-Factory双框架实战-消费级显卡微调的快省流与全方法流</title>
+
+<meta property="og:title" content="Unsloth与LLaMA-Factory双框架实战-消费级显卡微调的快省流与全方法流" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="unslothllama-factory-vs">Unsloth与LLaMA-Factory双框架实战 — 消费级显卡微调的两条路线：快省流vs全方法流</h1>
+<p class="tag-line"><span class="tag">#Unsloth</span> <span class="tag">#LLaMA-Factory</span> <span class="tag">#微调</span> <span class="tag">#LoRA</span> <span class="tag">#QLoRA</span> <span class="tag">#GRPO</span> <span class="tag">#DPO</span> <span class="tag">#PPO</span> <span class="tag">#消费级显卡</span> <span class="tag">#显存优化</span> <span class="tag">#TritonKernel</span> <span class="tag">#trl</span> <span class="tag">#PEFT</span> <span class="tag">#SFTTrainer</span> <span class="tag">#llamafactory-cli</span> <span class="tag">#WebUI</span> <span class="tag">#模型合并</span> <span class="tag">#GGUF</span> <span class="tag">#vLLM</span> <span class="tag">#新手友好</span> <span class="tag">#进阶</span></p>
+<p class="note-date">生成日期 2026-08-19</p>
+
+<blockquote>
+<p><strong>出处</strong>：两个工具的官方仓库/Notebook 实抓（2026-08-19）：unslothai/unsloth README + Llama3.1(8B)-Alpaca 官方 notebook（31 cells）+ hiyouga/LLaMA-Factory README + examples/train_lora 全目录<br />
+<strong>定位</strong>：使用方法与流程的<strong>实操级对照笔记</strong>——每条命令/代码都来自官方一手来源，不是转述<br />
+用户给的画像：Unsloth=消费级显卡优化+一键量化+界面友好适合新手，核心"快+省"（快2倍/省70%显存）；LLaMA-Factory=功能全面（LoRA/QLoRA/PPO/DPO等），适合进阶</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="1">1. 全景对照表（先给结论）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Unsloth</th>
+<th>LLaMA-Factory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>定位</td>
+<td>微调加速库（drop-in 替换 HF 训练）</td>
+<td>全流程微调框架（训练→评估→部署）</td>
+</tr>
+<tr>
+<td>形态</td>
+<td><strong>三种</strong>：Unsloth Desktop（桌面App）/ Unsloth Studio（Web UI，<code>unsloth studio -p 8888</code>）/ Unsloth Core（代码）</td>
+<td><strong>两种</strong>：llamafactory-cli（YAML 驱动）/ LLaMA Board WebUI（<code>llamafactory-cli webui</code>，Gradio）</td>
+</tr>
+<tr>
+<td>核心卖点</td>
+<td>快+省：官方数据 2x faster / 70% less VRAM（gpt-oss 20B、Llama3.1 8B 等多数模型；MoE 12x faster / 35% less；新 packing 3x faster / 30% less）</td>
+<td>方法全：<strong>预训练/SFT/多模态SFT/Reward Modeling/PPO/DPO/KTO/ORPO/SimPO</strong> 九种训练 stage 全支持，模型 100+（Day-0/Day-1 支持新模型：Qwen3/Gemma 3/GLM-4.1V/Llama 4…）</td>
+</tr>
+<tr>
+<td>使用入口</td>
+<td>Python API（<code>FastLanguageModel</code>）</td>
+<td>YAML 配置 + CLI 三连（train/chat/export）</td>
+</tr>
+<tr>
+<td>数据格式</td>
+<td>HF datasets + prompt 模板函数（alpaca 格式）</td>
+<td>alpaca/sharegpt 等格式 + <code>dataset_info.json</code> 注册</td>
+</tr>
+<tr>
+<td>产出</td>
+<td>LoRA adapters / merged_16bit / merged_4bit / <strong>GGUF（q8_0/f16/q4_k_m 一行）</strong></td>
+<td>LoRA 合并导出 / <strong>GPTQ/AWQ 量化导出 / Ollama modelfile</strong> / vLLM OpenAI API 部署</td>
+</tr>
+<tr>
+<td>分布式</td>
+<td>弱项（单卡/少量卡优化为主）</td>
+<td>强项：多机多卡（torchrun/NNODES/Ray）+ DeepSpeed ZeRO-3 + 弹性容错（MAX_RESTARTS）+ NPU 后端</td>
+</tr>
+<tr>
+<td>量化方案</td>
+<td>bnb-4bit 预量化模型（下载快4倍+防OOM）</td>
+<td>4/8bit bnb/HQQ/EETQ + GPTQ + AWQ + <strong>2bit AQLM</strong></td>
+</tr>
+<tr>
+<td>RL 训练</td>
+<td>GRPO/GSPO（含 Vision RL、FP8、7x长上下文RL、500K context）</td>
+<td>PPO/DPO/KTO/ORPO/SimPO + GRPO（姊妹项目 EasyR1 专做 GRPO）</td>
+</tr>
+<tr>
+<td>适合谁</td>
+<td>新手/单卡用户/要 GGUF 落地 llama.cpp-Ollama 的人</td>
+<td>进阶用户/要偏好对齐全流程/多卡集群/企业部署的人</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2-unsloth-notebook">2. Unsloth 使用流程（官方 notebook 实录）</h3>
+<p><strong>形态三选</strong>：</p>
+<pre><code>Unsloth Desktop → 下载桌面App（图形界面）
+Unsloth Studio  → unsloth studio -p 8888（Web UI，localhost 绑定；--secure 走 Cloudflare HTTPS 隧道，fail-closed）
+Unsloth Core    → 代码方式（下述）
+</code></pre>
+<p><strong>安装（Core，uv 推荐）</strong>：</p>
+<pre><code class="language-bash">uv venv unsloth_env --python 3.13
+uv pip install unsloth --torch-backend=auto
+# RTX 50x/B200/Blackwell 同上；Windows 需先装 PyTorch
+</code></pre>
+<p><strong>五步流程（Llama3.1-8B-Alpaca 官方 notebook，逐 cell 提取）</strong>：</p>
+<pre><code class="language-python"># ① 载入4bit量化模型（核心：用官方预量化模型，下载快4倍+防OOM）
+from unsloth import FastLanguageModel
+import torch
+max_seq_length = 2048      # 内部自动 RoPE Scaling
+dtype = None               # None=自动检测（T4/V100→fp16, Ampere+→bf16）
+load_in_4bit = True
+
+fourbit_models = [
+    &quot;unsloth/Llama-3.1-8B-bnb-4bit&quot;,
+    &quot;unsloth/Llama-3.1-8B-Instruct-bnb-4bit&quot;,
+    &quot;unsloth/Mistral-Nemo-Instruct-2407-bnb-4bit&quot;,  # 12B
+    &quot;unsloth/gemma-2-9b-bnb-4bit&quot;, ...
+]
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name = &quot;unsloth/Llama-3.1-8B-Instruct-bnb-4bit&quot;,
+    max_seq_length = max_seq_length,
+    dtype = dtype,
+    load_in_4bit = load_in_4bit,
+)
+
+# ② 挂 LoRA（关键参数：use_gradient_checkpointing=&quot;unsloth&quot; 再省30%显存、batch翻倍）
+model = FastLanguageModel.get_peft_model(
+    model,
+    r = 16,                    # 建议 8/16/32/64/128
+    target_modules = [&quot;q_proj&quot;,&quot;k_proj&quot;,&quot;v_proj&quot;,&quot;o_proj&quot;,
+                      &quot;gate_proj&quot;,&quot;up_proj&quot;,&quot;down_proj&quot;],
+    lora_alpha = 16,
+    lora_dropout = 0,          # 0 是优化值（支持任意）
+    bias = &quot;none&quot;,             # &quot;none&quot; 是优化值
+    use_gradient_checkpointing = &quot;unsloth&quot;,  # [NEW] 30% less VRAM
+    random_state = 3407,
+    use_rslora = False,        # 支持 rank stabilized LoRA
+    loftq_config = None,
+)
+
+# ③ 数据：alpaca 模板 + EOS_TOKEN（不加会无限生成！）
+alpaca_prompt = &quot;&quot;&quot;Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+### Instruction:
+{}
+
+### Input:
+{}
+
+### Response:
+{}&quot;&quot;&quot;
+EOS_TOKEN = tokenizer.eos_token
+def formatting_prompts_func(examples):
+    texts = [alpaca_prompt.format(i, inp, out) + EOS_TOKEN
+             for i, inp, out in zip(examples[&quot;instruction&quot;], examples[&quot;input&quot;], examples[&quot;output&quot;])]
+    return {&quot;text&quot;: texts}
+from datasets import load_dataset
+dataset = load_dataset(&quot;unsloth/alpaca-cleaned&quot;, split=&quot;train&quot;)
+dataset = dataset.map(formatting_prompts_func, batched=True)
+
+# ④ 训练：trl 的 SFTTrainer（unsloth 加速在底层生效）
+from trl import SFTConfig, SFTTrainer
+trainer = SFTTrainer(
+    model = model, tokenizer = tokenizer, train_dataset = dataset,
+    dataset_text_field = &quot;text&quot;, max_seq_length = max_seq_length,
+    packing = False,          # 短序列 packing 可再快5倍
+    args = SFTConfig(
+        per_device_train_batch_size = 2,
+        gradient_accumulation_steps = 4,
+        warmup_steps = 5, max_steps = 60,
+        learning_rate = 2e-4,
+        optim = &quot;adamw_8bit&quot;,  # 8bit 优化器省显存
+        weight_decay = 0.001, lr_scheduler_type = &quot;linear&quot;,
+        seed = 3407, output_dir = &quot;outputs&quot;, report_to = &quot;none&quot;,
+    ),
+)
+trainer.train()
+
+# ⑤ 推理验证 + 导出（四选一）
+FastLanguageModel.for_inference(model)   # 原生2x推理加速
+inputs = tokenizer([alpaca_prompt.format(&quot;Continue the fibonacci sequence.&quot;, &quot;1, 1, 2, 3, 5, 8&quot;, &quot;&quot;)],
+                   return_tensors=&quot;pt&quot;).to(&quot;cuda&quot;)
+outputs = model.generate(**inputs, max_new_tokens=64, use_cache=True)
+
+# 导出（官方全清单）：
+model.save_pretrained(&quot;llama_lora&quot;)                                   # 仅LoRA适配器
+model.save_pretrained_merged(&quot;out_16bit&quot;, tokenizer, save_method=&quot;merged_16bit&quot;)  # 合并16bit
+model.save_pretrained_merged(&quot;out_4bit&quot;, tokenizer, save_method=&quot;merged_4bit&quot;)
+model.save_pretrained_gguf(&quot;out&quot;, tokenizer)                          # GGUF Q8_0
+model.save_pretrained_gguf(&quot;out&quot;, tokenizer, quantization_method=&quot;q4_k_m&quot;)  # GGUF q4_k_m
+model.push_to_hub_gguf(...)  # 推 HF（还有 push_to_hub_merged / push_to_hub）
+</code></pre>
+<p><strong>Unsloth 独有能力（2026 时点）</strong>：embedding 微调 1.8-3.3x / GRPO 长上下文 7x（新 batching 算法）/ RoPE+MLP Triton Kernels + Padding-Free Packing 3x / 20B 模型 500K 上下文（80GB 单卡）/ FP8 + Vision RL 上消费卡 / MoE 12x / <code>unsloth start claude-code|codex|opencode</code> 一键把本地模型接给 Agent 工具。</p>
+<h3 id="3-llama-factory-readmeexamples">3. LLaMA-Factory 使用流程（官方 README+examples 实录）</h3>
+<p><strong>安装</strong>：</p>
+<pre><code class="language-bash">git clone --depth 1 https://github.com/hiyouga/LlamaFactory.git
+cd LlamaFactory
+pip install -e .
+# 可选：pip install -r requirements/metrics.txt（评估）/ requirements/deepspeed.txt
+# QLoRA 需：pip install bitsandbytes
+</code></pre>
+<p><strong>数据准备</strong>：数据集格式见 <code>data/README.md</code>（alpaca / sharegpt 等格式，HF/ModelScope/本地/S3 皆可）；<strong>自定义数据集必须注册进 <code>data/dataset_info.json</code></strong>；配套合成数据工具 Easy Dataset / DataFlow / GraphGen。</p>
+<p><strong>三条命令跑通全流程（Qwen3-4B LoRA SFT 官方 Quickstart）</strong>：</p>
+<pre><code class="language-bash">llamafactory-cli train examples/train_lora/qwen3_lora_sft.yaml   # 训练
+llamafactory-cli chat examples/inference/qwen3_lora_sft.yaml     # 聊天验证
+llamafactory-cli export examples/merge_lora/qwen3_lora_sft.yaml  # 合并导出
+</code></pre>
+<p><strong>训练 YAML 解剖（qwen3_lora_sft.yaml 官方全文逐段）</strong>：</p>
+<pre><code class="language-yaml">### model
+model_name_or_path: Qwen/Qwen3-4B-Instruct-2507
+trust_remote_code: true
+### method
+stage: sft                 # 训练阶段：sft/pretrain/reward/ppo/dpo/kto/orpo/simpo
+do_train: true
+finetuning_type: lora      # lora / full
+lora_rank: 8
+lora_target: all           # 所有线性层
+### dataset
+dataset: identity,alpaca_en_demo
+template: qwen3_nothink    # 对话模板必须匹配模型
+cutoff_len: 2048
+max_samples: 1000
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+### output
+output_dir: saves/qwen3-4b/lora/sft
+logging_steps: 10
+save_steps: 500
+plot_loss: true            # 自动画 loss 曲线
+report_to: none            # wandb/tensorboard/swanlab/mlflow
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8
+learning_rate: 1.0e-4
+num_train_epochs: 3.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+### eval（注释打开即用）
+# eval_dataset: alpaca_en_demo
+# val_size: 0.1
+# eval_strategy: steps
+# eval_steps: 500
+</code></pre>
+<p><strong>方法全覆盖命令（examples 实录）</strong>：</p>
+<pre><code class="language-bash"># LoRA 家族
+llamafactory-cli train examples/train_lora/qwen3_lora_pretrain.yaml   # 继续预训练
+llamafactory-cli train examples/train_lora/qwen3vl_lora_sft.yaml      # 多模态SFT
+llamafactory-cli train examples/train_lora/qwen3_lora_dpo.yaml        # DPO/ORPO/SimPO
+llamafactory-cli train examples/train_lora/qwen3_lora_reward.yaml     # 奖励建模
+llamafactory-cli train examples/train_lora/qwen3_lora_kto.yaml        # KTO
+# QLoRA（4/8bit bnb/HQQ/EETQ）
+llamafactory-cli train examples/train_qlora/qwen3_lora_sft_otfq.yaml  # 官方推荐
+llamafactory-cli train examples/train_qlora/llama3_lora_sft_gptq.yaml # GPTQ底座
+llamafactory-cli train examples/train_qlora/llama3_lora_sft_awq.yaml  # AWQ底座
+llamafactory-cli train examples/train_qlora/llama3_lora_sft_aqlm.yaml # 2bit AQLM
+# 全参微调
+FORCE_TORCHRUN=1 llamafactory-cli train examples/train_full/qwen3_full_sft.yaml
+# 多机多卡
+FORCE_TORCHRUN=1 NNODES=2 NODE_RANK=0 MASTER_ADDR=192.168.0.1 MASTER_PORT=29500 \
+    llamafactory-cli train examples/train_lora/qwen3_lora_sft.yaml
+# 弹性容错（节点故障自动重启）
+FORCE_TORCHRUN=1 MIN_NNODES=1 MAX_NNODES=3 MAX_RESTARTS=3 RDZV_ID=llamafactory \
+    MASTER_ADDR=192.168.0.1 MASTER_PORT=29500 llamafactory-cli train examples/train_full/qwen3_full_sft.yaml
+# DeepSpeed ZeRO-3 权重分片 / Ray 4卡
+FORCE_TORCHRUN=1 llamafactory-cli train examples/train_lora/qwen3_lora_sft_ds3.yaml
+USE_RAY=1 llamafactory-cli train examples/train_lora/qwen3_lora_sft_ray.yaml
+</code></pre>
+<p><strong>导出与部署</strong>：</p>
+<pre><code class="language-bash">llamafactory-cli export examples/merge_lora/qwen3_lora_sft.yaml   # LoRA合并（禁用量化底座）
+llamafactory-cli export examples/merge_lora/qwen3_gptq.yaml       # AutoGPTQ 量化导出
+llamafactory-cli export examples/merge_lora/qwen3_full_sft.yaml   # Ollama modelfile
+# OpenAI 风格 API（vLLM 后端）
+API_PORT=8000 llamafactory-cli api examples/inference/qwen3.yaml infer_backend=vllm vllm_enforce_eager=true
+# 评估：vLLM 多卡推理 + BLEU/ROUGE
+python scripts/vllm_infer.py --model_name_or_path Qwen/Qwen3-4B-Instruct-2507 \
+    --template qwen3_nothink --dataset alpaca_en_demo
+python scripts/eval_bleu_rouge.py generated_predictions.jsonl
+</code></pre>
+<p><strong>WebUI 路线（零代码）</strong>：<code>llamafactory-cli webui</code> → LLaMA Board（Gradio）：选模型/方法/数据集/超参全点选，导出 YAML 可复现。WebUI 聊天：<code>llamafactory-cli webchat &lt;yaml&gt;</code>。</p>
+<p><strong>环境变量速查</strong>：<code>CUDA_VISIBLE_DEVICES</code>（选卡，默认全用）/ <code>ASCEND_RT_VISIBLE_DEVICES</code>（NPU）/ <code>FORCE_TORCHRUN=1</code>（强制多卡启动）/ <code>USE_RAY=1</code> / 命令行参数可覆盖 YAML（<code>llamafactory-cli train x.yaml learning_rate=1e-5</code>）。</p>
+<h3 id="4">4. 选型决策树</h3>
+<pre><code>你的卡？
+├─ 单卡消费级（≤24GB）且目标是&quot;跑起来+导出GGUF给Ollama用&quot;
+│    → Unsloth（bnb-4bit预量化+GGUF一键导出是杀手锏）
+├─ 要做偏好对齐全流程（RM→PPO 或 DPO/KTO/ORPO/SimPO 混合）
+│    → LLaMA-Factory（九种stage全；Unsloth 侧重 GRPO）
+├─ 多卡/多机/集群
+│    → LLaMA-Factory（DeepSpeed ZeRO-3/Ray/弹性容错/NPU）
+├─ 完全不想写代码
+│    → Unsloth Studio（WebUI）或 LLaMA Board（llamafactory-cli webui）
+└─ GRPO/RL 推理训练
+     → Unsloth（长上下文7x/FP8/Vision RL）或 EasyR1（LLaMA-Factory 姊妹项目）
+</code></pre>
+<p>两框架<strong>不互斥</strong>：常见组合是 Unsloth 快速迭代 LoRA → 满意后用 LLaMA-Factory 做正式训练（多卡+评估+部署）。</p>
+<h3 id="5">5. 关键坑位提示（官方文档+实践综合）</h3>
+<table>
+<thead>
+<tr>
+<th>坑</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EOS_TOKEN 缺失</td>
+<td>Unsloth 数据格式化不加 EOS → 生成无限 continuation（官方加粗警告）</td>
+</tr>
+<tr>
+<td>template 不匹配</td>
+<td>LLaMA-Factory 的 <code>template</code> 必须与模型聊天模板一致（qwen3_nothink vs qwen3）</td>
+</tr>
+<tr>
+<td>LoRA 合并遇量化底座</td>
+<td>LLaMA-Factory 明确：合并适配器<strong>禁用</strong>量化模型/quantization_bit</td>
+</tr>
+<tr>
+<td>Windows 安装</td>
+<td>Unsloth Windows 需先装 PyTorch；bitsandbytes 有专用 wheel</td>
+</tr>
+<tr>
+<td>lr 量级</td>
+<td>LoRA 常用 1e-4~2e-4（两框架示例一致）；全参微调低 1-2 个量级</td>
+</tr>
+<tr>
+<td>packing 权衡</td>
+<td>Unsloth：短序列 packing=True 快 5 倍；但长文本任务关掉</td>
+</tr>
+<tr>
+<td>dataset_info.json</td>
+<td>LLaMA-Factory 自定义数据不注册 = 加载报错（最常见新手问题）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li>Unsloth Triton Kernel 手写逆向注意（license 与下游商用边界）——选型前的合规检查</li>
+<li>LLaMA-Factory GRPO 配置细节（examples 里 qwen3 GSPO/GRPO 与 EasyR1 的分工）</li>
+<li>4bit QLoRA 训练后合并的精度损失量化（merged_4bit vs 先合并再量化）</li>
+<li>Unsloth Studio 的 API key/LAN 访问安全模型（--secure fail-closed 机制细节）</li>
+<li>两框架在 Qwen3.5/GLM-4.x 最新模型上的 Day-N 支持时差</li>
+<li>llamafactory-cli 的 <code>stage: rm+ppo</code> 完整链路 YAML（RM 训练→PPO 引用 RM 的参数衔接）</li>
+<li>GGUF q4_k_m 与 AWQ/GPTQ 在 vLLM 与 llama.cpp 两条部署线的吞吐对比</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>Unsloth=<strong>加速器</strong>（把 HF/trl 训练透明提速2倍省70%显存，单卡+GGUF 落地最顺）；LLaMA-Factory=<strong>全流程线</strong>（九种训练方法+多卡分布式+评估+API部署）</td>
+</tr>
+<tr>
+<td>使用范式差异</td>
+<td>Unsloth：Python notebook 五步（载模型→挂LoRA→格式化数据→SFTTrainer→导出）；LLaMA-Factory：YAML+CLI 三连（train→chat→export）</td>
+</tr>
+<tr>
+<td>共同底座</td>
+<td>都吃 HF 生态（transformers/trl/peft/datasets）；LoRA 超参共识：r=8-16、target=all、lr=1e-4~2e-4、bf16、8bit优化器</td>
+</tr>
+<tr>
+<td>快省的来源</td>
+<td>Unsloth：手写 Triton Kernel（RoPE/MLP/交叉熵）+ 4bit预量化+ unsloth 梯度检查点+packing；不是魔法，是 kernel 级工程</td>
+</tr>
+<tr>
+<td>新手路线</td>
+<td>Unsloth Colab 免费笔记本起步（选模型表格一键开跑）→ Studio WebUI → Core 代码</td>
+</tr>
+<tr>
+<td>进阶路线</td>
+<td>LLaMA-Factory YAML 复现 → 改 stage 做 DPO → 多机 ZeRO-3 → vLLM API 上线</td>
+</tr>
+<tr>
+<td>不互斥</td>
+<td>快迭代用 Unsloth，正式训练部署用 LLaMA-Factory——两框架共享 HF 模型/数据格式</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>微调工具的"双轨固化"</strong>：加速层（Unsloth 类 kernel 工程）与流程层（LLaMA-Factory 类编排工程）会长期并存——像 CUDA 与 PyTorch 的分层，最终可能融合（LLaMA-Factory 已可选接入加速后端）</li>
+<li><strong>消费级显卡微调成为默认入口</strong>：4bit 预量化模型+8bit 优化器+梯度检查点三件套让 8B-14B 在 16-24GB 卡上可训——个人/小团队的定制模型门槛已降至"一台游戏本"</li>
+<li><strong>GGUF/Ollama 是消费级落地的终局格式</strong>：Unsloth 一键 GGUF 导出直连 llama.cpp 生态；LLaMA-Factory 跟进 Ollama modelfile 导出——"训练完跑在本地 Ollama"成为个人模型闭环标配</li>
+<li><strong>偏好对齐方法在收敛</strong>：DPO 系（DPO/KTO/ORPO/SimPO 无需 RM 的直接偏好优化）已成主流路径，PPO 只在特定场景保留——LLaMA-Factory 九种 stage 的重心正在向 DPO 系+GRPO 倾斜</li>
+<li><strong>RL（GRPO）是新战场</strong>：Unsloth 重注 GRPO（长上下文 7x/FP8/Vision RL/500K context），LLaMA-Factory 拆出 EasyR1 专门做——推理能力训练的工具竞争刚开始</li>
+<li><strong>Agent 集成是新入口</strong>：Unsloth <code>unsloth start claude-code/codex</code> 把本地微调模型直接接到编码 Agent——微调的动机从"做个聊天机器人"转向"定制我的 Agent 大脑"</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>本仓 skill <code>unsloth</code></strong>（mlops/training/unsloth）</td>
+<td>本篇实操流程可直接回填该 skill 的 Quick Reference（references/ 已有 llms.txt 全文档，Quick Reference 空缺）</td>
+</tr>
+<tr>
+<td><strong>本仓 skill <code>peft-fine-tuning</code> / <code>fine-tuning-with-trl</code> / <code>axolotl</code></strong></td>
+<td>同族工具对照：axolotl 也是 YAML 驱动全流程（与 LLaMA-Factory 同类竞品）；trl 是 Unsloth 底层 SFTTrainer 来源；peft 是 LoRA 理论层——四者构成"理论→库→框架→加速"栈</td>
+</tr>
+<tr>
+<td><strong>本仓 skill <code>gguf-quantization</code></strong></td>
+<td>Unsloth 的 GGUF 导出（q8_0/f16/q4_k_m）与 llama.cpp 量化体系正是该 skill 的实操入口</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-LittleLearner》</strong></td>
+<td>微调的边界证据：LoRA/SFT 干预不改基座知识边界——"微调快 2 倍"解决的是效率不是能力；小模型微调适合"格式/风格/领域术语"定制而非知识注入</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-企业Agent技术选型》</strong></td>
+<td>选型同构：Unsloth vs LLaMA-Factory = "单一工具做深" vs "全流程平台"；企业侧通常两者都要（快迭代+正式产线）</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-物理AI的裁判层提案》</strong></td>
+<td>GRPO/RLVR 联动：Unsloth 重注的 GRPO 训练正是物理提案"验证器进 RL 回路"的技术载体——可验证奖励+GRPO=领域模型强化的标准配方</td>
+</tr>
+<tr>
+<td>Jetson 边缘部署线（edge-llm-quantization / jetson-tensorrt-deploy）</td>
+<td>GGUF→llama.cpp 是 Jetson 本地推理主路线之一：Unsloth 训练→GGUF 导出→Jetson Ollama 部署闭环可行</td>
+</tr>
+<tr>
+<td>本仓铁律"不在 Jetson 跑重型训练"</td>
+<td>两框架在本仓定位=代码管线就绪即可，实际训练留给有 GPU 的机器——与"研究项目产出文档+单测不部署"一致</td>
+</tr>
+</tbody>
+</table>
+<p>→ 官方仓库：https://github.com/unslothai/unsloth · https://github.com/hiyouga/LLaMA-Factory<br />
+→ 官方文档：https://unsloth.ai/docs · https://llamafactory.readthedocs.io<br />
+→ Colab 起点：Unsloth 官方 notebook 表格 / LLaMA-Factory Colab（免费）</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 立即可用的三件事</strong><br />
+- <strong>30 分钟体验</strong>：Unsloth Colab（Llama3.2-1B/3B Conversational 免费卡）跑通五步流程——第一次微调的最佳起点<br />
+- <strong>本地 Ollama 闭环</strong>：任何 bnb-4bit 模型 + 自有数据 → <code>save_pretrained_gguf(q4_k_m)</code> → <code>ollama create</code> 导入——个人定制模型一条龙<br />
+- <strong>YAML 复现实验</strong>：LLaMA-Factory 三连命令 + <code>plot_loss: true</code>——每个 YAML 都是可 diff 的实验记录</p>
+<p><strong>② 进阶组合玩法</strong><br />
+- <strong>DPO 品味定制</strong>：用自建偏好对（好答案/差答案）+ LLaMA-Factory <code>stage: dpo</code>——比 SFT 更适合"输出风格/拒答边界"调优<br />
+- <strong>GRPO 推理强化</strong>：Unsloth GRPO notebook（Qwen3 Advanced GRPO）+ 可验证任务（数学/代码）——领域推理能力强化<br />
+- <strong>多卡正式产线</strong>：单卡 Unsloth 调参满意 → LLaMA-Factory ZeRO-3 多卡放大 → vLLM API 部署</p>
+<p><strong>③ 数据工程提示</strong>（两框架共同前置）<br />
+- alpaca 格式（instruction/input/output）最通用；sharegpa 适合多轮对话；LLaMA-Factory 记得注册 dataset_info.json<br />
+- 合成数据工具链：Easy Dataset / DataFlow / GraphGen（LLaMA-Factory 官方推荐三件）<br />
+- <strong>EOS_TOKEN 陷阱</strong>：所有自定义数据格式化必须显式拼 EOS——无限生成的头号原因</p>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>速查卡：两框架核心命令</strong></p>
+<pre><code>Unsloth 五步：
+  FastLanguageModel.from_pretrained(bnb-4bit模型)   ← ①
+  FastLanguageModel.get_peft_model(r=16, checkpoint=&quot;unsloth&quot;) ← ②
+  dataset.map(格式化+EOS)                           ← ③
+  SFTTrainer(SFTConfig(lr=2e-4, optim=&quot;adamw_8bit&quot;)) ← ④
+  save_pretrained_gguf(q4_k_m)                      ← ⑤
+
+LLaMA-Factory 三连：
+  llamafactory-cli train  &lt;yaml&gt;   # stage: sft/dpo/ppo/...
+  llamafactory-cli chat   &lt;yaml&gt;   # 验证
+  llamafactory-cli export &lt;yaml&gt;   # 合并/量化/Ollama
+  # WebUI: llamafactory-cli webui
+  # API:  llamafactory-cli api &lt;yaml&gt; infer_backend=vllm
+</code></pre>
+<p><strong>选型三问</strong><br />
+- 只有一张消费卡+要本地部署？→ Unsloth<br />
+- 要 PPO/DPO/多卡/正式评估？→ LLaMA-Factory<br />
+- 两样都要？→ 都装（共享 HF 生态不冲突），快迭代 U、正式产线 L</p>
+<p><strong>避坑清单（背下来）</strong><br />
+- EOS 必拼（Unsloth 数据格式化）<br />
+- template 必匹配模型（LLaMA-Factory）<br />
+- LoRA 合并禁量化底座（两框架同）<br />
+- lr：LoRA 1e-4~2e-4 / 全参低两个量级<br />
+- 自定义数据集注册 dataset_info.json（LLaMA-Factory 新手第一坑）</p>
+<p><strong>何时重读本篇</strong>：拿到新卡装环境时（安装段）；选工具时（决策树）；导出部署时（GGUF/Ollama/vLLM 段）；数据翻车时（坑位表）。</p>
+</body>
+</html>
