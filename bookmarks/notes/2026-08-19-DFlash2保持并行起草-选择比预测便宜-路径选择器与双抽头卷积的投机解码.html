@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DFlash2保持并行起草-选择比预测便宜-路径选择器与双抽头卷积的投机解码</title>
+
+<meta property="og:title" content="DFlash2保持并行起草-选择比预测便宜-路径选择器与双抽头卷积的投机解码" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="dflash2-token">DFlash2保持并行起草 — 选择比预测便宜-路径选择器+双抽头卷积让投机解码每次验证多赚一个token</h1>
+<p class="tag-line"><span class="tag">#DFlash2</span> <span class="tag">#投机解码</span> <span class="tag">#SpeculativeDecoding</span> <span class="tag">#并行起草</span> <span class="tag">#路径选择器</span> <span class="tag">#双抽头卷积</span> <span class="tag">#后缀衰减</span> <span class="tag">#IncoAI</span> <span class="tag">#SGLang</span> <span class="tag">#vLLM</span> <span class="tag">#llamaCPP</span> <span class="tag">#oMLX</span> <span class="tag">#Qwen3.8</span> <span class="tag">#MuseGlimmer</span> <span class="tag">#agent推理瓶颈</span> <span class="tag">#token经济学</span> <span class="tag">#低秩双线性</span> <span class="tag">#拒绝采样</span> <span class="tag">#yibie</span> <span class="tag">#推理优化</span></p>
+<p class="note-date">生成日期 2026-08-19</p>
+
+<blockquote>
+<p><strong>出处</strong>：X/Twitter @yibie 转译 Inco AI 官方博客《DFlash 2: Keep Drafting Parallel》（inco.ai/blog/dflash2/，2026-08-19 发布）；DFlash 1 论文 arXiv:2602.06036<br />
+<strong>一句话</strong>：投机解码的 drafter 从来都是一次猜一个 token——DFlash 证明起草本身可以整块并行；DFlash 2 用"轻量路径选择器+局部卷积"把并行起草的连贯性买回来，<strong>每次验证多产出 20%+ token，延迟只加 1%，输出可证明不变</strong><br />
+数据锚点：Qwen3.8-27B 上 2.7-3.4× 自回归吞吐；Muse Glimmer 上 3.1-4.6×；HuggingFace 下载 350 万+</p>
+</blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="1-agent-token">1. 问题定位：agent 时代的 token 经济学</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>瓶颈</td>
+<td>agent 会读/规划/调工具，一跑几小时到几天——token 消耗速度是聊天场景从未达到过的；<strong>每个 token 都要一次完整前向传播</strong></td>
+</tr>
+<tr>
+<td>投机解码</td>
+<td>小 drafter 猜一整块，目标模型一次前向验证整块；猜对=一次前向多 token，猜错=丢弃重来</td>
+</tr>
+<tr>
+<td>历史死角</td>
+<td><strong>起草本身一直是自回归的</strong>（一次一个 token）——DFlash 1（2026-01 论文）把起草变成一次通过：整块、每个位置并行预测</td>
+</tr>
+<tr>
+<td>DFlash 1 战绩</td>
+<td>已进 SGLang/vLLM/TensorRT-LLM/llama.cpp；NVIDIA Blackwell 测到 15× 吞吐；Google TPU 3×；CoreWeave 的 Kimi K2.7 Code 最快端点默认开；Meta/Poolside/小米/NVIDIA 随模型发官方 drafter；HF 下载 350 万+（截至 2026-08）</td>
+</tr>
+<tr>
+<td>DFlash 2 增量</td>
+<td>每次验证多 20%+ 输出，周期延迟 +≈1%，输出可证明不变；跨基准增益 16-25%</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2-token">2. 洞察一：正确的 token 早就在候选列表里</h3>
+<p>DFlash 每位置独立预测 → 每个选择单独看合理但<strong>彼此不咬合</strong>（例：相邻位置选了同一个词→"结巴"→验证时整块截断）。</p>
+<p><strong>GSM8K 上五层 Qwen3-4B DFlash 的关键数据（表 1）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>起草位置</th>
+<th>Recall@1（第一选择对）</th>
+<th>Recall@16（对的在前16候选里）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>85.4%</td>
+<td><strong>99.5%</strong></td>
+</tr>
+<tr>
+<td>1</td>
+<td>80.3%</td>
+<td>97.3%</td>
+</tr>
+<tr>
+<td>2</td>
+<td>79.4%</td>
+<td>94.8%</td>
+</tr>
+<tr>
+<td>3</td>
+<td>78.3%</td>
+<td>92.6%</td>
+</tr>
+<tr>
+<td>4</td>
+<td>77.5%</td>
+<td>90.8%</td>
+</tr>
+<tr>
+<td>5</td>
+<td>75.9%</td>
+<td>89.4%</td>
+</tr>
+<tr>
+<td>6</td>
+<td>72.9%</td>
+<td>87.8%</td>
+</tr>
+<tr>
+<td><strong>接受长度</strong></td>
+<td>4.27（只用第一选择）</td>
+<td><strong>6.79（oracle 从前16挑）</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>4.27 → 6.79 的差距是纯粹的选择空间</strong>：不需要更强的预测，只需要在候选里选出一条连贯路径。对比 DSpark 的顺序 Markov 纠错（重写每位置完整词表分布，贵）——<strong>选择比预测便宜</strong>。</p>
+<h3 id="3">3. 方案一：轻量路径选择器（连贯性是局部的）</h3>
+<p>连贯性大体局部：候选合不合适主要取决于<strong>前一个 token</strong>——给相邻对打分就够。</p>
+<p><strong>打分公式</strong>：<code>S_t(a,b) = U_t(b) + ⟨A(a)⊙H(h_t), B(b)⟩</code><br />
+- <code>U_t(b)</code>：DFlash 自己的 logit（drafter 有多喜欢 b）<br />
+- 第二项：b 接在 a 后有多顺——A/B 给每个 token 256 维紧凑嵌入，<strong>上下文门控 H(h_t)</strong> 决定匹配哪些部分算数——本质是相邻候选的<strong>低秩双线性注意力</strong></p>
+<p><strong>流程</strong>：打分全程并行（每位置每对相邻候选一次算完，无额外 backbone/LM head 前向）→ 唯一串行是最后在预计算分数上走一遍：从最后已验证 token 贪心跟最好后继 → 采样从同分数抽取 → <strong>拒绝采样恢复精确目标分布</strong>（输出不变的关键）。</p>
+<p><strong>表 2（只加路径选择）</strong>：DFlash 4.27 (T=0) → <strong>4.61</strong>（+0.34）；DSpark 纠错 4.49 但 <strong>+77.8M 参数 +9.6% 延迟</strong>，选择器仅 <strong>+2.0M 参数 +0.6% 延迟</strong>——参数少 40 倍、延迟低 16 倍还更强。oracle 上限 6.79，成对打分只是最简单的选择器，空间还很大。</p>
+<h3 id="4-backbone">4. 洞察二：后缀衰减是 backbone 的局部问题</h3>
+<p>表 1 两列都在块尾下滑，<strong>连 oracle 都衰减</strong>（99.5%→87.8%）——没有选择器能修：候选自己就不够了。这是 <strong>backbone 问题</strong>，他们叫它<strong>后缀衰减</strong>。</p>
+<p><strong>归因过程（方法论漂亮）</strong>：<br />
+1. 嫌疑=容量：五层 backbone 撑不住跨整块依赖 → 若真如此，深度应在靠后位置帮最多忙<br />
+2. 验证：3/5/15 层 DFlash 在<strong>第一个位置几乎一样</strong>，越往块尾分得越开 → 嫌疑成立<br />
+3. 但深度不加区分：多十层 attention 到处加容量（连没得赚的靠前位置也加），磨掉 DFlash 的效率优势（15 层多 15.2% 延迟）<br />
+4. <strong>DFlash 的 attention 自己指出了修哪里</strong>：它有两份工作（读块前上下文+建块内依赖），块内注意力占比从第 1 层 30% 掉到第 5 层 8%，还收缩到少数 head——把两份工作拆开，专用模块管块内</p>
+<h3 id="5">5. 方案二：双抽头动态深度卷积（块局部、无状态）</h3>
+<p>块内工作本来就短程（块只有 4-16 token，最紧依赖在相邻位置）→ 自然算子是<strong>短卷积</strong>（借鉴 Canon Layers/Dynamic Short Convolutions/ConvLLM）：</p>
+<pre><code>Conv_k(x)_t = k_{t,0}⊙x_t + k_{t,1}⊙x_{t-1}
+</code></pre>
+<ul>
+<li>两个抽头：当前位置+前一位置，权重<strong>随内容自适应</strong>（可学习基核+隐藏状态算出的小修正，每 16 通道共享）</li>
+<li>第一个位置读<strong>最后一个已验证 token</strong> 的表示——信息穿过整块，所有位置仍并行</li>
+<li>插在每个 attention 和 MLP 子层<strong>前后</strong>；块局部+无状态 → 无缝插入不动 attention/LM head/验证</li>
+</ul>
+<p><strong>效果</strong>：只加 <strong>16.5M 参数（3%）</strong>、+0.7% 周期延迟 → 带卷积的五层 DFlash <strong>逼近 15 层 DFlash</strong>（后者多 15.2% 延迟）；第 4/5 层块内注意力从 9.4% 降到 0.5%（卷积吸收局部工作、attention 回归读上下文）——<strong>一个只够到前一个位置的核，买回十层的大部分收益：后缀衰减大体是局部问题</strong>。</p>
+<h3 id="6-3-5">6. 完整对比（表 3-5，接受长度=每请求平均）</h3>
+<table>
+<thead>
+<tr>
+<th>基准</th>
+<th>MTP</th>
+<th>DFlash</th>
+<th>DSpark</th>
+<th><strong>DFlash 2</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Qwen3.5-4B</strong> GSM8K</td>
+<td>4.78</td>
+<td>4.99</td>
+<td>5.69</td>
+<td><strong>6.20</strong></td>
+</tr>
+<tr>
+<td>MATH-500</td>
+<td>5.04</td>
+<td>5.42</td>
+<td>6.20</td>
+<td><strong>6.76</strong></td>
+</tr>
+<tr>
+<td>HumanEval</td>
+<td>4.84</td>
+<td>5.43</td>
+<td>5.80</td>
+<td><strong>6.28</strong></td>
+</tr>
+<tr>
+<td>MBPP</td>
+<td>4.16</td>
+<td>4.49</td>
+<td>4.96</td>
+<td><strong>5.41</strong></td>
+</tr>
+<tr>
+<td>MT-Bench</td>
+<td>3.90</td>
+<td>4.26</td>
+<td>4.77</td>
+<td><strong>5.20</strong></td>
+</tr>
+<tr>
+<td><strong>平均</strong></td>
+<td>4.54</td>
+<td>4.92</td>
+<td>5.49</td>
+<td><strong>5.97</strong>（比 DFlash +1.05/+21%）</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>对比</th>
+<th>平均接受长度</th>
+<th>吞吐倍数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3.8-27B（块8）</td>
+<td>MTP 4.28 / DSpark 3.62 / <strong>DFlash2 4.80</strong></td>
+<td>超 DSpark 一个完整 token</td>
+<td><strong>2.7-3.4×</strong></td>
+</tr>
+<tr>
+<td>Muse Glimmer（块16）</td>
+<td>官方 DFlash 4.44 / DSpark 4.48 / <strong>DFlash2 5.70</strong></td>
+<td>超两者一个完整 token</td>
+<td><strong>3.1-4.6×</strong></td>
+</tr>
+</tbody>
+</table>
+<p>选择器+卷积合计只加 <strong>1.3%</strong> 周期延迟。MATH-500 上 DFlash 2 到最后位置稳在 86% 附近，基线们块尾低 6-9 个点。</p>
+<h3 id="7">7. 现在就能跑（官方命令实录）</h3>
+<pre><code class="language-bash"># SGLang
+pip install -U &quot;sglang[all] @ git+github.com/sgl-project/sglang&quot;
+python -m sglang.launch_server \
+  --model-path Qwen/Qwen3.8-27B \
+  --speculative-algorithm DFLASH \
+  --speculative-draft-model-path incoai/Qwen3.8-27B-DFlash2 \
+  --speculative-num-draft-tokens 8
+
+# vLLM
+pip install -U &quot;vllm @ git+github.com/vllm-project/vllm&quot;
+vllm serve Qwen/Qwen3.8-27B \
+  --speculative-config '{&quot;method&quot;:&quot;dflash&quot;,&quot;model&quot;:&quot;incoai/Qwen3.8-27B-DFlash2&quot;,&quot;num_speculative_tokens&quot;:7}'
+
+# llama.cpp（PR #27342 分支）
+git clone github.com/ggml-org/llama.cpp &amp;&amp; cd llama.cpp
+git fetch origin pull/27342/head:pr-27342 &amp;&amp; git switch pr-27342
+# NVIDIA: cmake -B build -DGGML_CUDA=ON / Apple: -DGGML_METAL=ON
+./build/bin/llama-server \
+  -hf ggml-org/Qwen3.8-27B-GGUF:Q4_K_M \
+  -hfd incoai/Qwen3.8-27B-DFlash2-GGUF:Q4_K_M \
+  --spec-type draft-dflash --spec-draft-n-max 7
+
+# oMLX（Apple M5 Max 演示环境）：Model Downloader 下载双模型 →
+#   Model Manager 配置：DFlash enabled / draft=incoai/Qwen3.8-27B-DFlash2 /
+#   Draft quantization enabled / Runtime block size 5 / Verify mode dflash
+</code></pre>
+<p>两个新 drafter 已发：Qwen3.8-27B + Meta Muse Glimmer（HF: incoai/…）。商业入口：contact@inco.ai（含为自定义微调模型定制 drafter）。</p>
+<h2 id="_2">二、查询拓展</h2>
+<ol>
+<li>DFlash 1 论文（arXiv:2602.06036）的块扩散起草机制——DFlash 2 的前置阅读</li>
+<li>DSpark / Domino 的顺序 Markov head 方案细节——"昂贵自回归纠错"对照组的技术全貌</li>
+<li>Modal《Speculation Is All You Need》——被 DFlash 团队致敬的低延迟服务优化论证</li>
+<li>拒绝采样恢复精确分布的数学证明——"输出可证明不变"的严格性</li>
+<li>Canon Layers / Dynamic Short Convolutions / ConvLLM 三篇卷积前作的谱系</li>
+<li>MTP（Multi-Token Prediction）与投机解码的关系——表 3 里 MTP 为何落后</li>
+<li>NVIDIA Blackwell 15× / Google TPU 3× 的测试口径——硬件侧增益边界</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一句话</td>
+<td>投机解码的起草不必自回归：DFlash 2 保留每位置 top-16 候选，用"相邻对低秩双线性打分选路径+双抽头动态卷积修块尾"，把并行起草的连贯性以 1.3% 延迟买回来</td>
+</tr>
+<tr>
+<td>洞察一</td>
+<td>正确 token 99.5% 在前 16 候选里（vs 第一选择 85.4%）——4.27→6.79 是纯选择空间：<strong>选择比预测便宜</strong>（+2M 参数胜 DSpark 的 +77.8M）</td>
+</tr>
+<tr>
+<td>洞察二</td>
+<td>后缀衰减连 oracle 都救不了=候选本身不够=backbone 问题；归因到块内注意力收缩 → 拆开两份工作：卷积管块内（3% 参数），attention 回归读上下文</td>
+</tr>
+<tr>
+<td>工程美学</td>
+<td>两处修改都保持"一次通过"设计：打分全程并行、卷积无状态块局部、拒绝采样保证分布不变——<strong>加速不改变输出</strong></td>
+</tr>
+<tr>
+<td>生态位</td>
+<td>DFlash 1 七个月从论文到行业标准（四大引擎/350万下载/官方 drafter 随模型发）；DFlash 2 是同设计内的免费增量</td>
+</tr>
+<tr>
+<td>商业逻辑</td>
+<td>agent 是推理需求的爆炸源（一下午=聊天机器人一个月）——推理栈是"token 经济学"，DFlash 2 只是第一块地板</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>投机解码从可选项变成推理栈标配</strong>：NVIDIA/Google/CoreWeave/Meta/小米全部入局+四大引擎默认支持——2026 年不发官方 drafter 的新模型会像不发 tokenizer 一样奇怪</li>
+<li><strong>"并行起草+轻量选择"范式在取代"自回归纠错"</strong>：DSpark 的顺序 Markov 重写被 2M 参数选择器以 40 倍参数效率打败——<strong>对已有信号做选择/路由，比重新预测便宜</strong>，这个结论会外溢到很多子系统（MoE 路由/检索重排/beam 搜索）</li>
+<li><strong>推理优化的新兵法是"诊断-拆职-专配"</strong>：DFlash 2 的归因链（块内注意力占比 30%→8% 收缩到少数 head →拆开 attention 的两份工作→卷积专管块内）是教科书级——先用测量定位瓶颈职責，再配最小专用算子，不盲目加容量</li>
+<li><strong>agent 经济学决定推理投资方向</strong>：吞吐提升 3× 直接改写 agent 成本结构——长时 agent（几小时到几天）的单位任务成本随解码效率线性下降，推理优化=agent 时代的"电价"</li>
+<li><strong>drafter 独立成资产类别</strong>：incoai 为各家模型（Qwen/Muse Glimmer/自定义微调）发 drafter——模型+drafter 的配套生态类似 CPU+协处理器，会出现 drafter 即服务（contact 定制）市场</li>
+<li><strong>消费端（M5 Max/oMLX/llama.cpp）与数据中心同步受益</strong>：投机解码是少数"云到端全谱系通用"的优化——本地 agent（本仓 Jetson 场景）同样适用 Q4_K_M+DFlash2 组合</li>
+</ol>
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>笔记《2026-08-19-Unsloth与LLaMA-Factory》</strong></td>
+<td>训练-推理闭环：Unsloth 微调出的自定义模型可找 Inco AI 定制 drafter（官方明示）；GGUF 量化模型（q4_k_m）正是 llama.cpp DFlash2 的底座格式——"微调→量化→DFlash2 加速"是消费级完整管线</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-物理AI的裁判层提案》</strong></td>
+<td>RLVR 硬约束②"单次验证必须秒级"的同族问题：投机解码把"验证整块"摊薄为一次前向——训练侧（RL 环境验证）与推理侧（speculative 验证）共享"批量验证经济学"</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-HarnessEngineering七要素》</strong></td>
+<td>性能工程要素的实例：DFlash 2 的归因方法论（测量→定位职责→最小干预）与 harness 的 observability 思想同构</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-18-LittleLearner》</strong></td>
+<td>反向印证：drafter 是"能力受限的小模型"——它不需要聪明，只需要候选覆盖（Recall@16 99.5%）；聪明的选择交给选择器——<strong>分工优于全能</strong>的又一证据</td>
+</tr>
+<tr>
+<td>本仓 skill <code>llm-inference-optimization</code> / <code>serving-llms-vllm</code></td>
+<td>PagedAttention/连续批处理是吞吐侧，投机解码是延迟-算力侧——vLLM <code>--speculative-config</code> 即两者叠加的入口（本篇命令实录可直接入库）</td>
+</tr>
+<tr>
+<td>本仓 Jetson 线（nexa-local-inference / edge-llm-quantization）</td>
+<td>llama.cpp 分支 PR 27342 + GGUF Q4_K_M 的组合理论上可在 Jetson Ollama 生态复现——本仓"不在本机跑重型推理实测"铁律下记录为候选实验</td>
+</tr>
+<tr>
+<td><strong>笔记《2026-08-19-ESP32给眼睛》</strong></td>
+<td>资源分层同构：ESP32 视觉的"路径C 板子当摄像头大脑放强机"与 drafter/target 分工（小模型起草大模型验证）都是"按能力分配职责"的设计观</td>
+</tr>
+<tr>
+<td>本仓 Agent 体系（H Hermes 长任务）</td>
+<td>直接受益方：本会话这类多工具长任务每 token 都在解码——推理栈 3× 意味着同等预算下 agent 能力密度提升</td>
+</tr>
+</tbody>
+</table>
+<p>→ 原帖：https://x.com/yibie/status/2089941299864760632<br />
+→ 原文：inco.ai/blog/dflash2/ · 论文：arxiv.org/abs/2602.06036（DFlash 1）<br />
+→ drafter：huggingface.co/incoai/Qwen3.8-27B-DFlash2 · incoai/Muse-Glimmer-DFlash2</p>
+<h2 id="_6">六、拓展应用推荐</h2>
+<p><strong>① 对本仓的直接可用</strong><br />
+- <strong>vLLM 命令入库</strong>：<code>--speculative-config '{"method":"dflash",...}'</code> 可直接补进 serving-llms-vllm skill 的参考配置（DFlash 2 主线已进 vLLM/SGLang）<br />
+- <strong>Jetson 候选实验</strong>（留待授权）：llama.cpp PR 27342 + Qwen3.8-27B-GGUF Q4_K_M + DFlash2-GGUF——本地 agent 吞吐 2-3× 的低成本实验，符合"代码管线就绪、实测待授权"模式</p>
+<p><strong>② 若跟进该方向</strong><br />
+- 读 DFlash 1 论文补块扩散机制（本篇未展开 DFlash 1 内核）<br />
+- 关注 incoai 的模型卡（按任务和并发拆解加速比）——选型时按自家负载查表<br />
+- Modal《Speculation Is All You Need》——低延迟服务的优化优先级论证</p>
+<p><strong>③ 方法论迁移（最重要）</strong><br />
+- <strong>"选择比预测便宜"</strong>：任何"生成 N 个候选再挑"的场景（代码补全/检索重排/工具调用路由）都该问：挑对的成本是否远低于重新生成？<br />
+- <strong>"诊断-拆职-专配"</strong>：先测量瓶颈在哪个职责（如块内注意力收缩），再配最小专用模块——不盲目堆容量（15 层 vs 5 层+卷积的 15.2% vs 0.7%）</p>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>DFlash 2 核心机制速查</strong></p>
+<pre><code>并行起草（DFlash 1 底座）
+  每位置独立预测 → 各自 top-16 候选保留
+        ↓
+洞察A：正确 token 99.5% 在候选里（Recall@16 &gt;&gt; Recall@1）
+  → 路径选择器：S_t(a,b) = U_t(b) + ⟨A(a)⊙H(h_t), B(b)⟩
+    （logit 偏好 + 上下文门控双线性连贯性，全并行打分+一次贪心走查）
+        ↓
+洞察B：后缀衰减连 oracle 都救不了 = backbone 候选不足
+  → 双抽头动态卷积：Conv_k(x)_t = k_{t,0}⊙x_t + k_{t,1}⊙x_{t-1}
+    （块局部无状态，插在每层 attention/MLP 前后，首位置读最后已验证 token）
+        ↓
+拒绝采样恢复精确分布 → 输出与自回归可证明相同
+代价合计：+2M+16.5M 参数，+1.3% 延迟；换每次验证 +20% token，吞吐 2.7-4.6×
+</code></pre>
+<p><strong>三条可背的结论</strong><br />
+- 正确的 token 早就在候选里——选择比预测便宜（40 倍参数效率差）<br />
+- 后缀衰减大体是局部问题——一个够到前一个位置的核买回十层收益<br />
+- 加速可以不改变输出——拒绝采样保证分布不变是投机解码的合规底线</p>
+<p><strong>何时重读本篇</strong>：部署 vLLM/SGLang 调 speculative 参数时（命令实录段）；设计"候选+选择"类系统时（选择器打分公式）；分析模型容量瓶颈时（归因三步法）；评估 agent 推理成本时（token 经济学段）。</p>
+</body>
+</html>
