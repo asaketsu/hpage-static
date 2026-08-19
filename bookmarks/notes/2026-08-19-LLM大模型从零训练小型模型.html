@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM大模型从零训练小型模型</title>
+
+<meta property="og:title" content="LLM大模型从零训练小型模型" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-">《LLM大模型 - 从零训练一个小型模型》笔记</h1>
+<p class="note-date">生成日期 2026-08-19</p>
+<blockquote>
+<p>来源: 微信公众号「暗黑时间」《LLM大模型 - 从零训练一个小型模型》（LLM 学习系列第七篇）<br />
+日期: 2026-08-19 · 配套项目: <code>~/uclaw/project/train-mini-llm/</code>（代码+步骤+文档全量，未训练）</p>
+</blockquote>
+<hr />
+<h2 id="_1">一、核心概念</h2>
+<p>文章是"从理论走向实践"的一篇：在有限算力（Mac/MPS 亦可）下，<strong>从零手写一个 LLaMA 架构的 83M 小模型，跑通 预训练 → SFT 微调 → 推理 → 导出 的完整链路</strong>。核心命题：训练一个完美大模型不是目标，<strong>对 LLM 全流程建立直观而系统的认知</strong>才是。</p>
+<p>三层链路认知框架：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>数据</th>
+<th>学到什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pre-training</td>
+<td>序列猴子 10B token 通用语料</td>
+<td>语言的统计规律与世界知识（续写能力）</td>
+</tr>
+<tr>
+<td>SFT</td>
+<td>BelleGroup 350 万条中文对话</td>
+<td>指令遵循、对话交互（"基础模型"→"可用助手"）</td>
+</tr>
+<tr>
+<td>导出/推理</td>
+<td>—</td>
+<td>HF 标准格式分发、生态对接</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">二、技术要点</h2>
+<h3 id="21-llama-transformer">2.1 LLaMA 架构五件套（与原始 Transformer 的差异）</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>原始 Transformer</th>
+<th>LLaMA（本文实现）</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>归一化</td>
+<td>LayerNorm（Post-Norm）</td>
+<td>RMSNorm（Pre-Norm）</td>
+<td>去均值中心化省计算；前置归一化训练更稳、收敛更快</td>
+</tr>
+<tr>
+<td>注意力</td>
+<td>MHA</td>
+<td>GQA（16 Q / 8 KV，n_rep=2）</td>
+<td>KV Cache 显存减半；质量优于 MQA；提前熟悉推理优化主流方向</td>
+</tr>
+<tr>
+<td>位置编码</td>
+<td>正弦绝对位置</td>
+<td>RoPE 旋转位置</td>
+<td>只旋 Q/K；相对位置性质；外推性更好</td>
+</tr>
+<tr>
+<td>前馈</td>
+<td>2 层 MLP + ReLU</td>
+<td>SwiGLU 三矩阵门控</td>
+<td>同参数量下表达力更强；hidden = 4/3×dim 对齐 64 倍数</td>
+</tr>
+<tr>
+<td>输出层</td>
+<td>独立矩阵</td>
+<td>weight tying</td>
+<td>词表 6144×dim 768 的参数直接省掉（与嵌入共享）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-8259m">2.2 模型配置（82.59M 参数）</h3>
+<p><code>dim=768, n_layers=12, n_heads=16, n_kv_heads=8, vocab=6144, max_seq_len=512</code>。<br />
+配置类继承 <code>PretrainedConfig</code>（model_type="My-LLM"）、模型类继承 <code>PreTrainedModel</code>——这两个继承是"能进 HuggingFace 生态"的关键（save_pretrained / AutoModelForCausalLM / push to hub）。</p>
+<h3 id="23">2.3 训练工程细节（文章最有价值部分）</h3>
+<ol>
+<li><strong>数据集懒加载</strong>：预扫描 jsonl 逐行字节偏移量（<code>f.tell()</code>），<code>__getitem__</code> 时 seek+readline——10B token 语料不用进内存；坏行重试 10 次。</li>
+<li><strong>X/Y 错位</strong>：<code>X=input[:-1]</code>, <code>Y=input[1:]</code>——next-token 的 shift 在 Dataset 做，模型 forward 不做。</li>
+<li><strong>loss 双保险</strong>：模型内 <code>cross_entropy(ignore_index=0, reduction='none')</code> 逐 token + 训练循环 <code>loss_mask</code> 加权——padding 不计损失。</li>
+<li><strong>断点续训全状态</strong>：checkpoint 保存 model/optimizer/scaler/进度 + <strong>三种 RNG 状态 + DataLoader shuffle 的 torch.Generator 状态</strong>——恢复后数据顺序与中断前一致。比"只存 model"的教程高一个工程等级。</li>
+<li><strong>原子保存</strong>：<code>.tmp</code> + <code>os.replace</code>；step 检查点滚动保留 5 个；latest 损坏自动回退。</li>
+<li><strong>混合精度</strong>：CUDA 走 autocast+GradScaler；MPS/CPU 用 nullcontext（MPS 对 autocast 支持不完整）。</li>
+<li><strong>梯度累积 8 步</strong>：有效 batch 48×8=384；顺序 unscale→clip(1.0)→step 不能乱。</li>
+<li><strong>余弦退火 LR</strong>：warmup 线性升 → 余弦衰减 → min_lr=lr/10 封底。</li>
+<li><strong>DataParallel 诚实注释</strong>：DP 只适合 &lt;1B 演示；真实训练 DDP/FSDP/DeepSpeed。</li>
+</ol>
+<h3 id="24-sft">2.4 SFT 关键差异</h3>
+<ul>
+<li>数据：<code>apply_chat_template</code> 编码多轮对话（system + user/assistant 交替）。</li>
+<li><strong>损失掩码 <code>generate_loss_mask</code></strong>：在 token 流里搜索 <code>&lt;|im_start|&gt;assistant\n</code> 子序列，从其后到首个 eos（含）标 1——<strong>只对回答计损失，用户输入不计</strong>。这是 SFT 的本质：教模型"怎么答"而非"复述问"。</li>
+<li>优化器 Adam→AdamW；init_model 先加载预训练权重（<code>_orig_mod.</code> 前缀兼容 torch.compile）。</li>
+<li>掩码实现是纯 Python 双指针子串匹配，慢但对任意 chat template 通用。</li>
+</ul>
+<h3 id="25">2.5 推理与导出</h3>
+<ul>
+<li>推理态 forward 只投影最后位置（<code>h[:, [-1], :]</code>）——省算力技巧。</li>
+<li><code>generate</code>：温度采样 + top_k 截断（top_k 外 logits 填 -inf 再 softmax）；stop_id 提前终止。</li>
+<li>导出：<code>register_for_auto_class</code> → <code>save_pretrained</code> → HF 标准目录，<code>trust_remote_code=True</code> 直接加载。</li>
+<li>预训练 vs SFT 效果：预训练只会续写（给问题续出更多问题），SFT 以对话方式回应——"可用助手"的转变直观可见。</li>
+</ul>
+<h2 id="_3">三、复现验证（本项目已做，未训练）</h2>
+<p><code>verify_structure.py</code>（CPU，torch 2.13.0）：7 项断言全过——参数量 <strong>82.59M 与文章 83M 对齐</strong>、前向 shape、推理态单位置投影、因果遮挡一致性、RoPE 保范数、repeat_kv 形状、RMSNorm 统计、generate 产出。</p>
+<p>文章代码为"展示格式"（缩进丢失、<code>is not None</code> 粘连），项目落盘版已修复为可运行代码，语义 100% 忠实。两处文章自身小瑕疵已记录：①模型 forward 不做 X/Y shift（由 Dataset 负责，与部分教程不同）；②<code>inference.py</code> 的 <code>generate_super</code> 是注册后别名，报错时改 <code>generate</code>。</p>
+<h2 id="_4">四、可学到的点</h2>
+<ol>
+<li><strong>"从零"的边界</strong>：从零 ≠ 从矩阵乘法写起，而是"不借助现成模型 checkpoint/训练框架，只依赖 torch+transformers 基础设施"。83M 级从零训练在消费级硬件完全可行。</li>
+<li><strong>HF 生态对接的两个继承</strong>：<code>PretrainedConfig</code> + <code>PreTrainedModel</code>（含 <code>register_for_auto_class</code>）就是自定义模型进 HF 生态的全部门票。</li>
+<li><strong>断点续训的正确完整度</strong>：RNG 状态 + shuffle Generator 状态 + iter_per_epoch 校验——训练可复现性是这套教程的核心卖点。</li>
+<li><strong>GQA/RoPE/SwiGLU 实现细节</strong>：repeat_kv 的 expand+reshape、RoPE 实虚部 stack、SwiGLU hidden_dim 4/3 规则——"知道"与"会写"的差距。</li>
+<li><strong>SFT loss mask 的通用实现</strong>：模板子序列搜索法不依赖特定 tokenizer 结构，任意 chat template 通吃。</li>
+<li><strong>成本意识</strong>：Mac MPS 全程可跑；"跑通链路"的算力门槛已降到消费级——与 face-api.js 浏览器门禁（6.5MB 模型）共同印证"小模型工程学"趋势。</li>
+</ol>
+<h2 id="_5">五、推荐行动</h2>
+<ul>
+<li><strong>短期</strong>：在有 GPU 的机器按项目 README 七步实跑；先 <code>--max_samples 1000</code> 冒烟再放大。</li>
+<li><strong>中期</strong>：补 Tokenizer 环节（系列第六篇 BPE 训练）；对比 LoRA/QLoRA（unsloth）与全参 SFT 成本差异。</li>
+<li><strong>长期</strong>：导出的 My-LLM-83M 接 GGUF 量化链路，Jetson 端侧推理验证（仅推理不训练）。</li>
+</ul>
+<hr />
+<h2 id="_6">引用与关联</h2>
+<ul>
+<li>原文: 微信公众号「暗黑时间」，LLM 学习系列第七篇</li>
+<li>数据: 出门问问序列猴子（预训练）/ BelleGroup train_3.5M_CN（SFT）/ SwanLab（实验跟踪）</li>
+<li>配套项目: <code>~/uclaw/project/train-mini-llm/</code>（README + 8 个代码文件 + 分析笔记，INDEX 已注册）</li>
+</ul>
+</body>
+</html>
