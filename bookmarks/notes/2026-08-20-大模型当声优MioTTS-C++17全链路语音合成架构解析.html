@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大模型当声优MioTTS-C++17全链路语音合成架构解析</title>
+
+<meta property="og:title" content="大模型当声优MioTTS-C++17全链路语音合成架构解析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="miotts-c17">大模型当"声优"：MioTTS C++17 全链路语音合成架构解析</h1>
+<blockquote>
+<p>来源: 微信公众号《程序猿编码》（2026-08-20）<br />
+主题: 用 C++17 + GGML 实现文本→语音全链路（LLM 生成音频 token + 说话人克隆），零 Python 依赖<br />
+类别: TTS · GGML · 语音克隆 · 边缘AI · C++工程化</p>
+
+<p class="meta-date">生成日期 2026-08-20</p></blockquote>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="_2">核心一句话</h3>
+<p><strong>复杂 AI 流水线可以完全脱离 Python 生态运行</strong>——MioTTS 把 4 个深度学习模块（LLM / 说话人特征 / 声码器 / 波形合成）全部用 C++17 实现，打包成一个可执行文件 + 几份 GGUF 权重，任何设备直接能跑。</p>
+<h3 id="_3">四阶段流水线</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>模块</th>
+<th>规格</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>LLM（llama.cpp 底座）</td>
+<td>0.1B Q8_0，60MB</td>
+<td>文本 → 离散音频 token 序列</td>
+</tr>
+<tr>
+<td>2</td>
+<td>WavLM 特征提取器</td>
+<td>base-plus 前 2 层，F32</td>
+<td>参考音频 → 说话人嵌入（"声音指纹"）</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MioCodec 解码器</td>
+<td>80MB</td>
+<td>音频 token + 说话人嵌入 → 梅尔频谱</td>
+</tr>
+<tr>
+<td>4</td>
+<td>iSTFT 逆变换</td>
+<td>24kHz, hop 256</td>
+<td>梅尔频谱 → PCM 波形 → WAV</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">三种推理模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>LLM 跑在哪</th>
+<th>声码器跑在哪</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本地全链路</td>
+<td>本地 GGUF</td>
+<td>本地</td>
+<td>离线、隐私敏感、边缘设备</td>
+</tr>
+<tr>
+<td>API 混合</td>
+<td>外部 OpenAI 兼容 API</td>
+<td>本地</td>
+<td>LLM 已部署服务器，本地只出声</td>
+</tr>
+<tr>
+<td>预设音色</td>
+<td>本地/外部</td>
+<td>本地</td>
+<td>不需要实时克隆，用预计算音色嵌入</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">二、归纳总结</h2>
+<h3 id="5">工程上最值钱的 5 个设计</h3>
+<ol>
+<li><strong>模型格式统一 GGUF</strong>：LLM/声码器/WavLM/预设嵌入 4 类模型统一格式，加载逻辑只有一套</li>
+<li><strong>共享 LLM 上下文</strong>（服务端核心）：N 个并发请求共享同一份 KV 缓存，内存占用从 N×M 变 M，不随并发线性增长</li>
+<li><strong>参考音频缓存</strong>：说话人嵌入按 key 缓存，常用音色毫秒级切换，免重复计算 WavLM 特征</li>
+<li><strong>C API 统一封装</strong>：CLI / HTTP Server / iOS / Android / WASM 五种形态共享同一套引擎边界</li>
+<li><strong>差异化量化</strong>：LLM 用 Q8_0（0.1B 小模型音质损失不可感知）+ WavLM 用 F32（特征提取精度敏感）——按模块敏感度选择量化档位</li>
+</ol>
+<h3 id="_6">作者的取舍逻辑（金句照录）</h3>
+<ul>
+<li>WavLM <strong>只取前两层</strong>："前两层已含足够说话人判别信息，再往下计算量翻倍但音色区分度提升微乎其微——够用就好"</li>
+<li>iSTFT 而非 HiFi-GAN/Vocos："音质上限稍低，但计算量极小、延迟极低、实现简单——资源受限设备的务实选择"</li>
+<li>C++17 而非 20/23："编译支持最广、生态最成熟"</li>
+</ul>
+<h2 id="_7">三、趋势判断</h2>
+<ol>
+<li><strong>TTS 正在走 LLM 同一条路</strong>：音频 token 化 + 序列预测（MioTTS 用 0.1B LLM 预测音频 token），与 CosyVoice/F5-TTS 的 flow-matching 路线并列，小模型做语音的可行性已被验证</li>
+<li><strong>"零 Python"成为边缘部署新卖点</strong>：几十 MB 单二进制即可说话，树莓派/工控机/机器人不用再为解释器买单</li>
+<li><strong>共享 KV 缓存会成为 TTS 服务端标配</strong>：并发场景下内存线性增长是部署硬伤，跨请求复用上下文是通用解法</li>
+</ol>
+<h2 id="_8">四、拓展应用</h2>
+<h3 id="_9">与本机系统的对照（哪些已有，哪些可借鉴）</h3>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>本机现状</th>
+<th>MioTTS 可借鉴点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本地 TTS</td>
+<td>LuxTTS daemon（Python+CUDA）</td>
+<td>共享 KV 缓存→多路并发显存不线性涨</td>
+</tr>
+<tr>
+<td>语音克隆</td>
+<td>F5-TTS / LuxTTS 参考音频</td>
+<td>WavLM 嵌入轻量方案</td>
+</tr>
+<tr>
+<td>服务化</td>
+<td>systemd 单 daemon</td>
+<td>C API + worker slot 并发模型</td>
+</tr>
+<tr>
+<td>边缘部署</td>
+<td>Jetson Orin</td>
+<td>Q8_0 量化 60MB 模型，Jetson 完全可跑</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_10">可落地的三个迁移设想</h3>
+<ol>
+<li><strong>语音助手并发改造</strong>：借鉴共享 LLM 上下文，多用户并发请求复用同一份 KV 缓存</li>
+<li><strong>游戏 NPC 实时配音</strong>：0.1B 模型毫秒级启动，支持玩家上传声音克隆</li>
+<li><strong>嵌入式离线播报</strong>：Q8_0 量化 + iSTFT，树莓派级别硬件即可本地合成</li>
+</ol>
+<h2 id="_11">五、指南分析</h2>
+<h3 id="_12">动手跑起来的完整流程（真实部署命令，需先获取源码/权重）</h3>
+<pre><code class="language-bash"># 环境：macOS/Linux + Clang/GCC (C++17)，Windows 未验证
+./setup.sh   # 一键：下载模型 + 编译（或 models_download.sh + build.sh 分开执行）
+
+# ① 基础合成（预设音色）
+./build/llama-tts-mio \
+  -m models/MioTTS-0.1B-Q8_0.gguf \
+  -mv models/miocodec.gguf \
+  -emb models/zh_female.emb.gguf \
+  -p &quot;你好，今天天气真不错。&quot; -o out.wav
+
+# ② 声音克隆（参考音频 3-10 秒，单声道 16k/24k）
+./build/llama-tts-mio \
+  -m models/MioTTS-0.1B-Q8_0.gguf \
+  -mv models/miocodec.gguf \
+  --tts-wavlm-model models/wavlm_base_plus_2l_f32.gguf \
+  --tts-reference-audio reference.wav \
+  -p &quot;This sentence uses the cloned voice.&quot; -o cloned.wav
+
+# ③ 混合模式（外部 LLM + 本地声码器）
+./build/llama-tts-mio \
+  -mv models/miocodec.gguf \
+  --llm-api-url http://localhost:8080/v1 \
+  -p &quot;Hello from an external LLM.&quot; -o out.wav
+
+# ④ HTTP 服务（并发工作槽 + 共享 KV 缓存）
+./build/mio-tts-server \
+  -m models/MioTTS-0.1B-Q8_0.gguf \
+  -mv models/miocodec.gguf \
+  --tts-wavlm-model models/wavlm_base_plus_2l_f32.gguf \
+  --reference-file-json '[{&quot;key&quot;:&quot;jp_female&quot;,&quot;path&quot;:&quot;models/jp_female.emb.gguf&quot;}]' \
+  --host 127.0.0.1 --port 18089
+</code></pre>
+<h3 id="_13">采样参数调优经验</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>推荐区间</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>温度 temp</td>
+<td>0.6 - 0.9</td>
+<td>太低像机器人，太高口齿不清</td>
+</tr>
+<tr>
+<td>重复惩罚</td>
+<td>1.1 - 1.2</td>
+<td>听到同一个音反复出现时调高</td>
+</tr>
+<tr>
+<td>Top-K / Top-P</td>
+<td>默认</td>
+<td>除非特殊要求不用动</td>
+</tr>
+<tr>
+<td>最大 token 数 -n</td>
+<td>400 默认</td>
+<td>长文本按句切分分批调用再拼接</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_14">六、关联分析</h2>
+<h3 id="alpha">与"检索策略才是 alpha"的同构</h3>
+<p>MioTTS 的核心不是模型本身（0.1B 很小），而是<strong>工程策略链</strong>：量化选择策略（Q8_0 vs F32）、缓存策略（参考音频）、内存策略（共享 KV）、并发策略（work slot）——策略密度决定了系统能否生产级落地，与检索系统的 alpha 在检索策略同理。</p>
+<h3 id="_15">三篇笔记互印证</h3>
+<ul>
+<li>《LLM 大模型从零训练》：模型侧怎么造 → 本文=模型侧怎么轻量化部署</li>
+<li>《F5-TTS 语音克隆》：Python/PyTorch 路线 vs 本文 C++/GGML 路线，同目标两套实现哲学</li>
+<li>《Agent ≈ 大模型+Harness》：Harness 在 TTS 场景的等价物=这套 C API + 服务治理</li>
+</ul>
+<blockquote>
+<p>📌 项目: <code>/home/jc/uclaw/project/miotts-cpp17-architecture/</code>（含三模式模拟 + 并发模型验证，<code>scripts/demo.py</code> 可直接跑）<br />
+⚠️ 真实源码未公开（需加微信 c17865354792），本笔记命令照录原文供备查</p>
+</blockquote>
+</body>
+</html>
