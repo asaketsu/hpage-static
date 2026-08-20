@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT: CoAP 受限应用协议深度解析</title>
+
+<meta property="og:title" content="IoT: CoAP 受限应用协议深度解析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="iot-coap">IoT: CoAP 受限应用协议深度解析</h1>
+<blockquote>
+<p>探索日期: 2026-08-20 | 兴趣等级: L3 | 类型: auto-explore | 来源: RFC 7252/7641 原文 + libcoap 官方仓库（一手）<br />
+前序笔记: <code>explore/2026-08-18-IoT-ESP32-H4-双核RISC-V-Thread-Matter.md</code>、<code>explore/2026-08-15-IoT-Zenoh云到MCU统一通信协议.md</code>、<code>notes/2026-08-12-IoT-ESP-NOW-安全机制与最佳实践.md</code></p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>CoAP（Constrained Application Protocol, RFC 7252）是 IETF 为 8 位 MCU + 低速率有损网络（6LoWPAN，10s of kbit/s）设计的 RESTful 二进制 Web 协议。本次直读 RFC 原文与 libcoap 参考实现仓库，聚焦四件事：4 字节头部的极致精简设计、CON/NON 消息层的可选可靠性、Observe 扩展的订阅推送模型、以及 OSCORE 端到端安全。结论：在"电池供电 + REST 语义 + 云端 HTTP 无缝对接"三条件同时成立时，CoAP 仍是不可替代的标准选择；纯 pub/sub 场景 MQTT 更优，云到端统一抽象 Zenoh 更优。</p>
+<h2 id="5">核心发现（5 个）</h2>
+<ol>
+<li>
+<p><strong>4 字节固定头部，开销仅为 HTTP 的几十分之一</strong>。Ver(2bit)+T(2bit)+TKL(4bit)+Code(8bit)+MessageID(16bit)，后接 0-8 字节 Token、TLV Options、0xFF 帧尾标记 + Payload。整个报文可装入单个 UDP 数据报，配合 6LoWPAN 头压缩是它在 10kbps 链路上可用的根本原因。</p>
+</li>
+<li>
+<p><strong>可靠性是"每消息可选"的，不是每连接的</strong>。四类消息：CON(Confirmable)/NON(Non-confirmable)/ACK/RST。传感器周期上报用 NON（丢了就丢了，下个周期自然补偿），命令下发用 CON（指数退避重传：初始超时 ACK_TIMEOUT=2s × 随机因子 1.5，最多重传 MAX_RETRANSMIT=4 次，MAX_TRANSMIT_WAIT=93s）。这比 TCP 全连接可靠性的功耗模型更适合电池设备。</p>
+</li>
+<li>
+<p><strong>Observe（RFC 7641）把 REST 的"拉"改造成"推"</strong>。客户端在 GET 请求中携带 Observe 选项注册为观察者，资源状态变化时服务端主动推送新表示。语义是 best-effort + 最终一致（eventual consistency），不是 MQTT QoS2 那种精确一次——通知丢了靠客户端重新 GET 兜底。这是 LwM2M 设备管理上报的基石。</p>
+</li>
+<li>
+<p><strong>libcoap 是事实参考实现，ESP-IDF 一线支持</strong>。obgm/libcoap 用 C 实现，官方支持 Espressif/ESP-IDF、LwIP、Contiki-NG、RIOT-OS 四类嵌入式宿主，覆盖 13+ RFC：7252 核心、7390 组播组通信、7641 Observe、7959 块传输（固件 OTA 大 Payload 必用）、8132 PATCH/FETCH、8323 TCP/TLS/WebSockets 传输、8613 OSCORE、9175 Request-Tag 防缓存混淆。入门示例在 libcoap-minimal 仓库。</p>
+</li>
+<li>
+<p><strong>安全双路线：DTLS（通道级）vs OSCORE（端到端消息级）</strong>。默认端口 UDP 5683 明文 / 5684 DTLS。OSCORE（RFC 8613）只加密消息本体独立于传输层，天然穿越代理/网关而不破坏端到端语义——CoAP 边缘代理缓存生态下比 DTLS 更实用，这是 MQTT TLS 不具备的能力。</p>
+</li>
+</ol>
+<h2 id="_2">关键概念</h2>
+<p><strong>报文格式（RFC 7252 Figure 7 原样）：</strong></p>
+<pre><code> 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|Ver| T |  TKL  |      Code     |          Message ID           |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Token (0-8 bytes, 匹配请求与响应) ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Options (TLV 编码，含 Uri-Path/Observe/Block2 ...) ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|1 1 1 1 1 1 1 1|    Payload (CBOR/JSON/plain text) ...
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+</code></pre>
+<p><strong>Code 字段 c.dd 语义：</strong> class 0=请求方法（0.01 GET / 0.02 POST / 0.03 PUT / 0.04 DELETE）、2=成功（2.05 Content / 2.01 Created / 2.04 Changed）、4=客户端错误（4.04 NotFound）、5=服务端错误（5.00 InternalServerError）。0.00 为空消息（仅用于 RST 探测）。</p>
+<p><strong>IoT 协议选型速查（结合本仓库既有笔记）：</strong></p>
+<ul>
+<li>CoAP：REST 语义 + 低功耗 + HTTP 网关桥接（protocol translation）+ LwM2M 设备管理。选它当三者同时需要。</li>
+<li>MQTT（notes 已覆盖）：纯 pub/sub、QoS 分级、Broker 中心化。移动网络下 TCP 长连接保活是耗电短板。</li>
+<li>Zenoh（explore 2026-08-15）：云到 MCU 统一抽象，pub/sub + query + storage 一体，新项目可评估替代。</li>
+<li>ESP-NOW（notes 2026-08-12）：Espressif 私有二层协议，零 IP 栈、&lt;5ms 延迟，但不出局域网。</li>
+<li>Matter over Thread（explore 2026-08-18）：智能家居互操作层，运行于 IP 之上，与 CoAP 是互补不是竞争。</li>
+</ul>
+<h2 id="_3">与现有工作的关联（改进建议按优先级）</h2>
+<ul>
+<li><strong>P1 · esp32 相关 skill 补协议选型节</strong>：<code>embedded-firmware-dev</code> / <code>esp32-unit-test-mock-setup</code> 等 ESP 系 skill 目前只覆盖 MQTT 场景。建议补一张"CoAP vs MQTT vs ESP-NOW 选型表"（可直接引用本节），特别是电池设备 + REST 资源模型场景下 esp_coap 组件（libcoap 封装）的用法。</li>
+<li><strong>P2 · 与 Zenoh 笔记交叉</strong>：Zenoh 笔记提出的"云到端统一通信"路线图中，CoAP+LwM2M 是存量标准侧的对照项。未来做 IoT 网关选型时两者应同台对比。</li>
+<li><strong>P2 · 与 ESP32-H4 笔记衔接</strong>：H4 的 Thread 组网走 IPv6（6LoWPAN 精神延续），Thread 网络上的应用层除 Matter 外也可跑 CoAP（更轻），值得在下次 Thread 实验中验证。</li>
+</ul>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li>ESP-IDF 工程启用：<code>idf.py add-dependency "espressif/esp_coap"</code>，组件即 libcoap 封装；示例参考 libcoap-minimal（coap-client / coap-server 各 &lt;200 行）。</li>
+<li>低功耗传感器上报模式：NON 消息 + Observe 注册 + CBOR 编码 Payload，比"MQTT 保活 + QoS1"省一个数量级的电能。</li>
+<li>固件 OTA 分块：大文件必须走 Block-wise Transfer（RFC 7959，Block2 选项），否则超过 UDP MTU 直接失败。</li>
+<li>跨网关安全：涉及代理转发的拓扑用 OSCORE 而非 DTLS，保持端到端机密性。</li>
+</ol>
+<h2 id="_4">关键风险与盲点（标注来源级别）</h2>
+<ul>
+<li><strong>Observe 通知可丢</strong>（RFC 7641 官方语义）：best-effort，服务端不保证通知到达；对一致性敏感的应用必须实现客户端侧"超时重 GET"兜底逻辑，勿当 MQTT QoS 用。【官方验证】</li>
+<li><strong>组播拥塞约束</strong>：RFC 7252 规定 NSTART=1（同时仅 1 个未完成 CON 交互），组播请求（RFC 7390）场景下批量控制命令易触发拥塞控制瓶颈，需错峰。【官方验证】</li>
+<li><strong>实现碎片化</strong>：libcoap之外还有 Californium(Java)/aiocoap(Python)/TinyCoAP 等实现，对 7641/7959 等扩展的成熟度参差，跨厂商互操作前应跑 ETSI CoAP 测试套件。【社区经验】</li>
+<li><strong>标准活性</strong>：RFC 7252 定稿于 2014，CoRE WG 仍在演进（9175 Request-Tag 修缓存混淆漏洞），老协议栈版本可能有安全补丁未回移。【社区经验】</li>
+</ul>
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<p><strong>CoAP 一句话</strong>：UDP 上的二进制 REST，4 字节头，5683 端口，HTTP 语义子集 + Observe 订阅 + 组播发现。<br />
+<strong>报文</strong>：<code>Ver|T|TKL|Code|MsgID</code> + Token(≤8B) + Options(TLV) + 0xFF + Payload(CBOR)。<br />
+<strong>可靠性</strong>：CON=指数退避重传(2s×1.5ⁿ，4 次上限，93s 放弃)；NON=发完即忘；ACK/RST 回执。<br />
+<strong>四大扩展</strong>：Observe(7641 订阅推送)、Block-wise(7959 分块)、OSCORE(8613 端到端安全)、TCP/WS 传输(8323)。<br />
+<strong>选型口诀</strong>：REST+省电选 CoAP；pub/sub 选 MQTT；云端一体选 Zenoh；局域网急速选 ESP-NOW；智能家居互操作选 Matter。<br />
+<strong>ESP-IDF 入口</strong>：esp_coap 组件（libcoap 封装），libcoap-minimal 仓库起步。</p>
+</blockquote>
+<h2 id="_6">待深入</h2>
+<ul>
+<li>LwM2M（OMA，构建于 CoAP 之上的设备管理标准）：对象模型 / 固件更新对象 / Bootstrap 流程</li>
+<li>OSCORE 密钥派生与 COSE 格式实战（结合 TinyML 项目的安全OTA）</li>
+<li>CoAP over Thread：H4 硬件上跑 6LoWPAN 头压缩实测</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ol>
+<li>RFC 7252 — The Constrained Application Protocol (Shelby/Hartke/Bormann, IETF, 2014)。curl 直取 rfc-editor.org 全文。</li>
+<li>RFC 7641 — Observing Resources in CoAP (Hartke, IETF)。curl 直取摘要与状态。</li>
+<li>obgm/libcoap 官方仓库 README（develop 分支，2026 当前状态）。curl 直取 raw.githubusercontent.com。</li>
+<li>前序笔记交叉：ESP32-H4 Thread/Matter（2026-08-18）、Zenoh（2026-08-15）、ESP-NOW（2026-08-12）。</li>
+</ol>
+<blockquote>
+<p>检索路径备注：Tavily 432 全挂（search+extract）、智谱 MCP 搜索超时，降级为 RFC/libcoap 一手源 curl 直取，全部成功。来源可信度高于常规搜索聚合。</p>
+</blockquote>
+</body>
+</html>
