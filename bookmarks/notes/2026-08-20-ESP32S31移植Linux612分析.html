@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32S31移植Linux612分析</title>
+
+<meta property="og:title" content="ESP32S31移植Linux612分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="esp32-s31-linux-612-github">ESP32-S31 移植 Linux 6.12：从 GitHub 到本地分析（内容整理与趋势分析）</h1>
+<blockquote>
+<p><strong>来源</strong>：GitHub 仓库 <a href="https://github.com/GrieferPig/esp32-s31-linux">GrieferPig/esp32-s31-linux</a><br />
+<strong>作者</strong>：GrieferPig<br />
+<strong>主题</strong>：嵌入式 Linux 移植 / RISC-V / ESP32-S31<br />
+<strong>类别</strong>：嵌入式工程 · Linux 内核<br />
+<strong>生成日期</strong>：2026-08-20</p>
+
+<p class="meta-date">生成日期 2026-08-20</p></blockquote>
+<hr />
+<h2 id="_1">一句话核心</h2>
+<p><strong>GrieferPig 在 ESP32-S31 微控制器上跑通了 Linux 6.12 MMU RV32 内核</strong>——UART0 控制台、Buildroot rootfs、重启/断电稳定；多数外围驱动 experimental；作者明示 experimental 不做生产；并公开承认<strong>高度依赖 AI agent</strong>但强调人类必须懂硬件才能有效指导 agent。</p>
+<hr />
+<h2 id="_2">内容整理</h2>
+<h3 id="1">1. 项目定位</h3>
+<ul>
+<li><strong>硬件</strong>：ESP32-S31-WROOM-3 E1H16R16V（ESP32-S31 Core Board / Korvo）</li>
+<li><strong>内核</strong>：Linux <strong>6.12</strong>（最后一个保留 RISC-V XIP 支持的主线内核）</li>
+<li><strong>启动方式</strong>：OpenSBI（改造为 XIP，flash + internal SRAM 映射到同一地址空间）</li>
+<li><strong>根文件系统</strong>：Buildroot</li>
+<li><strong>用途</strong>：技术可行性证明，非生产</li>
+</ul>
+<h3 id="2">2. 移植进度矩阵（原文）</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Buildroot rootfs</td>
+<td>🟢 Stable</td>
+</tr>
+<tr>
+<td>Reboot / poweroff</td>
+<td>🟢 Stable</td>
+</tr>
+<tr>
+<td>UART0 console</td>
+<td>🟢 Stable</td>
+</tr>
+<tr>
+<td>Wireless (ESP-Hosted)</td>
+<td>🟡 Experimental</td>
+</tr>
+<tr>
+<td>Dual hart SMP</td>
+<td>⚫ Not Planned</td>
+</tr>
+<tr>
+<td>大部分外围驱动（GDMA/Cache/TRNG/eFuse/Watchdog/PWM/UART1/2/GMAC/SDMMC/GPO/pinctrl）</td>
+<td>🟡 Experimental</td>
+</tr>
+<tr>
+<td>Timers / Clock tree / Security / USB</td>
+<td>🟠 WIP</td>
+</tr>
+<tr>
+<td>I2C / I2S / SPI / RMT / LP subsystem</td>
+<td>🔴 Not Implemented</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-risc-v">3. 关键硬件特性（与标准 RISC-V 的差异）</h3>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>标准 RISC-V</th>
+<th>ESP32-S31 实际情况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>中断架构</td>
+<td>PLIC</td>
+<td><strong>CLIC + CLINT + SCLIC</strong>（定制）</td>
+</tr>
+<tr>
+<td>mtvec.MODE</td>
+<td>可配置</td>
+<td>被硬连线为 0x3（CLIC 模式）</td>
+</tr>
+<tr>
+<td>S 模式</td>
+<td>标准</td>
+<td><strong>非标准</strong>，ESP-IDF 完全不用 S 模式</td>
+</tr>
+<tr>
+<td>mcliccfg.NMBITS</td>
+<td>—</td>
+<td>ESP-IDF 声称不可写 → <strong>实测可写</strong></td>
+</tr>
+<tr>
+<td>XIP</td>
+<td>主线已移除</td>
+<td>保留（OpenSBI 改造）</td>
+</tr>
+<tr>
+<td>SMP</td>
+<td>标准</td>
+<td>双核弱异构（SIMD 只在 hart1），实际不可用</td>
+</tr>
+<tr>
+<td>PMP/APM</td>
+<td>标准</td>
+<td>🔴 未正确实现</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4-smp-5">4. 为什么不做 SMP（作者的 5 条理由）</h3>
+<table>
+<thead>
+<tr>
+<th>理由</th>
+<th>关键信息</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>射频 blob 闭源</td>
+<td>必须跑 ESP-IDF FreeRTOS，无法反编译</td>
+</tr>
+<tr>
+<td>双核异构</td>
+<td>SIMD 只在 hart1，调度复杂</td>
+</tr>
+<tr>
+<td>PSRAM 慢 + 32KB D-cache 共享</td>
+<td>两核会互相踩</td>
+</tr>
+<tr>
+<td>Cache / IPC / 中断路由复杂</td>
+<td>移植工程量大</td>
+</tr>
+<tr>
+<td>需要 RTOS 处理其他任务</td>
+<td>作者主动保留 FreeRTOS</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5-agent-assisted">5. Agent-assisted 移植的诚实表述</h3>
+<blockquote>
+<p>"Yes, it is heavily agent-assisted. It do work on real S31 dev boards... I understand the esp32 microcontroller architecture to some extent, but I barely know how to port Linux to other RISC-V platforms."</p>
+</blockquote>
+<p><strong>关键洞察</strong>：AI agent 不会自己发现 S31 的硬件特性（如 <code>mcliccfg</code> 的不可写位实际可写），人类的价值在于<strong>指导 agent 往正确的方向猜硬件</strong>。</p>
+<hr />
+<h2 id="_3">可学到的点</h2>
+<ol>
+<li><strong>XIP 是嵌入式 Linux 移植的第一硬约束</strong>：当 PSRAM 有限时，代码必须从 flash XIP 执行；而主线 Linux 6.13+ 已移除 RISC-V XIP——选内核版本就是选移植策略。</li>
+<li><strong>CLIC 而非 PLIC 是 ESP32 系列的关键分水岭</strong>：S3/S31 都用定制中断架构，移植 Linux 必须改 OpenSBI + 内核 CLIC 驱动，这是所有 ESP32 Linux 移植都要面对的第一关。</li>
+<li><strong>"S 模式非标准"是隐藏的成本</strong>：ESP32 的 S 模式在 ESP-IDF 完全不用，TRM 也不写，移植者只能靠 P4 TRM 猜测 + CSR 探针——这是"agent-assisted 移植"最需要人类介入的环节。</li>
+<li><strong>双核异构不等于可 SMP</strong>：hart1 有 SIMD 的事实让标准 SMP 调度不可直接套用；这提示我们任何 RISC-V 移植都要先确认核的对称性。</li>
+<li><strong>agent 是加速器不是替代品</strong>：作者明确"AI 不会自己发现硬件特性"——这给 Hermes 这类 Agent 生态的用法提供了现实案例：Agent 的价值在<strong>执行具体移植任务</strong>，但<strong>架构判断必须靠人</strong>。</li>
+</ol>
+<hr />
+<h2 id="_4">归纳总结</h2>
+<p>GrieferPig 的工作是<strong>技术可行性证明</strong>，不是"ESP32 就该跑 Linux"。从工程角度拆解：</p>
+<p><strong>关键结论</strong>：<br />
+- <strong>可以跑</strong>：Linux 6.12 已在 ESP32-S31 上跑通，UART0/rootfs/重启稳定<br />
+- <strong>不建议生产</strong>：多数驱动 experimental/wip，作者明示 experimental<br />
+- <strong>移植成本高</strong>：CLIC/SCLIC/非标准 S 模式/XIP/双核异构，每一层都需要定制<br />
+- <strong>Linux/FreeRTOS 共存是正确姿势</strong>：射频 blob 必须跑 ESP-IDF，Linux 跑在另一个核上</p>
+<p><strong>与本团队项目的关联</strong>：我们用的是 ESP32-S3 + FreeRTOS，没有 MMU 也没有 XIP——<strong>跑 Linux 这条路对我们当前的硬件方案不成立</strong>（可行性评分 0/100）。如果要升级，ESP32-S31 是唯一现实选项（评分 40/100，"可行但需谨慎"）。</p>
+<hr />
+<h2 id="_5">趋势判断</h2>
+<table>
+<thead>
+<tr>
+<th>判断</th>
+<th>依据</th>
+<th>置信度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ESP32 家族跑 Linux 会从"炫技"走向"小众生产"</td>
+<td>作者已出二进制 release + Buildroot rootfs stable，工程路径在收敛</td>
+<td>中</td>
+</tr>
+<tr>
+<td>RISC-V XIP 的移除会让未来 Linux 移植更难</td>
+<td>主线已移除，未来只能锁定老内核或自研 XIP</td>
+<td>高</td>
+</tr>
+<tr>
+<td>Agent-assisted 嵌入式移植会成为主流路径</td>
+<td>作者诚实表述，符合 Hermes Agent 生态定位</td>
+<td>高</td>
+</tr>
+<tr>
+<td>"Linux 上层 + FreeRTOS 下层"双系统共存是 ESP32 的长期方向</td>
+<td>射频 blob 无法绕开 ESP-IDF，硬件决定架构</td>
+<td>高</td>
+</tr>
+<tr>
+<td>单 SoC 跑 Linux 的成本增量（S31 vs S3）难以抵消 FreeRTOS 方案</td>
+<td>对我们当前项目，S31+Linux 的 ROI 为负</td>
+<td>中高</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">拓展应用</h2>
+<h3 id="_7">与本团队项目关联</h3>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>当前方案</th>
+<th>是否需要改</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>双 MCU 机器人（ESP32+STM32）</td>
+<td>ESP32 FreeRTOS / STM32 RTOS</td>
+<td>❌ 无需改</td>
+</tr>
+<tr>
+<td>servo-arm 舵机控制</td>
+<td>STM32 FreeRTOS</td>
+<td>❌ Linux 是坑</td>
+</tr>
+<tr>
+<td>语音助手（ESP32-S3）</td>
+<td>FreeRTOS + 本地 STT</td>
+<td>❌ S3 无 MMU</td>
+</tr>
+<tr>
+<td>Jetson Orin 主力</td>
+<td>Linux（主力）</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>未来升级方案</td>
+<td>可考虑 S31 Linux 上层 + FreeRTOS 下层</td>
+<td>⚠️ 仅当需要文件系统等 Linux 独有功能时</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_8">决策工具</h3>
+<p><code>~/uclaw/project/esp32-s31-linux-analysis/tools/s31_linux_feasibility.py</code> 内置 4 个 MCU 预设，给出客观评分：<br />
+- ESP32-S31：<strong>40/100</strong>（可行但需谨慎）<br />
+- ESP32-S3：<strong>0/100</strong>（基本不可行）<br />
+- STM32H7：<strong>0/100</strong>（Cortex-M 无 MMU）<br />
+- i.MX6ULL：<strong>50/100</strong>（标准 MPU，可行）</p>
+<h3 id="_9">相关笔记</h3>
+<p>→ 相关：2026-08-20-SimcenterShapeAI自然语言交互插件.md（同一天，工程工具类）<br />
+→ 相关：~/uclaw/project/esp32-s31-linux-analysis/（对应分析项目）</p>
+</body>
+</html>
