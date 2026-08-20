@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM量化交易Agent最新进展：可审计、抗噪声与推理时优化</title>
+
+<meta property="og:title" content="LLM量化交易Agent最新进展：可审计、抗噪声与推理时优化" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llmagent">LLM量化交易Agent最新进展：可审计、抗噪声与推理时优化</h1>
+<blockquote>
+<p><strong>来源</strong>: arXiv 2026年2月-8月六篇核心论文（AlphaCrafter / OpenPM / TrustTrade / A股可解释因子分解 / FPILOT / EvoTS-Agent）<br />
+<strong>主题</strong>: 量化交易新技术 / LLM Agent 架构<br />
+<strong>类别</strong>: 深度学习笔记<br />
+<strong>生成日期</strong>: 2026-08-21（夜间自学习 cron）</p>
+</blockquote>
+<hr />
+<h2 id="_1">内容整理：六篇论文全景</h2>
+<h3 id="_2">论文清单与定位</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>论文</th>
+<th>arXiv ID</th>
+<th>发表</th>
+<th>核心命题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>AlphaCrafter</strong></td>
+<td>2605.05580</td>
+<td>2026-05</td>
+<td>用结构化 Agent Harness 约束多智能体量化流水线，解决自然语言工作流的不透明/不可复现问题</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>OpenPM</strong></td>
+<td>2608.09988</td>
+<td>2026-08</td>
+<td>可审计的 Point-in-Time 评估框架，堵住 LLM 交易 Agent 回测的三大作弊通道</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>TrustTrade</strong></td>
+<td>2603.22567</td>
+<td>2026-03</td>
+<td>发现并修复 LLM 交易 Agent 的"均匀信任"偏差——把所有信息源当同等可信</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>A股可解释因子分解</strong></td>
+<td>2606.12843</td>
+<td>2026-06</td>
+<td>XGBoost+TreeSHAP 拆解 A 股横截面预测力来源：行为信号占 58.2%</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>FPILOT</strong></td>
+<td>2605.12653</td>
+<td>2026-05</td>
+<td>推理时优化插件：借鉴 MPC 思想，交易前用价格预测轨迹即时优化已训练策略</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>EvoTS-Agent</strong></td>
+<td>2608.17933</td>
+<td>2026-08</td>
+<td>自进化 LLM Agent 做金融时序变点检测，验证引导的轨迹进化</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">各论文技术细节</h3>
+<p><strong>1. AlphaCrafter（CSI 300 + S&amp;P 500 实测）</strong></p>
+<p>问题定义：现有 agent 交易系统用"松散的自然语言工作流"描述流程，导致三个风险——推理过程不透明、跨基础模型行为不一致、可控性与可验证性差。</p>
+<p>核心设计：不把 agent 行为当作"无约束的 prompt 执行"，而是把每个 agent 封装进<strong>可编程的策略规范（programmable policy specifications）</strong>，内含三要素：程序化工作流 + 执行约束 + 显式验证机制。整个交易流水线（因子发现→信号聚合→组合执行）变成一串<strong>定义良好、可复现、可审计的决策过程</strong>。</p>
+<p>实测结论：CSI 300 与 S&amp;P 500 上取得更优风险调整收益，且<strong>跨模型、跨试跑的方差显著降低</strong>——这是 harness 设计相对自由 prompt 的决定性优势。</p>
+<p><strong>2. OpenPM（点时审计框架）</strong></p>
+<p>问题定义：LLM 交易 Agent 的论文成绩可能被三件事吹大——①前视泄漏（look-ahead leakage，用了决策时刻不可能拿到的数据）②乐观执行假设 ③风险约束"写在纸上但没在代码里强制执行"。</p>
+<p>核心设计：<br />
+- Agent 管理 $1M 纯多头组合，标的池 S&amp;P 500，5 分钟频率行情；<br />
+- <strong>Point-in-Time 铁律</strong>：agent 能看到的每条记录必须在决策时刻已可用；<br />
+- 自然语言风险指令被转换成<strong>类型化约束（typed constraints）</strong>并在执行组合上强制校验；<br />
+- 每次运行产出审计工件：污染证书、成本敏感曲线、约束遵守报告；<br />
+- 参考实现 tiered allocator：类型化分析师打分 → 构造器 LLM 提权重 → <strong>确定性批评器保证可行性</strong>（三段式中最后一段不用 LLM）。</p>
+<p>关键发现（比框架本身更有价值）：短窗口案例研究中，<strong>换更强的构造器只能带来"温和且依赖模型"的收益，而分析师质量比构造器选择更重要，换手率才是主要成本驱动</strong>。作者明确声明：所有收益是单一冻结窗口、无市场冲击的上界，"不是经过验证的 alpha"。</p>
+<p><strong>3. TrustTrade（选择性共识）</strong></p>
+<p>问题定义：命名了一个行为偏差——<strong>均匀信任（uniform trust）</strong>：LLM 把检索到的信息默认为事实、把异质信息源当作同等可信。人类决策靠选择性过滤、交叉验证、经验驱动的权重，LLM 交易系统在这方面的缺失使其对多源噪声和虚假信息极其脆弱，放大事实幻觉并导致风险收益不稳定。</p>
+<p>核心设计（Trust-Rectified Unified Selective Trader）：<br />
+- 多个独立 LLM agent 交叉聚合，按<strong>语义与数值一致性</strong>动态加权信号；<br />
+- 一致信号优先，发散/弱 grounded/时间不一致的输入被选择性折价；<br />
+- 加入<strong>确定性时序信号作为可复现锚点</strong>；<br />
+- 反思记忆机制在测试时自适应风险偏好，无需额外训练。</p>
+<p>实测：2024Q1 与 2026Q1 高噪声市场受控回测中，把 LLM 交易行为从极端风险-收益区<strong>校准到人类对齐的中风险中收益档位</strong>。</p>
+<p><strong>4. A股可解释因子分解（3632 只 A 股 2009-2019）</strong></p>
+<ul>
+<li>管线：XGBoost + TreeSHAP 归因，60 个月滚动窗口训练，55 个月样本外；</li>
+<li>预测性能：mean AUC 0.547（rank IC=0.119），Top-Bottom 五分位多空价差 <strong>+2.38%/月</strong>（Newey-West t=5.94，年化 Sharpe 2.23）；</li>
+<li>Carhart 四因子调整后仍 +2.31%/月（t=7.48）——alpha 不是已知因子的马甲；</li>
+<li><strong>归因结构（对 A 股短线最有参考价值）</strong>：行为信号（换手率+动量）占预测归因 <strong>58.2%</strong>，估值比率仅 10.7%，跨 50 个行业组平均；</li>
+<li>方法论提醒：SHAP 与 ablation 会发散，发散模式揭示了"特征可替代性结构"——单独用任一方法都看不见。</li>
+</ul>
+<p><strong>5. FPILOT（推理时优化）</strong></p>
+<ul>
+<li>洞察：未来价格基本不依赖单个 agent 的持仓分配 → 不需要 RL 那种"动作条件滚动"，一个合适的预测器就能产出多步价格轨迹；</li>
+<li>设计：MPC 式插件——每个决策步用预测价格轨迹构造"基于仓位的想象收益目标"，在执行前<strong>推理时</strong>优化策略，兼容任何预训练 agent，零重训练；</li>
+<li>实测：TradeMaster DJ30 上五种策略学习算法一致提升总收益与风险调整指标（Sharpe/Sortino/Calmar），随机策略比确定性策略受益更多；</li>
+<li>合成预测实验：预测器质量越高收益越大——意味着该框架随金融预测技术进步水涨船高。</li>
+</ul>
+<p><strong>6. EvoTS-Agent（自进化 × 金融时序的交叉）</strong></p>
+<ul>
+<li>场景：金融时序非平稳且统计性质异质，没有单一无监督变点检测算法在所有资产/regime 下都好——传统流程严重依赖专家选模型/设计特征/调参；</li>
+<li>设计：验证引导的自进化 LLM agent，先做探索性数据分析初始化候选模型，再用三个算子进化可执行实验轨迹——<strong>Revision</strong>（利用当前最优）、<strong>Alternative Strategy</strong>（停滞时换根本不同的建模方向）、<strong>Recombination</strong>（合成高性能轨迹的互补证据）；</li>
+<li>结果：四个基准数据集上超过现有 LLM-based agent，且在所有骨干 LLM 上保持 <strong>100% 执行成功率</strong>。</li>
+</ul>
+<hr />
+<h2 id="_4">归纳总结：三条主线收敛</h2>
+<h3 id="prompt-harnessalphacrafter-openpm">主线一：从"自由 prompt"到"结构化 harness"（AlphaCrafter + OpenPM）</h3>
+<p>两篇论文从不同角度打同一个靶：<strong>LLM 金融决策的可靠性不靠更强的模型，靠更强的结构约束</strong>。AlphaCrafter 把 agent 封装进可编程策略规范；OpenPM 把风险指令转成类型化约束+确定性批评器。共同的哲学：<strong>LLM 负责提议，确定性代码负责验证与执行</strong>。这与"AI 层（建议）→ 确定性核心（构建+验证）"的认知设计范式完全同构——金融领域和工程设计领域在 2026 年独立收敛到同一架构答案。</p>
+<h3 id="llm-trusttrade-openpm">主线二：对抗 LLM 的认知偏差（TrustTrade + OpenPM）</h3>
+<p>TrustTrade 命名的"均匀信任"偏差是 LLM 交易系统的系统性风险：多源信息不加权、不加验就进决策。修复手段有三层——多 agent 交叉一致性、确定性锚点信号、反思记忆。OpenPM 则从评估端补刀：你声称的风险约束必须被机器强制执行才算数。两者合起来构成"决策时防御 + 评估时审计"的完整闭环。</p>
+<h3 id="fpilot-evots-agent">主线三：推理时/进化时优化成为新增长点（FPILOT + EvoTS-Agent）</h3>
+<p>训练时优化（RL 微调）成本高且易过拟合，2026 年的新路线是<strong>把智能移到推理时刻</strong>：FPILOT 用预测轨迹在每次交易前即时优化策略；EvoTS-Agent 用验证反馈在实验轨迹空间进化。共同点：不动模型参数，只动"策略周围的结构"，改起来便宜、可回滚、可审计。</p>
+<h3 id="_5">与现有体系的对照</h3>
+<table>
+<thead>
+<tr>
+<th>论文机制</th>
+<th>现有 iron-rules 体系对应</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenPM 类型化约束+强制执行</td>
+<td>14 条铁律硬过滤（rules_hit）</td>
+<td>✅ 已对齐</td>
+</tr>
+<tr>
+<td>OpenPM 污染证书/成本曲线</td>
+<td>回测器逐单归因</td>
+<td>⚠️ 缺换手率成本敏感度分析</td>
+</tr>
+<tr>
+<td>TrustTrade 多源选择性共识</td>
+<td>反向辩论审查器（E1-E10 空方证据）</td>
+<td>✅ 方向一致，但反向辩论只做空方没做多源加权</td>
+</tr>
+<tr>
+<td>AlphaCrafter 可编程策略规范</td>
+<td>引擎脚本化（策略=代码而非 prompt）</td>
+<td>✅ 已对齐（我们本来就走确定性路径）</td>
+</tr>
+<tr>
+<td>FPILOT 推理时优化</td>
+<td>无</td>
+<td>❌ 空白，但依赖价格预测器，A 股短线适用性存疑</td>
+</tr>
+<tr>
+<td>A股 SHAP 归因（行为信号 58.2%）</td>
+<td>未做归因分解</td>
+<td>⚠️ 回测器可加 per-factor 归因</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">趋势判断</h2>
+<ol>
+<li><strong>"可审计性"成为 LLM 金融论文的入场券</strong>。OpenPM 直接点名前视泄漏/乐观执行/纸面约束三大作弊通道，2026 年下半年起的量化 Agent 论文如果不带 point-in-time 审计工件，可信度会被系统性打折。</li>
+<li><strong>分析师质量 &gt; 构造器质量</strong>（OpenPM 实证）。对自建体系的启示：投入产出比最高的环节是"信号质量"（选股/因子层），不是"权重优化层"。</li>
+<li><strong>换手率是主要成本驱动</strong>。A 股 T+1 + 印花税环境下更甚，任何策略优化的前提是控制换手——这与 5 日超短模式的"时间止损换股"纪律形成张力，需要用回测器量化。</li>
+<li><strong>A 股的 alpha 主要藏在行为信号里</strong>（换手+动量 58.2% vs 估值 10.7%）。这与"买分歧卖一致""量比控盘"等本土经验互相印证——学术定量证据支持短线情绪/动量路线，而非价值路线。</li>
+<li><strong>自进化 agent 进入垂直领域</strong>（EvoTS-Agent 的变点检测）。三算子设计（Revision/Alternative/Recombination）是通用的实验进化模式，可迁移到因子挖掘场景。</li>
+</ol>
+<hr />
+<h2 id="_7">拓展应用：可落地清单</h2>
+<ol>
+<li><strong>回测器加换手率成本敏感度曲线</strong>（OpenPM 审计工件）：在 <code>iron-rules-backtester</code> 输出中加一维——按手续费 1x/2x/3x 档位重算收益，看策略在真实成本下是否存活。成本低（纯后处理），直接堵住"回测赚钱实盘亏钱"最大来源。</li>
+<li><strong>回测器加 per-signal 归因</strong>（A股论文方法）：把胜率/收益拆到每条铁律/每个信号（P1 涨停基因、P2 箱体突破、量比、VWAP……），用现有逐单记录即可做——确认哪条规则在贡献 alpha、哪条在拖后腿。SHAP 不必上，简单的按信号分组的条件收益表就能回答 80% 的问题。</li>
+<li><strong>反向辩论审查器加"多源一致性"层</strong>（TrustTrade）：目前 E1-E10 是单源空方证据；可加一条 E11——当技术面证据与量价证据方向冲突时标记 🟠。不需要多 LLM，用现有指标间的逻辑冲突（如 RSI 超买 vs 量比萎缩）即可实现确定性版本。</li>
+<li><strong>EvoTS-Agent 三算子模式用于参数实验台</strong>：现有 <code>strategy-param-lab</code> 是网格搜索；可加 Alternative Strategy 算子——当网格内所有参数组合都停滞时，自动切换到根本不同的信号构造（如从 PCT4 切到量价背离），而不是继续加密网格。</li>
+<li><strong>不建议跟进 FPILOT</strong>：依赖可靠的价格预测器（A 股短线预测本身是未解难题），且我们的决策频率（T+1 日线）远低于其 5 分钟场景，推理时优化的边际收益小。</li>
+</ol>
+<hr />
+<h2 id="_8">指南分析：方法论收获</h2>
+<ul>
+<li><strong>评估先于优化</strong>：OpenPM 的价值不在提出更强的 agent，而在给出"怎么判断别人声称的收益是不是真的"的清单。做任何回测结论汇报前，先过一遍：有没有前视泄漏？执行假设是否乐观？约束是否真的强制执行了？</li>
+<li><strong>命名偏差是研究的第一步</strong>：TrustTrade 把模糊的"LLM 乱信信息"命名为 uniform trust 后，修复路径（选择性共识+确定性锚）就自然浮现。我们遇到"策略在某种行情下总犯错"时，先尝试给这个错误模式起名字。</li>
+<li><strong>确定性批评器模式</strong>：LLM 提议 → 确定性代码否决，这个三段式（分析师/构造器/批评器）中批评器必须是纯代码。反向辩论审查器已经是这个模式，可继续强化"批评器的否决不可被 LLM 覆盖"原则。</li>
+<li><strong>SHAP 与 ablation 的发散是特性不是 bug</strong>：两种归因方法分歧的地方恰是特征可替代性所在——单一归因方法得出的"最重要因子"结论要谨慎。</li>
+</ul>
+<hr />
+<h2 id="_9">可学到的点</h2>
+<ol>
+<li><strong>Harness 约束 &gt; 模型能力</strong>（AlphaCrafter：跨模型方差降低是结构性收益）</li>
+<li><strong>分析师质量 &gt; 构造器质量</strong>（OpenPM：资源应投向信号层而非权重层）</li>
+<li><strong>换手率是隐形 alpha 杀手</strong>（OpenPM：成本敏感曲线是必备审计件）</li>
+<li><strong>A 股 alpha 在行为信号</strong>（58.2% vs 10.7%，本土短线经验的学术定量印证）</li>
+<li><strong>推理时优化是零训练成本的升级路径</strong>（FPILOT：MPC 思想，预测器进步自动受益）</li>
+<li><strong>三算子进化模式</strong>（EvoTS-Agent：利用/换向/重组，可直接搬到参数实验台）</li>
+</ol>
+<hr />
+<h2 id="_10">参考资料</h2>
+<ul>
+<li>AlphaCrafter: arXiv:2605.05580 — Harnessing Multi-Agent Workflows for Cross-Sectional Quantitative Trading</li>
+<li>OpenPM: arXiv:2608.09988 — Auditable Point-in-Time Evaluation for LLM Portfolio-Management Agents</li>
+<li>TrustTrade: arXiv:2603.22567 — Human-Inspired Selective Consensus Reduces Decision Uncertainty</li>
+<li>Interpretable Factor Decomposition (A-Share): arXiv:2606.12843 — XGBoost+TreeSHAP, 3632 stocks 2009-2019</li>
+<li>FPILOT: arXiv:2605.12653 — Inference-Time Optimization for RL Trading Agents (MPC-style)</li>
+<li>EvoTS-Agent: arXiv:2608.17933 — Self-Evolving LLM Agent for Financial Time Series Change Point Detection</li>
+</ul>
+</body>
+</html>
