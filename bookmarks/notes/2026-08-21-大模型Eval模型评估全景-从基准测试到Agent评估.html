@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大模型Eval模型评估全景-从基准测试到Agent评估</title>
+
+<meta property="og:title" content="大模型Eval模型评估全景-从基准测试到Agent评估" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="eval-agent">大模型 Eval（模型评估）全景：从基准测试到 Agent 评估的范式迁移</h1>
+<blockquote>
+<p><strong>来源</strong>：飞书 Wiki《Eval（Evaluation，模型评估）》<br />
+<strong>原文链接</strong>：https://jcn7kakdef35.feishu.cn/wiki/TNLHwMrQUiXu81kCyaGcmZeznWc<br />
+<strong>原文体量</strong>：1.9K 字符基础科普 | <strong>本文档</strong>：分析+完善后的详细扩展笔记<br />
+<strong>记录日期</strong>：2026-08-21</p>
+
+<p class="meta-date">生成日期 2026-08-21</p></blockquote>
+<p><strong>标签</strong>：#LLM评估 #Benchmark #MMLU #HumanEval #LLM-as-a-Judge #数据污染 #AgentEval #SWE-bench #Arena</p>
+<hr />
+<h2 id="_1">一、内容整理（原文忠实还原 + 结构化）</h2>
+<h3 id="11">1.1 原文核心定义</h3>
+<p><strong>Eval（Evaluation，模型评估）</strong>：给大模型"考试"的标准化流程。因为大模型是庞大的"黑盒"，无法通过看代码或参数判断能力，必须通过<strong>测试集（Benchmarks）</strong>量化。</p>
+<h3 id="12-eval">1.2 为什么要进行 Eval（原文三动机）</h3>
+<table>
+<thead>
+<tr>
+<th>动机</th>
+<th>说明</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>能力量化</strong></td>
+<td>把抽象的"聪明程度"转为具体分数</td>
+<td>85/100</td>
+</tr>
+<tr>
+<td><strong>版本对比</strong></td>
+<td>模型迭代时用统一测试集对比提升</td>
+<td>Llama-2 → Llama-3</td>
+</tr>
+<tr>
+<td><strong>发现短板</strong></td>
+<td>测特定领域缺陷，指导训练方向</td>
+<td>数学/代码/多语言</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13">1.3 主流基准（原文列举）</h3>
+<table>
+<thead>
+<tr>
+<th>基准</th>
+<th>测什么</th>
+<th>形式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MMLU</strong></td>
+<td>知识储备+逻辑理解（"综合智商"最权威基准之一）</td>
+<td>57 学科选择题（数学/历史/法律/医学…）</td>
+</tr>
+<tr>
+<td><strong>HumanEval</strong></td>
+<td>代码生成能力</td>
+<td>164 道手工 Python 题，运行代码过单元测试（比文本匹配准确）</td>
+</tr>
+<tr>
+<td><strong>GSM8K / MATH</strong></td>
+<td>数学推理</td>
+<td>小学应用题 / 竞赛数学</td>
+</tr>
+<tr>
+<td><strong>ARC</strong></td>
+<td>科学常识+逻辑推理</td>
+<td>选择题</td>
+</tr>
+<tr>
+<td><strong>MT-Bench</strong></td>
+<td>多轮对话指令遵循+聊天能力</td>
+<td>GPT-4 充当裁判打分</td>
+</tr>
+</tbody>
+</table>
+<h3 id="14">1.4 评估执行方式（原文二分法）</h3>
+<ul>
+<li><strong>客观题</strong>（选择题/代码）：机器自动打分（选 A 对 A 得分；代码跑测试）</li>
+<li><strong>主观题</strong>（写作/对话）：</li>
+<li><strong>人工评估</strong>：人类专家打分——最准但极贵极慢</li>
+<li><strong>LLM-as-a-Judge</strong>：用更强模型（如 GPT-4）打分——业界流行做法</li>
+</ul>
+<h3 id="15">1.5 原文指出的三大挑战</h3>
+<ol>
+<li><strong>数据污染（Data Contamination）</strong>：训练时"偷看"了测试集——"学生提前背了期末考试答案"，考分高但实际能力没那么强</li>
+<li><strong>应试教育（Overfitting）</strong>：专门针对某 Benchmark 微调，测试分高但实际应用差</li>
+<li><strong>评估维度单一</strong>：难以衡量创造力、幽默感、安全性</li>
+</ol>
+<h3 id="16">1.6 原文总结</h3>
+<p>"Eval 很强" = 标准考试得分高。但业内越来越意识到：<strong>Eval 分数 ≠ 实际体验</strong>，开发者更看重真实业务场景表现，而非盲目跑分。</p>
+<hr />
+<h2 id="_2">二、查询拓展 / 拓展查询（完善补充：原文之外的全景扩展）</h2>
+<blockquote>
+<p>本模块为增补内容，基于公开技术事实扩展，与原文区分标注。</p>
+</blockquote>
+<h3 id="21">2.1 基准测试的代际演进（原文只列了第一代）</h3>
+<p><strong>第一代：静态知识/单轮测试（2020-2023）</strong><br />
+- MMLU（2020, 57 学科 14K 题）、HumanEval（2021, 164 题）、GSM8K（2021, 8.5K 数学题）<br />
+- 特征：固定数据集、自动评分、易复现——也易被污染</p>
+<p><strong>第二代：对抗污染的动态基准（2023-2024）</strong><br />
+- <strong>GSM1k</strong>（Scale AI, 2024）： GSM8K 的"影子测试集"——同分布新出 1K 题，专门用来暴露过拟合。实测发现部分模型 GSM8k 与 GSM1k 差距达 8-15%<br />
+- <strong>LiveBench</strong>（2024）：定期用新题轮换，题目来自最近发布的论文/新闻/数学竞赛，从机制上杜绝"背答案"<br />
+- <strong>私有-heldout 集</strong>：各家实验室自留不公开的评估集（Anthropic/OpenAI 内部 practice sets）</p>
+<p><strong>第三代：能力维度细化（2024-2025）</strong><br />
+- <strong>GPQA</strong>（研究生级专家问答，物理/化学/生物 PhD 水平）——区分"背知识"与"真推理"<br />
+- <strong>MMLU-Pro</strong>（10 选项+更难推理，修复 MMLU 标注噪声）<br />
+- <strong>BIG-Bench / HELM / Open LLM Leaderboard</strong>——多维评估聚合框架（HELM 斯坦福：42 场景×7 指标矩阵）<br />
+- <strong>SWE-bench</strong>（2023,普林斯顿）：真实 GitHub issue 修复任务——代码评估从"函数级"（HumanEval）进化到"仓库级工程级"</p>
+<p><strong>第四代：Agent/交互式评估（2024-2026，当前前沿）</strong><br />
+- <strong>AgentBench</strong>（清华, 2023）：8 个交互环境（OS/DB/KG/游戏）测 Agent 多轮决策<br />
+- <strong>τ-bench</strong>（Sierra, 2024）：客服场景工具调用+遵循业务规则，测"指令-工具-用户"三方交互<br />
+- <strong>WebArena / Mind2Web</strong>：真实网站操作（购物/论坛/地图），测 GUI Agent<br />
+- <strong>GAIA</strong>（Meta/HF, 2023）：通用 Assistant 任务，人类 92% vs GPT-4 插件 15%——刻意设计成"对人类简单对 AI 难"<br />
+- <strong>Chatbot Arena / LMArena</strong>（LMSYS）：匿名双模型对战+人类投票 Elo 排名——绕过静态基准，直接测"真实偏好"</p>
+<h3 id="22-llm-as-a-judge">2.2 LLM-as-a-Judge 的深化（原文一句带过的展开）</h3>
+<p><strong>主流模式</strong>：<br />
+| 模式 | 做法 | 代表 |<br />
+|------|------|------|<br />
+| <strong>单点打分</strong> | 1-10 分或 A-F 级 | MT-Bench |<br />
+| <strong>成对比较</strong> | A/B 二选一+平局 | Arena、reward model 训练数据 |<br />
+| <strong>参考对照</strong> | 给标准答案让 Judge 对比 | 带参考的写作评估 |<br />
+| <strong>Rubric 量表</strong> | 多维度细化打分表 | paper-review-auditor 类学术评审 |</p>
+<p><strong>已知偏差（Judge Bias 研究，2023-2024）</strong>：<br />
+- <strong>位置偏差</strong>：成对比较时偏好先出现的答案<br />
+- <strong>冗长偏差</strong>：偏好更长的回答（verbosity bias）<br />
+- <strong>自我偏好</strong>：GPT-4 当 judge 时偏爱 GPT-4 风格的输出<br />
+- <strong>知识幻觉</strong>：Judge 不懂装懂给错误答案打高分</p>
+<p><strong>对策</strong>：位置交换两次取平均 / 长度归一化 / 多 Judge 投票 / 人工校准抽样</p>
+<h3 id="23">2.3 数据污染检测方法（原文只说现象，补检测手段）</h3>
+<ol>
+<li><strong>N-gram 重叠检测</strong>：测试集与训练语料做 8-gram/13-gram 重叠统计</li>
+<li><strong>成员推断（Membership Inference）</strong>：模型对测试题的困惑度异常低 → 可能见过</li>
+<li><strong>时间切分法</strong>：只用基准发布日之后的数据训练（GPT-4 技术报告采用）</li>
+<li><strong>阴影集对照</strong>：同分布重出题（GSM1k 方法），差距大 = 污染/过拟合</li>
+<li><strong>Canary 字符串</strong>：在私有数据中埋金丝雀标记，训练后探测模型是否复述</li>
+</ol>
+<h3 id="24">2.4 分数与体验的鸿沟（原文结论的实证扩展）</h3>
+<ul>
+<li>Arena Elo 与 MMLU 的相关性在 2024 后显著减弱——跑分饱和后区分度失效</li>
+<li><strong>Aider Polyglot</strong>（多语言代码编辑基准）曾发现某些模型"基准强但实际编码差"的案例</li>
+<li>任务特定 eval（domain-specific）成为企业选型的主流：自建 50-200 题私有评估集 &gt; 公开榜</li>
+<li>「弱到强评估」（Weak-to-Strong Eval, OpenAI 2023 超对齐方向）：用弱模型评估强模型的可靠性问题</li>
+</ul>
+<h3 id="25">2.5 评估基础设施（工程视角）</h3>
+<ul>
+<li><strong>Eval Harness</strong>：EleutherAI lm-evaluation-harness（开源标准，HF Open LLM Leaderboard 底座）</li>
+<li><strong>轻量评估</strong>：HELME-lite、lm-eval 的 few-shot 标准化</li>
+<li><strong>评估即代码</strong>：promptfoo / OpenAI Evals / DeepEval——把评估做成 CI 流水线</li>
+<li><strong>LLM 评估的元问题</strong>：谁来评估评估者？（meta-evaluation，用人工标注集校准 Judge）</li>
+</ul>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<ol>
+<li><strong>Eval 的本质是"黑盒系统的可观测性"</strong>：无法白盒审计千亿参数，只能黑盒测试——这与软件工程的集成测试同构，Benchmark = 测试套件</li>
+<li><strong>静态基准有半衰期</strong>：基准发布即开始"腐烂"（被污染/被过拟合/能力饱和），2023 年前 MMLU 还能区分模型，2025 年后头部模型全部 88-90% 挤在一起失去区分度——<strong>基准的价值窗口约 2-3 年</strong></li>
+<li><strong>评估范式追着能力跑</strong>：知识→推理→代码→多轮交互→工具调用→长程任务，每一代新能力都要求新一代评估；当前最前沿已从"答题"迁移到"做事"（Agent 任务完成率）</li>
+<li><strong>LLM-as-a-Judge 是权宜之计而非终点</strong>：解决了规模化但引入自身偏差，最终仍需人类偏好数据校准（Arena 模式）+ 私有领域集</li>
+<li><strong>「Eval 分数 ≠ 实际体验」是买方市场的觉醒</strong>：企业选型从看榜单转向自建评估集——评估能力本身正在成为竞争力（"评估护城河"）</li>
+</ol>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>Agent Eval 是 2025-2026 的主战场</strong>：单轮 QA 已测不出差异，评估重心全面转向多轮交互/工具编排/长程任务（SWE-bench Verified、τ-bench、AgentArena 类）。预计 2026-2027 出现"Agent 任务完成率"成为头部模型宣传主指标</li>
+<li><strong>动态/私有基准取代公开静态榜</strong>：LiveBench 式轮换机制+企业私有 heldout 集成为标配；公开榜单退化为"入门筛选"</li>
+<li><strong>Human Preference 数据飞轮化</strong>：Arena 式对战数据既是榜单又是训练数据（reward model），评估与训练闭环合并</li>
+<li><strong>评估自动化进入 CI/CD</strong>：模型迭代的每次 checkpoint 自动跑评估流水线（promptfoo/Evals 模式），评估从"发布前人工跑分"变为"训练过程持续监控"</li>
+<li><strong>多模态与具身评估起步</strong>：VQA 之外的视频理解评估、机器人操作的仿真评估（Habitat/Isaac Lab）成为下一个增量方向</li>
+<li><strong>反污染军备竞赛升级</strong>：阴影集+canary+成员推断成为顶级实验室标准动作；"干净评估"本身会变成模型的卖点</li>
+</ol>
+<hr />
+<h2 id="_5">五、关联分析（本地体系交叉引用）</h2>
+<table>
+<thead>
+<tr>
+<th>关联对象</th>
+<th>连接点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>content-judge</code> skill（LLM-as-Judge 评分器）</td>
+<td>本地已实现 LLM-as-a-Judge 工程实例：自定义评分表多维度 0-1 打分+阈值标记——即原文"主观题评估"的落地版；其已知坑（Judge 偏差/评分漂移）与 2.2 节研究一致</td>
+</tr>
+<tr>
+<td><code>paper-review-auditor</code> skill（10 指令审计框架）</td>
+<td>Rubric 式多角色评审（7 角色+0-100 评分+devil's advocate）= LLM-as-a-Judge 的高阶形态：多 Judge 投票对抗单 Judge 偏差</td>
+</tr>
+<tr>
+<td><code>skill-ab-testing</code> skill</td>
+<td>评估驱动迭代（A/B 验证后替换正式版）与模型 eval 的"版本对比"动机同构</td>
+</tr>
+<tr>
+<td><code>dogfood</code> skill（探索性 QA）</td>
+<td>"真实业务场景表现 &gt; 跑分"的本地实践：用 dogfood 实测代替静态检查</td>
+</tr>
+<tr>
+<td><code>observability-dashboard</code></td>
+<td>Agent 侧"评估基础设施"：任务完成率/错误率/token 消耗——即 Agent Eval 的内建化</td>
+</tr>
+<tr>
+<td>量化体系 <code>adversary_review.py</code></td>
+<td>校准回测（单条证据无负预测力→撤触发器）与"Eval 分数≠实际体验"同源：<strong>实测预测力优先于表面指标</strong>——E2/E3/E8 信号在回测中跑赢基准，正是"基准分高但无真预测力"的反例验证</td>
+</tr>
+<tr>
+<td><code>quant-trading</code> PCT 区间校准（08-21 定稿）</td>
+<td>0-2% 层胜率 42.9% 拖后腿→PCT_MIN=1.5 收紧=用实证数据"评估并淘汰低效信号"，方法论同 Eval 的发现短板</td>
+</tr>
+<tr>
+<td>struct-gen NLU 降级链</td>
+<td>降级链测试（模拟端点实测 200/404）= 对基础设施做"单元测试"——评估思维在工程层的投影</td>
+</tr>
+<tr>
+<td>Hermes 模型 fallback 链 08-20 故障</td>
+<td>"5 级链全部同挂"的教训：<strong>可用性评估必须覆盖故障域</strong>，单点指标（每级独立 200）≠系统级可用性——与"Eval 分数≠体验"是同一类度量失真</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">六、拓展应用推荐</h2>
+<ul>
+<li><strong>评估自己的 Agent</strong>：本机 Hermes 即可建"私有 Mini-Eval"——50 个典型任务（笔记/抓取/量化/飞书操作）+ 自动评分脚本，模型切换前后跑对比，替代"感觉新模型变笨了"的主观判断</li>
+<li><strong>Judge 校准实践</strong>：content-judge 加位置交换+长度归一化模式，对齐 2.2 节偏差对策</li>
+<li><strong>阅读清单</strong>：</li>
+<li>Chatbot Arena 论文（Chatbot Arena: An Open Platform, 2024）</li>
+<li>SWE-bench（ICLR 2024）/ SWE-bench Verified（OpenAI 2024）</li>
+<li>τ-bench（Sierra, 2024）</li>
+<li>GSM1k 报告（Scale AI, 2024）——过拟合检测方法论</li>
+<li>HELM（Stanford, 2022）——多维评估框架鼻祖</li>
+<li>lm-evaluation-harness 仓库——开源评估标准</li>
+<li><strong>关联笔记</strong>：2026-08-21-科研目标不是赢（AgenticAutoResearch fuzz 反馈环——评估即科研闭环）；2026-08-21-GPT加FusionMCP（"demo 结束还留着真实项目"= 结果导向评估的具象）</li>
+</ul>
+<hr />
+<h2 id="_7">七、指南分析（可执行清单：给模型选型建一套自己的评估）</h2>
+<p><strong>最小可行私有评估集（1-2 天可落地）</strong>：</p>
+<pre><code>Step 1 · 定义任务分布（半天）
+  - 从真实使用日志挑 50-100 个典型任务，按场景分层：
+    代码 20% / 文档整理 30% / 工具编排 20% / 推理分析 20% / 其他 10%
+  - 剔除公开 benchmark 原题（防污染）
+
+Step 2 · 构造评分标准（半天）
+  - 客观可自动判：代码跑测试 / JSON schema 校验 / 文件是否生成
+  - 主观用 Judge：content-judge 式 rubric（正确性/完整性/格式/成本 4 维 0-1）
+  - 记录每题的&quot;通过条件&quot;（可执行断言优先）
+
+Step 3 · 跑基线+对比（几小时）
+  - 当前模型跑 3 遍取均值（采样方差！）
+  - 候选模型同法跑，输出胜/负/平局表
+  - 成本列：token 消耗+延迟——性价比=质量分/成本
+
+Step 4 · 校准 Judge（持续）
+  - 抽 10% 人工复核，Judge 与人的一致率 &lt;75% 时修 rubric
+  - 成对比较做位置交换
+
+Step 5 · 接入变更流程
+  - 模型切换/大版本升级前必跑；评估脚本进版本库
+</code></pre>
+<p><strong>红线</strong>：不要用单一总分决策（维度不平衡）；不要用公开榜替代私有集；不要只跑一遍（采样方差）。</p>
+<hr />
+<h2 id="_8">八、出处</h2>
+<ul>
+<li>原文：飞书 Wiki《Eval（Evaluation，模型评估）》，2026-08-21 创建，https://jcn7kakdef35.feishu.cn/wiki/TNLHwMrQUiXu81kCyaGcmZeznWc（lark-cli v2 API 提取 1.9K 字符）</li>
+<li>扩展来源（公开技术事实）：MMLU (Hendrycks et al. 2020) / HumanEval (Chen et al. 2021) / GSM8K (OpenAI 2021) / MT-Bench &amp; LLM-as-a-Judge (Zheng et al. 2023) / GSM1k (Scale AI 2024) / LiveBench (2024) / SWE-bench (Jimenez et al. ICLR 2024) / τ-bench (Sierra 2024) / AgentBench (清华 2023) / GAIA (Meta/HF 2023) / HELM (Stanford 2022) / Chatbot Arena (LMSYS 2024) / lm-evaluation-harness (EleutherAI)</li>
+<li>注：扩展部分基于模型内置知识，具体数字（如 GSM1k 差距 8-15%）为文献记忆值，引用前建议核对原报告</li>
+</ul>
+<hr />
+<h2 id="_9">九、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>优先级</th>
+<th>动作</th>
+<th>触发条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>P1</td>
+<td><strong>给 Hermes 建私有 Mini-Eval</strong>（50 任务+content-judge 评分），下次模型切换/额度切换时有客观依据</td>
+<td>近期计划切换主力模型或 fallback 链调整时</td>
+</tr>
+<tr>
+<td>2</td>
+<td>P2</td>
+<td>content-judge 增加位置交换+长度归一化选项</td>
+<td>下次使用成对比较评审时</td>
+</tr>
+<tr>
+<td>3</td>
+<td>P2</td>
+<td>把「评估维度」加进 observability-dashboard（不只成功率，加质量分）</td>
+<td>dashboard 下次迭代</td>
+</tr>
+<tr>
+<td>4</td>
+<td>P3</td>
+<td>量化侧信号继续"实测预测力优先"路线（adversary_review 模式制度化）</td>
+<td>每周校准 cron 已有，维持</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_10">十、可学到的点</h2>
+<ol>
+<li><strong>评估是黑盒系统唯一的社会化信任机制</strong>：模型能力越强、越不可解释，评估体系的地位越高——这不是附属品，是产业基础设施</li>
+<li><strong>静态指标必然过时，评估机制要设计成"活的"</strong>（LiveBench 轮换/Arena 投票/私有 heldout）——对 Agent 同理：一次性的验收测试不如持续的可观测性</li>
+<li><strong>Judge 本身需要被评估</strong>（meta-evaluation）：任何自动化评审器都要有人工校准抽样兜底——本地 content-judge 的"阈值标记低分"设计正确，但缺人工复核环节</li>
+<li><strong>"分数≠体验"的根因是分布偏移</strong>：公开基准的分布 ≠ 你的真实任务分布；唯一解是私有评估集——这条对个人 Agent 用户同样成立</li>
+<li><strong>反污染是持续军备竞赛</strong>：canary/阴影集/时间切分是三个可直接借用的工程手段</li>
+<li><strong>评估即训练数据</strong>（Arena→reward model）：最高级的评估闭环会把评估产出反哺训练——本地对应物是 sell-tracker/adversary_review 的"实证反哺规则"</li>
+</ol>
+</body>
+</html>
