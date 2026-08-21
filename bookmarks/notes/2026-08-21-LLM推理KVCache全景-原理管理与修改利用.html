@@ -653,5 +653,23 @@ llama-server --model xx.gguf --cache-type-k q4_0 --cache-type-v q4_0
 <li><strong>驱逐算法选型</strong>：先在自己的多指令负载复测再上生产（ACL 2026 偏向性），保护序列头部 sink token 是底线</li>
 <li><strong>集群化路径</strong>：多副本时优先上 cache-aware routing（llm-d / vLLM Production Stack），单机收益吃满后再考虑 PD 分离</li>
 </ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<h3 id="81-hermes-agent">8.1 Hermes Agent 前缀缓存改造（本环境最直接的应用）</h3>
+<p>Hermes 所有会话共享 AGENTS.md + system prompt + 工具规格大段不变前缀（5-8K token），若推理后端启用 prefix caching / RadixAttention，TTFT 可省 80%+。改造路径：zai provider 走 API 时确认前缀缓存计价（智谱/DeepSeek 命中部分约 1/10 价）；本地引擎化后天然受益。</p>
+<h3 id="82">8.2 盯盘系统批处理优化</h3>
+<p>盘中扫描 cron 逐只跑 30+ 股票，prompt 模板高度一致（仅 code/name 参数变化）——把不变部分（铁律规则+输出格式说明）前置为统一前缀、变量部分放尾部，缓存命中率可 &gt;90%，单轮扫描成本降 5-10×。</p>
+<h3 id="83-rag-knowledge-queryrag">8.3 RAG 知识库服务（knowledge-query/RAG 场景）</h3>
+<p>静态参考文档场景 = prefix caching 最佳形态：文档 KV 一次 prefill 后 24h TTL 常驻，每次问答只算问题增量。配合 CompressKV 式驱逐（3% 缓存保 97%），单卡可服务的知识库容量扩大一个量级。</p>
+<h3 id="84-agent-delegate_task">8.4 多 Agent 工作流（delegate_task 链）</h3>
+<p>并行 subagent 共享同一任务简报前缀 → radix tree 天然聚合；KVFlow 的工作流感知驱逐思路可借鉴：编排器把「即将被下游节点复用」的前缀标记为推迟驱逐。</p>
+<h2 id="_9">九、指南分析</h2>
+<h3 id="91-kv-cache">9.1 本篇作为「KV Cache 决策指南」的使用方式</h3>
+<p>按 §3.4 选型决策链入口：先判断负载形态（共享前缀 vs 独特 prompt），再按显存预算选量化档位，最后按多租户/多指令现实校准驱逐策略。三条主线索引：原理与管理机制看 §1.1-1.3，修改利用实操看 §1.5 四层面 + §3.3 速查，避坑看 §1.4 ACL 2026 偏向性警告与两条红线（prefix 一致 + position_ids 正确）。</p>
+<h3 id="92">9.2 指南的适用边界</h3>
+<ul>
+<li>结论时效：引擎参数与压缩比数据截至 2026-08，vLLM/SGLang 迭代快，部署前以官方文档复核参数名</li>
+<li>数字口径：论文压缩比多为单指令长文档负载，多指令生产负载需按 ACL 2026 方法复测</li>
+<li>边缘特例：Jetson 8GB 统一内存下 FP8 KV 无硬件 Tensor Core 加速，Q8/Q4 软件量化路径更现实</li>
+</ul>
 </body>
 </html>
