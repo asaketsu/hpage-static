@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM推理KVCache全景-原理管理与修改利用</title>
+
+<meta property="og:title" content="LLM推理KVCache全景-原理管理与修改利用" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llmkvcache-">LLM推理KVCache全景-原理管理与修改利用</h1>
+<blockquote>
+<p><strong>来源</strong>：vLLM 官方设计文档（docs.vllm.ai/en/stable/design/prefix_caching）+ digitalapplied《KV Cache Optimization 2026 Engineering Guide》+ ACL 2026《The Pitfalls of KV Cache Compression》+ arXiv:2507.07400 (KVFlow) + llm-d 博客 + ForceInjection/AI-fundamentals + 本地 skill llm-inference-optimization 累积研究（CompressKV/RocketKV/KVQuant/MLA/DuoAttention）<br />
+<strong>记录日期</strong>：2026-08-21<br />
+<strong>性质</strong>：技术研究笔记（多源综合 + 本地知识库整合）</p>
+
+<p class="meta-date">生成日期 2026-08-21</p></blockquote>
+<p><strong>标签</strong>：#KVCache #LLM推理优化 #PagedAttention #PrefixCaching #vLLM #SGLang</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-kv-cache">1.1 KV Cache 是什么：自回归生成的必然产物</h3>
+<p>Transformer 自回归生成的原始形态：每生成一个新 token，都要把<strong>整段历史序列</strong>重新过一遍注意力。序列长 n 时总计算量是 O(n²)——第 1 步算 1 个 token 的注意力，第 2 步算 2 个，……解码 1000 步就是 50 万次重复计算，其中绝大部分是对<strong>同样历史 token 的 K/V 投影重复计算</strong>。</p>
+<p>KV Cache 的本质洞察来自因果掩码的数学性质：</p>
+<ul>
+<li>因果掩码保证 token i 只能看见 token ≤ i</li>
+<li>因此历史 token 的 <strong>Key/Value 投影结果永远不变</strong>——第 t 步算出的 K_i、V_i，在第 t+1 步、第 1000 步仍然完全相同</li>
+<li>而 <strong>Query 不需要缓存</strong>：每个解码步只需要<strong>当前最新 token</strong> 的 Q（用它与所有历史 K 做点积）——Q 是一次性的，K/V 是持久的</li>
+</ul>
+<p>于是推理被切成两个性质完全不同的阶段：</p>
+<pre><code>Prefill（预填充）           Decode（解码）
+─────────────────────      ─────────────────────
+一次性处理整个 prompt      每步只算 1 个新 token
+高度并行（大矩阵乘）       串行（逐 token）
+计算密集（compute-bound）  访存密集（memory-bound）
+产出：全部 prompt 的 KV    产出：新 token 的 K/V 追加进 cache
+指标：TTFT（首token延迟）  指标：TBT/TPOT（逐token延迟）
+</code></pre>
+<p><strong>KV Cache 就是把「重复计算」换成了「显存存储」</strong>：解码每步只需算 1 个 token 的 QKV 投影 + 一次对缓存的注意力读取。代价是显存线性增长。</p>
+<h3 id="12-kv-cache">1.2 显存账本：为什么长上下文时代 KV Cache 成了第一成本项</h3>
+<p>单条请求 KV Cache 显存公式：</p>
+<pre><code>KV_bytes = 2(K和V) × n_layers × n_kv_heads × head_dim × seq_len × batch × bytes_per_elem
+</code></pre>
+<p>关键量级事实（多源综合）：</p>
+<ul>
+<li>上下文 &lt;32K 时，KV Cache 显存 &lt; 模型权重，不是瓶颈</li>
+<li><strong>128K 上下文时，KV Cache 超过参数显存</strong></li>
+<li><strong>1M token 时，KV Cache 吃掉 GPU 显存 70-90%、墙钟时间 60-85%</strong>——此时优化 KV 的 ROI 高于优化任何其他组件</li>
+<li>KV 随上下文长度<strong>线性</strong>增长（幸运不是平方），但随 batch 也线性，多租户下迅速爆炸</li>
+</ul>
+<p>这就是 2026 年 KV Cache 成为大模型推理「第一成本杠杆」的因果链：长上下文需求↑ → KV 线性膨胀 → 显存墙 + 带宽墙 → 管理与压缩技术成为工程核心。</p>
+<h3 id="13-os">1.3 管理机制：从连续预分配到 OS 式虚拟内存</h3>
+<p><strong>前 PagedAttention 时代的三大浪费</strong>（cnblogs 探秘Transformer系列总结）：</p>
+<ol>
+<li>按最大序列长度<strong>预分配连续大块</strong>——实际序列往往远短于上限，预留槽位大量闲置</li>
+<li>请求生命周期内整块保留——短请求用不了别人闲置的块</li>
+<li>伙伴分配器式<strong>外部碎片</strong>——KV 是巨大张量必须连续，请求间长短不一导致碎片率 60-80%</li>
+</ol>
+<p><strong>PagedAttention（vLLM）的核心思想：把 OS 虚拟内存搬进 GPU</strong></p>
+<ul>
+<li>KV Cache 切成固定大小 block（如 16 token/块），按需分配</li>
+<li>每个请求持有 <strong>block table</strong>（逻辑序号 → 物理 block 的映射表），逻辑连续、物理离散</li>
+<li>结果：有效利用率从 50-65% 升到 <strong>95%+</strong>，计算开销仅 2-5%</li>
+<li>它是地基——后续 prefix caching、驱逐、量化、层级存储全部构建在 block 抽象之上</li>
+</ul>
+<p><strong>vLLM v1 Prefix Caching 的完整数据结构</strong>（官方设计文档）：</p>
+<ul>
+<li>每个 block 计算 <code>hash(block内token序列 + 前缀所有block的hash)</code>——链式哈希保证块内容+位置唯一标识</li>
+<li>v0.11 起默认 sha256，可选 <code>sha256_cbor</code>（跨语言可复现）/ <code>xxhash</code>（快但非加密安全）</li>
+<li>KVCacheBlock 类四要素：<code>block_id</code>（物理块号）/ <code>block_hash</code>（内容指纹）/ <code>ref_cnt</code>（引用计数）/ 双向链表指针（进 free queue）</li>
+<li><strong>只缓存满块</strong>——尾部不满的块不进缓存索引</li>
+</ul>
+<p><strong>LRU 驱逐的精确机制</strong>：</p>
+<ul>
+<li>请求结束 → 块按逆序进 free queue，但<strong>内容哈希仍保留</strong>（可被后续请求命中）</li>
+<li>新请求分配块时：先 touch 所有缓存命中块（移出 free queue 防误逐），再从队尾取空闲块</li>
+<li>取到队首的<strong>已缓存块</strong>仍不够时 → evict：清 block_hash、断开引用、物理复用</li>
+<li>本质：<strong>「能复用就复用，显存不够按 LRU 牺牲最久未命中」</strong>——和 OS 页面置换同构</li>
+</ul>
+<p><strong>多租户安全：cache_salt</strong></p>
+<ul>
+<li>请求可带 <code>cache_salt</code>，注入首块哈希——只有同 salt 的请求能互相复用缓存</li>
+<li>防两类攻击：时序侧信道（通过延迟差异推断他人缓存内容）+ 跨租户内容泄漏</li>
+<li>这是共享推理平台（llm-d、vLLM Production Stack）的隐私必备件</li>
+</ul>
+<p><strong>SGLang RadixAttention：从哈希表到基数树</strong></p>
+<ul>
+<li>vLLM 用 block 级链式哈希；SGLang 用 <strong>radix tree</strong> 组织全部历史请求的前缀</li>
+<li>多轮对话 / Agent 分支探索 / Monte Carlo 采样等「树状前缀」负载，radix 树天然贴合，多轮缓存命中率 75-95%</li>
+<li>vLLM 官方实测：10K token prompt 二次发送，TTFT 从 4.3s 降到 0.6s（约 7×）</li>
+<li>2026 工程共识：<strong>共享前缀负载（Agent/多轮/RAG）选 SGLang，独特 prompt 批处理选 vLLM</strong></li>
+</ul>
+<h3 id="14-skill-2026">1.4 驱逐与压缩：五大优化族谱系（本地 skill 累积 + 2026 新研究）</h3>
+<p>五大族框架（digitalapplied 2026 工程指南，与本地 skill 研究互证）：</p>
+<pre><code>① Paged Attention（底座）   —— 分页管理，碎片 60-80% → &lt;5%
+② Prefix Caching（应用侧）  —— 命中即免算，成本省 85-95%，最高杠杆
+③ 注意力架构压缩            —— MQA 32× / GQA 4-8× / MLA 7-14×（质量几乎无损）
+④ KV 量化                   —— FP8 半量（生产默认）/ INT8 / KVQuant 8-16×
+⑤ Token 驱逐（Eviction）    —— 丢不重要 token 的 KV，2026 研究最热
+</code></pre>
+<p><strong>五族可叠乘</strong>：MLA(14×) × FP8(2×) = 28×；再叠驱逐可达百倍级。DeepSeek V4-Pro MLA@FP8 把 KV 从 135GB 压到 8GB（17×）。</p>
+<p><strong>驱逐算法五大代表</strong>（arXiv:2512.12008 综述）：</p>
+<ul>
+<li><strong>StreamingLLM</strong>：只保 attention sink（开头几个 token）+ 滑窗最近 token。纯位置策略，O(1) 常数时间，零打分开销——延迟最优基线</li>
+<li><strong>H2O（Heavy Hitter Oracle）</strong>：按<strong>累计注意力得分</strong>动态保留「重击者」token——计算贵但语义准</li>
+<li><strong>SnapKV</strong>：只看<strong>观察窗内</strong> query 对其他 token 的注意力来打分，prefill 一次定型</li>
+<li><strong>K-Norm</strong>：用 Key 范数小作为高注意力代理——极廉价</li>
+<li><strong>TOVA</strong>：token 版注意力累计（Time-Orthogonal 累计近似）</li>
+</ul>
+<p><strong>Attention Sink 现象</strong>（必须理解的反直觉事实）：</p>
+<ul>
+<li>序列开头的少数 token 会吸走海量注意力质量（大量激活集中在 sink token）</li>
+<li>Sun/Canziani/LeCun 2026 (arXiv:2603.05498) 形式化解剖了 massive activation 与 sink 的解剖学结构</li>
+<li><strong>驱逐 sink token 是灾难性的</strong>（StreamingLLM 首次证明）——所以一切驱逐策略都必须显式保护序列头部</li>
+</ul>
+<p><strong>ACL 2026《The Pitfalls of KV Cache Compression》的关键警告</strong>：</p>
+<ul>
+<li>压缩评测都在「单指令长文档」上做——真实场景是<strong>多指令 prompt</strong></li>
+<li>实测：正交指令混装时，StreamingLLM/H2O/SnapKV <strong>系统性偏向最近指令</strong>，K-Norm 偏向早期指令——因为它们的打分函数隐含「prompt 内文本彼此相关」假设</li>
+<li>改进方向：whitelist（显式保护关键指令）+ fair eviction 可一致提升分数</li>
+<li>工程含义：<strong>别把论文压缩比直接当生产预期</strong>，先在自己的多指令负载上复测</li>
+</ul>
+<p><strong>前沿驱逐/压缩代表</strong>：</p>
+<ul>
+<li><strong>CompressKV</strong>（SuRE'26）：发现 GQA 模型头是异构的——用「语义检索头 SRH」而非全头聚合分数来选 token。LongBench QA 保留 <strong>3% 缓存保 97% 性能</strong>；大海捞针 0.7% 缓存达 90% 准确率</li>
+<li><strong>RocketKV</strong>（NVIDIA, ICML 2025）：两阶段（粗粒度永久驱逐 + 头/序列双维 top-k 稀疏），最高 <strong>400×压缩</strong>、3.7× 端到端加速</li>
+<li><strong>KVQuant</strong>（NeurIPS 2024）四创新：Per-Channel Key 量化 + <strong>Pre-RoPE 量化</strong>（RoPE 旋转后 Key 分布不利于量化，这是关键洞察）+ 非均匀 datatype + 每向量 outlier 隔离——目标单 A100 跑 100 万 token</li>
+<li><strong>DuoAttention</strong>（MIT, ICLR 2025）：头二八法则——少数 retrieval head 要全量 KV，多数 streaming head 只需固定窗口。MHA 内存 2.55×↓；+量化后 Llama-3-8B 单 A100 跑 333 万 token</li>
+</ul>
+<h3 id="15">1.5 修改与利用：四个层面的实操</h3>
+<p><strong>层面 A：模型代码层（HuggingFace Transformers 直接操作 cache 对象）</strong></p>
+<pre><code class="language-python">from transformers import AutoModelForCausalLM
+from transformers.cache_utils import DynamicCache
+
+model = AutoModelForCausalLM.from_pretrained(...).cuda()
+cache = DynamicCache()
+
+# 正常生成：每步把新 K/V 追加进 cache
+out = model(input_ids=tokens, past_key_values=cache, use_cache=True)
+# out.past_key_values 即更新后的 cache；下步只喂 last_token
+
+# 修改①：截断（回滚到第 k 步——分支重生成/树搜索场景）
+cache.crop(max_length=k)
+
+# 修改②：跨请求移植（把 A 会话的 KV 喂给 B 的前缀——
+# 前 80% 相同的对话只需算 20%）
+# 注意：直接拼接要求两段 prefix token 完全一致，且要传对
+# position_ids，RoPE 对位置敏感
+
+# 修改③：量化 cache（离线工具把 K/V 张量转 FP8/INT8 存储，
+# 注意力计算前反量化）
+</code></pre>
+<p>修改 cache 的两条红线：<strong>prefix 必须逐 token 一致</strong>（否则 K/V 语义错位，输出静默劣化）；<strong>位置编码要连续正确</strong>（RoPE 下错位的 position_ids = 错误的相对距离感知）。</p>
+<p><strong>层面 B：推理引擎启动参数（生产最常用）</strong></p>
+<pre><code class="language-bash"># vLLM：KV 量化（生产默认推荐 FP8）
+vllm serve &lt;model&gt; --kv-cache-dtype fp8
+
+# vLLM：prefix caching（v1 默认已开，v0 需显式）
+#   禁用：--no-enable-prefix-caching
+#   哈希算法：--prefix-caching-hash-algo sha256_cbor（跨版本可复现）
+
+# vLLM：TurboQuant KV（vLLM Blog 2026-05 实测结论）
+#   内存充裕 → fp8（2x 容量，零损失，硬件加速）
+#   内存紧张 → turboquant_4bit_nc（3.4x，轻微损失）
+#   3-bit 变体生产慎用：推理任务最高 -20 分（AIME25/GPQA）
+
+# llama.cpp（边缘/本地）：K 和 V 分别量化
+llama-server --model xx.gguf --cache-type-k q4_0 --cache-type-v q4_0
+
+# SGLang：分层缓存 HiCache（GPU→CPU→磁盘，见层面D）
+</code></pre>
+<p>请求级 API 参数（OpenAI 兼容端点）：<code>cache_salt</code>（租户隔离）；Anthropic API 的 <code>cache_control</code>（显式标记可缓存段落）；DeepSeek API 自动前缀缓存（命中部分约 1/10 计价）。</p>
+<p><strong>层面 C：调度与路由层（集群视角）</strong></p>
+<ul>
+<li><strong>llm-d / vLLM Production Stack</strong>：分布式 KV 索引 <code>kvcache.Index</code> 提供全集群实时缓存视图，调度器的 Precise Prefix-Cache Scorer 给每个入站请求算「路由到哪台副本命中最多」——<strong>cache-aware routing</strong>，把 prefix caching 从单机优化升级为集群调度信号</li>
+<li>AIBrix：分布式前缀缓存池 + Prefix Router（hash 匹配或 radix tree 匹配两种策略）</li>
+<li><strong>KVFlow</strong>（arXiv:2507.07400）：把 <strong>Agent 工作流 DAG 的先验</strong>喂给 SGLang——工作流感知驱逐（哪些前缀即将被下游节点用到，就推迟驱逐）+ 全重叠 KV 预取。多 Agent 工作流加速显著</li>
+<li><strong>Mooncake（月之暗面）</strong>：KV Cache 为中心的分离式架构——Conductor 全局调度器 + 分块管道并行，超长上下文场景把 KV 当「一等公民」资源调度（预填充节点产出 KV → 传输给解码节点），KV 传输走 RDMA/零拷贝（NIXL）</li>
+</ul>
+<p><strong>层面 D：层级存储（打破显存墙）</strong></p>
+<ul>
+<li><strong>SGLang HiCache</strong>：KV 分层 GPU → CPU RAM → 磁盘，热前缀驻显存、冷前缀下沉</li>
+<li><strong>NVIDIA KVBM（KV Block Manager）</strong>：统一内存 API 管异构存储（GPU/CPU/SSD），block 状态机管理生命周期 + NIXL 库做 GDS/RDMA 高效传输——本质是「KV Cache 专属操作系统」</li>
+<li><strong>LMCache</strong>：vLLM 生态的 KV 持久化层，跨实例复用</li>
+</ul>
+<p><strong>层面 E：应用架构层（Agent 工程师最高 ROI）</strong></p>
+<ul>
+<li><strong>Reasonix 三分区模式</strong>：Immutable Prefix（system prompt+工具规格，整个会话不变，100% 命中）+ Append-Only Log（对话历史只追加禁止改写——保留前缀缓存不变量）+ Volatile Scratch（思考草稿每轮重置，根本不发 API）</li>
+<li>DeepSeek API 前缀缓存实战数据：4.35 亿 input token，<strong>99.82% 命中率</strong>，实付 ~$12（无缓存要 ~$61）</li>
+<li><strong>多轮 Agent 的禁忌</strong>：改写历史消息 = 销毁其后所有缓存。所以「不支持编辑历史消息」是缓存视角下的架构约束而非产品缺陷</li>
+<li>Agent 每 30-50 轮「重新锚定」一次（重发完整上下文）防止前缀漂移累积</li>
+</ul>
+<h3 id="16-kv-cache">1.6 KV Cache 与投机解码的交互（容易被忽视的修改场景）</h3>
+<p>投机解码（EAGLE-3/MTP）会引入三个 KV Cache 特殊操作（ForceInjection/AI-fundamentals 拆解）：</p>
+<ol>
+<li><strong>Placeholder 预留</strong>：验证 k 个 draft token 前先在 cache 预留 k 个槽位</li>
+<li><strong>猜错回退</strong>：draft 被拒时用 <code>num_computed_tokens</code> 回退指针撤销已写入的 KV——cache 必须支持「逻辑截断」</li>
+<li><strong>draft/target KV 形状对齐</strong>：两套模型的 KV 布局要一致才能共享管理器</li>
+</ol>
+<p>工程含义：<strong>开推测解码的引擎，KV Cache 不是只追加的——它要求管理器支持高效回滚</strong>，这也是 PagedAttention block 抽象的又一个红利（回退=丢弃部分块，无需 memmove）。</p>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-q">2.1 为什么 Q 不缓存（检索类比）</h3>
+<p>把注意力看作「软检索」：Q 是查询语句（每次发完即弃），K 是被检索文档的索引（要长期在线），V 是文档正文（命中后取出的内容）。因果掩码保证历史 token 的 K/V 永不变化，但 Q 只在「当下这个 token」的意义上存在——缓存它没有复用价值。</p>
+<h3 id="22-rope-pre-rope">2.2 RoPE 与 Pre-RoPE 量化的关系</h3>
+<p>RoPE（旋转位置编码）对 Key 向量做位置相关旋转，旋转后的 Key 分布出现通道间大幅异方差——直接量化精度崩坏。KVQuant 的洞察：<strong>在 RoPE 之前量化</strong>（此时 Key 分布近似各向同性），需要时再旋转恢复。这是「算法层设计挤压量化空间」的典型案例，同理 PromptCache/MLA 的低秩压缩也选在旋转前做。</p>
+<h3 id="23-mla">2.3 MLA：从「减少头」到「压缩状态」的范式转换</h3>
+<p>GQA/MQA 靠共享 K/V 头减量；MLA（DeepSeek V2/V3、GLM-5、Kimi K2 采用）把 KV 压成 512 维 latent 向量，用时重建——压缩比 7-14× 且质量不降反可能超 MHA。MHA2MLA（ACL 2025，复旦+海康）证明任意 MHA 模型可用 Partial-RoPE + 联合 SVD 迁移到 MLA，仅 0.6-1% 训练数据，KV 再降 92%。本机 zai provider 的 GLM 系列正是 MLA 架构——这是边缘部署能跑长上下文的底层原因。</p>
+<h3 id="24-ttfttbttpot">2.4 TTFT/TBT/TPOT 指标体系</h3>
+<ul>
+<li><strong>TTFT</strong>（Time To First Token）：prefill 延迟，前缀缓存直接改善（4.3s→0.6s 实测）</li>
+<li><strong>TBT</strong>（Time Between Tokens）：相邻 token 间隔，反映解码波动，比平均指标 TPOT 更细</li>
+<li>KV 优化映射：prefix caching 改善 TTFT；量化/驱逐/分层存储改善 TBT（带宽与容量）；两者独立可叠加</li>
+</ul>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-kv-cache">3.1 KV Cache 全景框架图</h3>
+<pre><code>                    ┌─────────────────────────────────┐
+                    │   生成需求：长上下文 × 高并发     │
+                    └──────────────┬──────────────────┘
+                                   ▼
+                    KV 线性膨胀 → 显存墙 + 带宽墙
+                                   ▼
+      ┌────────────────────────────┴────────────────────────────┐
+      │                    五大优化族（可叠乘）                    │
+      ├──────────────────────────────────────────────────────────┤
+      │ ① PagedAttention  底座：block table，碎片&lt;5%             │
+      │ ② Prefix Caching  应用：hash/radix 命中即免算，省85-95%   │
+      │ ③ 架构压缩        MQA/GQA/MLA：7-14×                     │
+      │ ④ KV 量化         FP8=2×（生产默认）/ KVQuant 8-16×      │
+      │ ⑤ Token 驱逐      StreamingLLM/H2O/SnapKV/CompressKV     │
+      └────────────────────────────┬────────────────────────────┘
+                                   ▼
+      跨层进化（2026）：层级存储(HiCache/KVBM) → 集群路由(llm-d)
+      → 以KV为中心架构(Mooncake) → 工作流感知驱逐(KVFlow)
+</code></pre>
+<h3 id="32-vllm-v1">3.2 管理生命周期（vLLM v1 视角）</h3>
+<pre><code>新请求 → get_computed_blocks() 查哈希命中
+       → allocate_slots() 分配（命中块 touch 出队 + 新块从 free queue 取）
+       → 解码中逐块填满 → 满块注册 hash 进缓存索引
+       → 请求结束 → 块进 free queue（hash 保留，LRU 可命中）
+       → 显存耗尽 → evict 队首最久未用缓存块（清 hash 复用物理块）
+</code></pre>
+<h3 id="33">3.3 「怎么修改利用」四层速查</h3>
+<ul>
+<li><strong>改对象</strong>（HF DynamicCache）：crop 截断 / 跨请求移植 / 离线量化——受限于 prefix 一致 + position_ids 正确两条红线</li>
+<li><strong>改参数</strong>（引擎启动项）：<code>--kv-cache-dtype fp8</code> / <code>--cache-type-k q4_0</code> / prefix caching 开关与哈希算法</li>
+<li><strong>改架构</strong>（集群）：cache_salt 隔离 / cache-aware routing / HiCache 分层 / PD 分离 KV 传输</li>
+<li><strong>改应用</strong>（最高 ROI）：Reasonix 三分区（immutable+append-only+volatile）/ 只追加不改写历史 / 定期重新锚定</li>
+</ul>
+<h3 id="34">3.4 选型决策链</h3>
+<pre><code>负载特征？
+├─ 共享前缀（Agent/多轮/RAG）→ SGLang RadixAttention（命中率75-95%）
+├─ 独特 prompt 批处理 → vLLM（差距&lt;5%，生态广）
+├─ 显存充裕 → FP8 KV（零损失2×）
+├─ 内存紧张 → 4bit KV（3.4×，轻微损失）；3bit 慎用（-20分风险）
+├─ 长上下文静态参考文档 → 显式 prefix 标记 + 24h TTL
+├─ 多租户 → cache_salt 必开
+└─ 多指令混合 prompt → 驱逐算法先复测（ACL 2026 偏向性警告）
+</code></pre>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1kv-cache">趋势1：KV Cache 从「优化对象」升格为「一等公民资源」</h3>
+<p>依据：Mooncake 把调度器命名为 Conductor 围绕 KV 组织全局；KVBM 做成 KV 专属内存操作系统；llm-d 用 KV 索引驱动集群路由。2024 年 KV 是引擎内部细节，2026 年 KV 索引/传输/调度成为独立架构层。</p>
+<h3 id="2">趋势2：驱逐研究从「打分更准」转向「负载感知」</h3>
+<p>依据：ACL 2026 揭示单指令评测与多指令现实的偏差；KVFlow 用工作流 DAG 先验指导驱逐时机；CompressKV 用头异构性（SRH）取代全头聚合。纯启发式打分的边际收益在缩小，结构先验（谁将被复用）成为新战场。</p>
+<h3 id="3-agent">趋势3：应用层缓存工程成为 Agent 团队必修课</h3>
+<p>依据：DeepSeek 前缀缓存 10 倍价差 + Reasonix 99.82% 命中实证；多轮 Agent 禁改写历史成为架构约束；API 侧（Anthropic cache_control / vLLM cache_salt）接口标准化。<strong>缓存纪律 = 成本纪律</strong>，Agent 框架设计阶段就要内建。</p>
+<h3 id="4mla-kv">趋势4：MLA 化 + KV 量化成为长上下文默认出厂配置</h3>
+<p>依据：DeepSeek/GLM/Kimi/Mistral 新模型全面 MLA；MLA(14×)×FP8(2×)=28× 已可叠加验证；MHA2MLA 让存量模型低成本迁移。模型架构层和引擎层正在「合谋」让 KV 墙变矮。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51">5.1 与既有笔记的关联</h3>
+<ul>
+<li><strong>[LLM推理引擎竞争-vLLM-vs-SGLang]（2026-08-14）</strong>：本文的 RadixAttention vs block-hash 差异是那篇引擎选型结论的底层机制——SGLang 优势场景（Agent/多轮）本质上就是「前缀树状共享度」高的场景</li>
+<li><strong>[LLM推理服务架构2026进化-解耦架构]（2026-08-13）</strong>：PD 分离架构中 KV 传输（NIXL/Mooncake 连接器）是解耦的物质基础——预填充节点产 KV、解码节点消费 KV</li>
+<li><strong>[投机解码生产化指南-EAGLE-3到P-EAGLE]（2026-08-17）</strong>：本文 §1.6 补充了推测解码对 KV 管理器「可回滚」的要求——两者是同一引擎的两面</li>
+<li><strong>[主流LLM注意力机制全景科普]（2026-08-10）</strong>：MLA/GQA/MQA 的架构原理在那篇有四维正交分解，本文承接其工程后果（KV 压缩比）</li>
+</ul>
+<h3 id="52">5.2 与本地环境的关联</h3>
+<ul>
+<li><strong>本机 GLM（zai provider）原生 MLA</strong>：同样上下文长度下 KV 显存约为 MHA 模型的 1/14——这是选择 GLM 做长上下文工作的隐性优势</li>
+<li><strong>Hermes Agent 场景</strong>：所有会话共享 AGENTS.md + system prompt 大段前缀但未系统利用 prefix caching——skill 内已标记为「最易摘的低垂果实」（预估省 80%+ TTFT）</li>
+<li><strong>Jetson 边缘部署</strong>（8GB 共享内存）：权重量化之外 KV 留了 ~50% 显存在桌上——Q4 权重 + Q8 KV + 短窗口是边缘长上下文的技术栈组合</li>
+</ul>
+<h3 id="53">5.3 与量化交易系统的领域映射</h3>
+<ul>
+<li>盘中扫描 cron（30 只股票逐只拉行情）每只 prompt 结构高度一致 → 若走本地推理引擎，prefix caching 命中率天然 &gt;90%，属「长文档 Q&amp;A」负载形态</li>
+</ul>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Prefix caching is almost a free lunch and won't change model outputs.」— vLLM 官方文档（缓存复用是无损的，这决定了它应该默认开启）</p>
+<p>「1M token 时 KV Cache 占 GPU 显存 70-90%、墙钟时间 60-85%。」— digitalapplied 2026（KV 是第一成本杠杆，不是权重）</p>
+<p>「驱逐 sink token 是灾难性的。」— StreamingLLM (arXiv:2309.17453)（一切驱逐策略的第一守则）</p>
+<p>「RoPE 之后的 Key 分布不利于量化。」— KVQuant（算法设计挤压压缩空间的经典案例）</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>用引擎参数立刻可做</strong>：任何 vLLM 部署加 <code>--kv-cache-dtype fp8</code>（2× 容量零损失）；llama.cpp 加 <code>--cache-type-k q4_0 --cache-type-v q4_0</code></li>
+<li><strong>Agent 应用架构检查</strong>：确认对话历史只追加不改写；system prompt/工具规格固定在最前缀；思考草稿不入 API 上下文——这是零成本省钱纪律</li>
+<li><strong>多租户必开 cache_salt</strong>：防时序侧信道与跨租户泄漏</li>
+<li><strong>驱逐算法选型</strong>：先在自己的多指令负载复测再上生产（ACL 2026 偏向性），保护序列头部 sink token 是底线</li>
+<li><strong>集群化路径</strong>：多副本时优先上 cache-aware routing（llm-d / vLLM Production Stack），单机收益吃满后再考虑 PD 分离</li>
+</ul>
+</body>
+</html>
