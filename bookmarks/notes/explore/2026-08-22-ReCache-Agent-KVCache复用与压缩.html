@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReCache-Agent-KVCache复用与压缩</title>
+
+<meta property="og:title" content="ReCache-Agent-KVCache复用与压缩" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="recache-llm-agent-kv-cache">ReCache：面向工具增强 LLM Agent 的高效 KV Cache 复用与压缩</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2608.19662<br />
+<strong>作者</strong>：Yichu Fang, Sitong Wei, Haozhe Hu, Xiaoyu Shen<br />
+<strong>记录日期</strong>：2026-08-22</p>
+
+<p class="meta-date">生成日期 2026-08-22</p></blockquote>
+<p><strong>标签</strong>：#Agent #KVCache #推理加速 #工具调用 #HermesGateway</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题</h3>
+<p>Agentic LLM 在每次请求中反复编码工具/技能 Schema，但由于工具组合动态变化，标准 prefix caching 几乎无法复用。论文提出 <strong>ReCache</strong> 框架，将"工具 Schema 的 KV 状态"从推理上下文中独立出来，实现跨请求复用和深度压缩。</p>
+<h3 id="12">1.2 三大核心技术</h3>
+<blockquote>
+<p><strong>资源级注意力（Resource-Wise Attention）</strong><br />
+- 核心观察：工具之间的交叉注意力（cross-resource attention）对推理结果贡献极小，而工具内部注意力才是关键（图 1 可视化证明）<br />
+- 机制：移除不同资源之间的 attention link，每个资源使用独立的局部位置编码（resource-local positions）<br />
+- 效果：资源间注意力从 O(D²) 降到 O(ΣDᵢ²)；每个工具 Schema 可独立构建 KV block，不受组合方式影响<br />
+- 结果：Inv-F1 82.3% vs Dense 82.4%，<strong>误差 ≤0.2%</strong>，TTFT 加速 <strong>3.655×</strong>（26.3ms→7.2ms）</p>
+<p><strong>结构剪枝（Structural Pruning）</strong><br />
+- 核心思想：Transformer 层和 KV head group 对推理结果的贡献高度不均匀<br />
+- 方法：leave-one-in 分析每个 (层, KV-head-group) 路由对调用损失的边际贡献，只保留 Top-K 路由（Ω<em> = Ω_{20,3} for Qwen3-4B）<br />
+- Qwen3-4B：保留 20/36 层 + 3/8 KV head group，稀疏度 79.2%，Inv-F1 仅降 0.2%<br />
+- Qwen3-1.7B：需 20/28 层 + 7/8 head group（小模型功能分布更均匀）<br />
+- 关键发现：</em><em>贡献度选择（contribution-based）远胜注意力权重选择（attention-mass）</em>*——后者在 OOD 上 Inv-F1 降 5 点、幻觉率 5.1% vs 贡献度 0.5%</p>
+<p><strong>语义剪枝（Semantic Pruning）</strong><br />
+- 核心发现：工具 Schema 的<strong>最后一个后缀 token</strong> 自然聚合了前面所有字段信息（图 1(b) 注意力热力图证明）<br />
+- 方法：保留后缀 token 作为语义锚点 + 保留调用关键字段（资源名、参数名、参数描述）<br />
+- 拒绝通用摘要方案：Gist 单总结向量导致 Inv-F1 从 82.4% 崩到 39.2%，幻觉率 51.4%；Beacon chunk 级摘要 78.6%，幻觉率 1.4%<br />
+- <strong>工具 Schema 压缩不能丢失精确的接口标识信息</strong>——无效参数是 Agent 调用的头号失败原因</p>
+</blockquote>
+<h3 id="13-recache">1.3 完整 ReCache 效果</h3>
+<ul>
+<li>KV 张量内存：<strong>92.43% 缩减</strong></li>
+<li>注意力加速：<strong>1.423×</strong></li>
+<li>IND 测试：Inv-F1 80.3%（Dense 82.4%，损失 2.1%）</li>
+<li>OOD 测试（未见过工具）：Inv-F1 60.8%（Dense 66.3%，损失 5.5%），幻觉率 0.6%</li>
+</ul>
+<h3 id="14">1.4 实验设计亮点</h3>
+<ul>
+<li>统一基准：合并 7 个公开数据集（ToolACE/APIGEN/ToolMind/ToolRet/Toucan/SkillRouter/WildToolBench），49,424 训练样本</li>
+<li>多样性优先采样：优先覆盖新工具名称和候选集组合，避免频率偏差</li>
+<li>OOD 测试集：评估对未见工具的泛化能力</li>
+</ul>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-prefix-caching">2.1 Prefix Caching 的局限性</h3>
+<p>标准 prefix caching 要求缓存内容形成"相同前缀"，这在 Agent 场景中几乎不成立——每次请求检索到的工具组合和顺序都不同。已有位置无关方案（EPIC/CacheBlend/KVLink）虽解决了位置偏移问题，但仍需选择性重计算来近似全上下文 KV 状态。ReCache 的核心突破是<strong>完全取消工具间交叉注意力</strong>，使得每个工具 KV block 天然独立可复用。</p>
+<h3 id="22-kv">2.2 与已有 KV 压缩方法的差异</h3>
+<ul>
+<li><strong>H2O/DepthKV</strong>：按层/位置统一 budget 驱逐，未针对工具 Schema 的语义结构优化</li>
+<li><strong>SPEED</strong>：按深度限制 prompt KV 可见性，但 OOD 幻觉率 13.4%——说明通用压缩策略对工具调用场景不够鲁棒</li>
+<li><strong>LLMLingua/ChunkKV</strong>：面向自然语言，不保留结构化标识信息</li>
+</ul>
+<h3 id="23-hermes-gateway-schema">2.3 Hermes Gateway 的工具 Schema 管理现状</h3>
+<p>当前 Hermes 的 Skill 系统（~150+ Skills）在每次会话启动时会将匹配 Skill 注入上下文。当多个 Skill 同时触发时，上下文长度可能达到 50k+ tokens，prefill 耗时显著。ReCache 的"独立工具 KV 缓存"思路可直接映射：将 Skill.md 的 KV 状态预编码缓存，会话中按需加载而不重复 prefill。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-recache">3.1 ReCache 三层压缩框架</h3>
+<pre><code>输入上下文
+  ├─ System Instruction（标准 prefix cache）
+  ├─ User Query（标准 prefill）
+  └─ Tool/Skill Schema（ReCache 独立处理）
+       └─ [阶段1] Resource-Wise Attention：移除工具间交叉 attention，资源独立 KV block
+            └─ [阶段2] Structural Pruning：贡献度 Top-K 层+KV-head-group 路由，79% 路由剪枝
+                 └─ [阶段3] Semantic Pruning：保留后缀 token + 关键字段（名称/参数名/描述）
+                      └─ 输出：独立可复用、内存缩减 92% 的压缩 KV block
+</code></pre>
+<h3 id="32">3.2 关键数字</h3>
+<ul>
+<li><strong>92.43%</strong> KV 内存缩减</li>
+<li><strong>1.423×</strong> 注意力加速</li>
+<li><strong>3.655×</strong> TTFT 加速（阶段1单独）</li>
+<li><strong>≤0.2%</strong> IND Inv-F1 损失（阶段1）</li>
+<li><strong>2.1%</strong> IND Inv-F1 损失（完整 ReCache）</li>
+<li><strong>5.5%</strong> OOD Inv-F1 损失（完整 ReCache）</li>
+<li><strong>0.6%</strong> OOD 幻觉率 vs 通用方法 5.1-13.4%</li>
+<li><strong>17 页</strong>论文，4 张图</li>
+</ul>
+<h3 id="33">3.3 核心洞察</h3>
+<ol>
+<li><strong>工具间交叉注意力几乎无用</strong>——移除后效果不变，但开启了独立缓存的可能</li>
+<li><strong>贡献度选择 &gt;&gt; 注意力权重选择</strong>——前者按损失梯度选择路由，后者按 attention mass 选择，OOD 差距达 5 点</li>
+<li><strong>工具 Schema 压缩不能丢失精确接口标识</strong>——通用摘要方法在此场景完全失效</li>
+</ol>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41-agent">4.1 Agent 推理成本将成为核心竞争力</h3>
+<p>当 Agent 系统工具池膨胀到 100+ 时，每次请求的 prefill 成本成为主要瓶颈。ReCache 代表的"工具 Schema 独立缓存"方向将在 2026-2027 年成为 Agent 框架标配——就像 prefix caching 之于标准 LLM 推理。</p>
+<h3 id="42-">4.2 结构-语义联合压缩是必由之路</h3>
+<p>单一维度压缩（仅结构剪枝或仅语义摘要）已证明不足。结构剪枝解决"哪些层需要看工具信息"，语义剪枝解决"工具信息中哪些字段需要保留"——两者互补且各自不可替代。</p>
+<h3 id="43-skill-kv-agent">4.3 Skill 级 KV 缓存将重塑 Agent 框架架构</h3>
+<p>当前 Agent 框架（LangGraph/Manus/OpenClaw）将 Skill 作为 prompt 文本注入。ReCache 路线预示下一代框架将 Skill 预编译为 KV 缓存单元，实现"秒级加载百级 Skill"而不增加 prefill 成本。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-kv-cache">5.1 与 KV Cache 系列笔记的关联</h3>
+<ul>
+<li><strong><a href="2026-08-22-KVCache压缩2026前沿-TriAttention基建突围与生产级落地.md">2026-08-22 KVCache压缩2026前沿</a></strong> — 同日精读的另一篇 KV 压缩论文，关注推理加速基建；ReCache 聚焦 Agent 场景的工具 Schema 压缩，两者互补</li>
+<li><strong><a href="2026-08-21-LLM推理KVCache全景-原理管理与修改利用.md">2026-08-21 LLM推理KVCache全景</a></strong> — KV Cache 原理与管理全景，ReCache 是该原理在 Agent 场景的具体工程化实现</li>
+<li><strong><a href="2026-07-04-Kara-KV-Cache-滑动窗口压缩-Jetson边缘部署.md">2026-07-04 Kara 精读</a></strong> — Kara 关注 KV Cache 滑动窗口压缩（长上下文），ReCache 关注结构/语义联合压缩（工具 Schema），压缩维度正交</li>
+</ul>
+<h3 id="52-hermes-agent">5.2 与 Hermes Agent 系统架构的关联</h3>
+<ul>
+<li><strong>Skill 加载</strong>：当前 Hermes 每次会话注入匹配 Skill 文本，ReCache 的"预编码 KV block"模式可让 Skill 加载从 O(全文prefill) 降到 O(缓存命中)</li>
+<li><strong>Tool 调用</strong>：Hermes 工具池 ~20 个内置工具 + 多个 Skill 工具，ReCache 的结构剪枝可直接用于 Gateway 的工具 Schema 管理</li>
+<li><strong>记忆压缩</strong>：memorygraph 的记忆压缩（memory-compaction）与 ReCache 的语义剪枝思路高度一致——保留关键锚点、删除冗余内容</li>
+</ul>
+<hr />
+<h2 id="_6">六、拓展应用推荐</h2>
+<h3 id="61-hermes-skill-p1">6.1 Hermes Skill 预缓存（P1）</h3>
+<p>借鉴 ReCache 的 resource-wise attention 思路，将每个 Skill.md 预编译为独立 KV block，会话中按需加载而非注入文本。预估收益：多 Skill 会话 prefill 降低 50-80%。</p>
+<h3 id="62-schema-p2">6.2 工具 Schema 结构剪枝（P2）</h3>
+<p>对 Hermes Gateway 的工具调用层实施贡献度路由分析，识别哪些层真正需要"看到"工具 Schema。可复用 ReCache 的 leave-one-in 评分方法。</p>
+<h3 id="63-p2">6.3 记忆系统的语义剪枝（P2）</h3>
+<p>memorygraph 的记忆压缩可借鉴 ReCache 的"后缀 token 语义锚点"思想——每条记忆保留一个 summary token + 关键字段（实体/关系/时间），丢弃冗余描述。</p>
+<h3 id="64-agent-p3">6.4 Agent 评测基准构建（P3）</h3>
+<p>ReCache 的统一基准（7 数据集 + diversity-first 采样）可直接作为 Hermes Agent 工具调用能力的评测框架，特别是 OOD 泛化测试对 Skill 覆盖度评估有高参考价值。</p>
+<hr />
+<h2 id="_7">七、指南分析</h2>
+<h3 id="71">7.1 论文局限性</h3>
+<ol>
+<li><strong>仅验证 Qwen3 系列</strong>：Qwen3-4B 和 1.7B，未验证 Llama/Mistral/DeepSeek 等其他架构</li>
+<li><strong>需全参数微调</strong>：ReCache 修改 attention mask 和位置编码，论文明确"冻结模型适配留待未来"——这意味着不能直接用于已部署模型</li>
+<li><strong>假设工具 Schema 稳定</strong>：论文适用于"工具池相对固定"的场景，对高频变化的工具（如每日更新的 API）复用率会下降</li>
+</ol>
+<h3 id="72">7.2 落地路径建议</h3>
+<ol>
+<li><strong>短期（1-2 周）</strong>：在 Hermes Gateway 日志中统计实际 Skill 复现率——如果同一 Skill 每天被多次加载，ReCache 收益大</li>
+<li><strong>中期（1 个月）</strong>：实现 Skill.md → KV block 预编码原型（基于 vLLM prefix cache 扩展）</li>
+<li><strong>长期（1 季度）</strong>：将 ReCache 的结构剪枝思想整合到 Gateway 工具 Schema 管理，形成"贡献度路由"机制</li>
+</ol>
+<h3 id="73">7.3 与其他方案的对比</h3>
+<ul>
+<li><strong>vs vLLM prefix cache</strong>：prefix cache 要求相同前缀，ReCache 完全取消前缀依赖</li>
+<li><strong>vs Multi-Query Attention</strong>：MQA 通过减少 KV head 数量节省内存，ReCache 通过路由剪枝只让部分 head 访问工具信息</li>
+<li><strong>vs 标准 RAG</strong>：RAG 通过检索减少上下文长度，ReCache 保留全部工具 Schema 但使其可复用</li>
+</ul>
+<hr />
+<h2 id="_8">八、关联论文</h2>
+<ul>
+<li><strong>2608.19535</strong> — From Retrieved Context to Runtime Control: Adaptive Compression for Edge-based RAG（边缘 RAG 自适应压缩，同日提交）</li>
+<li><strong>2608.19842</strong> — SAPO: Single-Rollout Autoregressive Policy Optimization for Agentic Reinforcement Learning（Agent 强化学习策略优化）</li>
+<li><strong>2607.01237</strong> — Kara: KV Cache 滑动窗口压缩（已精读，边缘部署 P0 借鉴点）</li>
+<li><strong>2607.08032</strong> — Memory Compaction Rate-Distortion（已精读，记忆压缩率失真理论框架）</li>
+<li><strong>2606.11357</strong> — TileFuse（已精读，边缘 NPU 融合核）</li>
+</ul>
+</body>
+</html>
