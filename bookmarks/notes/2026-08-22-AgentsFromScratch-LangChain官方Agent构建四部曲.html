@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentsFromScratch-LangChain官方Agent构建四部曲</title>
+
+<meta property="og:title" content="AgentsFromScratch-LangChain官方Agent构建四部曲" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agents-from-scratch-langchain-agent-hitl">Agents From Scratch — LangChain 官方 Agent 构建四部曲：分诊→评估→HITL→记忆</h1>
+<blockquote>
+<p><strong>来源</strong>：<a href="https://github.com/langchain-ai/agents-from-scratch">langchain-ai/agents-from-scratch</a>（GitHub，2.1k Star / 405 Fork / 196 commits，MIT）<br />
+<strong>作者</strong>：LangChain 官方（LangGraph 团队）<br />
+<strong>记录日期</strong>：2026-08-22<br />
+<strong>配套</strong>：<a href="https://blog.langchain.dev/introducing-ambient-agents/">Ambient Agents 博客</a> · <a href="https://github.com/langchain-ai/agent-inbox">Agent Inbox</a> · LangGraph Studio</p>
+
+<p class="meta-date">生成日期 2026-08-22</p></blockquote>
+<p><strong>标签</strong>：#LangGraph #Agent构建 #HumanInTheLoop #Agent记忆 #Agent评估 #ContextEngineering</p>
+<hr />
+<h3 id="7">7 模块索引（本报告内容映射）</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+<td>6 个标签</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+<td>GitHub 仓库 + LangChain 生态</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~四章</td>
+<td>四部曲结构/各章详解/工程细节</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第五章</td>
+<td>Ambient Agent 范式 + triage-workflow 混合</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第六章</td>
+<td>四层递进图 + 与 Hermes 对照</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第七章</td>
+<td>3 条预测</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第八章</td>
+<td>与 5 篇已有笔记交叉</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第九章</td>
+<td>可落地借鉴清单</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第十章</td>
+<td>教程质量评估</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>Agent 构建的官方教科书路线：先 triage+agent 混合架构，再评估（LLM-as-judge + 工具调用判分），再 HITL（interrupt + Agent Inbox），最后记忆（LangGraph Store 从反馈学习）——四层递进，每层一个 notebook + 可运行代码。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 仓库定位</h3>
+<p>官方"从零构建 Agent"教程，最终产物是一个 <strong>ambient agent</strong>（环境代理）——连接 Gmail API 管理邮件。4 个 section，每个配 notebook + <code>src/email_assistant/</code> 完整代码。</p>
+<p><strong>核心特点</strong>：不是玩具 demo——每层递进都有真实工程约束（评估数据集/HITL 界面/持久化 Store/Gmail 真实 API）。</p>
+<h3 id="12-0-langgraph-101">1.2 第 0 章：LangGraph 101（前置）</h3>
+<p>覆盖基础概念：</p>
+<ul>
+<li>chat models / tool calling 基础</li>
+<li><strong>agents vs workflows</strong> 的区别（自主决策 vs 固定流程）</li>
+<li>LangGraph nodes / edges / memory</li>
+<li>LangGraph Studio 可视化调试</li>
+</ul>
+<h3 id="13-1-agenttriage-agent">1.3 第 1 章：构建 Agent（triage + agent 混合架构）</h3>
+<p><strong>架构</strong>：email triage step（分类工作流）+ 响应处理 agent（自主决策）的组合。</p>
+<pre><code>收到邮件 → [triage 工作流：分类/标记/路由] → [response agent：工具调用生成回复]
+</code></pre>
+<p>这是 LangChain 官方教程反复强调的模式——<strong>固定流程的部分用 workflow（可控、可测），需要自主判断的部分才用 agent（灵活但有风险）</strong>。分类交给确定性 workflow，响应策略交给 agent。</p>
+<h3 id="14-2-evaluation">1.4 第 2 章：评估（Evaluation）</h3>
+<p>三层评估对象：</p>
+<table>
+<thead>
+<tr>
+<th>评估层</th>
+<th>方法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>邮件回复质量</td>
+<td>LLM-as-a-judge</td>
+</tr>
+<tr>
+<td>工具调用正确性</td>
+<td>断言工具选择/参数</td>
+</tr>
+<tr>
+<td>Triage 决策正确性</td>
+<td>分类标签比对</td>
+</tr>
+</tbody>
+</table>
+<p><strong>工具链</strong>：Pytest（CI 集成）+ LangSmith <code>evaluate</code> API（追踪/指标/版本对比）。评估数据集在 <code>eval/email_dataset.py</code>。</p>
+<p><strong>关键设计</strong>：测试结果记录到 LangSmith 项目——可视化 trace、评估指标、<strong>不同 Agent 实现的对比</strong>（回归检测）。</p>
+<h3 id="15-3-human-in-the-loophitl">1.5 第 3 章：Human-in-the-Loop（HITL）</h3>
+<p><strong>机制</strong>：interrupt 暂停 + 人工审查特定工具调用（发邮件/定会议这类不可逆动作）。</p>
+<p><strong>界面</strong>：<a href="https://github.com/langchain-ai/agent-inbox">Agent Inbox</a>——LangChain 官方 HITL 界面，人类在收件箱式 UI 里批准/编辑/拒绝 Agent 的工具调用。</p>
+<pre><code>Agent 决定 send_email → interrupt 暂停 → Agent Inbox 推送给人类
+→ 人类 批准/编辑参数/拒绝 → Agent 继续/修正
+</code></pre>
+<h3 id="16-4-memory">1.6 第 4 章：记忆（Memory）</h3>
+<p><strong>机制</strong>：从用户反馈学习，适应偏好——用 <a href="https://langchain-ai.github.io/langgraph/concepts/memory/#long-term-memory">LangGraph Store</a> 持久化。</p>
+<p><strong>数据流</strong>：</p>
+<pre><code>人类在 HITL 中 编辑了 Agent 的草稿 → 编辑差异作为反馈信号
+→ 提取偏好（&quot;用户喜欢简短回复&quot;/&quot;称呼用 X&quot;）→ 写入 Store
+→ 下次生成时检索相关记忆注入 context
+</code></pre>
+<p>这是<strong>记忆来自 HITL 交互</strong>的闭环设计——不是预先灌入知识，而是从人类修正中持续学习。</p>
+<h3 id="17">1.7 工程细节（可复用）</h3>
+<ul>
+<li><strong>Python 3.11+</strong>（LangGraph 兼容性要求）</li>
+<li><strong>uv</strong> 包管理（官方推荐，快且可靠）</li>
+<li><strong>可编辑安装</strong>：notebook 依赖 <code>from email_assistant import ...</code>，必须 editable install</li>
+<li><strong>mock-first</strong>：notebooks 用 mock 邮件/日历工具，Gmail 真实 API 单独一章</li>
+<li><strong>部署</strong>：LangGraph Platform 一键部署 graph</li>
+<li><strong>测试</strong>：<code>run_all_tests.py</code> 一键跑全套 + notebook 冒烟测试</li>
+</ul>
+<h3 id="18">1.8 未来扩展</h3>
+<p>LangMem 深度集成——后台记忆集合管理 + 记忆查询工具（Hot path 冷热分离）。</p>
+<hr />
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-ambient-agent">2.1 Ambient Agent 范式</h3>
+<p>LangChain 2026 主推的概念（配套博客《Introducing Ambient Agents》）：Agent 不是被动等你提问，而是<strong>持续监听环境事件</strong>（邮件到达/日历变更/通知），主动分类处理，只在需要人类决策时打断你。</p>
+<p>与本机体系的呼应：Hermes 的 cron 主动推送/传感器扫描就是 ambient 模式——Agent 不只在对话里响应，还在后台持续工作。</p>
+<h3 id="22-triage-workflow-agent-agent">2.2 Triage-Workflow + Agent 混合：为什么不是纯 Agent</h3>
+<p>纯 Agent（所有决策都交给 LLM 自主）的问题：分类这种确定性任务也走 LLM = 不可控 + 慢 + 贵。官方教程的解法：</p>
+<table>
+<thead>
+<tr>
+<th>任务类型</th>
+<th>架构</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>邮件分类（newsletter/紧急/普通）</td>
+<td><strong>workflow</strong>（固定 prompt 分类）</td>
+<td>规则明确、需要稳定、可单测</td>
+</tr>
+<tr>
+<td>响应策略（回什么/怎么回）</td>
+<td><strong>agent</strong>（工具调用自主决策）</td>
+<td>情况多变、需要灵活</td>
+</tr>
+</tbody>
+</table>
+<p>这与 Anthropic 的 "Building effective agents" 观点一致：workflow 能解决的不用 agent。</p>
+<h3 id="23-agent-inboxhitl">2.3 Agent Inbox：HITL 的产品化</h3>
+<p>Agent Inbox 是 LangChain 开源的通用 HITL 界面——把"人类审批 Agent 动作"做成收件箱交互。任何 LangGraph interrupt 的 agent 都能接入。<strong>HITL 从代码机制（interrupt 函数）上升为产品界面</strong>，这是 Agent 可信度建设的关键一步。</p>
+<h3 id="24-langgraph-store-vs-memory">2.4 LangGraph Store vs 传统 Memory</h3>
+<ul>
+<li>传统 memory：对话历史（thread-level，短期）</li>
+<li>LangGraph Store：<strong>跨 thread 持久化记忆</strong>（namespace 隔离，长期）——"用户偏好简短回复"这种事实不属于任何一次对话</li>
+</ul>
+<p>这解决了"每次对话重新学习偏好"的问题，是 Agent 从工具到助手的分水岭。</p>
+<hr />
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 四层递进架构图</h3>
+<pre><code>L0 基础：LangGraph 101
+    ↓ nodes/edges/memory + agents vs workflows
+L1 功能：triage(workflow) + response(agent) 混合
+    ↓ 分类可控 + 响应灵活
+L2 质量：评估体系
+    ↓ LLM-judge(回复) + 断言(工具调用) + 分类比对(triage)
+L3 可信：HITL
+    ↓ interrupt + Agent Inbox 审批不可逆动作
+L4 进化：记忆
+    ↓ 从 HITL 反馈学习偏好 → Store 持久化 → 注入 context
+    ↓
+最终形态：ambient agent（Gmail 真实部署）
+</code></pre>
+<h3 id="32-hermes">3.2 与 Hermes 体系对照</h3>
+<table>
+<thead>
+<tr>
+<th>教程层</th>
+<th>Hermes 对应</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>triage + agent 混合</td>
+<td>Hermes Gateway 的消息路由 + Agent 决策</td>
+<td>✅ 同构</td>
+</tr>
+<tr>
+<td>评估（LLM-judge）</td>
+<td>content-judge skill</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td>评估（工具调用断言）</td>
+<td>skill-stress-test 对照实验</td>
+<td>⚠️ 部分覆盖</td>
+</tr>
+<tr>
+<td>HITL interrupt</td>
+<td>用户确认机制（[ACTION REQUIRED]）</td>
+<td>⚠️ 有机制无产品界面</td>
+</tr>
+<tr>
+<td>Agent Inbox 式界面</td>
+<td>飞书卡片审批（lark-approval skill）</td>
+<td>⚠️ 场景化未通用</td>
+</tr>
+<tr>
+<td>记忆闭环（反馈→偏好）</td>
+<td>TieredMemory L1/L2/L3</td>
+<td>⚠️ 有存储缺"从修正学习"提取器</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1ambient-agent-agent">趋势 1：Ambient Agent 将取代对话式 Agent 成为默认形态</h3>
+<blockquote>
+<p>依据：LangChain 官方主推 + 本机 Hermes 的 cron/传感器实践已验证。被动问答的 Agent 利用率天然低，主动监听+按需打断才是"数字员工"形态。</p>
+</blockquote>
+<h3 id="2hitl">趋势 2：HITL 将产品化为独立界面层</h3>
+<blockquote>
+<p>依据：Agent Inbox 作为独立开源项目发布。interrupt 是代码机制，但审批需要好界面——收件箱隐喻（批量处理/优先级/过滤）会被更多 Agent 产品采用。</p>
+</blockquote>
+<h3 id="3edd-agent">趋势 3：评估驱动开发（EDD）成为 Agent 工程标配</h3>
+<blockquote>
+<p>依据：教程把 evaluation 放在 HITL/记忆之前（第 2 章）——先有度量再谈可信。LangSmith 的"实现对比"把回归检测带进 Agent 开发，类似 CI 之于 Web 开发。</p>
+</blockquote>
+<hr />
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-2026-08-11-ai-agent-md">5.1 与 <a href="2026-08-11-从零构建托管式AI-Agent-服务端循环会话与工具调用.md">2026-08-11-从零构建托管式AI-Agent-服务端循环会话与工具调用.md</a> 的关联</h3>
+<p>那篇笔记覆盖"服务端 Agent 的循环会话/工具调用"基础设施层，本仓库在其上加了<strong>评估/HITL/记忆</strong>三层。互补：那篇讲"怎么跑起来"，本篇讲"怎么可信+进化"。</p>
+<h3 id="52-2026-08-13-ai-agent2026-memoryos-mem0-vs-lettamd">5.2 与 <a href="2026-08-13-AI-Agent记忆架构2026前沿-MemoryOS-三层存储-Mem0-vs-Letta选型.md">2026-08-13-AI-Agent记忆架构2026前沿-MemoryOS-三层存储-Mem0-vs-Letta选型.md</a> 的关联</h3>
+<p>那篇对比记忆框架选型（MemoryOS/Mem0/Letta），本仓库的 LangGraph Store 是第四个选项——<strong>框架原生记忆</strong>（不引入独立记忆系统，直接用 Agent 框架的 Store）。</p>
+<p><strong>选型启示</strong>：如果 Agent 主框架是 LangGraph，Store 原生方案集成成本最低；跨框架才需要 Mem0/Letta。</p>
+<h3 id="53-2026-08-21-envharness-agentgooglemd">5.3 与 <a href="2026-08-21-EnvHarness环境脚手架-环境与Agent共进化的Google新范式.md">2026-08-21-EnvHarness环境脚手架-环境与Agent共进化的Google新范式.md</a> 的关联</h3>
+<p>EnvHarness 是<strong>训练侧</strong>的自进化（环境针对弱点施压），本仓库第 4 章记忆是<strong>部署侧</strong>的自进化（从用户修正学习）。两者互补成完整进化闭环：训练期用 EnvHarness 拉能力，部署期用反馈记忆适偏好。</p>
+<h3 id="54-2026-08-22-pmskill20-21skillmd">5.4 与 <a href="2026-08-22-PMSkill2.0-产品经理工作蒸馏工厂-21个Skill三层架构.md">2026-08-22-PMSkill2.0-产品经理工作蒸馏工厂-21个Skill三层架构.md</a> 的关联</h3>
+<p>pm-skills 的"6 角色评审"与本仓库的"Agent Inbox 人工审批"都是<strong>人类判断注入点</strong>——前者在方案层（事前），后者在执行层（事中）。共同趋势：Agent 自主性越强，人类介入点越要设计得精准。</p>
+<h3 id="55-hermes">5.5 与 Hermes 自身架构的关联</h3>
+<ul>
+<li><strong>评估层差距</strong>：Hermes 有 content-judge（输出质量）但缺"工具调用正确性断言"——教程第 2 章的三层评估（回复/工具/triage）中，工具调用断言正是 skill-stress-test 补齐的方向</li>
+<li><strong>记忆提取器差距</strong>：TieredMemory 有 L1/L2/L3 存储，但缺"从用户 HITL 修正中自动提取偏好"的机制——教程第 4 章的反馈差异分析是可借鉴实现</li>
+<li><strong>Ambient 验证</strong>：本机 cron 主动推送体系已是 ambient 实践，教程提供了官方架构背书</li>
+</ul>
+<hr />
+<h2 id="_7">六、拓展应用推荐</h2>
+<h3 id="61-4">6.1 可直接借鉴的 4 个机制</h3>
+<ol>
+<li><strong>三层评估分层</strong>：输出质量（LLM-judge）/ 工具调用（断言）/ 路由决策（分类比对）——补齐 skill-stress-test 的"工具调用断言"层</li>
+<li><strong>反馈差异提取记忆</strong>：用户编辑 Agent 输出时，diff 就是偏好信号——可给 Hermes 的语音纠错/笔记修改场景加"偏好提取器"</li>
+<li><strong>不可逆动作 interrupt 名单</strong>：发消息/删文件/付款类动作强制 HITL——映射到本机的 [ACTION REQUIRED] 机制，可产品化为飞书审批卡片</li>
+<li><strong>triage-workflow 与 agent 分界原则</strong>：确定性任务走 workflow（可控可测），判断性任务走 agent（灵活）——选型时先问"这个步骤规则明确吗"</li>
+</ol>
+<h3 id="62">6.2 学习路径建议</h3>
+<ul>
+<li>先跑 LangGraph 101 notebook（半天）理解 graph 抽象</li>
+<li>重点读 evaluation.ipynb（第 2 章）——评估是四层中最容易迁移的</li>
+<li>hitl.ipynb + Agent Inbox 本地部署体验审批流</li>
+<li>memory.ipynb 的 Store API 可对照 TieredMemory 评估</li>
+</ul>
+<h3 id="63-langgraph">6.3 与 LangGraph 编排技能联动</h3>
+<p>本机已有 langgraph-orchestration skill——本仓库是该 skill 的官方实战补充，四部曲 notebook 可作为 skill 的 references 素材。</p>
+<hr />
+<h2 id="_8">七、指南分析</h2>
+<h3 id="71">7.1 教程质量</h3>
+<ul>
+<li><strong>递进设计好</strong>：四层每层独立成章，前层是后层基础——可按需取用</li>
+<li><strong>代码完整</strong>：notebook + src 完整实现 + tests，非伪代码</li>
+<li><strong>工程真实</strong>：mock-first 但有 Gmail 真实集成 + LangGraph Platform 部署</li>
+<li><strong>生态闭环</strong>：LangSmith（追踪）/ Agent Inbox（HITL）/ Store（记忆）——官方全家桶但各组件可单独借鉴思想</li>
+</ul>
+<h3 id="72">7.2 局限</h3>
+<ul>
+<li><strong>深度绑定 LangChain 生态</strong>：interrupt/Store/LangSmith 是 LangGraph 特有——思想可迁移但代码不可直接移植到其他框架</li>
+<li><strong>单场景</strong>：email assistant 一种场景，多 Agent/长时程任务未覆盖</li>
+<li><strong>评估数据集小</strong>：教学级规模，生产级评估体系需要更大更全的数据集</li>
+<li><strong>Python only</strong>：无 TS/其他语言版本</li>
+</ul>
+<hr />
+<h2 id="_9">八、金句摘录</h2>
+<blockquote>
+<p>"These section build from the basics of agents, to agent evaluation, to human-in-the-loop, and finally to memory."（四层递进的官方路线）</p>
+<p>"Agents vs Workflows" ——LangGraph 101 的第一课：不是所有任务都该用 agent</p>
+<p>记忆章节核心：从用户反馈学习，adapt to preferences over time——记忆不是灌入的，是从修正中长出来的</p>
+</blockquote>
+<hr />
+<h2 id="_10">九、行动启示</h2>
+<ul>
+<li><strong>评估分层补齐</strong>：skill-stress-test 的下一步加"工具调用断言"层（借鉴教程第 2 章三层评估）</li>
+<li><strong>偏好提取器原型</strong>：用户修正笔记/纠错时，diff 分析提取偏好写入 memory——低成本的记忆进化试点</li>
+<li><strong>interrupt 名单显式化</strong>：把"不可逆动作需确认"从原则变成显式清单（发消息/删文件/付款/部署），配飞书审批卡片</li>
+<li><strong>ambient 架构背书</strong>：本机 cron 主动体系与官方 ambient agent 方向一致，可继续深化（传感器→决策→打断的节奏设计）</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- 仓库：https://github.com/langchain-ai/agents-from-scratch<br />
+- Ambient Agents 博客：https://blog.langchain.dev/introducing-ambient-agents/<br />
+- Agent Inbox：https://github.com/langchain-ai/agent-inbox<br />
+- <a href="2026-08-11-从零构建托管式AI-Agent-服务端循环会话与工具调用.md">从零构建托管式 AI Agent</a> — 基础设施层互补<br />
+- <a href="2026-08-13-AI-Agent记忆架构2026前沿-MemoryOS-三层存储-Mem0-vs-Letta选型.md">AI Agent 记忆架构 2026</a> — 记忆选型对照<br />
+- <a href="2026-08-21-EnvHarness环境脚手架-环境与Agent共进化的Google新范式.md">EnvHarness 环境脚手架</a> — 训练侧进化互补</p>
+</blockquote>
+</body>
+</html>
