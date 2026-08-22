@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C²KV：可组合压缩 KV 缓存复用（KDD 2026）</title>
+
+<meta property="og:title" content="C²KV：可组合压缩 KV 缓存复用（KDD 2026）" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="c2kv-kv-kdd-2026">C²KV：可组合压缩 KV 缓存复用（KDD 2026）</h1>
+<h1 id="kvcache-llm-rag">KVCache #LLM推理优化 #长上下文 #缓存复用 #RAG</h1>
+<p><strong>出处</strong>：C²KV: Compressed and Composable KV Cache Reuse for Efficient LLM Inference. KDD 2026 (Jeju Island). arXiv:2607.17715. 代码: github.com/s7a9/C2KV</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题：瓶颈已从计算转移到存储与带宽</h3>
+<p>长上下文推理（RAG、Agent 长期记忆、few-shot）的 KV cache 随上下文长度线性增长。论文的关键判断：<strong>现代长上下文 serving 已是 memory-bound</strong>——KV cache 常驻 DRAM、按需搬运到 HBM，搬运带宽成为主导延迟因素。现有 non-prefix 复用方法（CacheBlend、KVShare、Block-Attention、KVLink）只省 prefill 重计算，完全不解决存储压力。</p>
+<p>论文形式化了通用两阶段框架：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>公式</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Encoding</td>
+<td>KV_reuse_k = M(x_d_k)</td>
+<td>编码器（基座 LLM 或专用模块）独立抽取文档 KV</td>
+</tr>
+<tr>
+<td>Blending</td>
+<td>KV_total = B(x_s, KV_1...KV_K)</td>
+<td>混合器把预计算状态接入新请求</td>
+</tr>
+<tr>
+<td>Inference</td>
+<td>y = F([KV_total, x_q])</td>
+<td>冻结基座完成生成</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12">1.2 两类现有方法的失败模式</h3>
+<p><strong>Training-free（CacheBlend/EPIC/KVShare）——KV 偏差缺口</strong>：blender 只重算部分 token，未重算的 KV 状态来自不同上下文，存在固有偏差 ΔKV = ‖KV_full − KV_blend‖/‖KV_full‖ ≥ δ &gt; 0。重算率下降→偏差单调上升→延迟与精度形成刚性 trade-off。</p>
+<p><strong>Training-based（Block-Attention/KVLink）——泛化崩溃</strong>：改动注意力结构导致灾难性遗忘，实测 Llama3.1-8B 用 Block-Attention 微调后 LongBench 掉点最高 <strong>10.4%</strong>；且逐模型微调成本高，跟不上开源基座迭代速度。</p>
+<p><strong>naive 组合压缩+复用必然失败</strong>的两个根因：①主流压缩方案的 KV 表示与原上下文紧耦合，不可组合，跨上下文拼接时精度崩；②架构错配——长上下文 serving 需要序列级压缩，而 token 淘汰法依赖层/头级别的选择，上下文重组后无法对齐。</p>
+<h3 id="13-c2extractor">1.3 方法：C²Extractor 侧车架构</h3>
+<p><strong>C²Tokens 作为压缩记忆槽</strong>：压缩比 k:1 时，每 k 个文档 token 配一个可学习 C²Token（m=⌈n/k⌉），所有 C²Token 共享同一可学习 embedding，不对应任何词法内容。</p>
+<p><strong>新增 QKV 投影头</strong>：每层为 C²Token 单独配置可训练投影矩阵 W_C²,Q/K/V（维度与基座严格一致），拼接后进标准注意力；基座参数全冻结。参数开销约 <strong>+10%</strong>（Qwen3-4B / Llama3.1-8B 实测）。</p>
+<p><strong>Residual Mean-Pooling 变体（C²KV-Res.）</strong>：第一层把对应块 k 个 token 的隐状态均值加到 C²Token 隐状态上（h_C² ← h_C² + (1/k)Σh_i），显式聚合局部语义，提升压缩鲁棒性。</p>
+<p><strong>Structured Information Flow（SIF）</strong>：块结构注意力掩码，严格分离两类 token 信息通路——Original Token 只看 Original Token（标准因果掩码，保证基座行为完全不变），C²Token 只看自己块内的 token。语义抽取与压缩不扰动冻结基座。</p>
+<p><strong>Compression-Concatenation Co-training</strong>：在拼接后的 KV 段上做生成任务监督，让抽取时表示与下游复用行为对齐——产出"merge-ready"状态，重排后仍语义连贯（位置无关性就是这么练出来的）。</p>
+<p><strong>推理期复用</strong>：只保留 C²Token 的 KV 对；检索后按其在最终序列中的位置赋予新位置嵌入（位置偏移跨段累积，压缩段占用的有效跨度等于原未压缩 token 跨度），直接拼接条件生成，不再引入原文 token。</p>
+<h3 id="14">1.4 实验硬数据</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>压缩比</th>
+<th>表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full Recompute (FR)</td>
+<td>1×</td>
+<td>精度上界</td>
+</tr>
+<tr>
+<td>Naive 拼接</td>
+<td>1×</td>
+<td>多文档 QA 严重崩溃（Qwen2.5-7B 均值 0.3621 vs FR 0.4048）</td>
+</tr>
+<tr>
+<td>CacheBlend</td>
+<td>1×</td>
+<td>跨模型/数据集不稳定（Qwen2.5-7B 上 0.3063，比 Naive 还差）</td>
+</tr>
+<tr>
+<td>FR-SnapKV</td>
+<td>4×</td>
+<td>压缩后精度明显下滑（Llama-3.1-8B 均值 0.4027，多任务走低）</td>
+</tr>
+<tr>
+<td><strong>C²KV</strong></td>
+<td><strong>4×</strong></td>
+<td>多数任务上最优或近最优，稳定逼近 FR（Qwen2.5-7B 均值 0.3754；Llama-3.1-8B 0.3904）</td>
+</tr>
+</tbody>
+</table>
+<p>系统级：<strong>最高 17× 推理加速</strong>（长上下文），同时保住生成质量。</p>
+<h3 id="15">1.5 局限（论文自述）</h3>
+<ul>
+<li>只做文档级复用，假设可复用内容可离线识别；在线/增量 KV 抽取是未来方向</li>
+<li>所有文档、所有层用统一压缩比；自适应/内容感知的压缩预算分配未探索</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<ul>
+<li><strong>与 CacheBlend 的关系</strong>：CacheBlend 是 training-free 路线的代表（选择性别重算做 blender），C²KV 论文实测其在 Qwen2.5-7B 多文档 QA 上反不如 Naive（0.3063 vs 0.3621）——印证 training-free 路线的 KV 偏差缺口不可收敛。</li>
+<li><strong>与 KVLink/Block-Attention 的关系</strong>：training-based 路线靠改注意力或微调权重换取复用能力，代价是灾难性遗忘（LongBench -10.4%）与逐模型适配成本。C²KV 用"冻结基座+侧车"避开两者，思想同 LoRA：可插拔、基座零污染。</li>
+<li><strong>2026 KVCache 压缩新谱系</strong>（同窗口期论文）：DeltaKV（2602.08005，残差/长程相似性压缩）、RestoreKV（激进淘汰后恢复全缓存行为）、Comparative Characterization of KV Cache Management（2604.05012，vLLM/InfiniGen/H2O 横评，结论：没有一种策略在所有 GPU/上下文/批大小下全胜）、Adaptive KV-Cache Quantization（2604.04722，端侧自适应精度分配）。C²KV 的差异化定位是唯一同时做"压缩×复用×组合性"三件事的。</li>
+<li><strong>工程视角</strong>：GPU Hunter 的评论切中要害——KV 压缩论文离线指标好看，但 serving 引擎需要可预测的内存访问与快速内核，cache 格式必须适配内核路径。C²KV 的侧车投影头要接入 vLLM 这类引擎需要自定义 kernel，这是落地主要摩擦点。</li>
+</ul>
+<h2 id="_3">三、归纳总结</h2>
+<ol>
+<li><strong>问题重定义</strong>：KV 复用的真瓶颈不是"重复计算"而是"存储+搬运"。这个判断对 2026 年的长上下文 serving 是方向性的——优化重心应从 prefill FLOPs 转向内存层级间的 KV 流量。</li>
+<li><strong>组合性是可以训练出来的属性</strong>：位置无关（position-agnostic）不是靠推理期技巧修补，而是靠 co-training 直接优化"抽取表示在拼接复用下的生成质量"。表示学习解决系统问题的范例。</li>
+<li><strong>侧车模式三胜</strong>：冻结基座（无灾难性遗忘）、+10% 参数（远小于微调整模型）、压缩与复用联合优化（naive 组合必然崩）。这是"不动基座做能力增强"设计模式的又一实证。</li>
+<li><strong>4× 压缩保持精度 + 17× 加速</strong>是当前 non-prefix 复用路线报告的最佳综合数字。</li>
+</ol>
+<h2 id="_4">四、趋势判断</h2>
+<ul>
+<li>KV cache 研究正在从"单点技术"（量化/淘汰/复用各自发展）走向<strong>联合优化框架</strong>，C²KV 是压缩×复用合并的第一批工作，预计 2026 下半年出现量化×复用×组合三合一的工作。</li>
+<li>侧车/adapter 化是 KV 技术落地的主路径：基座迭代快，任何需要动基座权重的方案（Block-Attention 类）维护成本都会输给冻结基座方案。</li>
+<li>端侧（Jetson 类设备）受益最直接：带宽受限平台上 KV 搬运成本占比更高，4× 压缩直接换上下文容量。自适应压缩比（论文自述局限）是端侧落地的关键后续。</li>
+<li>Agent 长期记忆场景（文档级离线抽取假设完全匹配"记忆条目预编码"工作流）是该技术最先兑现的应用面。</li>
+</ul>
+<h2 id="_5">五、关联分析</h2>
+<ul>
+<li><strong>与既有 KVCache 全景笔记（2026-08-21）</strong>：该笔记的"位置绑定光谱"框架里，CacheBlend 属于"重算对齐"端、KVLink 属于"训练改写"端；C²KV 开出第三象限——"训练侧车+位置无关表示"，光谱应补此一支。§1.7 语义资产化（CacheBlend/CachePrune/NeuralKVDB）讨论的"缓存即资产"命题，C²KV 把资产做了 4× 有损压缩且保持可组合，是资产化的必要一步。</li>
+<li><strong>与 Hermes 语境</strong>：多文档 RAG 与长会话记忆正是 Hermes 这类 Agent 的日常负载；若 vLLM 后续集成 C²KV 类内核，skill 文档/知识库这类高复用静态上下文可预抽取成压缩 KV 库，TTBT（首字节时间）收益直接。</li>
+<li><strong>与量化因子系统的平行启示</strong>：C²KV 的 co-training 思想（训练目标直接对齐下游复用行为，而非代理指标）与因子挖掘里"直接优化组合层目标而非单因子 IC"同构——优化目标对齐真实使用场景，是跨领域通用的设计原则。</li>
+</ul>
+<h2 id="_6">六、拓展应用推荐</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>用法</th>
+<th>预期收益</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>企业知识库 RAG</td>
+<td>文档离线抽成 C²KV 库，查询时按需拼接</td>
+<td>4× 存储下降 + prefill 几乎归零</td>
+</tr>
+<tr>
+<td>Agent 长期记忆</td>
+<td>记忆条目预编码，检索后直接拼接</td>
+<td>长会话上下文成本线性转常量</td>
+</tr>
+<tr>
+<td>多轮对话前缀 + 动态文档混合</td>
+<td>前缀走 radix 缓存、文档走 C²KV</td>
+<td>两级缓存互补覆盖</td>
+</tr>
+<tr>
+<td>Jetson 端侧长文档问答</td>
+<td>带宽受限平台 KV 搬运是大头</td>
+<td>上下文容量×4，延迟显著降</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">七、指南分析</h2>
+<p>对想复现/借鉴的工程师：①代码已开源（github.com/s7a9/C2KV），基座冻结意味着可在任意 Llama/Qwen 上挂载，训练成本只在侧车；②接入自建 serving 栈时优先评估注意力内核改造量——SIF 的块掩码需要自定义 kernel 支持；③压缩比 k 是精度-存储的主旋钮，论文用统一 4×，保守场景可从 2× 起步；④对本机（Jetson Orin）只做管线验证不做训练，符合资源保护策略——侧车训练留给算力充足的环境。</p>
+</body>
+</html>
