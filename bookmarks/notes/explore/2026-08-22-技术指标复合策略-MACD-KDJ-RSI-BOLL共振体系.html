@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技术指标复合策略 — MACD+KDJ+RSI+BOLL 共振体系与量化实现</title>
+
+<meta property="og:title" content="技术指标复合策略 — MACD+KDJ+RSI+BOLL 共振体系与量化实现" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | finance" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/finance.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Noto Sans SC', sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1a2e1a;
+  background: #f4f7f4;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #14532d;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f7f0;
+  color: #166534;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #16653430;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1a2e1a88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #14532d;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e8d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #14532dcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #14532daa;
+}
+
+a {
+  color: #15803d;
+  text-decoration: none;
+  border-bottom: 1px solid #15803d30;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #15803d;
+}
+
+code {
+  background: #f0f7f0;
+  color: #166534;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1a2e1a;
+  color: #d4edda;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #166534;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1a2e1acc;
+  background: #e8f5e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1a2e1a88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #166534;
+  background: #16653418;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #166534;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1a2e1a88;
+  text-decoration-color: #166534aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #166534;
+  background: #16653418;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e8d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e8d4;
+  display: table-cell;
+}
+th {
+  background: #e8f5e8;
+  font-weight: 600;
+  color: #166534;
+  border-bottom: 2px solid #166534;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f5e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e8d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #14532d; }
+
+
+        h1::before { content: '📈 '; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="macdkdjrsiboll">技术指标复合策略 — MACD+KDJ+RSI+BOLL 共振体系与量化实现</h1>
+<blockquote>
+<p>探索日期: 2026-08-22 | 兴趣等级: L2（了解） | 来源: 5（腾讯云/同花顺/东财/QjySDK/FMZ）| 类型: auto-explore</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>技术指标复合策略的核心逻辑：<strong>单指标假信号多，多指标多重确认过滤</strong>。主流实现分三派——(1) 多指标同向共振（金叉+超卖+回踩同时触发）；(2) 权重评分系统（各指标信号带符号加权求和，按总分区间决策）；(3) 市场状态自适应（趋势市用 MACD/MA、震荡市用 BOLL/RSI，先判状态再选指标组）。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1">1. 三重指标共振三步锁定法（腾讯云原油期货实战）</h3>
+<pre><code>入场 = 价格回踩关键均线 + RSI脱离超卖区 + MACD金叉
+</code></pre>
+<p>核心是"多重确认过滤假信号"。配套策略：EIA 数据突破（3 分钟突破前 15 分钟高低点，盈亏比≥1:2）、季节性趋势。三大散户死因：跳空缺口（2026-03 布伦特跳空 13%）、重仓逆势、无止损。</p>
+<h3 id="2">2. 权重评分系统（东方财富五维共振）</h3>
+<ul>
+<li><strong>多周期</strong>：季线 40% / 45日线 / 月线 / 周线 / 日线 5%（长周期主导）</li>
+<li><strong>每周期内</strong>：MACD 金叉 +3%/死叉 -3% + SAR 红豆 +2%/绿豆 -2%，四种组合代数叠加</li>
+<li><strong>总分区间决策</strong>：+80%~100% = 全线看多积极做多；负值对称 = 空仓回避；零轴附近 = 震荡观望</li>
+<li>关键洞察：<strong>分歧也可量化</strong>（金叉+绿豆=+1%，多头但受警示），不是简单 AND 逻辑</li>
+</ul>
+<h3 id="3-qjysdk-net-9">3. 双指标配对模式库（QjySDK 开源实现，.NET 9）</h3>
+<ul>
+<li>KDJ+RSI 共振（双震荡指标）：适合震荡市抄底</li>
+<li>MACD+ADX（动量+趋势强度）：ADX&gt;25 过滤震荡假信号</li>
+<li>三重因子：MA 趋势 + MACD 动量 + OBV 量能 —— <strong>量价背离</strong>用 OBV 验证价格趋势真实性</li>
+<li>CCI+MACD+傅里叶：频谱分析识别周期与相位（小众）</li>
+<li>MACD 背离 + 布林带过滤：反转信号加位置确认</li>
+<li>BOLL+RSI 高抛低吸：震荡市专用（趋势指标在震荡市频繁假信号，此为互补解法）</li>
+</ul>
+<h3 id="4">4. 市场状态自适应（择指标先于择信号）</h3>
+<p>趋势/震荡判定是前置门控：震荡市禁用趋势指标（MACD/MA），启用均值回归组（BOLL/RSI/KDJ）；趋势市反之。Hikyuu 框架把"市场环境判断（EV）"做成系统架构一级组件——与信号指示器（SG）、资金管理（MM）平级，组件化可替换。</p>
+<h3 id="5">5. 回测框架选型</h3>
+<ul>
+<li><strong>vectorbt</strong>：向量化，参数扫描快，适合指标组合网格搜索</li>
+<li><strong>backtrader</strong>：事件驱动，精细控制订单逻辑，适合复杂仓位管理</li>
+<li><strong>Hikyuu</strong>（C++核心）：SG/MM/EV 组件化架构，A股本地数据友好</li>
+<li>DolphinDB：中高频 Level-2 撮合级回测（重武器）</li>
+</ul>
+<h2 id="_3">对现有工作的价值</h2>
+<ul>
+<li><strong>quant-trading / a-stock-lianban-strategy skills</strong>：现有连板接力策略偏情绪周期驱动，技术指标共振可作为辅助过滤层（如 MA5 择时 + MACD 零轴位置过滤弱势股）</li>
+<li><strong>stock-iron-rules 决策引擎</strong>：30 只备选池扫描可增加"多周期共振评分"维度（借用五维共振的带符号权重法，而非硬 AND 条件——评分制保留分歧信息）</li>
+<li><strong>IC 验证</strong>：quant-ic-validation skill 已有框架，指标组合信号可作为因子做 IC 检验，避免过拟合</li>
+</ul>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li>权重评分优于硬共振：在 iron-rules 扫描器中把 14 条铁律从布尔过滤改为带符号评分制试点</li>
+<li>任何新组合先走 walk-forward 验证（已有 skill），防参数过拟合——指标组合是过拟合重灾区</li>
+<li>震荡/趋势状态门控可复用现有 MA5 斜率 + BOLL 带宽判定</li>
+</ol>
+<h2 id="_5">关键风险与盲点</h2>
+<ul>
+<li>同花顺社区策略（三指标同金叉）无严格回测数据支撑，属经验规则（来源级别：社区经验）</li>
+<li>权重数值（40%/5%、±3%/±2%）为经验设定，无优化过程披露，直接照搬有过拟合风险</li>
+<li>技术指标全族基于历史价格的变换，信息增量有限；共振过滤降低假信号同时也减少信号数量，趋势市易踏空</li>
+<li>来源多为期货/加密场景，A股 T+1 与涨跌停限制下参数需重校</li>
+</ul>
+<h2 id="_6">一页速查</h2>
+<blockquote>
+<ul>
+<li>共振三步法：回踩均线 + RSI 脱离超卖 + MACD 金叉（多重确认）</li>
+<li>权重评分：多周期加权（季40%→日5%）+ 指标带符号叠加，总分区间决策</li>
+<li>状态自适应：先判趋势/震荡，再选指标组（趋势=MACD/MA，震荡=BOLL/RSI）</li>
+<li>量价背离：OBV 验证价格趋势真实性</li>
+<li>回测：vectorbt 参数扫描 / backtrader 订单精细控制 / Hikyuu 组件化</li>
+<li>铁律：评分制&gt;硬AND；新组合必走walk-forward；A股需重校参数</li>
+</ul>
+</blockquote>
+<h2 id="_7">来源</h2>
+<ul>
+<li>https://cloud.tencent.com/developer/article/2651229 （原油期货多指标共振实战）</li>
+<li>https://caifuhao.eastmoney.com/news/20250522183342617397950 （五维共振权重评分系统）</li>
+<li>https://github.com/lld1995/QjySDK （双/三指标共振策略库源码）</li>
+<li>https://quant.10jqka.com.cn/view/article/47646 （三指标同金叉选股）</li>
+<li>https://hikyuu.org （组件化回测框架）</li>
+<li>https://quant-wiki.com/repo/quant_repo （回测框架对比）</li>
+</ul>
+</body>
+</html>

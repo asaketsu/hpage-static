@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KVarN KV-Cache 量化后端 — 本地/服务端推理的上下文扩容利器</title>
+
+<meta property="og:title" content="KVarN KV-Cache 量化后端 — 本地/服务端推理的上下文扩容利器" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="kvarn-kv-cache">KVarN KV-Cache 量化后端 — 本地/服务端推理的上下文扩容利器</h1>
+<blockquote>
+<p>探索日期: 2026-08-22 | 兴趣等级: L2（了解） | 来源: 5（GitHub/arXiv/NVIDIA论坛/知乎/博客园）| 类型: auto-explore</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>KVarN（读作 /kvɑːɳ/，瑞典语"磨坊"）是华为 CSL 团队发布的 vLLM 原生 KV-Cache 量化后端（论文 arXiv:2606.03458，Apache 2.0）。核心卖点：<strong>3-5x KV-Cache 容量 + 吞吐不低于 FP16（最高 ~1.3x）+ FP16 级精度，免校准、单 flag 启用</strong>。它直接解决了"KV 量化在生产环境很少开启"的痛点——现有方法（如 vLLM TurboQuant）买容量要付出 40-52% 吞吐代价。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1">1. 四阶段量化管线（方法核心）</h3>
+<p>每个固定尺寸 token tile（128 或 64）依次经过：</p>
+<pre><code>Cache(fp16) → Hadamard旋转 → 迭代方差归一化 → 非对称RTN量化
+</code></pre>
+<ul>
+<li><strong>Hadamard 旋转</strong>（通道维）：正交变换打散 per-channel outlier，注意力分数保持不变</li>
+<li><strong>迭代方差归一化</strong>（Sinkhorn-like）：列/行标准差交替归一化（log 空间），在量化前均化 tile 内方差</li>
+<li><strong>非对称 round-to-nearest</strong>：读回时折叠 scale——key 按 channel、value 按 token</li>
+<li>发布预设 <code>kvarn_k4v2_g128</code>：<strong>key 4-bit / value 2-bit</strong>（key 分配更多位数，因为对精度更敏感）</li>
+</ul>
+<h3 id="2">2. 实测数据（官方 + 论文）</h3>
+<ul>
+<li>Qwen3-32B（AIME25, 16K burst, TP=2）：FP16 精度平价 + 吞吐反超 + ~4x 容量</li>
+<li>vs TurboQuant：~2.4x 吞吐、同容量、更高精度</li>
+<li>GLM-4.7-Flash（MLA, TP=2）：32K burst 401→377 tok/s（0.94x），容量 313K→865K（<strong>2.77x</strong>），AIME25 53.3% 平价</li>
+<li>论文：2-bit 精度在 MATH500 / AIME24 / HumanEval 创 KV 量化 SOTA</li>
+<li>论文提出 <strong>pseudo-decode 评估法</strong>：量化 KV cache 误差会在长推理链中累积（test-time scaling 场景），KVarN 专门抑制这种跨时间步误差累积——这是推理任务（长 CoT）区别于普通对话的关键指标</li>
+</ul>
+<h3 id="3">3. 兼容性矩阵（工程价值最大处）</h3>
+<ul>
+<li><strong>MLA 模型</strong>：首个支持 MLA 的 vLLM sub-8-bit KV 量化方案（量化压缩后的 KV latent 到 int4），GLM/DeepSeek 类架构自动路由</li>
+<li><strong>混合架构</strong>（Mamba/线性注意力交错，如 Qwen3.6-27B）：只压 full-attention 层，线性层状态不动</li>
+<li><strong>推测解码</strong>：MTP / DFlash / draft model 全兼容——draft 被拒绝的 token 不会污染量化 cache（block 仅在全接受后提交）</li>
+<li><strong>权重量化组合</strong>：与 AWQ INT4 / compressed-tensors 正交可叠加</li>
+<li>社区已有 llama.cpp 移植实现（HN 讨论）</li>
+</ul>
+<h3 id="4">4. 使用方式（极简）</h3>
+<pre><code class="language-bash">vllm serve Qwen/Qwen3-32B \
+  --dtype float16 \
+  --kv-cache-dtype kvarn_k4v2_g128 \
+  --block-size 128
+</code></pre>
+<p>注意事项：<br />
+- 必须 <code>float16</code> compute（不是 bf16）——例外：hybrid 模型（Qwen3.6）用 bfloat16<br />
+- 单卡显存紧张时 CUDA-graph profiler 可能过度预留，设 <code>VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0</code> 恢复完整容量<br />
+- KVarN 是 vLLM fork（基于 v0.23.0），不是上游已合入的功能；内核为 Triton JIT 编译</p>
+<h2 id="_3">对现有工作的价值</h2>
+<ul>
+<li><strong>llm-inference-optimization skill</strong>：KV cache 量化谱系可补 KVarN 条目（此前已有 VeriCache/TurboQuant 记录）</li>
+<li><strong>Jetson 本地部署（nexa-local-inference）</strong>：8GB Orin Nano 跑 7B 模型时 KV cache 是长上下文瓶颈，KV 量化是扩上下文的直接手段。⚠️ 风险：KVarN 依赖 Triton JIT + vLLM fork，Jetson ARM64 + CUDA 环境适配未知，本地路径更稳妥的是 llama.cpp 的 q8_0/q4_0 KV 量化（RTX 4070 TiS 实测省 ~3GB 显存）</li>
+<li><strong>TTS/语音栈（F5-TTS, LuxTTS）</strong>：不适用——无自回归长上下文 KV 瓶颈</li>
+</ul>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li>短期（Jetson）：优先用 llama.cpp 现成 <code>--cache-type-k q8_0 --cache-type-v q8_0</code>，零风险</li>
+<li>中期：关注 KVarN 的 llama.cpp 移植成熟度，以及上游 vLLM 是否合入（HN 讨论中作者无 PR 计划，社区推动中）</li>
+<li>若部署服务端（x86 GPU）：agentic 长上下文负载（Hermes Agent 会话历史！）是 KVarN 的最佳场景——3-5x 上下文容量直接延长多轮对话记忆</li>
+</ol>
+<h2 id="_5">关键风险与盲点</h2>
+<ul>
+<li>Qwen3.6 早期版本不兼容（NVIDIA 论坛反馈），现已通过 hybrid 支持修复——采用前需核对版本</li>
+<li>fork 维护成本：基于 vLLM v0.23.0，上游演进后跟进速度存疑</li>
+<li>Jetson/ARM64 + Triton JIT 组合未验证（社区无报告）</li>
+<li>来源级别：性能数据全部为官方自报（论文+README），无独立第三方复现</li>
+</ul>
+<h2 id="_6">一页速查</h2>
+<blockquote>
+<ul>
+<li>KVarN = Hadamard旋转 + Sinkhorn式方差归一化 + k4v2非对称量化</li>
+<li>一个 flag：<code>--kv-cache-dtype kvarn_k4v2_g128 --block-size 128</code>，需 float16</li>
+<li>收益：3-5x KV容量、吞吐≥FP16、免校准、FP16级精度</li>
+<li>兼容：MLA（首个）/ Mamba混合 / MTP+DFlash推测解码 / AWQ权重量化</li>
+<li>论文：arXiv:2606.03458，核心贡献=pseudo-decode误差累积评估法</li>
+<li>本地Jetson先用llama.cpp q8_0 KV量化，KVarN等上游合入或ARM验证</li>
+</ul>
+</blockquote>
+<h2 id="_7">来源</h2>
+<ul>
+<li>https://github.com/huawei-csl/KVarN （README 全文精读）</li>
+<li>https://arxiv.org/abs/2606.03458 （KVarN 论文）</li>
+<li>https://forums.developer.nvidia.com/t/kvarn-native-vllm-backend-for-kv-cache-quantization-by-huawei/372333</li>
+<li>https://news.ycombinator.com/item?id=48399974 （社区讨论 + llama.cpp 移植）</li>
+<li>https://zhuanlan.zhihu.com/p/4335176084 （KV 量化背景：LMDeploy int4/int8）</li>
+<li>https://www.cnblogs.com/SCCQ/p/19837994 （KV Cache 优化全景）</li>
+</ul>
+</body>
+</html>
