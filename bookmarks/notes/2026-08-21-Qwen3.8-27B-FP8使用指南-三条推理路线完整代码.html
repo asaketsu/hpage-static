@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3.8-27B-FP8使用指南-三条推理路线完整代码</title>
+
+<meta property="og:title" content="Qwen3.8-27B-FP8使用指南-三条推理路线完整代码" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="qwen38-27b-fp8">Qwen3.8-27B FP8 使用指南 — 三条推理路线完整代码</h1>
+<blockquote>
+<p><strong>来源</strong>：飞书知识库文档《Qwen3.8-27B使用》（自建 Wiki）<br />
+<strong>原文链接</strong>：https://jcn7kakdef35.feishu.cn/wiki/Adm3wz0G0icQnZkShS1cVMbHnrc<br />
+<strong>记录日期</strong>：2026-08-21<br />
+<strong>文档性质</strong>：个人整理的部署手册（含可运行代码 + 对比表 + 决策建议）</p>
+
+<p class="meta-date">生成日期 2026-08-21</p></blockquote>
+<p><strong>标签</strong>：#Qwen3.8 #FP8量化 #vLLM #llama.cpp #Ollama #LoRA微调 #本地部署</p>
+<hr />
+<h3 id="7">7 模块索引（本报告内容映射）</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+<td>7 个标签</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+<td>飞书 Wiki 文档</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~四章</td>
+<td>前置要求/三条路线完整代码/对比表/最终建议</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第五章</td>
+<td>FP8 vs GGUF 量化原理 + vLLM 参数深潜</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第六章</td>
+<td>决策树 + 显存需求表</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第七章</td>
+<td>2 条预测</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第八章</td>
+<td>与 4 篇 Qwen3.8 相关笔记交叉映射</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第九章</td>
+<td>Jetson 场景适配 + 学习方向</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第十章</td>
+<td>文档质量评估</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>27B FP8 的核心矛盾：模型质量最优（vLLM 直跑）需要 30GB+ 显存和专业卡，消费级硬件只能降级到 GGUF Q4 量化。三条路线（vLLM / Transformers / llama.cpp）各有完整代码可复现。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 重要前置提醒</h3>
+<ul>
+<li><strong>FP8 精度要求</strong>：需要 <strong>NVIDIA Ada Lovelace（RTX 4090/5090）或 Hopper（H100）及以上</strong>架构。旧卡（RTX 3090）无法原生运行 FP8，需改用 BF16/FP16 权重</li>
+<li><strong>显存需求</strong>：27B FP8 模型约需 <strong>30-35GB 显存</strong>。单张 RTX 4090（24GB）不够，需双卡或 A100/H100</li>
+<li><strong>依赖安装</strong>：所有方法均需先安装对应库（原文命令使用本机 Scoop Python 路径，已泛化）</li>
+</ul>
+<h3 id="12-vllm">1.2 路线一：快速测试 / 对话推理（vLLM）</h3>
+<blockquote>
+<p>vLLM 对 FP8 支持最完善，推理速度最快，适合部署 API 服务或批量测试。</p>
+</blockquote>
+<p><strong>安装</strong>：</p>
+<pre><code class="language-powershell">python -m pip install vllm
+</code></pre>
+<p><strong>完整代码</strong>：</p>
+<pre><code class="language-python">from vllm import LLM, SamplingParams
+
+# 指向本地下载目录
+model_path = &quot;./Qwen3.8-27B-FP8&quot;
+
+llm = LLM(
+    model=model_path,
+    quantization=&quot;fp8&quot;,          # 指定 FP8 量化
+    tensor_parallel_size=2,      # 根据GPU数量修改，单卡设为1
+    gpu_memory_utilization=0.9,
+    trust_remote_code=True       # Qwen 模型必须开启
+)
+
+sampling_params = SamplingParams(temperature=0.7, max_tokens=512)
+
+messages = [
+    {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;请解释什么是量子纠缠，用通俗的语言。&quot;}
+]
+
+outputs = llm.chat(messages, sampling_params=sampling_params)
+print(outputs[0].outputs[0].text)
+</code></pre>
+<blockquote>
+<p>⚠️ 如果只有单张 24GB 显卡，vLLM 可能无法加载 27B FP8。此时建议换用 GPTQ/AWQ 4bit 量化版本，或使用 llama.cpp 方案。</p>
+</blockquote>
+<h3 id="13-transformers-accelerate">1.3 路线二：研究 / 微调 / 自定义推理（Transformers + Accelerate）</h3>
+<blockquote>
+<p>适合需要修改模型结构、做 LoRA 微调、或集成到自定义 Pipeline 的场景。</p>
+</blockquote>
+<p><strong>安装</strong>：</p>
+<pre><code class="language-powershell">python -m pip install transformers accelerate torch
+</code></pre>
+<p><strong>推理完整代码</strong>：</p>
+<pre><code class="language-python">import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
+model_path = &quot;./Qwen3.8-27B-FP8&quot;
+
+tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+
+# FP8 推理需要 CUDA 设备且支持 FP8
+model = AutoModelForCausalLM.from_pretrained(
+    model_path,
+    torch_dtype=torch.float8_e4m3fn,   # FP8 数据类型
+    device_map=&quot;auto&quot;,                  # 自动分配到多卡
+    trust_remote_code=True
+)
+
+messages = [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;写一首关于春天的五言绝句&quot;}]
+input_ids = tokenizer.apply_chat_template(messages, return_tensors=&quot;pt&quot;).to(model.device)
+
+with torch.no_grad():
+    output = model.generate(input_ids, max_new_tokens=256, do_sample=True, temperature=0.7)
+
+response = tokenizer.decode(output[0][input_ids.shape[-1]:], skip_special_tokens=True)
+print(response)
+</code></pre>
+<p><strong>LoRA 微调完整代码</strong>：</p>
+<pre><code class="language-python">from peft import LoraConfig, get_peft_model, TaskType
+from transformers import TrainingArguments, Trainer
+
+# 在加载模型后添加 LoRA 适配器
+lora_config = LoraConfig(
+    task_type=TaskType.CAUSAL_LM,
+    r=16, lora_alpha=32, lora_dropout=0.05,
+    target_modules=[&quot;q_proj&quot;, &quot;k_proj&quot;, &quot;v_proj&quot;, &quot;o_proj&quot;]
+)
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()  # 通常 &lt; 1% 参数可训练
+
+# 后续使用 Trainer + Dataset 正常训练即可
+</code></pre>
+<blockquote>
+<p>⚠️ <strong>微调注意</strong>：FP8 权重本身不适合直接梯度更新。微调时建议将基座权重转为 BF16（<code>torch_dtype=torch.bfloat16</code>），仅 LoRA 部分参与训练。</p>
+</blockquote>
+<h3 id="14-cpu-llamacpp-ollama">1.4 路线三：消费级显卡 / CPU 混合推理（llama.cpp / Ollama）</h3>
+<blockquote>
+<p>如果显卡不支持 FP8 或显存不足，可将模型转换为 GGUF 格式，在消费级硬件上运行。</p>
+</blockquote>
+<p><strong>步骤 1：转换为 GGUF</strong>：</p>
+<pre><code class="language-bash"># 克隆 llama.cpp 并编译
+git clone https://github.com/ggerganov/llama.cpp &amp;&amp; cd llama.cpp
+cmake -B build &amp;&amp; cmake --build build --config Release
+
+# 转换（FP8 → F16 → GGUF Q4_K_M）
+python convert_hf_to_gguf.py ../Qwen3.8-27B-FP8 --outtype f16
+./build/bin/quantize ../Qwen3.8-27B-FP8/model-f16.gguf \
+    ../Qwen3.8-27B-FP8/model-Q4_K_M.gguf Q4_K_M
+</code></pre>
+<p><strong>步骤 2：Ollama 一键部署</strong>：</p>
+<p>创建 <code>Modelfile</code>：</p>
+<pre><code class="language-dockerfile">FROM ./Qwen3.8-27B-FP8/model-Q4_K_M.gguf
+TEMPLATE &quot;{{ .Prompt }}&quot;
+PARAMETER num_ctx 4096
+</code></pre>
+<p>运行：</p>
+<pre><code class="language-bash">ollama create qwen3.8 -f Modelfile
+ollama run qwen3.8 &quot;你好，介绍一下你自己&quot;
+</code></pre>
+<h3 id="15">1.5 三方案对比表（原文电子表格照录）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>vLLM</th>
+<th>Transformers</th>
+<th>llama.cpp/Ollama</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>适用场景</strong></td>
+<td>生产部署、API服务</td>
+<td>研究、微调、自定义</td>
+<td>个人电脑、低显存</td>
+</tr>
+<tr>
+<td><strong>FP8 原生支持</strong></td>
+<td>✅ 最佳</td>
+<td>✅ 需Ada+显卡</td>
+<td>❌ 需转GGUF</td>
+</tr>
+<tr>
+<td><strong>最低显存</strong></td>
+<td>~30GB (2×4090)</td>
+<td>~30GB</td>
+<td>16GB (Q4量化)</td>
+</tr>
+<tr>
+<td><strong>推理速度</strong></td>
+<td>🚀 最快</td>
+<td>🐢 较慢</td>
+<td>⚡ 中等</td>
+</tr>
+<tr>
+<td><strong>微调支持</strong></td>
+<td>❌</td>
+<td>✅ 完整</td>
+<td>❌</td>
+</tr>
+<tr>
+<td><strong>上手难度</strong></td>
+<td>低</td>
+<td>中</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<h3 id="16">1.6 最终建议（原文照录）</h3>
+<ul>
+<li><strong>有 H100/A100/双4090</strong> → 直接用 <strong>vLLM</strong> 跑 FP8，性能最优</li>
+<li><strong>要做微调或研究</strong> → 用 <strong>Transformers</strong>，但微调时转 BF16</li>
+<li><strong>只有单张消费级显卡</strong> → 放弃 FP8，转 <strong>GGUF Q4/Q5</strong> 用 Ollama 运行</li>
+<li><strong>验证完整性</strong>：无论哪种方式，首次加载成功后检查 <code>config.json</code> 中的 <code>num_hidden_layers</code>、<code>vocab_size</code> 等参数是否与仓库页面一致，确保权重无遗漏</li>
+</ul>
+<hr />
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-fp8-vs-gguf-q4">2.1 FP8 vs GGUF Q4：两种量化哲学</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>FP8 (E4M3)</th>
+<th>GGUF Q4_K_M</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>量化方式</strong></td>
+<td>浮点 8 位（4位指数+3位尾数）</td>
+<td>整数量化 + K-quant 混合精度</td>
+</tr>
+<tr>
+<td><strong>精度损失</strong></td>
+<td>极小（几乎无损）</td>
+<td>轻微（Q4_K_M 是质量/体积平衡点）</td>
+</tr>
+<tr>
+<td><strong>27B 模型体积</strong></td>
+<td>~27GB</td>
+<td>~16GB</td>
+</tr>
+<tr>
+<td><strong>硬件要求</strong></td>
+<td>Ada/Hopper+ 专用 FP8 单元</td>
+<td>CPU 亦可跑（AVX2/NEON）</td>
+</tr>
+<tr>
+<td><strong>适用场景</strong></td>
+<td>数据中心/专业卡</td>
+<td>消费级/边缘设备</td>
+</tr>
+<tr>
+<td><strong>生态支持</strong></td>
+<td>vLLM/TensorRT-LLM</td>
+<td>llama.cpp/Ollama/LM Studio</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心差异</strong>：FP8 是"硬件原生支持的低精度浮点"（GPU 计算单元直接算），GGUF 是"软件层的整数量化"（CPU/GPU 都能算但效率不同）。</p>
+<h3 id="22-vllm">2.2 vLLM 参数深潜</h3>
+<ul>
+<li><strong><code>tensor_parallel_size=2</code></strong>：张量并行，把模型切到 2 张卡。27B FP8 (~27GB) 单张 4090 (24GB) 放不下，必须双卡</li>
+<li><strong><code>gpu_memory_utilization=0.9</code></strong>：允许 vLLM 占用 90% 显存（剩余留给 KV cache 和激活值）</li>
+<li><strong><code>trust_remote_code=True</code></strong>：Qwen 系列需要执行自定义 modeling 代码，必须开启（安全性考虑：只对可信来源开）</li>
+<li><strong><code>quantization="fp8"</code></strong>：显式声明量化格式，vLLM 会加载对应的 FP8 kernel</li>
+</ul>
+<h3 id="23-torchfloat8_e4m3fn">2.3 torch.float8_e4m3fn 的含义</h3>
+<ul>
+<li><strong>E4M3</strong>：4 位指数 + 3 位尾数 + 1 位符号，动态范围小但精度高，适合前向推理</li>
+<li><strong>fn</strong>：finite（不含 inf/nan 表示），推理场景够用</li>
+<li>PyTorch 2.1+ 原生支持此 dtype，但实际矩阵乘法仍依赖 CUDA 12+ 和 Ada/Hopper 硬件单元</li>
+</ul>
+<hr />
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 决策树</h3>
+<pre><code>你的硬件是什么？
+├─ H100 / A100 / 双4090（30GB+ 显存）
+│   ├─ 要部署 API 服务 → vLLM (FP8 直跑)
+│   └─ 要微调/研究 → Transformers (微调时转 BF16)
+├─ 单张 4090/5090（24GB）
+│   ├─ 显存差一点 → vLLM + GPTQ/AWQ 4bit
+│   └─ 稳妥方案 → llama.cpp GGUF Q4 + Ollama
+└─ 30系及更早 / 更低显存（≤16GB）
+    └─ llama.cpp GGUF Q4/Q5 + CPU/GPU 混合
+</code></pre>
+<h3 id="32">3.2 显存需求速查表</h3>
+<table>
+<thead>
+<tr>
+<th>模型版本</th>
+<th>体积</th>
+<th>最低显存</th>
+<th>推荐路线</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>27B FP8</td>
+<td>~27GB</td>
+<td>30-35GB（双卡）</td>
+<td>vLLM</td>
+</tr>
+<tr>
+<td>27B BF16</td>
+<td>~54GB</td>
+<td>60GB+（A100 80G）</td>
+<td>vLLM/Transformers</td>
+</tr>
+<tr>
+<td>27B GGUF Q4_K_M</td>
+<td>~16GB</td>
+<td>16GB 单卡</td>
+<td>Ollama</td>
+</tr>
+<tr>
+<td>27B GGUF Q5_K_M</td>
+<td>~20GB</td>
+<td>24GB 单卡</td>
+<td>Ollama/llama.cpp</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1fp8">趋势 1：FP8 正在成为专业卡部署的标准格式</h3>
+<blockquote>
+<p>依据：vLLM 对 FP8 支持最完善 + NVIDIA Ada/Hopper 全面原生支持 + 27B FP8 相比 BF16 体积减半显存减半。数据中心场景 FP8 正在取代 FP16 成为默认选择（这与 snowboat 工程全景笔记 1.1.1 节的判断一致）。</p>
+</blockquote>
+<h3 id="2-27b">趋势 2：消费级硬件的 27B 可用性持续改善</h3>
+<blockquote>
+<p>依据：GGUF Q4 让 16GB 显存可跑 27B；Ollama 一键部署把门槛降到 Modelfile 两行配置。随着量化算法改进（Q4_K_M → IQ4），消费级跑 27B 的质量损失在缩小。</p>
+</blockquote>
+<hr />
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-2026-08-16-qwen38-27bmd">5.1 与 <a href="2026-08-16-Qwen3.8-27B家用显卡运行指南.md">2026-08-16-Qwen3.8-27B家用显卡运行指南.md</a> 的关联</h3>
+<p>那篇笔记讲家用显卡跑 Qwen3.8-27B 的路线选择，本篇（飞书 Wiki）给出了<strong>三条路线的完整可运行代码</strong>——两者是"策略指南"与"代码手册"的关系。</p>
+<p><strong>互补点</strong>：那篇侧重"选哪条路"，本篇提供"每条路怎么走"的逐步代码。</p>
+<h3 id="52-2026-08-17-qwen38-27bmd">5.2 与 <a href="2026-08-17-Qwen3.8-27B开源实测与本地部署.md">2026-08-17-Qwen3.8-27B开源实测与本地部署.md</a> 的关联</h3>
+<p>那篇是开源实测（下载/加载/推理速度实测），本篇是部署手册（三种框架的配置参数与代码）。实测数据可对照本篇的对比表验证。</p>
+<h3 id="53-2026-08-19-qwen38-27b95-dspark75toksmd">5.3 与 <a href="2026-08-19-Qwen3.8-27B加速9.5倍-DSpark推测解码实战75toks.md">2026-08-19-Qwen3.8-27B加速9.5倍-DSpark推测解码实战75toks.md</a> 的关联</h3>
+<p>那篇讲 DSpark 推测解码把 Qwen3.8-27B 加速 9.5×（7.88→75 tok/s），是 vLLM 路线的进阶优化。本篇 vLLM 代码是基础部署，那篇是性能加速，两者叠加 = 生产级部署方案。</p>
+<h3 id="54-2026-08-18-llm-lora-qlora-dora-sft-dpo-grpomd">5.4 与 <a href="2026-08-18-主流LLM微调方法全景-全参-LoRA-QLoRA-DoRA-SFT-DPO-GRPO.md">2026-08-18-主流LLM微调方法全景-全参-LoRA-QLoRA-DoRA-SFT-DPO-GRPO.md</a> 的关联</h3>
+<p>本篇 Transformers 路线的 LoRA 微调代码（r=16, alpha=32, target=q/k/v/o_proj）是那篇全景笔记的具体实例。<strong>关键补充</strong>：本篇明确警告"FP8 权重不适合直接梯度更新，微调时转 BF16"——这是 FP8 特有的坑，那篇未覆盖。</p>
+<hr />
+<h2 id="_7">六、拓展应用推荐</h2>
+<h3 id="61-jetson">6.1 Jetson 场景适配（本机相关）</h3>
+<p>本机 Jetson Orin Nano（Ampere 架构，8GB 统一内存）<strong>无法运行 27B 任何量化版本</strong>：</p>
+<ul>
+<li>27B GGUF Q4 需 16GB+，Jetson 8GB 远不够</li>
+<li>Jetson 的 Ampere GPU 也不支持 FP8（需 Ada/Hopper）</li>
+<li><strong>结论</strong>：Jetson 只适合跑 Needle 2（14MB）这类端侧专用模型或更小的 Qwen（0.5B-3B Q4）——这与"不要在 Jetson 上跑重型 ML"的用户铁律一致</li>
+</ul>
+<h3 id="62">6.2 代码复用清单</h3>
+<ul>
+<li><strong>vLLM 对话脚本</strong>：可直接复用于任何 FP8 模型（改 model_path 即可）</li>
+<li><strong>Transformers 推理脚本</strong>：chat_template 用法是标准范式，适用所有 Qwen 系列</li>
+<li><strong>LoRA 配置</strong>：r=16/alpha=32/q_k_v_o_proj 是 Qwen 系列的标准配置，可直接套用</li>
+<li><strong>GGUF 转换命令</strong>：FP8 → F16 → Q4_K_M 两步转换链适用于所有 FP8 发布的模型</li>
+<li><strong>Ollama Modelfile</strong>：两行配置（FROM + PARAMETER num_ctx）是最小可部署单元</li>
+</ul>
+<h3 id="63">6.3 适合跟进学习</h3>
+<ul>
+<li><strong>vLLM FP8 kernel 实现原理</strong>（cutlass FP8 GEMM）</li>
+<li><strong>GGUF K-quant 家族差异</strong>（Q4_K_M vs Q4_K_S vs IQ4_XS）</li>
+<li><strong>Qwen3.8 架构变化</strong>（相比 Qwen3 的改进点）</li>
+</ul>
+<hr />
+<h2 id="_8">七、指南分析</h2>
+<h3 id="71-wiki">7.1 这份 Wiki 文档的质量</h3>
+<ul>
+<li><strong>代码完整可运行</strong>：三条路线各自给出从安装到运行的完整命令/代码，无伪代码</li>
+<li><strong>前置提醒准确</strong>：FP8 硬件要求（Ada/Hopper）、显存需求（30-35GB）、单 4090 不够——都是实际部署中最先踩的坑</li>
+<li><strong>对比表清晰</strong>：六维度对比（场景/FP8支持/显存/速度/微调/难度）直接指向决策</li>
+<li><strong>微调警告有价值</strong>：FP8 权重不能直接梯度更新的提醒是多数教程遗漏的点</li>
+<li><strong>结构化好</strong>：安装 → 代码 → 注意事项 的重复结构，易于跟随</li>
+</ul>
+<h3 id="72">7.2 可补充之处</h3>
+<ul>
+<li>未给出各路线的实际测速数据（tok/s）——可参考 DSpark 笔记的 9.5× 加速实测补齐</li>
+<li>Ollama Modelfile 的 <code>TEMPLATE "{{ .Prompt }}"</code> 过于简化，Qwen 的 chat template 应使用官方模板否则对话质量下降</li>
+<li>未涉及 vLLM 的 OpenAI 兼容 API server 模式（<code>vllm serve</code>），生产部署常用</li>
+<li>GGUF 转换需注意 FP8 checkpoint 需先反量化为 F16 再转 GGUF（原文已隐含但未显式说明两步的原因）</li>
+</ul>
+<hr />
+<h2 id="_9">八、金句摘录</h2>
+<blockquote>
+<p>"FP8 权重本身不适合直接梯度更新。微调时建议将基座权重转为 BF16，仅 LoRA 部分参与训练。"</p>
+<p>"无论哪种方式，首次加载成功后检查 config.json 中的 num_hidden_layers、vocab_size 等参数是否与仓库页面一致，确保权重无遗漏。"</p>
+</blockquote>
+<hr />
+<h2 id="_10">九、行动启示</h2>
+<ul>
+<li><strong>保存完整代码</strong>：本笔记已照录三条路线全部代码（vLLM/Transformers+LoRA/llama.cpp+Ollama），可直接复用</li>
+<li><strong>决策树 + 显存速查表</strong>：选路线时先查硬件再对表，避免试错</li>
+<li><strong>微调铁律</strong>：FP8 → BF16 再微调，只训 LoRA 适配器</li>
+<li><strong>权重完整性校验</strong>：首次加载后核对 config.json 参数，防止下载缺文件</li>
+<li><strong>Jetson 不碰 27B</strong>：本机硬件天花板决定了 27B 只能在 A100 局域网池或云端跑</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- <a href="2026-08-16-Qwen3.8-27B家用显卡运行指南.md">Qwen3.8-27B 家用显卡运行指南</a> — 路线选择策略<br />
+- <a href="2026-08-17-Qwen3.8-27B开源实测与本地部署.md">Qwen3.8-27B 开源实测与本地部署</a> — 实测数据<br />
+- <a href="2026-08-19-Qwen3.8-27B加速9.5倍-DSpark推测解码实战75toks.md">Qwen3.8-27B 加速 9.5 倍 DSpark 推测解码</a> — vLLM 进阶优化<br />
+- <a href="2026-08-18-主流LLM微调方法全景-全参-LoRA-QLoRA-DoRA-SFT-DPO-GRPO.md">主流 LLM 微调方法全景</a> — LoRA 原理层</p>
+</blockquote>
+</body>
+</html>
