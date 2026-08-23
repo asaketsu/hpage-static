@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3.8-27B本地部署2万字-三笔账方法论与四轮量化实测</title>
+
+<meta property="og:title" content="Qwen3.8-27B本地部署2万字-三笔账方法论与四轮量化实测" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-23-Qwen3.8-27B%E6%9C%AC%E5%9C%B0%E9%83%A8%E7%BD%B22%E4%B8%87%E5%AD%97-%E4%B8%89%E7%AC%94%E8%B4%A6%E6%96%B9%E6%B3%95%E8%AE%BA%E4%B8%8E%E5%9B%9B%E8%BD%AE%E9%87%8F%E5%8C%96%E5%AE%9E%E6%B5%8B.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="qwen38-27b-2">Qwen3.8 27B 本地部署 2 万字长文 — 三笔账方法论 + 四轮量化实测的诚实工程</h1>
+<blockquote>
+<p><strong>来源</strong>：huangserva (@servasyy_ai) X 长文（约 2 万字）<br />
+<strong>原文链接</strong>：https://x.com/servasyy_ai/status/2091416214283379123<br />
+<strong>记录日期</strong>：2026-08-23<br />
+<strong>测试环境</strong>：4090 魔改 48G / Mac 16GB / 72 道自建短题 + 250K 长文</p>
+
+<p class="meta-date">生成日期 2026-08-23</p></blockquote>
+<p><strong>标签</strong>：#Qwen3.8 #本地部署 #量化 #KVCache #MTP #端侧Agent</p>
+<hr />
+<h3 id="7">7 模块索引（本报告内容映射）</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th></th>
+<th>对应章节</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td></td>
+<td>头部标签行</td>
+<td>6 个标签</td>
+</tr>
+<tr>
+<td>出处</td>
+<td></td>
+<td>头部出处行</td>
+<td>X 长文 + 实测</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td></td>
+<td>第一~四章</td>
+<td>选型/三笔账/配置/五个坑</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td></td>
+<td>第五章</td>
+<td>与既有 Qwen3.8 系列笔记对照</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td></td>
+<td>第六章</td>
+<td>三笔账方法论 + 量化认知框架</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td></td>
+<td>第七章</td>
+<td>2 条预测</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td></td>
+<td>第八章</td>
+<td>与 Qwen3.8 系列 6 篇 + KVCache 2 篇交叉</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td></td>
+<td>第九章</td>
+<td>Jetson 适用性判断</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td></td>
+<td>第十章</td>
+<td>工程诚实度评估</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>一篇 2 万字的 Qwen3.8 27B 部署长文，核心贡献不是配置参数，而是三个认知框架：①"窗口、内容、显存是三笔独立的账"（窗口大≠慢，塞满才慢）②四轮量化实测证明"我没测出 Q4 比 Q8 笨，但也没证明一样好"（诚实边界声明）③"量化模型 tok/s 更高，不代表任务更快"（思考膨胀 2-3 倍会吃掉速度收益）。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 模型定位</h3>
+<ul>
+<li><strong>Qwen3.8 27B</strong>：阿里 2026-08-14 开源，Apache 2.0，27B 稠密</li>
+<li>官方定位<strong>端侧 Agent 模型</strong>：写代码/调工具/读长文，256K 上下文可扩 1M</li>
+<li>SWE-bench Pro 61.7（官方口径）</li>
+<li>两个钱包相关设计：</li>
+<li><strong>混合注意力</strong>：64 层里只有 16 层全注意力 → KV Cache 省约 75%</li>
+<li><strong>MTP 内置</strong>：推测解码头在模型文件里，开参数生成翻倍</li>
+</ul>
+<h3 id="12">1.2 选型总表（按显存对号入座）</h3>
+<table>
+<thead>
+<tr>
+<th>显存</th>
+<th>推荐</th>
+<th>配置</th>
+<th>关键数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>12GB</td>
+<td>Q2_K_XL</td>
+<td>32K 窗口</td>
+<td>占 10.92GB，短任务可用（<strong>agent 长任务会掉两成完成率，短任务限定</strong>）</td>
+</tr>
+<tr>
+<td>16GB</td>
+<td>Q2_K_XL → Q3_K_XL</td>
+<td>128K</td>
+<td>Q2 占 14.66GB；社区数据 Q3 33/41 &gt; Q2 27/41（agent 长任务优先 Q3）</td>
+</tr>
+<tr>
+<td>18-20GB</td>
+<td>Q4_K_M + q4 KV</td>
+<td>64-128K</td>
+<td>18GB 开 64K（17.1GB），20GB 开 128K（18.5GB）</td>
+</tr>
+<tr>
+<td>24GB</td>
+<td>Q4_K_M + q4 KV + MTP3</td>
+<td><strong>192K</strong>（别开 256K）</td>
+<td>22.6GB，59.52 tok/s；硬开 256K 只剩 154MiB</td>
+</tr>
+<tr>
+<td>32GB+</td>
+<td>Q4_K_M + q4 KV + MTP3</td>
+<td>满开 256K</td>
+<td>24.4GB，53.15 tok/s（推荐首选）；Q8attn 30.3GB 更快 11%</td>
+</tr>
+<tr>
+<td>8GB 及以下</td>
+<td>❌ 无验证方案</td>
+<td>—</td>
+<td>混合卸载能启动但太慢</td>
+</tr>
+</tbody>
+</table>
+<p><strong>硬线</strong>：Q4_K_M 最省配法（q4 KV、32K）也要 16,338 MiB——16GB 卡装不下，18GB 起步。</p>
+<h3 id="13">1.3 全文最重要：三笔账（第五章核心）</h3>
+<p><strong>误解</strong>：窗口开大 = 模型变慢。</p>
+<p><strong>实测铁证</strong>：同一个 256K 配置——<br />
+- 空载（只有一两句话）：78.80 tok/s<br />
+- 满载（塞满 250K 内容）：47.70 tok/s<br />
+- <strong>显存只差 8 MiB</strong></p>
+<p><strong>三笔账</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>账</th>
+<th>什么决定</th>
+<th>什么影响</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>窗口账</strong></td>
+<td>启动时 KV Cache 预分配</td>
+<td>只占显存，<strong>不影响速度</strong></td>
+</tr>
+<tr>
+<td><strong>内容账</strong></td>
+<td>实际 token 数</td>
+<td>Prefill 时间 + 生成速度衰减</td>
+</tr>
+<tr>
+<td><strong>显存账</strong></td>
+<td>模型 + KV Cache + 运行开销</td>
+<td>永远比文件大（Q4 文件 16GB → 实际 16.3GB+）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>推论</strong>：显存够就放心开大窗口，平时聊短的一点不亏；按文件大小买卡必翻车。</p>
+<h3 id="14">1.4 量化实测四轮（诚实边界声明的典范）</h3>
+<p><strong>测试结论</strong>：</p>
+<ol>
+<li><strong>Q4_K_M vs Q8_0 300 对盲测</strong>：81.67% vs 79.33%，差异不显著（同源对比最接近）</li>
+<li><strong>72 道短题</strong>：Q4_K_M 拿 47/72 全场最高；Q2_K_XL 41 分与 30GB 版"打平"</li>
+<li><strong>但"同分不等于同一个东西"</strong>：Q2 思考要多花 <strong>2.14 倍</strong> token</li>
+<li><strong>NVFP4（英伟达 4-bit）四轮测不出比 Q4_K_M 聪明</strong>：官方说法未被复现</li>
+<li><strong>IQ2_S 断崖</strong>：32-token 预测准确率 25% → 8-10%，大量循环/空响应/工具调用失败</li>
+</ol>
+<p><strong>作者的诚实声明</strong>（值得逐字学习）：</p>
+<blockquote>
+<p>"我没没能证明高位版本更聪明，四轮都没有。……但这句话有边界：不等于'Q4 和 Q8 一样好'（没测出不是证明相同），也不等于'量化没有代价'。"</p>
+</blockquote>
+<p><strong>推荐 Q4_K_M 的三条依据</strong>（与"更聪明"无关）：显存更低 / 单任务耗时最短（13.81s vs Q8_0 的 22.16s）/ 四轮无可靠质量劣势。</p>
+<h3 id="15">1.5 速度配置结论</h3>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MTP3</strong></td>
+<td>生成快一倍，多占 2.9GB——4090 上 MTP3 最优，5090 上有人测 MTP2 最优，官方推荐 6 在两边都是差档</td>
+</tr>
+<tr>
+<td><strong>DFlash 2</strong></td>
+<td>日常对话 MTP3 还快 9.4%；只在"250K 已读入+生成上千 token"时划算（<strong>N 卡结论，Mac 上相反</strong>）</td>
+</tr>
+<tr>
+<td><strong>KV Cache q4</strong></td>
+<td>256K 下省 4GB，速度只掉 4.1%——24GB 卡必须压否则装不下</td>
+</tr>
+<tr>
+<td><strong>offload</strong></td>
+<td>挪几层速度 73.6→24.4；挪到省 10GB 只剩 9 tok/s——<strong>别指望，换小模型或缩窗口</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="16">1.6 五个坑</h3>
+<ol>
+<li><strong>模型"变笨"先查输出预算</strong>：作者 17 题只对 9，输出上限 4096 后 17/17 全对——思考过程吃光输出预算被截断，从外面看像"答错"</li>
+<li><strong>换框架配错 chat template/reasoning parser</strong>：思考与答案错位，看着像质量问题</li>
+<li><strong>网上方案未必适合你的机器</strong>：LOW GGUF 短对话快 12.8%，长文反而慢——<strong>同一模型不同场景排名会反过来</strong></li>
+<li><strong>你的数和文章对不上</strong>：同一配置不同任务差 10%——跑分必须连着任务一起看</li>
+<li><strong>"model loaded"会骗人</strong>：16GB Mac 初始化 OOM 但进程不退出，健康检查也过——<strong>必须发真实请求验证</strong></li>
+</ol>
+<h3 id="17-agent">1.7 Agent 关键技巧</h3>
+<blockquote>
+<p><strong>"历史开头不变可复用"</strong>：Agent 多轮对话中，前缀（系统提示+早期历史）不变 → KV Cache 复用 → <strong>190 多秒变 4-5 秒</strong>。截断开头，缓存全废。</p>
+</blockquote>
+<p>这是 llama.cpp prompt cache 与 vLLM prefix caching 的实战价值——Agent 场景的命根子。</p>
+<hr />
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-gb-vs-gib">2.1 GB vs GiB 的坑</h3>
+<p>Q2_K_XL = 9.83GB = 9.15GiB 是<strong>同一个文件</strong>。HuggingFace 页面和 wget 进度条显示 GiB——照着核对文件大小别对不上号。</p>
+<h3 id="22-unsloth-vs">2.2 Unsloth 动态量化 vs 传统量化</h3>
+<p>Q8_0 是传统量化（均匀砍每层精度）；Q4_K_M / Q2_K_XL 是 Unsloth 动态量化（校准数据先跑一遍，重要层少砍、不重要层多砍）。</p>
+<blockquote>
+<p>"位数不是唯一变量，怎么压才是。"——解释了为什么 Q2_K_XL 能和 30GB 版短题打平。</p>
+</blockquote>
+<h3 id="23">2.3 思考膨胀的量化代价</h3>
+<table>
+<thead>
+<tr>
+<th>版本</th>
+<th>单 token 速度</th>
+<th>任务耗时</th>
+<th>思考量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IQ2_S</td>
+<td>32.38 tok/s（全场最快）</td>
+<td>22.16s（与最慢 Q8_0 一样）</td>
+<td>3.11 倍</td>
+</tr>
+<tr>
+<td>Q4_K_M</td>
+<td>—</td>
+<td>13.81s（最快）</td>
+<td>基准</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心洞察</strong>：量化省的是每 token 时间，但低位版"为了答对多想两三倍"——速度收益全被吃回。<strong>评价量化版本要测"任务级耗时"而不是 tok/s。</strong></p>
+<hr />
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 三笔账方法论（可迁移到任何模型）</h3>
+<pre><code>窗口账：启动参数决定，只占显存不影响速度 → 显存够就开大
+内容账：实际 token 决定 prefill+生成速度 → 塞满才慢
+显存账：文件大小 &lt; 实际占用（+KV Cache+开销）→ 留 20% 余量
+</code></pre>
+<h3 id="32">3.2 量化选型认知框架</h3>
+<ol>
+<li><strong>位数不是唯一变量</strong>（动态量化工艺 &gt; 位宽）</li>
+<li><strong>tok/s 不等于任务速度</strong>（思考膨胀）</li>
+<li><strong>没测出差距 ≠ 没有差距</strong>（诚实边界）</li>
+<li><strong>同分不等于同一个东西</strong>（量化方式/显存/长文表现都不同）</li>
+<li><strong>场景决定排名</strong>（短对话 vs 长文的量化版本排名会反过来）</li>
+</ol>
+<h3 id="33">3.3 工程诚实度五要素（本文典范）</h3>
+<ol>
+<li>承认自己犯过的错（Q8attn 当成 8-bit；信了 NVFP4 宣传）</li>
+<li>区分"没测出"和"证明了"（p=1.0000 的解读）</li>
+<li>交代测试边界（样本小/不是同源对比/题目太简单）</li>
+<li>承认数据会浮动（同配置不同任务差 10%）</li>
+<li>结论都带适用场景（N 卡 vs Mac / 短任务 vs 长任务）</li>
+</ol>
+<hr />
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="127b-agent-gpu">趋势 1：27B 级端侧 Agent 模型正在成为"个人 GPU 工作站标配"</h3>
+<blockquote>
+<p>依据：Qwen3.8 27B 两天 HF 下载破百万 + 本文 12GB 就能跑的结论 + SWE-bench Pro 61.7——性能/显存比已跨过"日常够用"线。本机 Jetson 8GB 虽跑不动 27B，但同类设计的更小版本会下探。</p>
+</blockquote>
+<h3 id="2">趋势 2：量化评测的焦点从"准确率"转向"思考膨胀率"</h3>
+<blockquote>
+<p>依据：本文实证 IQ2_S 单 token 最快但任务最慢（3.11 倍思考膨胀）+ Unsloth 文档的 32-token 预测准确率断崖——量化损耗的显性指标正在从"答没答对"变为"想多久才答对"。这呼应 Φ-Bench 的"持续优化能力"考察——任务级指标 &gt; 单点指标。</p>
+</blockquote>
+<hr />
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-qwen38-6-7">5.1 与 Qwen3.8 系列 6 篇笔记的关系（第 7 篇，系列互引）</h3>
+<table>
+<thead>
+<tr>
+<th>日期</th>
+<th>笔记</th>
+<th>主题</th>
+<th>与本文关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>08-16</td>
+<td>Qwen3.8-27B家用显卡运行指南</td>
+<td>部署基础</td>
+<td>本文是深化版（+四轮实测+三笔账）</td>
+</tr>
+<tr>
+<td>08-17</td>
+<td>Qwen3.8-27B开源实测与本地部署</td>
+<td>实测</td>
+<td>本文补充 agent 长任务边界（Q2 掉两成）</td>
+</tr>
+<tr>
+<td>08-19</td>
+<td>DSpark推测解码实战 75toks</td>
+<td>MTP 加速</td>
+<td>本文 MTP3 结论与 DSpark 互补（MTP 档位选择因卡而异）</td>
+</tr>
+<tr>
+<td>08-19</td>
+<td>DFlash2 投机解码</td>
+<td>DFlash2</td>
+<td>本文实证"日常 MTP3 更快，DFlash2 长生成才划算"</td>
+</tr>
+<tr>
+<td>08-21</td>
+<td>FP8 使用指南三条推理路线</td>
+<td>FP8</td>
+<td>本文 Q4/Q2 GGUF 路线与 FP8 路线并行（不同硬件层）</td>
+</tr>
+<tr>
+<td>08-22</td>
+<td>KVCache压缩2026前沿</td>
+<td>KV Cache</td>
+<td>本文 q4 KV 实测数据（省 4GB 掉 4.1%）是该篇的落地实证</td>
+</tr>
+</tbody>
+</table>
+<p><strong>系列定位</strong>：本文是 Qwen3.8 系列的<strong>方法论收官篇</strong>——前 6 篇各讲一个技术点，本文给出统一认知框架（三笔账）。</p>
+<h3 id="52-2026-08-21-llmkvcache">5.2 与 <a href="2026-08-21-LLM推理KVCache全景-原理管理与修改利用.md">2026-08-21-LLM推理KVCache全景</a> 的关联</h3>
+<p>该篇讲 KV Cache 原理（PagedAttention/前缀缓存/量化），本文提供三个实测数字：混合注意力省 75% / q4 KV 省 4GB 掉 4.1% / Agent 前缀复用 190s→4-5s——理论笔记与实测笔记互补。</p>
+<h3 id="53-2026-08-23-phibench">5.3 与 <a href="2026-08-23-PhiBench-LLM距离AIInfra工程师还有多远-RSI向Infra延伸.md">2026-08-23-PhiBench</a> 的关联</h3>
+<p>Φ-Bench 三特征之"谨慎解释实验结果"在本文是<strong>教科书级示范</strong>：区分"没测出差距"和"证明相同"（p=1.0000 的边界解读）、承认测试题目太简单测不出差距、交代"44.73 vs 49.09 是任务不同不是装错"。两篇同日笔记形成"评测方法论"互证。</p>
+<h3 id="54-llama-cpp">5.4 与量化系列笔记（llama-cpp 专题/量化决策树）的关联</h3>
+<p><a href="explore/2026-08-06-本地模型部署-量化选择决策树.md">explore/2026-08-06-本地模型部署-量化选择决策树.md</a> 的决策树可被本文数据校准：16GB 档从 Q2_K_XL 改为优先 Q3_K_XL（agent 长任务 33/41 vs 27/41）。</p>
+<h3 id="55-jetson">5.5 与本机 Jetson 的适用性判断</h3>
+<p>Jetson Orin 8GB：本文明确"8GB 及以下无验证的全 GPU 方案"——27B 级与 Jetson 无缘（与用户铁律一致：不跑重型推理）。但三笔账方法论完全适用于 Jetson 上的小模型（LUX-TTS/Whisper/Nexa）调优。</p>
+<hr />
+<h2 id="_7">六、拓展应用推荐</h2>
+<h3 id="61-checklist-skill">6.1 三笔账 checklist（进本地部署 skill）</h3>
+<pre><code>□ 窗口账：显存预算 = 模型 + KV Cache(窗口) + 20% 余量
+□ 内容账：真实任务 token 数 → 预估 prefill 时间 + 生成速度衰减
+□ 显存账：实际占用 &gt; 文件大小，永远留余量
+□ 量化账：测任务级耗时，不只看 tok/s（思考膨胀）
+□ 验证账：model loaded ≠ 能用，必须发真实请求
+</code></pre>
+<h3 id="62-a100">6.2 对 A100 局域网池的参考</h3>
+<p>本机 A100 池（80GB×8）跑 Q4_K_M 可全性能开 1M 窗口；但按本文"一卡多用"原则，W4A16 (vLLM) 占 45.5GB 才是最优解的场景判断同样适用。</p>
+<h3 id="63-agent-hermes">6.3 Agent 前缀复用（进 Hermes 架构认知)</h3>
+<p>Hermes 多轮会话 = 典型的"历史开头不变"场景——若本地推理走 llama.cpp/vLLM，开 prompt cache / prefix caching 是免费的 40 倍加速。这对本机 Nexa 本地推理的配置有直接指导意义。</p>
+<hr />
+<h2 id="_8">七、指南分析</h2>
+<h3 id="71">7.1 文章质量</h3>
+<ul>
+<li><strong>认知贡献 &gt; 参数罗列</strong>：三笔账框架可迁移到任何模型部署</li>
+<li><strong>诚实度典范</strong>：五处边界声明 + 承认两个自己犯过的错 + 区分"没测出"和"证明了"</li>
+<li><strong>实验设计意识</strong>：四轮测试中前两轮白测了也如实交代，并点明"哪两篇论文纠正了方向"</li>
+<li><strong>面向新手的分层写作</strong>：2 万字按四个问题组织，每章可独立跳转</li>
+</ul>
+<h3 id="72">7.2 局限</h3>
+<ul>
+<li>样本量小（72 短题/8 长文题），作者自己承认"只够看方向不能做排行榜"</li>
+<li>48G 魔改卡是特例环境，主流 24GB 卡的数据靠推算</li>
+<li>Q3_K_XL/IQ4_XS 两个中间档没测（作者明示）</li>
+<li>Mac 数据大部分是外部报告，只有 16GB 一行是本机实测</li>
+</ul>
+<hr />
+<h2 id="_9">八、金句摘录</h2>
+<blockquote>
+<p>"窗口开大只占显存，不影响速度——真把内容塞满才会慢。这是全文最重要的一条。"</p>
+<p>"量化模型 tok/s 更高，不代表任务更快。如果它为了答对多想两三倍，速度收益会被吃光。"</p>
+<p>"位数不是唯一变量，怎么压才是。"</p>
+<p>"我没能证明高位版本更聪明，四轮都没有——但这不等于 Q4 和 Q8 一样好。没测出不是证明相同。"</p>
+<p>"发现模型突然'变笨'，先检查是不是输出预算不够。"</p>
+<p>"同一个模型在不同场景下的排名是会反过来的——看跑分要连着任务一起看。"</p>
+</blockquote>
+<hr />
+<h2 id="_10">九、行动启示</h2>
+<ul>
+<li><strong>三笔账 checklist</strong> 进本地部署相关 skill（llm-inference-deploy / nexa-local-inference）</li>
+<li><strong>量化选型表</strong>（12/16/18-20/24/32GB 五档）可直接进 llm-inference-deploy 的选型章节</li>
+<li><strong>"model loaded 骗人"教训</strong>进 error-case：部署后必须发真实请求验证（本机 LUX-TTS daemon 曾有类似坑）</li>
+<li><strong>Agent 前缀复用</strong>进 Hermes 本地推理配置认知</li>
+<li><strong>诚实边界声明模板</strong>（本文五要素）值得作为笔记写作的自检标准</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- 模型：https://huggingface.co/utautako/Qwen3.8-27B-NVFP4-MTP-Q8attn-GGUF<br />
+- <a href="index.md">Qwen3.8 系列笔记 6 篇</a>（08-16 至 08-22）<br />
+- <a href="2026-08-22-KVCache压缩2026前沿-TriAttention基建突围与生产级落地.md">KVCache 压缩前沿</a><br />
+- <a href="2026-08-23-PhiBench-LLM距离AIInfra工程师还有多远-RSI向Infra延伸.md">Φ-Bench</a>——同日"评测方法论"互证</p>
+</blockquote>
+</body>
+</html>
