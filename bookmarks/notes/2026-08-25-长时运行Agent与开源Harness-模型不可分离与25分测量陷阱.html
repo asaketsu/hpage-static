@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>长时运行Agent与开源Harness-模型不可分离与25分测量陷阱</title>
+
+<meta property="og:title" content="长时运行Agent与开源Harness-模型不可分离与25分测量陷阱" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agent-harness-harness-257">长时运行 Agent 与开源 Harness — 模型与 Harness 不可分离：25.7 分的测量陷阱与九组件解剖</h1>
+<blockquote>
+<p><strong>来源</strong>：meng shao (@shao__meng) 转述 Sumanth (@Sumanth_077) X Article《Build a Long-Running Agent With an Open Source Harness》<br />
+<strong>原文链接</strong>：https://x.com/shao__meng/status/2092245762411499894（2026-08-25）<br />
+<strong>Article 原文</strong>：https://x.com/i/article/2092185179733508096（X Articles 需登录，正文经多源交叉补全）<br />
+<strong>交叉源</strong>：MindStudio《Sam Altman Says the Harness Is Now Inseparable from the Model》（Endor Labs 数据）/ Sam Altman × Ben Thompson 对谈<br />
+<strong>记录日期</strong>：2026-08-25<br />
+<strong>系列</strong>：Harness 系列第 2 篇（第 1 篇：08-21《什么是 Agent Harness——攀岩安全带与四组件解剖》同来源 @shao__meng）</p>
+
+<p class="meta-date">生成日期 2026-08-25</p></blockquote>
+<p><strong>标签</strong>：#AgentHarness #长时运行Agent #开源Harness #SamAltman #测量问题 #EndorLabs #Harness工程</p>
+<hr />
+<h3 id="7">7 模块索引</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~四章</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第五章（与 08-21 Harness 笔记的系列关系）</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第六章（三阶段演进+九组件+读榜守则）</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第七章（2 条预测）</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第八章（Harness 系列互引）</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第九章（本机落地）</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第十章（信息来源诚实声明）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>当 Agent 从"短演示"走向"长任务"，决定成败的不再是模型本身，而是包裹模型的运行时——Agent Harness。Sam Altman 亲口承认"我不再认为 harness 和模型是完全可分离的东西"；Endor Labs 实测同一 GPT-5.5 在两个 harness 里功能分差 25.7 个百分点——你读过的每一个模型跑分，都是"模型×harness"的联合测量。这也是"有理由偏爱开源 harness"的底层逻辑：harness 已是系统能力的一半，这一半必须可审计、可控制。</strong></p>
+</blockquote>
+<hr />
+<h2 id="meng-shao-sumanth">一、原文核心（meng shao 转述 + Sumanth 文章已知部分）</h2>
+<h3 id="11-sam-altman">1.1 出发点：Sam Altman 的一句话</h3>
+<blockquote>
+<p>"also, a reason to favor open-source harnesses."（而且，这是偏爱开源 harness 的一个理由。）</p>
+</blockquote>
+<p>Sumanth 文章开篇即引用此句——当 agent engineering 的重心从模型移向运行时，<strong>运行时的开源性与可控性成为一级决策</strong>，不再是极客偏好。</p>
+<h3 id="12-meng-shao">1.2 四块积木（meng shao 转述）</h3>
+<p>一个可用的 Agent 由四块积木组成（转述文本截断，可确认前两块）：</p>
+<ol>
+<li><strong>模型</strong>（推理）</li>
+<li><strong>MCP</strong>（工具调用层）</li>
+<li><em>（后两块经交叉源补全：记忆/上下文管理 + Harness 运行时本体——见 §三 九组件）</em></li>
+</ol>
+<h3 id="13">1.3 长时运行的定义性问题</h3>
+<p>长任务的敌人不是智力，是<strong>状态</strong>：终端崩溃、聊天丢失、上下文溢出、进程中断。Agent 能否"keep running"取决于 harness 的持久化与恢复设计，而非模型参数量。（交叉源：AgentSpan 等持久运行时产品正填补此层。）</p>
+<hr />
+<h2 id="sam-altman-harness">二、Sam Altman 的承认：harness 与模型不可分离</h2>
+<h3 id="21-ben-thompson">2.1 原话（× Ben Thompson 对谈）</h3>
+<blockquote>
+<p>"Hard to overstate how critical it is. I no longer think of the harness and the model as these entirely separable things."</p>
+</blockquote>
+<p>被问"模型周围的运行时（工具/状态/循环）多重要"时的回答——并承认当 Codex 做出惊艳成果时，<strong>他真的不知道多少功劳属于模型、多少属于周围的基础设施</strong>。</p>
+<p>这不是假谦虚：这是 OpenAI CEO 在说，你一直优化的东西（模型选型/prompt/微调）<strong>只是等式的一半，甚至更少</strong>。</p>
+<h3 id="22-endor-labs">2.2 改变一切读法的数字（Endor Labs）</h3>
+<p><strong>同一周、同一模型、不同 harness</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>harness A</th>
+<th>harness B</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-5.5</td>
+<td>Codex harness：<strong>61.5%</strong></td>
+<td>Cursor harness：<strong>87.2%</strong></td>
+<td><strong>25.7pp</strong></td>
+</tr>
+<tr>
+<td>Opus 4.7</td>
+<td>Claude Code（原生）：87.2%</td>
+<td>Cursor：91.1%</td>
+<td>3.9pp</td>
+</tr>
+</tbody>
+</table>
+<p>Endor Labs 团队结论："Same model, same week, two harnesses, two different functional results."</p>
+<p><strong>不舒服的推论</strong>：如果 harness 选择能让功能分摆动 25 分，那么你读过的大部分模型对比——包括影响过你基础设施决策的那些——<strong>测的既是模型能力也是 harness 工程，两者从未被干净分离</strong>。</p>
+<hr />
+<h2 id="harness">三、Harness 九组件（为什么同样的模型在不同的壳中表现不同）</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>组件</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>While 循环</strong></td>
+<td>地基：读系统提示→决定工具→执行→结果回填→再循环，直到纯文本回复或迭代上限</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>上下文管理</strong></td>
+<td>朴素实现最先死的地方：逐字保留/摘要/丢弃三决策。Claude Code 压缩策略（近全保+远摘要）是具体设计选择，错了长任务严重退化</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>技能与工具分离</strong></td>
+<td>工具=原语（读文件/bash/搜索）；技能=markdown 编码的组织知识。工具通用，技能语境特定</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>子 Agent 管理</strong></td>
+<td>spawn（生成）→ restrict（限制）→ collect（收集）：太大/太并行的任务拆分会话+受限工具集+聚焦提示</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>会话持久化</strong></td>
+<td>仅追加（append-only）JSON 落盘——每条消息/工具结果/压缩事件实时写。崩溃后精确恢复。<strong>"不迷人，但这是 demo 与生产系统的分界线"</strong></td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>系统提示组装</strong></td>
+<td>不是静态字符串，是管道：遍历祖先目录找 agents.md/claude.md 动态注入。<strong>静态在前动态在后，否则破坏前缀缓存</strong>（延迟+成本代价）</td>
+</tr>
+<tr>
+<td>7</td>
+<td><strong>生命周期钩子</strong></td>
+<td>pre-tool 钩子可允许/拒绝/修改调用；post-tool 检查结果。企业不改 harness 本体即可注入合规与观测</td>
+</tr>
+<tr>
+<td>8</td>
+<td><strong>权限与安全</strong></td>
+<td>动态分类命令：ls 只读、rm 需全权——<strong>解析命令字符串，不信模型的自我判断</strong></td>
+</tr>
+<tr>
+<td>9</td>
+<td><strong>内置技能</strong></td>
+<td>文件操作/git/PR/测试执行——不能读写文件就不是 coding agent</td>
+</tr>
+</tbody>
+</table>
+<p><strong>框架 vs Harness 的关键区分</strong>：框架（LangChain/LangGraph/AutoGen）给抽象——你来组装，假设人类建筑师拼积木；Harness 反方向——<strong>出厂即完整 agent</strong>，无组装步骤，核心是"预接线的 while 循环+工具注册表+权限层"。框架给架构师，harness 给 agent。</p>
+<hr />
+<h2 id="_2">四、三阶段演进与"测量问题"</h2>
+<h3 id="41-agent">4.1 Agent 工程三阶段</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>中心问题</th>
+<th>手段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① 权重阶段</td>
+<td>更强 agent = 更大模型</td>
+<td>参数/训练</td>
+</tr>
+<tr>
+<td>② 上下文阶段</td>
+<td>不换模型，换它看到什么</td>
+<td>prompt/RAG/CoT</td>
+</tr>
+<tr>
+<td>③ <strong>Harness 工程阶段（现在）</strong></td>
+<td><strong>模型该运行在什么环境里？</strong></td>
+<td>循环/状态/持久化/权限</td>
+</tr>
+</tbody>
+</table>
+<p>每阶段叠加于前一层之上——权重仍重要，上下文仍重要，但<strong>重心已外移</strong>。</p>
+<h3 id="42">4.2 测量问题（本文最不舒服的结论）</h3>
+<blockquote>
+<p>当你读到"某模型在编码基准上得了 X%"，你读的是<strong>模型×harness 的联合测量</strong>。当一个模型胜过另一个，你不知道差距里多少是模型能力、多少是 harness 工程。</p>
+</blockquote>
+<p>对构建者的问题是三个独立变量：<strong>which model, in which harness, for which task</strong>——把它们塌缩成一个决策，就是你用强模型得到平庸结果的原因。</p>
+<h3 id="43-harnesssam-altman">4.3 为什么开源 harness（Sam Altman 那句话的完整逻辑链）</h3>
+<ol>
+<li>Harness 贡献系统能力的一半（25.7pp 证据）</li>
+<li>一半的能力不可审计 = 系统不可审计——基准分数、行为、安全全部"harness 依赖"</li>
+<li>闭源 harness = 关键路径被单点供应商锁定（Claude Code 泄露的三层记忆架构证明：<strong>harness 内部结构直接影响长会话连贯性</strong>，但你不看源码就不知道）</li>
+<li>故：<strong>harness 层的开源性 = agent 系统的可控性与可审计性</strong>——与算力、支付轨道同为基础设施级决策</li>
+</ol>
+<p>产业同步证据：Anthropic 推 Claude managed agents、微软 Foundry 托管 agent（纳德拉："every agent will need its own computer"）、OpenAI 更新 agents SDK、Cursor SDK（"不是调 LLM 加工具，是暴露 Cursor 已在用的同一编码 agent 运行时"）——<strong>harness 即服务</strong>同时出现不是巧合。</p>
+<hr />
+<h2 id="08-21-harness">五、查询拓展（与 08-21 Harness 笔记的系列分工）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>08-21《什么是 Agent Harness》</th>
+<th>本文（系列第 2 篇）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>回答的问题</td>
+<td>Harness <strong>是什么</strong>（词源/隐喻/四组件）</td>
+<td>Harness <strong>为什么决定成败</strong>（测量证据/九组件/三阶段）</td>
+</tr>
+<tr>
+<td>证据类型</td>
+<td>概念解析（攀岩安全带类比）</td>
+<td>实证数字（25.7pp/3.9pp）+ Altman 承认</td>
+</tr>
+<tr>
+<td>开源视角</td>
+<td>用户主权/可个性化改造</td>
+<td>可审计性/测量问题/基础设施级决策</td>
+</tr>
+<tr>
+<td>同来源</td>
+<td>@shao__meng 转述 Earendil</td>
+<td>@shao__meng 转述 Sumanth</td>
+</tr>
+</tbody>
+</table>
+<p>两篇合成完整视角：<strong>概念层（是什么）+ 实证层（差多少）</strong>。</p>
+<p><strong>信息来源诚实声明</strong>：X Article 正文需登录无法直接抓取，本文 §一 为 meng shao 转述可确认部分（四块积木仅前两块原文确认）；§二~四 以 MindStudio 深度文（含 Endor Labs 原始数据引用）与 Altman 对谈原文交叉补全——<strong>观点归属已逐节标注，未臆测 Article 未读部分</strong>。</p>
+<hr />
+<h2 id="_3">六、归纳总结</h2>
+<h3 id="61">6.1 读榜新守则（与评测三部曲联动）</h3>
+<pre><code>看到&quot;模型 X 在基准 Y 得 Z%&quot;：
+① 问：跑在哪个 harness 里？（联合测量）
+② 问：换 harness 会差多少？（25.7pp 先例）
+③ 问：harness 开源吗？（能否审计这&quot;一半的能力&quot;）
+</code></pre>
+<h3 id="62-agent">6.2 长时运行 Agent 的最小组件清单</h3>
+<p>按九组件裁剪出长任务刚需四件：<strong>会话持久化</strong>（append-only JSON）+ <strong>上下文管理</strong>（压缩策略）+ <strong>子 Agent</strong>（spawn-restrict-collect）+ <strong>权限层</strong>（不信模型自判）。</p>
+<hr />
+<h2 id="_4">七、趋势判断</h2>
+<h3 id="1harness-haas-harness">趋势 1：Harness 即服务（HaaS）与开源 Harness 将形成双轨生态</h3>
+<blockquote>
+<p>依据：Cursor SDK/Foundry 托管 agent/Claude managed agents 同期出现（闭源便利轨）+ Sam Altman 亲自背书开源理由 + DeepSeek Harness 开源数日 23K star（开源可控轨）。类比 PC 时代：攒机爱好者与 Dell 台式机并存——<strong>预建让人人可用，开源让关键路径可审计</strong>，两轨服务不同风险偏好的构建者。</p>
+</blockquote>
+<h3 id="2harness">趋势 2：基准测量的"harness 控制变量"将成为标配披露</h3>
+<blockquote>
+<p>依据：Endor Labs 同模型双 harness 25.7pp 的证据一旦扩散（Altman 亲口确认分离不可能），"只报模型分不报 harness"的评测将失去可信度——与评测三部曲第三部"谁来审计 benchmark"汇流：<strong>审计对象从题目扩展到运行时</strong>。预期 SWE-bench 类榜单逐步要求披露 harness 配置。</p>
+</blockquote>
+<hr />
+<h2 id="_5">八、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="2026-08-21-什么是AgentHarness-从攀岩安全带到四组件解剖.md">什么是 Agent Harness——攀岩安全带与四组件解剖</a></td>
+<td>系列第 1 篇——概念层，本文实证层</td>
+</tr>
+<tr>
+<td><a href="2026-08-25-大模型评测终极指南三部曲-当尺子变成靶子与评测的评测.md">大模型评测终极指南三部曲</a></td>
+<td>测量问题直接汇流——harness 是评测的隐藏变量</td>
+</tr>
+<tr>
+<td><a href="2026-08-18-HarnessEngineering七要素全景-Agent工程的完整学科地图与逐层深挖.md">Harness Engineering 七要素全景</a></td>
+<td>学科地图——本文九组件是其工程细化</td>
+</tr>
+<tr>
+<td><a href="2026-08-16-DeepSeek-Harness迁移笔记-Hermes老手艺8组对照.md">DeepSeek Harness 迁移笔记</a></td>
+<td>开源 harness 实例——23K star 的本机视角</td>
+</tr>
+<tr>
+<td><a href="2026-08-20-Agent大约等于大模型加Harness-结构设计企业操作指导.md">Agent 大约等于大模型加 Harness</a></td>
+<td>用户领域落地——飞机设计企业操作指导</td>
+</tr>
+<tr>
+<td><a href="2026-08-07-Coding-Agent-Harness解剖学-Mastra深度架构.md">Coding Agent Harness 解剖学（Mastra）</a></td>
+<td>具体实现参照</td>
+</tr>
+<tr>
+<td><a href="2026-06-21-AI编程Agent2026年中架构演进-SWE-bench排行榜与Claude-Code泄露分析.md">AI 编程 Agent 2026（Claude Code 泄露分析）</a></td>
+<td>Claude Code 三层记忆架构——harness 内部重要性证据</td>
+</tr>
+</tbody>
+</table>
+<p><strong>本机映射</strong>：Hermes 本身就是开源 harness 的完整实践——九组件逐条对照：while 循环（gateway 主循环）✓ 上下文管理（compaction）✓ 技能系统（skills/）✓ 子 Agent（delegate_task）✓ 会话持久化（session DB）✓ 系统提示组装（profile+memory 注入）✓ 生命周期钩子（hooks）✓ 权限层（三层工具权限模型）✓ 内置技能 ✓——<strong>本机已在九组件全项实践，本文价值是给出"为什么必须这样"的测量证据</strong>。</p>
+<hr />
+<h2 id="_6">九、拓展应用推荐</h2>
+<ol>
+<li><strong>模型切换流程补 harness 维度</strong>：model-switch skill 增加"harness 影响"提示——同模型在不同上下文管理策略下表现不同，切换后重置会话观察</li>
+<li><strong>私有 mini-benchmark 必须钉死 harness 配置</strong>：与评测三部曲行动项联动——20-50 题私有评测集若不固定 harness 参数（compaction 策略/工具集/权限层），测量无意义</li>
+<li><strong>股票引擎的 harness 审视</strong>：iron_rules_engine 的"数据溯源 P0 pitfall"（时间戳双跑）本质就是 harness 控制变量——已实践，可推广到所有回测报告模板</li>
+<li><strong>Jetson 本地 Agent 的持久化检查</strong>：长时 cron 任务（盯盘/学习）崩溃恢复依赖 append-only 日志——本机 cron output 已符合，确认无缺口</li>
+</ol>
+<hr />
+<h2 id="_7">十、指南分析</h2>
+<h3 id="101">10.1 内容质量</h3>
+<ul>
+<li><strong>证据链强</strong>：Altman 原话（一手访谈）+ Endor Labs 数据（可控实验：同模型同周双 harness）+ 产业同步动向（四家公司同期推 HaaS）——三重支撑</li>
+<li><strong>framework vs harness 的区分</strong>是本主题最清晰的一次表述（组装方向相反）</li>
+<li><strong>九组件清单</strong>可直接当 harness 选型/自检 checklist</li>
+<li><strong>"不迷人但分界线"的工程品味</strong>：会话持久化这种朴素组件被正确地放在了 C 位</li>
+</ul>
+<h3 id="102">10.2 局限</h3>
+<ul>
+<li>X Article 原文未能直接读取（需登录），四块积木仅前两块经转述确认——本文以多源交叉补全并逐节标注归属</li>
+<li>Endor Labs 数据集规模/任务类型未披露细节（25.7pp 是否在特定任务类上放大未知）</li>
+<li>MindStudio 文有产品植入（Remy），数据引用需回到 Endor Labs 原始报告核对</li>
+<li>"开源=可审计"逻辑未讨论开源 harness 的维护成本劣势（自担升级/安全补丁）</li>
+</ul>
+<h3 id="103">10.3 与评测三部曲的关系</h3>
+<p>两文同日入笔记且互相印证：三部曲说"单一分数会骗人（饱和/污染/hack）"，本文补第四个失效源——<strong>harness 混杂变量</strong>。四者合起来才是完整的"读分防骗清单"。</p>
+<hr />
+<h2 id="_8">金句摘录</h2>
+<blockquote>
+<p>"当 Agent 从短演示走向长任务，决定成败的不再是模型本身，是包裹模型的运行时。"</p>
+<p>"I no longer think of the harness and the model as these entirely separable things." — Sam Altman</p>
+<p>"Same model, same week, two harnesses, two different functional results." — Endor Labs</p>
+<p>"框架给架构师，harness 给 agent。"</p>
+<p>"The harness is not a wrapper around the model. It's the other half of the system."</p>
+<p>"问题不是'我该用哪个模型'，而是'哪个模型、在哪个 harness 里、做什么任务'——三个独立变量。"</p>
+</blockquote>
+<hr />
+<h2 id="_9">行动启示</h2>
+<ul>
+<li>Harness 系列第 2 篇落成（概念+实证双篇），主页可聚合</li>
+<li><strong>读榜守则 v2</strong>：三问扩展为四问（+harness 披露）——补进评测三部曲笔记的交叉引用</li>
+<li>本机九组件自检通过——Hermes 作为开源 harness 的实践完整性得到外部框架印证</li>
+<li>私有 mini-benchmark 设计时钉死 harness 配置（与三部曲行动项合并）</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- 原文转述：https://x.com/shao__meng/status/2092245762411499894<br />
+- Article：https://x.com/i/article/2092185179733508096（需登录）<br />
+- <a href="2026-08-21-什么是AgentHarness-从攀岩安全带到四组件解剖.md">什么是 Agent Harness（系列第 1 篇）</a><br />
+- <a href="2026-08-25-大模型评测终极指南三部曲-当尺子变成靶子与评测的评测.md">大模型评测终极指南三部曲</a>（测量问题汇流）</p>
+</blockquote>
+</body>
+</html>
