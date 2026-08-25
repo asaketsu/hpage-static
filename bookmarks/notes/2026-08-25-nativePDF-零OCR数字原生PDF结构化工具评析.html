@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nativePDF-零OCR数字原生PDF结构化工具评析</title>
+
+<meta property="og:title" content="nativePDF-零OCR数字原生PDF结构化工具评析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/tech.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="nativepdf-structurer-ocr-pdf-rag">nativePDF-structurer — 零 OCR 数字原生 PDF 结构化工具：技术文档 RAG 的确定性前处理层</h1>
+<blockquote>
+<p><strong>来源</strong>：crunz-ai/nativePDF-structurer（GitHub，Apache 2.0，v0.1.0 PyPI 已发布）<br />
+<strong>项目地址</strong>：https://github.com/crunz-ai/nativePDF-structurer<br />
+<strong>记录日期</strong>：2026-08-25<br />
+<strong>系列</strong>：PDF 解析工具链（已有 MinerU 05-16 / OpenDataLoader 08-07 / marker-pdf 等）<br />
+<strong>本地项目</strong>：~/uclaw/project/nativepdf-structurer/</p>
+
+<p class="meta-date">生成日期 2026-08-25</p></blockquote>
+<p><strong>标签</strong>：#PDF解析 #零OCR #数字原生PDF #文档结构化 #GapTree #PyMuPDF #技术文档</p>
+<hr />
+<h3 id="7">7 模块索引</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~三章</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第四章（工具链定位/领域适配）</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第五章（架构三特点+三不保证）</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第六章（2 条预测）</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第七章（PDF 工具链互引）</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第八章（航空领域落地）</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第九章（质量评估）</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>nativePDF-structurer 是 PDF 解析工具链的一个"确定性锚点"：零 OCR、零模型依赖，纯 PyMuPDF 图元分析重建阅读顺序/章节层级/表格/视觉区域，面向 50-500 页厂商技术手册场景。</strong> 它不追求"最智能"（不调模型），而是追求"可审计"（provenance 追踪每个输出块的来源页面/坐标/置信度），输出 Markdown + CSV + PNG + IR + provenance。对飞机设计企业的大量技术手册/维修手册/安装说明 PDF 来说，它是 MinerU 等高成本管线之前的<strong>确定性基线</strong>——先跑 nativePDF 看够不够，不够再加模型。</p>
+</blockquote>
+<hr />
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 项目定位</h3>
+<p><strong>目标场景</strong>：厂商发布的技术文档——设备操作手册、维修手册、安装说明、产品选型手册、电气手册、技术目录。典型特征：数十至数百页，反复出现页眉页尾/参数表/步骤编号/设备插图/矢量标注/图文混排。</p>
+<p><strong>明确不优化的场景</strong>：<br />
+- 复杂公式还原为 LaTeX（默认 PNG 保留，LaTeX 通道只对简单公式保守尝试）<br />
+- 学术论文的引用关系/双栏模板/语义章节分类<br />
+- 少于 20 页的论文（推荐 MinerU）</p>
+<h3 id="12">1.2 技术架构</h3>
+<p><strong>依赖唯一性</strong>：PyMuPDF + NumPy + OpenCV headless + Pillow——<strong>零 OCR、零 GPU、零外部服务（Poppler/Ghostscript）</strong>。</p>
+<p><strong>核心组件</strong>：PageRunContext（页面阶段契约）+ Claim 所有权模型 + 模块边界扩展流程（见 docs/architecture.md）</p>
+<p><strong>核心技术</strong>：GapTree Sort Algorithm（基于 hiroi-sora 开源实现扩展）——按文字/表格/图片/矢量区域的统一空间排序重建阅读顺序。</p>
+<h3 id="13">1.3 输出结构</h3>
+<pre><code>output/
+├── document_with_reflowed_text_and_tables.md
+├── source_images/            # 原始页面图片
+├── visual_regions/           # 视觉区域（设备图/矢量标注）
+├── tables/                   # 表格 PNG + CSV
+├── formula_images/           # 公式 PNG
+└── document_ir.json          # 调试模式的中间表示
+</code></pre>
+<p><strong>关键输出</strong>：provenance（来源定位）——每个输出块记录来源页面/坐标/置信度，RAG 可审计。</p>
+<h3 id="14">1.4 视觉区域处理（核心能力）</h3>
+<p>复杂设备图同时包含位图+矢量轮廓+引线+警告符号+参数框+图内文字——项目将彼此连接的对象保留为一个视觉区域，避免拆成顺序错乱的多张小图。</p>
+<p><strong>编号图+说明表保持关联</strong>：编号引线解释设备接口 → 下页说明表逐项解释编号含义。项目保留编号图的整体几何关系，说明表紧随其后输出。</p>
+<p><strong>表格与尺寸图分离</strong>：规则表格→表格通道（PNG + CSV），相邻尺寸矢量图→视觉区域通道，保留原始版面关系。</p>
+<h3 id="15-vlm">1.5 可选 VLM 后处理</h3>
+<pre><code>原生 PDF → nativePDF（结构恢复/切分/排序/来源定位）
+  → Markdown + 图片/表格 + IR + provenance
+  ├─ 直接作为最终文档或 RAG 输入（不需要图片释义）
+  └─ 可选 VLM（图片语义描述/图表理解/多模态索引）
+    → 语义增强后的 RAG 入库与检索
+</code></pre>
+<p><strong>设计哲学</strong>：先确定性分析完成切分和来源定位，再只对确有需要的视觉区域调用模型——避免"全量 OCR"的浪费。</p>
+<hr />
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-pdf">2.1 在 PDF 工具链中的定位</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>方式</th>
+<th>模型依赖</th>
+<th>适合场景</th>
+<th>成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>nativePDF</strong></td>
+<td>纯图元分析</td>
+<td>❌ 零</td>
+<td>数字原生技术手册</td>
+<td>低（CPU 即可）</td>
+</tr>
+<tr>
+<td><strong>MinerU</strong></td>
+<td>视觉+布局模型</td>
+<td>✅ 需 GPU</td>
+<td>论文/扫描件/复杂排版</td>
+<td>高</td>
+</tr>
+<tr>
+<td><strong>OpenDataLoader</strong></td>
+<td>模型管线</td>
+<td>✅ 需 GPU</td>
+<td>通用→AI 就绪</td>
+<td>中</td>
+</tr>
+<tr>
+<td><strong>marker-pdf</strong></td>
+<td>视觉模型</td>
+<td>✅ 需 GPU</td>
+<td>通用→Markdown</td>
+<td>中</td>
+</tr>
+</tbody>
+</table>
+<p><strong>nativePDF 填补的空白</strong>：在"全量上模型"和"不处理"之间提供一个可靠的确定性基线。对于飞机设计企业的大量技术手册 PDF（文字层完整），<strong>可能 80% 的场景不需要跑模型</strong>。</p>
+<h3 id="22">2.2 与用户领域的高度匹配</h3>
+<p>飞机设计企业的技术手册/维修手册/操作手册/产品选型目录——正是 nativePDF 的核心目标场景：50-500 页，反复出现编号图+说明表/参数表/设备插图/矢量标注。<strong>不是学术论文，不是双栏模板，正是技术文档 PDF</strong>。</p>
+<h3 id="23">2.3 负责任的限制声明（项目做得比多数开源项目好）</h3>
+<p>项目 README 用大量篇幅诚实标注了不做什么：不保证公式恢复/不处理扫描件/不处理论文/不保证复杂排版完美。这比"号称什么都能做但实际不行"的工具更值得信任。</p>
+<hr />
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 架构三特点</h3>
+<ol>
+<li><strong>确定性</strong>：零模型、零随机性——同一 PDF 两次运行结果完全一致，可审计</li>
+<li><strong>可审计</strong>：provenance 追踪每个输出块的来源页面/坐标/置信度</li>
+<li><strong>可组合</strong>：输出可独立使用（RAG 输入），也可作为 VLM 的前处理层</li>
+</ol>
+<h3 id="32">3.2 三不保证</h3>
+<ol>
+<li>不保证公式还原（复杂公式回退 PNG）</li>
+<li>不保证扫描件（必需文字层）</li>
+<li>不保证学术论文（双栏/引用/语义分类无专项建模）</li>
+</ol>
+<hr />
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1pdf-rag">趋势 1：PDF 解析的"确定性基线"将成为 RAG 管线的标准组件</h3>
+<blockquote>
+<p>依据：nativePDF 的零模型确定性 + provenanc 可审计 + 无 GPU 部署——当 RAG 质量可追溯成为合规要求（如飞机设计企业的适航文档），模型管线的"黑箱"不可接受。<strong>预期"先确定性分析，不够再加模型"成为标准管线架构</strong>，与 nativePDF 的 VLM 可选后处理设计一致。</p>
+</blockquote>
+<h3 id="2-pdf">趋势 2：技术文档 PDF 解析将独立于学术论文解析形成专门工具链</h3>
+<blockquote>
+<p>依据：nativePDF 明确说不优化论文，MinerU 偏论文但处理技术手册也有资源浪费。<strong>两类文档的版面结构差异大</strong>（技术手册的编号图+说明表/参数表/矢量标注 vs 论文的双栏/引用/公式），指望同一工具覆盖两端的性价比越来越低。</p>
+</blockquote>
+<hr />
+<h2 id="_6">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="2026-05-16-MinerU-开源文档解析基座.md">MinerU 开源文档解析基座</a></td>
+<td>互补——nativePDF 确定性基线 vs MinerU 模型管线</td>
+</tr>
+<tr>
+<td><a href="2026-08-07-OpenDataLoader-PDF-AI就绪PDF解析器.md">OpenDataLoader PDF 解析器</a></td>
+<td>同属 PDF→AI 就绪管线，定位不同</td>
+</tr>
+<tr>
+<td><a href="2026-08-18-知识库从入门到精通-从一份文件到企业RAG的五层进化与FDE交付清单.md">企业知识库五层进化</a></td>
+<td>输入层——nativePDF 可做第 1 层（文档解析）的确定性组件</td>
+</tr>
+<tr>
+<td><a href="2026-08-20-飞机设计企业AI知识库建设白皮书.md">飞机设计企业 AI 知识库白皮书</a></td>
+<td>领域落地——技术手册 PDF 解析的需求场景</td>
+</tr>
+<tr>
+<td><a href="2026-08-06-RAG技术演进路径-五代全景.md">RAG 技术演进路径五代全景</a></td>
+<td>管线前置——数据预处理层的确定性选择</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">六、拓展应用推荐</h2>
+<ol>
+<li><strong>航空技术手册 RAG 预处理</strong>：飞机维修手册/操作手册（50-500 页，文字层完整）→ 先用 nativePDF 做确定性结构化，不够再补 MinerU</li>
+<li><strong>与 MinerU 交叉验证</strong>：同一 PDF 两管线跑，合格率 &gt;90% 可只用 nativePDF（省 GPU 成本）</li>
+<li><strong>provenance 审计</strong>：适航文档场景要求"每个输出块可追溯至源页面/坐标"——nativePDF 的 provenance 输出是合规加分项</li>
+<li><strong>本地项目</strong>：已创建 <code>~/uclaw/project/nativepdf-structurer/</code>，README 含安装/运行/场景说明</li>
+</ol>
+<hr />
+<h2 id="_8">七、指南分析</h2>
+<h3 id="71">7.1 项目质量</h3>
+<ul>
+<li><strong>文档质量</strong>：★★★★★——README 中/英双语，架构文档（architecture.md）详细，使用场景/限制/致谢完整</li>
+<li><strong>定位清晰</strong>：不贪大，诚实标出"不做"什么（公式/论文/扫描件）——比"万能工具"可信</li>
+<li><strong>工程规范</strong>：pyproject.toml / environment.yml / CI (GitHub Actions) / tests / LICENSE / THIRD_PARTY_NOTICES</li>
+<li><strong>视觉证明</strong>：README 带真实 PDF 输出截图（维修手册/产品手册/操作手册三种场景）</li>
+</ul>
+<h3 id="72">7.2 局限</h3>
+<ul>
+<li>v0.1.0，成熟度待验证（大规模回归结果未公开）</li>
+<li>GapTree 并非原创，但作者承认并致谢（MIT 保留）</li>
+<li>非扫描件限制意味着对老旧 PDF 或扫描存档不可用</li>
+<li>当前版本只有前 60 页回归示例，完整 500 页手册的稳定性未知</li>
+</ul>
+<hr />
+<h2 id="_9">金句摘录</h2>
+<blockquote>
+<p>"项目关注'长文档能否稳定进入 RAG 流程'，不局限于追求单页 PDF 到 Markdown 的表面转换。"</p>
+<p>"先由确定性的 PDF 图元分析完成切分、排序和来源定位，再只对确有需要的视觉区域调用模型。"</p>
+<p>"项目不判断图片表达的语义，但保留图内原生文字和空间关系——让下游 VLM 只做自己该做的事。"</p>
+</blockquote>
+<hr />
+<h2 id="_10">行动启示</h2>
+<ul>
+<li><strong>本机 PDF 工具链补全</strong>：MinerU（模型管线）+ nativePDF（确定性基线）+ marker-pdf（通用）→ 按文档类型选路</li>
+<li><strong>航空手册先用 nativePDF 试</strong>：找一份 50 页以上的设备手册 PDF，装 nativePDF 跑一次输出，评估质量是否&gt;90% 可接受</li>
+<li><strong>provenance 审计进 RAG 合规需求</strong>：飞机设计企业适航文档场景，provenance 是差异化需求</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- 项目：https://github.com/crunz-ai/nativePDF-structurer<br />
+- 架构：https://github.com/crunz-ai/nativePDF-structurer/blob/main/docs/architecture.md<br />
+- <a href="2026-05-16-MinerU-开源文档解析基座.md">MinerU 开源文档解析基座</a><br />
+- <a href="2026-08-07-OpenDataLoader-PDF-AI就绪PDF解析器.md">OpenDataLoader PDF 解析器</a><br />
+- <a href="2026-08-20-飞机设计企业AI知识库建设白皮书.md">飞机设计企业 AI 知识库白皮书</a></p>
+</blockquote>
+</body>
+</html>
