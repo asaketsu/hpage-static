@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAG查询时动态超边检索-SQL替代向量作多跳主干</title>
+
+<meta property="og:title" content="SAG查询时动态超边检索-SQL替代向量作多跳主干" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/tech.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="sag-sql-rag">SAG 查询时动态超边检索 — SQL 替代向量作为多跳推理主干：RAG 演进的第五代候选</h1>
+<blockquote>
+<p><strong>来源</strong>：袋鼠帝《再见RAG！AI知识库还得是SAG，又快又准～》（微信公众号）<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/lSjeOxFs7NAJ0NIOsqDW8Q<br />
+<strong>项目</strong>：<a href="https://github.com/Zleap-AI/SAG">Zleap-AI/SAG</a>（广州智跃深空，1.3K Star 新开源）<br />
+<strong>论文</strong>：SQL-Retrieval Augmented Generation with Query-Time Dynamic Hyperedges<br />
+<strong>记录日期</strong>：2026-08-25<br />
+<strong>系列</strong>：RAG 演进系列第 5 篇（五代全景 08-06 → GraphRAG 多跳 08-19 → 知识库五层 08-18 → 企业白皮书 08-20 → 本文 SAG 新范式）</p>
+
+<p class="meta-date">生成日期 2026-08-25</p></blockquote>
+<p><strong>标签</strong>：#SAG #RAG #多跳推理 #SQL检索 #GraphRAG #知识库 #Agent数据底座</p>
+<hr />
+<h3 id="7">7 模块索引（本报告内容映射）</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+<td>7 个标签</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+<td>公众号 + GitHub + 论文</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~四章</td>
+<td>动机/原理/对比/评测</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第五章</td>
+<td>与本机 RAG 系列的关系 + 多跳三例对照</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第六章</td>
+<td>三代范式对照表 + 落地架构</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第七章</td>
+<td>2 条预测</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第八章</td>
+<td>与 RAG 系列 4 篇 + Agent 记忆体系互引</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第九章</td>
+<td>本机落地三场景</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第十章</td>
+<td>文章质量评估</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>SAG 把知识图谱的构建时机从「离线预建」挪到「查询时动态组装」：入库时用 AI 提炼「事项卡片+实体」存 SQL，查询时用 SQL JOIN 动态串联多跳线索——在 MuSiQue（地狱难度 4 跳）上 Recall@5 达 80.04%（超 HippoRAG 2 约 15 个百分点），5 亿条数据生产环境秒级延迟，且检索链条全程 SQL 可追溯，把 RAG 调优从「炼丹」变成「找 Bug」。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 真实需求场景（作者客户案例）</h3>
+<p>客户要本地「小秘书」：会议纪要/立项材料/批复文件 Agent 对话查询 + 项目金额/开始时间等确定信息高准确率 + 本地服务器/大模型 + ≤1500 文档。</p>
+<p><strong>核心痛点</strong>：知识库最难的从来不是「搭建」，是<strong>调优</strong>——传统 RAG 调优是黑盒，「按下葫芦浮起瓢」（调低过滤 score→范围增大→噪音增多）。某公司 6 人团队搞半年才调到满意的准确率。</p>
+<h3 id="12-rag">1.2 多跳推理：传统 RAG 的物理上限</h3>
+<p>三份独立文档的经典例子：</p>
+<pre><code>文档1：&quot;2023年，A公司全资收购了B公司。&quot;
+文档2：&quot;张三被任命为A公司的CTO。&quot;
+文档3：&quot;2024年，张三离职，加入了盘古大模型项目。&quot;
+
+用户问：&quot;收购了B公司的企业，其CTO后来加入了哪个项目？&quot;
+</code></pre>
+<p><strong>传统向量/混合检索的失败机理</strong>：文档 3 里根本没出现「收购」「B公司」「CTO」——字面和语义都不沾边，<strong>线索在文档 2→3 之间断了</strong>。答案：「抱歉，资料中未找到相关内容」。</p>
+<p>会议纪要场景这类多跳检索需求非常多。</p>
+<h3 id="13-graphrag">1.3 GraphRAG 为何被排除（太重）</h3>
+<ul>
+<li>入库前大量调用 LLM 提取三元组（谁-做了什么-对谁），离线构建全语料库知识图谱</li>
+<li><strong>索引成本</strong>：中等规模数据集烧好几万块钱</li>
+<li><strong>维护成本</strong>：新文件进来可能要重算关系</li>
+<li>对 1500 文档的客户项目是「杀鸡用牛刀」</li>
+</ul>
+<h3 id="14-sag">1.4 SAG 核心原理（查询时动态超边）</h3>
+<p><strong>入库侧</strong>：AI 把每个文档片段提炼成「<strong>事项卡片</strong>」（记录发生了什么事）+ 提取「<strong>实体</strong>」（公司/人名/项目名），存进 SQL 关系库和向量库。一件事一张卡，<strong>不存在切块破碎问题</strong>（「张三负责A项目」和「500万预算」不会被切开）。</p>
+<p><strong>查询侧</strong>（两路并行 + 挖掘新线索）：</p>
+<pre><code>① 向量语义搜索（与传统 RAG 相同）
+② 从问题提取实体「B公司」「CTO」→ SQL 查哪些事项涉及 → 命中文档1、2
+③ 关键步：扫描已命中文档，发现新实体「张三」
+   （用户问题里根本没出现过，但它是文档间的连接点）
+④ 自动触发第二轮 SQL：「哪些事项涉及张三」→ 命中文档3
+⑤ 三份文档 + 向量结果 → 大模型拼答案
+</code></pre>
+<p><strong>普通 RAG 做完向量搜索就停了</strong>——不会从结果里挖新线索继续追。SAG 多了实体关联这条链，<strong>多跳推理从「靠运气」变成「确定性」</strong>。</p>
+<h3 id="15-fastgpt">1.5 与 FastGPT 混合检索的区别</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>FastGPT（全文+向量+重排）</th>
+<th>SAG</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本质</td>
+<td>扁平的相似度匹配</td>
+<td>SQL 结构兜底 + 向量</td>
+</tr>
+<tr>
+<td>单文档问答</td>
+<td>✅ 完全够用，速度快</td>
+<td>一样好</td>
+</tr>
+<tr>
+<td>跨文档逻辑串联</td>
+<td>❌ 物理上限</td>
+<td>✅ SQL JOIN 动态串联</td>
+</tr>
+<tr>
+<td>调优方式</td>
+<td>炼丹（改切块/向量模型/重排阈值，黑盒）</td>
+<td>看日志找 Bug（SQL 调用记录全可追溯）</td>
+</tr>
+<tr>
+<td>切块敏感性</td>
+<td>高（切坏就断线索）</td>
+<td>无（事项卡片天然完整）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="16">1.6 消融实验：不挑模型（对企业黑话关键）</h3>
+<p>故意把底层向量模型换成普通开源弱模型：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>弱向量模型下表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>其他高级 RAG</td>
+<td>准确率暴跌近 10%</td>
+</tr>
+<tr>
+<td><strong>SAG</strong></td>
+<td><strong>几乎没变化（稳定 80% 左右）</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>原因</strong>：SAG 找线索的主干是<strong>确定的 SQL 实体关联</strong>，不是模糊的向量距离。企业内部黑话向量模型不认识，但只要 SQL 里存了实体就能查出来——<strong>无需专门微调向量模型</strong>。</p>
+<h3 id="17">1.7 评测数据</h3>
+<table>
+<thead>
+<tr>
+<th>数据集</th>
+<th>SAG</th>
+<th>对照</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MuSiQue（最难，4 跳强制不跳步）</td>
+<td><strong>Recall@5 = 80.04%</strong></td>
+<td>HippoRAG 2 = 65.13%（高 ~15pp）</td>
+</tr>
+<tr>
+<td>HotpotQA / 2WikiMultiHop</td>
+<td>SOTA</td>
+<td>—</td>
+</tr>
+<tr>
+<td>生产环境</td>
+<td><strong>5 亿条数据，在线检索秒级</strong></td>
+<td>一般 RAG 百万级就 OOM</td>
+</tr>
+</tbody>
+</table>
+<p>HippoRAG 2（海马体索引理论 + Personalized PageRank）也需离线预建知识图谱，依赖静态全局关系；SAG 把图构建后推到查询时，避开全图重建维护开销。</p>
+<h3 id="18">1.8 落地方案（工程判断）</h3>
+<p>SAG 目前是检索架构而非完整产品——从零做产品要自建前端/权限/解析引擎/运维，烂尾风险高。</p>
+<p><strong>推荐组合</strong>：<strong>FastGPT（工程成熟度：界面/权限/微信飞书接入）+ SAG 作为知识库实现（MCP 工具丝滑接入）</strong>。也可通过 MCP 接入 Codex/Claude Code 等本地 Agent。</p>
+<hr />
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-rag">2.1 在本机 RAG 演进系列中的位置</h3>
+<p>本机 08-06 RAG 五代全景的谱系：纯向量 → 混合检索 → GraphRAG → Agentic RAG → ?。<strong>SAG 填入第五代候选</strong>：查询时动态结构层（SQL 超边），与 Agentic RAG 的「检索即 Agent 行为」正交——前者给结构，后者给决策。</p>
+<h3 id="22">2.2 「查询时动态超边」的数学直觉</h3>
+<p>超边（hyperedge）= 连接多个节点的边。GraphRAG 的静态图把超边固化在离线图谱里；SAG 在查询时用 SQL JOIN 实时 materialize 局部超边——<strong>只算问题相关的子图，不算全图</strong>。这是典型的 lazy evaluation 换实时性：空间（免全图存储）与维护（免重建）双省。</p>
+<h3 id="23">2.3 三代范式失败点对照（同一条查询）</h3>
+<pre><code>查询：&quot;收购了B公司的企业，其CTO后来加入了哪个项目？&quot;
+
+向量 RAG：命中文档1、2（语义相关）→ 文档3 盲区 → 拒答
+GraphRAG：离线图里有 A公司-收购-&gt;B公司 / A公司-CTO-&gt;张三 / 张三-加入-&gt;盘古
+          → 顺图两跳可达 → 答对（但建图烧钱+新文档要重算）
+SAG：SQL 实体关联 + 二轮挖掘「张三」→ 命中全部 → 答对（无离线建图）
+</code></pre>
+<h3 id="24">2.4 可解释性链条的工程价值</h3>
+<p>传统 RAG 调优难在不知道断在哪一环；SAG 的失败可定位：<strong>实体提取漏了？同义词扩展没命中？SQL 路径断了？</strong>——日志三问即定位。这与本机 error-case-library 的「每次错误定位根因」方法论完全一致。</p>
+<hr />
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 三代范式总对照</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>向量/混合 RAG</th>
+<th>GraphRAG</th>
+<th>SAG</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>索引时机</td>
+<td>入库向量化</td>
+<td><strong>离线建全图（贵）</strong></td>
+<td>入库提卡片+实体</td>
+</tr>
+<tr>
+<td>关联时机</td>
+<td>无</td>
+<td>查询时走静态图</td>
+<td><strong>查询时 SQL 动态组装</strong></td>
+</tr>
+<tr>
+<td>多跳推理</td>
+<td>❌</td>
+<td>✅</td>
+<td>✅（MuSiQue +15pp）</td>
+</tr>
+<tr>
+<td>新增文档</td>
+<td>增量向量化</td>
+<td><strong>可能重算关系</strong></td>
+<td>增量插卡</td>
+</tr>
+<tr>
+<td>调优</td>
+<td>炼丹黑盒</td>
+<td>图质量难评</td>
+<td><strong>SQL 日志可追溯</strong></td>
+</tr>
+<tr>
+<td>弱模型鲁棒</td>
+<td>差</td>
+<td>中</td>
+<td><strong>好（主干是 SQL）</strong></td>
+</tr>
+<tr>
+<td>规模</td>
+<td>百万级 OOM</td>
+<td>图维护难</td>
+<td><strong>5 亿条秒级</strong></td>
+</tr>
+<tr>
+<td>企业黑话</td>
+<td>需微调</td>
+<td>实体可覆盖</td>
+<td><strong>实体可覆盖免微调</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="32">3.2 推荐落地架构</h3>
+<pre><code>FastGPT（成熟产品壳：对话 UI / 权限 / 微信飞书）
+   └─ SAG as MCP 工具（检索内核：事项卡片 + 实体 SQL + 向量并行）
+        └─ SQL 库 + 向量库（本地部署，数据不出内网）
+</code></pre>
+<hr />
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1sag-agent">趋势 1：SAG 将成为 Agent 的数据底座</h3>
+<blockquote>
+<p>依据：Agent 工作本质就是多跳——先查 A，用 A 的结论决定查 B，每步输出是下步输入。传统 RAG 给「大概相关的几段」，SAG 给<strong>确定的结构化事项与实体</strong>，拿到就能直接推理，幻觉概率更低；且精确查询能放大本地小模型优势（弱模型+强结构 &gt; 强模型+弱结构）。文章原判断，与本机 Agent 记忆系列（结构化 vs 向量之争）互相印证。</p>
+</blockquote>
+<h3 id="2">趋势 2：检索架构的「返璞归真」——被验证的老工具新组合</h3>
+<blockquote>
+<p>依据：RAG 演化每步都在加复杂度（向量→混合→图），SAG 反而拉回几十年验证过的 SQL（稳定/可解释/可维护/团队熟）。<strong>创新不一定是发明新东西，有时是把已验证的工具重新组合用在对的地方</strong>。与 08-23 Agent 去MCP 化重新拥抱 CLI（Smartpig）同一思潮——工程现实主义回音的检索版。</p>
+</blockquote>
+<hr />
+<h2 id="rag">五、关联分析（RAG 系列 + 记忆体系互引）</h2>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="2026-08-06-RAG技术演进路径-五代全景.md">RAG 技术演进路径五代全景</a></td>
+<td>谱系基座——SAG 填入第五代候选</td>
+</tr>
+<tr>
+<td><a href="2026-08-19-向量检索不够用GraphRAG才是多跳推理的答案.md">向量检索不够用 GraphRAG 才是多跳推理的答案</a></td>
+<td>直接对话——本文给出 GraphRAG 的「轻量替代」</td>
+</tr>
+<tr>
+<td><a href="2026-08-18-知识库从入门到精通-从一份文件到企业RAG的五层进化与FDE交付清单.md">知识库从入门到精通五层进化与 FDE 交付清单</a></td>
+<td>落地视角——SAG 是第五层之后的新选项</td>
+</tr>
+<tr>
+<td><a href="2026-08-20-飞机设计企业AI知识库建设白皮书.md">飞机设计企业 AI 知识库建设白皮书</a></td>
+<td>领域应用——会议纪要/立项材料/批复文件与本文客户场景同构</td>
+</tr>
+<tr>
+<td><a href="2026-08-19-图谱做Agent记忆三个工程坑.md">图谱做 Agent 记忆三个工程坑</a></td>
+<td>反面印证——图谱离线维护成本高的三坑正是 SAG 规避的</td>
+</tr>
+<tr>
+<td><a href="2026-08-23-Agent去MCP化重新拥抱CLI-Smartpig工程现实主义回音.md">Agent 去MCP 化重新拥抱 CLI</a></td>
+<td>同思潮——SQL/CLI 老工具的工程现实主义回归</td>
+</tr>
+<tr>
+<td><a href="2026-08-20-OAG本体增强生成飞机设计企业4个完整落地案例.md">OAG 本体增强生成</a></td>
+<td>谱系相邻——OAG 离线本体 vs SAG 查询时动态结构</td>
+</tr>
+</tbody>
+</table>
+<p><strong>记忆体系映射</strong>：SAG 的「事项卡片+实体」与本机 hybrid-search（semantic+keyword+entity 三路）的 entity 路由同构；「查询时动态组装」与 memorygraph 的按需关系构建同构。</p>
+<hr />
+<h2 id="_6">六、拓展应用推荐</h2>
+<h3 id="61">6.1 本机落地候选</h3>
+<ol>
+<li><strong>企业知识库场景直接对标</strong>：用户领域的会议纪要/立项材料/批复文件查询（本文客户场景与飞机设计企业完全同构）——SAG MCP + 现有网关是低试错成本路径</li>
+<li><strong>本机知识检索层升级</strong>：bookmarks/notes 1800+ 篇的多跳查询（「引用了 X 论文且批评了 Y 方法的笔记」）——实体 SQL 层可复用 data.json 已有元数据</li>
+<li><strong>Agent 数据底座</strong>：SAG as MCP 接入 Hermes——给 Agent 确定性结构化检索，替代纯向量模糊召回</li>
+</ol>
+<h3 id="62">6.2 验证优先（铁律）</h3>
+<p>按 quant-evidence-governance 精神：<strong>先本地 docker-compose 部署 + 自造多跳测试集验证命中率，再谈接入</strong>——不盲信 80.04% 的 paper 数字（数据集分布≠本机语料分布）。</p>
+<hr />
+<h2 id="_7">七、指南分析</h2>
+<h3 id="71">7.1 文章质量</h3>
+<ul>
+<li><strong>场景真实</strong>：从客户需求出发（不是论文科普），痛点-方案-落地全链</li>
+<li><strong>对照诚实</strong>：不贬低 FastGPT（「工业标准，单文档够用」），明确 SAG 是检索内核非产品</li>
+<li><strong>数字具体</strong>：MuSiQue 80.04% vs HippoRAG 2 65.13%；5 亿条秒级；6 人团队半年调优的对照成本</li>
+<li><strong>类比出色</strong>：图书馆管理员/预先画大图/事项卡片三个类比把超边讲透</li>
+<li><strong>消融实验引用</strong>：弱向量模型鲁棒性——最有说服力的企业场景论据</li>
+</ul>
+<h3 id="72">7.2 局限（需独立验证）</h3>
+<ul>
+<li><strong>1.3K Star 前几天刚开源</strong>：生产成熟度未知，「5 亿条部署」是官方口径无第三方审计</li>
+<li><strong>入库成本未量化</strong>：AI 提炼事项卡片的 token 成本与 GraphRAG 建图成本谁高，文中只说后者贵几万，前者没给数</li>
+<li><strong>多轮 SQL 查询延迟</strong>：4 跳 = 4 轮 SQL+实体挖掘，「秒级」在大并发下的表现未给数据</li>
+<li><strong>实体提取质量依赖</strong>：卡片质量 = LLM 提取质量，黑话/缩写的提取错误率未讨论</li>
+<li>标题党程度：中等——「再见RAG」是营销话术（SAG 本质仍是 R+A+G，只是 Retrieval 换了实现）</li>
+</ul>
+<hr />
+<h2 id="_8">八、金句摘录</h2>
+<blockquote>
+<p>"知识库最难的从来不是「搭建」，是调优。"</p>
+<p>"普通 RAG 做完向量搜索就停了，不会从里面挖出新线索继续追——文档3对它来说可能是永远的盲区。"</p>
+<p>"SAG 让多跳推理变成一件确定的事，而不是靠运气。"</p>
+<p>"传统 RAG 调优像炼丹；SAG 的调优像程序员熟悉的找 Bug 和修 Bug。"</p>
+<p>"创新不一定是发明全新的东西，有时候是把已经被验证过的工具，重新组合用在对的地方。"</p>
+<p>"SAG 将成为 Agent 的数据底座。"</p>
+</blockquote>
+<hr />
+<h2 id="_9">九、行动启示</h2>
+<ul>
+<li><strong>RAG 系列第 5 篇补齐谱系</strong>：五代全景图可更新（SAG = 查询时动态结构层）</li>
+<li><strong>docker-compose 本地验证</strong>列入候选：自造 3-5 条多跳测试集，验证命中率后再决定是否 MCP 接入</li>
+<li><strong>企业知识库方案库更新</strong>：飞机设计企业的立项材料/批复文件场景，SAG+FastGPT 组合可作为白皮书的增量章节</li>
+<li><strong>「查询时 vs 离线」设计模式</strong>进 experience-bank：图谱三坑笔记 + SAG 规避路径，构成完整决策对</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- 原文：https://mp.weixin.qq.com/s/lSjeOxFs7NAJ0NIOsqDW8Q<br />
+- 项目：https://github.com/Zleap-AI/SAG<br />
+- <a href="2026-08-06-RAG技术演进路径-五代全景.md">RAG 技术演进五代全景</a>（谱系基座）<br />
+- <a href="2026-08-19-向量检索不够用GraphRAG才是多跳推理的答案.md">GraphRAG 多跳推理</a>（直接前驱）<br />
+- <a href="2026-08-19-图谱做Agent记忆三个工程坑.md">图谱做 Agent 记忆三个工程坑</a>（反面印证）</p>
+</blockquote>
+</body>
+</html>
