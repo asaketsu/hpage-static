@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nexus-MCP工具路由加速与KV拼接边界</title>
+
+<meta property="og:title" content="Nexus-MCP工具路由加速与KV拼接边界" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="nexusmcp-kv-cache">Nexus：MCP 工具路由加速与 KV-Cache 深度拼接的物理边界</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv cs.AI（2026-08-25 新列表收录）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2608.20397<br />
+<strong>作者</strong>：Mustafa Arslan（独立作者）<br />
+<strong>提交日期</strong>：2026-07-01<br />
+<strong>记录日期</strong>：2026-08-25</p>
+
+<p class="meta-date">生成日期 2026-08-25</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #LLMAgent #KVCache #MCP #工具路由 #边缘推理</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-mcp-schema-prefill">1.1 核心问题：MCP Schema 的 Prefill 墙</h3>
+<ul>
+<li>MCP（Model Context Protocol）Agent 每轮对话都要把全部工具的 JSON schema 重新编码一遍，self-attention 对序列长度是 O(N²)，工具注册表涨到几百个时，prefill 成本主导 TTFT（time-to-first-token）</li>
+<li>序列长度 N = H + ΣS_k，H 是对话历史，S_k 是第 k 个工具 schema 的 token 长度</li>
+<li>直觉优化：把每个 schema 一次性编译成 KV block，推理时直接移植进活跃上下文——但这条路被 RoPE 的位置依赖性死死卡住</li>
+<li>论文核心问题重述：<strong>重定位的 schema KV block 到底能信多深？修复它要付出什么代价？</strong></li>
+</ul>
+<h3 id="12">1.2 负结果先行：两个物理边界（论文最有价值的部分）</h3>
+<p><strong>边界一：锚点/离锚保真边界（RoPE 相位漂移）</strong></p>
+<ul>
+<li>RoPE 按位置角度旋转 Q/K 特征对，key 编译时假设锚点位置 m₀，实际消费在位置 n_past，相位误差 Δθ = (n_past − m₀)·θ，高频维度漂移最快</li>
+<li>实测数据（dkl_sweep.json，10 queries/offset）：</li>
+<li>锚点处（Δpos=0）：D_KL ≈ 0，top-1 agreement = 1.0，输出完全一致</li>
+<li>离锚后：散度先升到 ~10⁻² nats（前 64 token 内），然后<strong>平台期</strong>——整个 0–2048 偏移范围内稳定在 0.008–0.038 nats，top-1 agreement 始终 = 1.0</li>
+<li>退休方案 LegoLink（散射式部分重计算）在 n_past=1024 时 D_KL ≈ 5.7 nats——比连续后缀裸拼接差两个数量级，是"修复反而破坏分布"的反面教材</li>
+<li><strong>P=256 不是保真悬崖，而是保守的修复起点</strong>：漂移已明显脱离锚点底噪、但 top-1 仍安全的区域</li>
+<li>为什么 top-1 一致还要修复？top-1 agreement 弱于分布一致性：残差 ~10⁻² nats 在温度/核采样下仍会导致路径分叉，且逐 token 误差在多轮 Agent 轨迹中复利放大。深度自适应重解码把 D_KL 压到精确 0，换来的 never-regress 是<strong>在任何解码参数下都成立的可审计保证</strong></li>
+</ul>
+<p><strong>边界二：免参考漂移门控失败</strong></p>
+<ul>
+<li>自然想法：用便宜的 per-head K-variance 代理预测深拼接何时灾难性漂移</li>
+<li>实测（gating_nogo.json）：代理与真实漂移的 Spearman ρ = 0.193，远低于 0.40 目标——<strong>代理无法排序高低漂移头，门控会无差别触发</strong></li>
+<li>per-head 漂移本身存在（max 175–207，mean 91–105），但标量代理抓不住它</li>
+<li>结论：有效在线门控需要真参考（= 要避免的全 prefill 成本）或自定义 attention kernel，所以修复机制退回到确定性深度自适应曲线</li>
+</ul>
+<h3 id="13">1.3 架构：检索解耦路由（主杠杆，深度无关）</h3>
+<pre><code>用户查询
+  → nomic-embed-v1.5 (INT8) 嵌入
+  → SLB 扫描（INT8 SIMD 点积，top-k）
+  → 边际门 τ=0.0136 (P20 校准)
+      ├─ 高置信 → 直接定路由
+      └─ 低置信(~20%) → MiniLM 级交叉编码器重排
+  → 解析出 tool id
+  → 压缩 IR 签名（中位数 19 token）上生成参数
+  → FSM 掩码 logits（工具名 radix trie）+ GBNF JSON 语法约束
+  → 工具调用
+</code></pre>
+<ul>
+<li><strong>SLB（Semantic Lookaside Buffer）</strong>：工具嵌入（名称+描述，search_document: 前缀）INT8 量化，branchless SIMD 点积扫描（NEON / AVX-512-VNNI / AVX2）。工具名携带主导路由信号</li>
+<li><strong>边际门</strong>：top-2 分数边际超过校准阈值（对抗样本边际的 P20，τ=0.0136）自动路由，否则升级到交叉编码器——只对最低置信的 ~20% 决策开火</li>
+<li><strong>压缩 IR</strong>：JSON schema 压缩成带类型提示的函数签名（如 <code>create_repository(name: string, private?: boolean)</code>），中位数 19 token / p99 32 token，主上下文省 ~80% token，参数绑定能力不丢</li>
+<li><strong>执行边车（sidecar）</strong>：需要新鲜序列验证路由时，从位置 0 分配临时序列，锚点拼接永远在输出精确区。边车带修剪滑动窗口保持多轮共指（"open a pull request <em>there</em>"），笨重工具载荷替换为短语义代理</li>
+</ul>
+<h3 id="14">1.4 系统实现</h3>
+<ul>
+<li><strong>Aeon Tool Block（.atb）</strong>：schema 离线编译产物，128 字节头（RoPE 锚点+缩放参数）+ 页对齐（2MB）连续 F16 K/V 张量。运行时校验头的 RoPE 参数，缩放制度不匹配直接拒绝而非静默腐蚀 attention</li>
+<li><strong>拼接+缝合</strong>：K/V 行写入活跃 KV 游标处，随后失效 ⌈S·R(n_past)/100⌉ 个 token 的后缀并重解码缝合</li>
+<li><strong>转置 V 拼接</strong>：soft-capped attention（Gemma-2）禁用 FlashAttention，V cache 是 token-innermost 转置布局——实现了 layout-aware 的 strided 拷贝，在 Gemma-2-9B 上保真验证通过</li>
+<li><strong>安全边界（fail-closed）</strong>：离散 GPU 后端的转置跨设备拷贝是病态路径，splicer 直接拒绝并回退 prefill。云端/token-stream API 同样无法移植物理 cache 地址，回退纯文本 prefill（1.0×，零加速）</li>
+</ul>
+<h3 id="15">1.5 关键实验数据</h3>
+<p><strong>Table III：深拼接 TTFT vs 深度（n=15 trials/cell，Qwen2.5-14B Q4_K_M @ M4 Max 64GB UMA）</strong></p>
+<p>默认曲线 K=4：<br />
+- n_past=256，R=5.0%：prefill 3278ms → splice 2010ms，加速 1.63×<br />
+- n_past=512，R=36.7%：4672 → 3761ms，加速 1.24×<br />
+- n_past=1024，R=100%：7302 → 7425ms，加速 0.98×（低于平价！）<br />
+- n_past=2048，R=100%：13092 → 13142ms，加速 1.00×</p>
+<p>调优曲线 K=16（更平坦）：<br />
+- n_past=256：1.73× | 512：1.42× | 1024：1.17× | 2048：1.07×</p>
+<p>所有 cell：top-1 agreement 保持，D_KL ≈ 0。<strong>never-regress 保证的是输出保真度而非延迟</strong>——延迟可以短暂跌到 0.98× 再收敛到平价。K 是"平坦 TTFT vs 重计算量"之间的旋钮</p>
+<p><strong>Table IV：路由与微开销（N=250 工具）</strong><br />
+- 端到端路由精度：92% / 90% / 89% / 89%（N=10/50/100/250），近平坦；N=250 时 Wilson 95% CI [81.4, 93.7]<br />
+- SLB top-1 recall 74%，top-3 recall 95%<br />
+- SLB 搜索延迟：含 Python FFI 17.6µs，纯 C++ SIMD 扫描 8.25µs（250 个工具向量）<br />
+- 对照组（拼接全部 schema 的 oracle）：N=10 时 98% 精度，N≥50 时<strong>上下文窗口直接溢出无法运行</strong><br />
+- 边车路由精度 86.7%（n=30）；路由命中案例中查询指定参数 100% 填对（n=40），JSON 有效性 100%，无占位符泄漏；端到端参数精度 80%（40/50，路由错误计为失败）<br />
+- 混合路径首参数 token 443.8ms vs 全 schema 重 prefill oracle 737.3ms = <strong>1.66× 加速 + ~80% 主上下文 token 节省</strong></p>
+<h3 id="16">1.6 局限性（作者自陈）</h3>
+<ul>
+<li>单元组：所有数字来自一台主机（M4 Max UMA）+ 一个模型元组（Qwen2.5-14B Q4_K_M）+ 一个 embedder + 一个 llama.cpp build；转置 V 机制额外在 Gemma-2-9B 上验证</li>
+<li>小样本：端到端臂 n≤30，区间宽，明确声明是"包络"而非总体估计</li>
+<li>深拼接只做了微验证：接入 agent（enable_deep_splice）但未作为多轮生产路径跑通</li>
+<li>检索天花板：dense + 交叉编码器召回有工作负载依赖的上限，门控改善低置信决策但不能消除硬混淆</li>
+</ul>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-rope">2.1 RoPE 相位漂移</h3>
+<p>RoPE 通过旋转 Q/K 特征对注入相对位置信息，注意力分数依赖 query/key 的相对旋转。绝对相位"错位"的 key 会被后续所有 query 斜读。低频维度（长波长）容忍偏移，高频维度（θ 大）漂移最快——这就是为什么拼接块只在编译锚点的邻域内忠实。YaRN/NTK 等频率插值方法共享同一套 RoPE 机器但目标不同（扩窗 vs 块重定位）</p>
+<h3 id="22-kv-cache">2.2 KV Cache 复用的两条路线</h3>
+<ul>
+<li><strong>就地复用</strong>（工业主流）：PagedAttention、prefix-shared KV（vLLM/SGLang 系）让块留在计算时的位置上复用，永不搬家——绕开 RoPE 问题</li>
+<li><strong>重定位移植</strong>（Nexus 探索的）：把块搬到新位置，必须付修复代价。Nexus 的贡献是给出了"能信多深"的定量边界（P=256 阈值 + 平台期散度曲线）</li>
+<li>RedKnot 推进到 attention head 粒度的就地复用；Nexus 反其道做粗粒度 per-tool 块搬迁</li>
+</ul>
+<h3 id="23-mcp-schema">2.3 MCP 与 schema 膨胀</h3>
+<p>MCP 已成 Agent 工具调用事实标准，代价是每个工具带一份冗长 JSON schema。工具一多（论文测到 250 个），schema 占据 prompt 主体。RAG-MCP 代表"检索前置"路线：prefill 前只取相关 schema。Nexus 在此之上加了两层：系统级 KV 移植 + 零样本校准边际门（无需训练对齐）</p>
+<h3 id="24-slb">2.4 SLB 命名溯源</h3>
+<p>Lookaside Buffer 是 CPU 术语（TLB 的兄弟），指旁路快速查找缓存。Nexus 的 SLB = 语义版：INT8 工具嵌入向量库 + SIMD 扫描，微秒级。类比：工具注册表就是"地址空间"，查询嵌入就是"虚拟地址"，SLB 把路由从 LLM 主干路径上整个摘出来</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：双杠杆分层</h3>
+<pre><code>┌─────────────────────────────────────────────┐
+│ 杠杆一（主）：检索解耦路由 —— 深度无关       │
+│   嵌入检索(SLB) + 边际门 + 压缩IR参数生成    │
+│   250工具 89% 精度 | 1.66× 首参数加速        │
+│   17.6µs 路由开销，不随深度/工具数膨胀       │
+├─────────────────────────────────────────────┤
+│ 杠杆二（辅）：KV 拼接 —— 有物理边界          │
+│   n_past≤256 锚点拼接：输出精确 (D_KL≈0)     │
+│   n_past&gt;256：深度自适应修复 R(n_past)       │
+│   → 按梯度升级到全量重 prefill               │
+│   never-regress：保真不回归（延迟可短暂&lt;1）  │
+├─────────────────────────────────────────────┤
+│ 两个负结果钉死设计空间：                     │
+│   ① 离锚 RoPE 漂移（散布重计算=破坏）       │
+│   ② 免参考漂移门控失败（ρ=0.193）           │
+└─────────────────────────────────────────────┘
+</code></pre>
+<h3 id="32-never-regress">3.2 never-regress 的精确定义</h3>
+<ul>
+<li>保证的是<strong>输出保真</strong>：top-1 agreement 保持 + D_KL ≈ 0，在任何解码参数下可审计</li>
+<li>不保证延迟：0.98× 的短暂倒挂来自修复后缀的重解码开销</li>
+<li>这是"用一点 TTFT 买硬保证"的设计哲学，拒绝接受"小但非零"的残差（其下游影响是工作负载依赖的）</li>
+</ul>
+<h3 id="33">3.3 创新点清单</h3>
+<ol>
+<li>把工具 schema 加速从"无条件 KV 移植"重构为"检索解耦路由 + 深度自适应修复"的组合</li>
+<li>用输出分布散度（D_KL）刻画 RoPE 拼接保真边界，给出可复现的阈值（P=256）与平台期现象</li>
+<li>两个高价值负结果：散射式重计算反而破坏分布（5.7 nats）；K-variance 免参考门控与真实漂移零相关（ρ=0.193）</li>
+<li>fail-closed 工程哲学：缩放制度不匹配拒绝拼接、离散 GPU 拒绝转置 V、云端 API 回退纯 prefill——宁可零加速不冒腐蚀风险</li>
+<li>全链路微秒级路由：INT8 SIMD + 校准边际门，250 工具 17.6µs</li>
+</ol>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1-agent">趋势1：工具检索解耦将成为 Agent 网关标配</h3>
+<p>依据：拼接全部 schema 的 oracle 在 N≥50 直接溢出上下文，而 SLB 路由在 N=250 保持 89% 且开销微秒级。工具生态只会膨胀不会收缩，路由前置是唯一随规模平展的方案。Hermes 这类多工具 Agent 系统迟早要面对 50+ 工具的注册表</p>
+<h3 id="2kv">趋势2：KV 块重定位是学术富矿但工业主线仍是就地复用</h3>
+<p>依据：论文自己承认深拼接"接入但未作为多轮生产路径跑通"，且全加速仅限 UMA 本地场景，云端 token-stream API 无物理 cache 可移植。PagedAttention/前缀共享的工业地位短期不会动摇。Nexus 的持久贡献是边界刻画（负结果），不是可部署加速器</p>
+<h3 id="3">趋势3：负结果论文的价值正在被系统性低估</h3>
+<p>依据：本文把两个失败实验（LegoLink 散射重计算、K-variance 门控）放在第四章先行陈述，并全部锚定到 committed artifact（json 文件）。这种"负结果+可复现工件"的写法比正结果更节省整个领域的时间。单作者+单机测量+诚实置信区间的风格也值得注意</p>
+<h3 id="4">趋势4：参数生成与路由应分而治之</h3>
+<p>依据：Nexus 用 19 token 压缩 IR 生成参数（100% 指定参数正确）而非在拼接 KV 上生成——把"选哪个工具"（语义问题）和"填什么参数"（语法+绑定问题）拆到不同表示层。FSM+GBNF 约束解码保证 JSON 有效性 100%，这条组合拳对任何工具调用 Agent 通用</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-memdecay">5.1 与 MemDecay 笔记的关联</h3>
+<p><a href="2026-07-15-MemDecay-KV缓存区域感知驱逐.md">MemDecay（2026-07-15 精读）</a>同属 KV Cache 管理谱系：MemDecay 管的是"驱逐什么"（区域感知衰减），Nexus 管的是"移植什么、信多深"。两者共同确认：KV cache 不是同质块，位置/区域/用途的异质性决定处理策略。MemDecay 的 system prompt 半衰期 10× 于 scratchpad 与 Nexus 的 P=256 锚点边界互为印证——<strong>不同区域的 KV 有不同的物理/语义容差</strong></p>
+<h3 id="52-kara-longstraw">5.2 与 Kara / LongStraw 笔记的关联</h3>
+<ul>
+<li><a href="2026-07-04-Kara-KV缓存滑动窗口压缩.md">Kara（2026-07-04 精读）</a>：滑动窗口压缩 KV，同样面对"压缩后保真边界"问题。Kara 用窗口截断，Nexus 用相位漂移定量刻画——两者都证明 KV 操作存在不可逾越的保真红线</li>
+<li><a href="2026-07-17-LongStraw-超长上下文Agent.md">LongStraw（2026-07-17 精读）</a>：长上下文 Agent 的 KV 显存治理。Nexus 的 ~80% 主上下文 token 节省与 LongStraw 的显存增量思路互补：一个省 prefill 计算，一个省存储</li>
+</ul>
+<h3 id="53-hermes-agent">5.3 与 Hermes Agent 的直接关联</h3>
+<ul>
+<li>Hermes 的工具体系（terminal/search/patch + MCP deferred tools）正面临论文描述的 schema 膨胀：本会话 deferred catalog 已有 20+ 工具，每次会话启动都要注入全部工具 schema</li>
+<li>Hermes 的工具选择目前靠 LLM 内部决策（等价于论文中的 concatenate-all oracle），未做检索前置——工具数再涨就会撞上下文墙</li>
+<li>SPyCE（2026-07-16 精读）的技能分层检索与 Nexus 的 SLB 路由是同构问题在不同层的解：前者检索"怎么做"，后者检索"用什么做"</li>
+</ul>
+<h3 id="54-jetson">5.4 与 Jetson 边缘部署的关联</h3>
+<p>Nexus 的 UMA（统一内存）架构与 Jetson Orin 的统一内存模型<strong>完全同构</strong>——CPU/GPU 共享物理内存，正是"直接写物理 cache 地址"所需的前提。论文在 M4 Max 上的实测对 Jetson 有直接参考价值：14B Q4_K_M 模型的 KV 拼接在统一内存上可行，离散 GPU 上 fail-closed</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「We present the negative results first because they motivate the architecture: they fix the shape of the repair curve and force routing to be depth-independent rather than to depend on a deep splice.」— 负结果先行的论证结构，架构是被物理边界逼出来的</p>
+<p>「Never-regress is a guarantee on output fidelity—not on latency, which can dip to 0.98× before converging to parity.」— 精确区分"保证什么"与"不保证什么"，罕见的诚实</p>
+<p>「Driving the divergence to exactly 0 makes the spliced output bit-identical to a full prefill—a guarantee that is auditable and holds under any decoding parameters.」— 可审计性作为一等设计目标</p>
+<p>「The qualitative boundaries ... are properties of RoPE and hold model-agnostically, whereas the quantitative envelope ... is calibrated to one model tuple and must be re-measured elsewhere.」— 单机测量的诚实边界声明</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示（借鉴点评估）</h2>
+<h3 id="p0">P0：工具注册表的检索解耦路由（可直接移植）</h3>
+<ul>
+<li>现状：Hermes 工具 schema 全量注入 system prompt，每轮会话启动付全额 prefill</li>
+<li>借鉴：为工具注册表建嵌入索引（工具名+描述，nomic-embed INT8），查询时先检索 top-k 工具再注入 schema——只注入被选中的 1-3 个工具的完整 schema</li>
+<li>工作量：中（约 1-2 天）。嵌入可离线预计算，检索逻辑 ~100 行 Python</li>
+<li>收益：工具数从 20 涨到 200 时 system prompt 不膨胀；直接对齐论文 1.66× 首参数加速 + 80% token 节省的量级</li>
+</ul>
+<h3 id="p1-ir">P1：压缩 IR 签名用于参数生成（可直接移植）</h3>
+<ul>
+<li>借鉴：工具 JSON schema 压缩成 <code>name: string, private?: boolean</code> 式函数签名（中位 19 token），参数生成用 IR 而非全 schema</li>
+<li>适用：Hermes 的 MCP 工具（deferred catalog）调用前先给 IR，需要全 schema 的复杂工具再展开</li>
+<li>工作量：小（半天）。schema→IR 的压缩器 ~50 行</li>
+</ul>
+<h3 id="p1-radix-trie-gbnf">P1：工具名 radix trie + GBNF 约束解码（需工程改造）</h3>
+<ul>
+<li>借鉴：FSM 掩码 logits 限定工具名集合，GBNF 语法约束 JSON 参数——100% JSON 有效性、零占位符泄漏</li>
+<li>障碍：Hermes 走 API 推理（GLM/Zhipu），无 logits 级访问权限；本地 Ollama 路径（nexa-local-inference）可用</li>
+<li>工作量：中。仅对本地推理路径有意义</li>
+</ul>
+<h3 id="p2rope">P2：RoPE 拼接保真边界的量化认知（知识储备）</h3>
+<ul>
+<li>借鉴：任何"KV 块搬家"优化（前缀缓存复用、跨会话 KV 移植）都要过 RoPE 相位漂移这道关。锚点内精确、离锚平台期 10⁻² nats、散布重计算是毒药——这三条定性结论 model-agnostic</li>
+<li>应用：Jetson 本地推理栈（llama.cpp 路径）做多会话 KV 复用时的设计约束</li>
+</ul>
+<h3 id="p3fail-closed">P3：fail-closed 哲学（已有部分实现）</h3>
+<ul>
+<li>借鉴：不确定就拒绝并降级，而非冒险腐蚀——Hermes 的 model-fallback-chain、search-fallback-chain 已是此哲学，本文提供 KV 层的又一实例</li>
+<li>增量价值：认知强化，无新工程</li>
+</ul>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>多 Agent 系统的工具分片</strong>：agent-team（Kanban/编排）场景下按角色预分配工具子集，本质是人工版 SLB 路由——可结合 Nexus 的嵌入检索做自动分片</li>
+<li><strong>量化交易 Agent 的工具瘦身</strong>：quant-trading 相关 skill 的工具调用（行情/回测/风控）可用 IR 签名降低每轮 token 开销，尤其 cron 高频任务（盘中监控 3 秒一轮）累积节省可观</li>
+<li><strong>Jetson 本地 Agent 栈</strong>：nexa-local-inference + Ollama 路径实现 per-tool KV 块编译缓存，Jetson UMA 架构是论文方案的原生适配土壤；先做锚点内（n_past≤256）拼接即可拿 1.63× 加速</li>
+<li><strong>Skill 检索的边际门借鉴</strong>：skill-ab-testing / skill-review 的候选筛选可引入 top-2 边际门思想——高置信自动通过，低置信 20% 升级到更贵的评审（等价于交叉编码器层）</li>
+</ul>
+<hr />
+<h2 id="_9">九、指南分析</h2>
+<p><strong>本文作为工程方法论指南的可用性评估：</strong></p>
+<ul>
+<li><strong>可复现性标杆</strong>：每个数字锚定到 committed JSON 工件（dkl_sweep.json / gating_nogo.json / deep_splice_ttft.json），Wilson/bootstrap 置信区间全量标注，公式 (2) 声称可脱离代码复算 R(%) 列——这是"数字可审计"的最佳实践，值得所有实验型笔记借鉴</li>
+<li><strong>写作结构指南</strong>：负结果先行 → 物理边界钉死设计空间 → 架构作为边界的必然推论 → 有界论文（bounded thesis）收尾。这套论证链适合任何"优化遇到天花板"的场景写作</li>
+<li><strong>诚实边界声明模板</strong>：「qualitative boundaries generalize / quantitative envelope is tuple-specific」的二分声明，直接可套用到单机测试报告</li>
+<li><strong>不适合直接照搬的部分</strong>：单作者单机单模型元组的测量，数字不可迁移；深拼接未在生产多轮路径验证；云端 API 场景零加速——照搬方案前先确认自己是 UMA 本地推理栈</li>
+<li><strong>对本机（Jetson Orin）的指南价值</strong>：UMA 同构意味着 P=256 阈值和 1.63× 加速量级有参考意义，但 Qwen2.5-14B Q4_K_M → 本机模型（Qwen3/GLM 系）必须重测——论文自己说"must be re-measured elsewhere"</li>
+</ul>
+</body>
+</html>
