@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SSGM演化记忆治理框架-语义漂移与记忆中毒防御</title>
+
+<meta property="og:title" content="SSGM演化记忆治理框架-语义漂移与记忆中毒防御" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="ssgmllm-agent">SSGM：LLM Agent 演化记忆的治理框架 — 语义漂移、记忆中毒与四原则防御</h1>
+<blockquote>
+<p><strong>来源</strong>：<a href="https://arxiv.org/abs/2603.11768">Governing Evolving Memory in LLM Agents: Risks, Mechanisms, and the Stability and Safety Governed Memory (SSGM) Framework</a>（arXiv 2603.11768，2026）</p>
+<p><strong>定位</strong>：Agent 记忆系统从"检索精度竞赛"转向"记忆完整性治理"的宣言式综述+框架论文。对本机 memory-refiner / evolver / experience-bank / MEMORY.md 体系有直接工程映射价值。</p>
+
+<p class="meta-date">生成日期 2026-08-26</p></blockquote>
+<hr />
+<h2 id="tldr">一、核心论点（TL;DR）</h2>
+<p><strong>当 Agent 获得改写自身记忆的自治权，就引入了稳定性-可塑性困境的人工版本。</strong> 无治理的持续精炼会产生三类累积性、持久性错误——这与静态 RAG 的单次检索错误（孤立的、可隔离的）有本质区别：</p>
+<table>
+<thead>
+<tr>
+<th>失败接口</th>
+<th>失败模式</th>
+<th>机理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>输入摄取</strong>（input ingestion）</td>
+<td>记忆中毒（poisoning）</td>
+<td>幻觉与恶意注入被固化为"有效知识"</td>
+</tr>
+<tr>
+<td><strong>记忆固化</strong>（consolidation）</td>
+<td>语义漂移（semantic drift）</td>
+<td>迭代摘要逐次丢失细节，逐渐扭曲真值</td>
+</tr>
+<tr>
+<td><strong>记忆检索</strong>（retrieval）</td>
+<td>记忆幻觉（hallucination）</td>
+<td>检索出不存在/已过期的"事实"</td>
+</tr>
+</tbody>
+</table>
+<p>论文的核心主张：<strong>当前学界对"检索精度"的执念是不够的，下一代记忆系统必须优先考虑记忆完整性与安全性（memory integrity and safety）。</strong></p>
+<hr />
+<h2 id="table-1">二、演化记忆系统的全景分类（Table 1 精选）</h2>
+<p>论文按"结构×演化策略×稳定性机制×安全机制"分类 25+ 系统，三个阵营：</p>
+<h3 id="21-rl">2.1 自适应/学习型（RL 驱动记忆策略）</h3>
+<table>
+<thead>
+<tr>
+<th>系统</th>
+<th>记忆结构</th>
+<th>演化策略</th>
+<th>亮点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Memory-R1 (2026)</td>
+<td>平面向量库</td>
+<td><strong>RL(PPO)</strong> 训练专门子 agent 决定 add/update/delete</td>
+<td>记忆操作=动作，按任务反馈优化</td>
+</tr>
+<tr>
+<td>MemAgent (2025)</td>
+<td>语义槽位</td>
+<td>RL(<strong>GRPO</strong>)</td>
+<td>群组相对策略优化处理稀疏奖励</td>
+</tr>
+<tr>
+<td>AtomMem (2026)</td>
+<td>向量+缓冲</td>
+<td>原子操作</td>
+<td>Needle-in-Haystack 训练</td>
+</tr>
+<tr>
+<td>LEGOMem (2025)</td>
+<td>过程图</td>
+<td><strong>失败驱动</strong></td>
+<td>规则验证——失败痕迹合成过程规则</td>
+</tr>
+<tr>
+<td>DarwinMem (2026)</td>
+<td>演化池</td>
+<td><strong>免训练</strong>"适者生存"</td>
+<td>GUI agent 跨任务适应，无参数更新</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 图结构/认知架构</h3>
+<table>
+<thead>
+<tr>
+<th>系统</th>
+<th>结构</th>
+<th>亮点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A-MEM (2025)</td>
+<td><strong>Zettelkasten 卡片盒图</strong></td>
+<td>记忆=原子笔记，动态与相关概念建链，形成"活"知识图</td>
+</tr>
+<tr>
+<td>HiMem (2026)</td>
+<td>分层</td>
+<td>情景→语义知识的<strong>再固化</strong>（reconsolidation）过程</td>
+</tr>
+<tr>
+<td>HippoRAG (2024)</td>
+<td>神经生物学图</td>
+<td>知识图上的<strong>扩散激活</strong>模拟人类联想回忆，多跳推理大幅提升</td>
+</tr>
+<tr>
+<td>Zep (2025)</td>
+<td>时序知识图</td>
+<td>增量抽取+实体消解</td>
+</tr>
+<tr>
+<td>Forgetful/Faithful (2025)</td>
+<td>类型化节点</td>
+<td><strong>预算化遗忘</strong> + (ε,δ)-隐私保持</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 多模态/协作</h3>
+<p>MIRIX（多 agent 共享记忆空间，角色边界）、Collaborative Memory（跨用户去重+动态 ACL）、<strong>Topology Matters</strong>（多 agent 网络拓扑决定泄漏风险——<strong>全连接图泄漏风险最大</strong>）。</p>
+<hr />
+<h2 id="_1">三、记忆如何演化：三大机制</h2>
+<h3 id="31">3.1 反思（自监督）</h3>
+<p>Reflexion 范式："如果解错了，解释错误"→反思文本存为记忆。MemR3 把反思引入检索过程本身（迭代精炼查询弥合用户意图与存储知识的差距）。</p>
+<h3 id="32">3.2 强化学习（结果驱动优化）——形式化</h3>
+<p>记忆管理建模为 POMDP。记忆动作子空间显式定义：</p>
+<pre><code>A_mem = { Add(c), Update(idx, v), Delete(idx), Retrieve(q) }
+</code></pre>
+<p>优化目标：<code>J(θ) = E_τ~πθ[ Σ γᵗ·r(sₜ, aₜ) ]</code>——一个当下略亏的记忆写入，若大幅提升未来推理/检索，仍是优选。Memory-R1 用 PPO，MemAgent 用 GRPO。</p>
+<h3 id="33">3.3 固化与遗忘</h3>
+<p>无管理时 |M| 线性增长→检索延迟恶化。FiFA 基准证明<strong>有界、预算感知的遗忘策略</strong>（如 Priority Decay）不仅降成本，还主动保持叙事连贯性与隐私。</p>
+<p><strong>Weibull 时间衰减函数</strong>（Huang et al. 2025，LiCoMemory）：</p>
+<pre><code>w(Δτ) = exp( −(Δτ/η)^κ )
+</code></pre>
+<ul>
+<li>Δτ = 距上次有效检索的时间；η = 尺度参数（衰减时间尺度）；κ = 形状参数（遗忘曲线形状）</li>
+<li>比简单指数衰减更具表达力：κ 可表示"先快后慢"或"延迟遗忘"等不同领域的遗忘轮廓</li>
+<li>衰减后低于新鲜度阈值 θ_fresh 的记忆被剪枝/归档——缩小陈旧推理与记忆幻觉的攻击面</li>
+</ul>
+<hr />
+<h2 id="table-2">四、四维失败模式分类（Table 2 完整照录）</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>失败模式</th>
+<th>机理与表现</th>
+<th>典型场景</th>
+<th>SSGM 缓解策略</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Stability</strong></td>
+<td>语义漂移</td>
+<td>迭代摘要致细节渐失</td>
+<td>递归摘要（Generative Agents）</td>
+<td>真值锚定 ℛ</td>
+</tr>
+<tr>
+<td></td>
+<td>过程漂移</td>
+<td>次优/过时工作流被强化</td>
+<td>工作流自动化</td>
+<td>规则验证</td>
+</tr>
+<tr>
+<td></td>
+<td>目标/角色漂移</td>
+<td>累积交互偏置致对齐偏移</td>
+<td>长期角色扮演</td>
+<td>角色分区</td>
+</tr>
+<tr>
+<td><strong>Validity</strong></td>
+<td>记忆幻觉</td>
+<td>检索到不存在/编造的事实</td>
+<td>开放域 QA</td>
+<td>一致性验证器 (TMS)</td>
+</tr>
+<tr>
+<td></td>
+<td>时间过时</td>
+<td>陈旧记忆与新状态冲突</td>
+<td>用户个性化</td>
+<td>Weibull 衰减</td>
+</tr>
+<tr>
+<td><strong>Efficiency</strong></td>
+<td>检索延迟</td>
+<td>搜索时间随历史线性/二次增长</td>
+<td>实时交互</td>
+<td>分层索引</td>
+</tr>
+<tr>
+<td></td>
+<td>索引膨胀</td>
+<td>冗余/噪声情景日志累积</td>
+<td>无限上下文</td>
+<td>主动遗忘/剪枝</td>
+</tr>
+<tr>
+<td><strong>Safety</strong></td>
+<td>记忆中毒</td>
+<td>恶意指令注入存储</td>
+<td>用户指令调优</td>
+<td>写过滤（防火墙）</td>
+</tr>
+<tr>
+<td></td>
+<td>隐私泄漏</td>
+<td>未授权跨会话/跨用户检索</td>
+<td>多租户 agent</td>
+<td>溯源+ACL</td>
+</tr>
+</tbody>
+</table>
+<p><strong>语义漂移的形式化</strong>：δ(M_T, K_true) = 1 − sim(E(M_T), E(K_true))——用当前记忆与不可变真值账本在嵌入空间的余弦距离作为漂移的可测代理。K_true 可用<strong>原始观测的不可变账本</strong>近似（保留迭代摘要丢失的细节）。</p>
+<p><strong>漂移的直观案例</strong>（论文 Fig.2）：温和的用户偏好经反复重写被逐级放大，最终造成具体的偏好违背。</p>
+<hr />
+<h2 id="ssgm">五、SSGM 框架：四设计原则 + 形式化</h2>
+<p>核心思想：<strong>把 agent 的生成式认知策略与底层记忆基质，通过一个主动拦截的治理中间件结构性解耦。</strong></p>
+<h3 id="51">5.1 四原则</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>原则</th>
+<th>机制</th>
+<th>灵感来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>固化前验证</strong>（Pre-Consolidation Validation）</td>
+<td>记忆增量 ΔM 必须过<strong>写验证门</strong>：真值维护系统(TMS)检索核心事实 M_core，做严格逻辑矛盾检查——若 <code>ΔM ∧ M_core ⊨ ⊥</code> 则<strong>拒绝写入</strong>；用 NLI 检查约束更新</td>
+<td>生物海马体不即时提交感知到新皮层，先过滤+现实监控</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>时间与溯源接地</strong>（Temporal &amp; Provenance Grounding）</td>
+<td><strong>读过滤门</strong>：候选记忆须有密码学溯源 σ(μ)（可信来源而非对抗提示）+ Weibull 衰减高于动态阈值</td>
+<td>—</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>访问范围检索</strong>（Access-Scoped Retrieval）</td>
+<td>语义相似度不够，查询执行层注入 ABAC 身份约束，隔离记忆子图，防 agent 人格/用户数据交叉污染</td>
+<td>全连接记忆网络泄漏风险最大</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>可逆调和</strong>（Reversible Reconciliation）</td>
+<td><strong>双轨存储</strong>：快速可更新的可变活动图（Mutable Active Graph，供快语义推理）+ 只追加的不可变情景日志（Immutable Episodic Log，作为操作级真值源）。异步调和：周期性对原始交互轨迹"重放"校正漂移概念，行为严重退化时提供回滚</td>
+<td>人类情景/语义记忆分工</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52">5.2 形式化（公式照录）</h3>
+<p><strong>读阶段（受约束检索）</strong>——语义 Top-K 之外叠加 ACL 与新鲜度双重过滤：</p>
+<pre><code>Cₜ = { μ ∈ Top-K(qₜ, M_{t-1}) | ACL(μ, u_id) ∧ (w(Δτ_μ) ≥ θ_fresh) }
+</code></pre>
+<p>两段式读路径：语义检索先提名候选，治理再过滤——同时防隐私泄漏与陈旧记忆激活。</p>
+<p><strong>写阶段（门控转移）</strong>——无约束系统 Mₜ = M_{t-1} ∪ Agent(Cₜ)；SSGM 拦截为：</p>
+<pre><code>Mₜ = M_{t-1} ∪ G_write(Agent(Cₜ), M_core)
+其中 G_write(ΔM, M_core) = ΔM  当 ΔM ∧ M_core ⊭ ⊥；否则 = ∅
+</code></pre>
+<p>写变成<strong>守卫转移</strong>：只接纳不与受保护核心事实冲突的更新。</p>
+<p><strong>调和（漂移限界）</strong>——周期性对齐不可变账本：</p>
+<pre><code>M_clean ← argmin_M E[ δ( ℛ(M, K_ledger), K_true ) ]
+</code></pre>
+<p>三个参照对象各司其职：M_core 写时保护关键事实；K_ledger 是校正用操作级原始轨迹；K_true 是评估用理想目标。</p>
+<h3 id="53-1">5.3 定理 1（有界语义漂移）与证明思路</h3>
+<ul>
+<li><strong>假设</strong>：每个有效摘要/固化步引入至多 ε_step 语义误差；调和算子 ℛ 把记忆恢复到残差误差有界的状态。</li>
+<li><strong>无治理</strong>：期望漂移 E[δ(M_T)] ≤ T·ε_step——<strong>随时间线性累积</strong>。</li>
+<li><strong>SSGM（每 N 步调和一次）</strong>：期望漂移上界 <strong>O(N·ε_step)</strong>——由调和窗口而非总时长决定，T≫N 时仍稳定。</li>
+<li>证明：未调和部分贡献 r·ε_step &lt; N·ε_step（r&lt;N 为余数），主导增长项被窗口大小 N 约束。</li>
+</ul>
+<h3 id="54">5.4 三个可检验研究假设（评估协议）</h3>
+<table>
+<thead>
+<tr>
+<th>假设</th>
+<th>内容</th>
+<th>协议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H1</td>
+<td>治理门统计上有界化漂移幅度（T&gt;100 轮任务上渐近上限 vs 基线线性累积）</td>
+<td>LongMemEval + LLM-as-Judge + BERTScore 量化记忆图保真度</td>
+</tr>
+<tr>
+<td>H2</td>
+<td>访问范围检索降低对抗泄漏率而不损主任务成功率</td>
+<td>多用户角色扮演，故意向邻近图节点注入对抗数据，测"泄漏平台"</td>
+</tr>
+<tr>
+<td>H3</td>
+<td>延迟 vs 连贯性权衡可量化；异步治理（空闲期执行 ℛ）可两全</td>
+<td>测量写延迟增量</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="limitations">六、三大权衡（Limitations，诚实照录）</h2>
+<ol>
+<li><strong>延迟-安全权衡</strong>：治理层给记忆环引入"System 2"验证步，逐次验证一致性+溯源带来显著延迟。方向：<strong>异步治理</strong>——乐观更新+后台周期"消毒"。</li>
+<li><strong>稳定性-可塑性冲突</strong>：严格一致性过滤可能致<strong>知识僵化</strong>——治理层激进拒绝与既有记忆冲突的信息，agent 无法适应合法环境变化（如用户搬家）。区分"漂移 vs 合法更新"的冲突消解协议是开放算法问题。</li>
+<li><strong>图结构可扩展性</strong>：图记忆推理能力强，但交互历史增长后图遍历与实体消解复杂度退化检索性能，需更高效的图剪枝/压缩。</li>
+</ol>
+<hr />
+<h2 id="_2">七、对本机体系的映射与改进建议（增补章节，非原文内容）</h2>
+<p>本机已有的记忆/进化设施与 SSGM 原则对照：</p>
+<table>
+<thead>
+<tr>
+<th>SSGM 原则</th>
+<th>本机现状</th>
+<th>差距与建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1 写验证门</td>
+<td>memory-write skill 有实体链接；但 MEMORY.md 追加无矛盾检查</td>
+<td><strong>P1 改进</strong>：新增记忆点与既有 MEMORY/USER PROFILE 做轻量 NLI 矛盾检查（可用免费模型 API 批量跑），冲突时打标人工复核而非直接写入</td>
+</tr>
+<tr>
+<td>P2 时间衰减+溯源</td>
+<td>MEMORY.md 有日期标注（如 08-25），但无衰减机制</td>
+<td><strong>P2 改进</strong>：僵尸清理已存在（08-25 归档 3 个不活跃 topic）；可升级为 Weibull 衰减打分——每次 memory-consolidation 时对 &gt;30d 未引用条目降权而非直接归档</td>
+</tr>
+<tr>
+<td>P4 双轨+调和</td>
+<td><strong>已有雏形</strong>：session DB（原始轨迹=事实账本）+ MEMORY.md（精炼摘要=活动图）；evolver 做错误→规则沉淀</td>
+<td><strong>P4 强化</strong>：evolver 增加"调和"模式——定期抽 MEMORY.md 条目回查 session DB 原始对话验证是否失真（尤其被多次改写的条目），对应 ℛ 算子</td>
+</tr>
+<tr>
+<td>语义漂移风险点</td>
+<td>MEMORY.md 条目被跨会话反复改写（如语音偏好条目改过 3+ 版）</td>
+<td>建议对高频改写条目保留 git 历史或版本号，等效于不可变账本</td>
+</tr>
+<tr>
+<td>过程漂移</td>
+<td>error-case-library 与 experience-bank 的"经验卡片"可能固化次优工作流</td>
+<td>SSGM 的"规则验证"对应：skill-review 定期回顾已有防退化机制，保持</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话</strong>：本机"两个本本"（error-case-library + experience-bank）+ memory-refiner 体系在精神上已接近 SSGM 的双轨结构，主要缺的是<strong>写门（矛盾检查）</strong>与<strong>周期性调和（摘要回验原始会话）</strong>两个动作。</p>
+<hr />
+<h2 id="_3">研究方法说明</h2>
+<ul>
+<li><strong>原文内容</strong>：第一~六章全部基于 arXiv 2603.11768 HTML 全文提取，Table 1/2、公式(1)-(7)、定理 1 及证明思路、H1-H3、三大 Limitations 均照录/忠实转述原文。</li>
+<li><strong>增补内容</strong>：第七章为本机体系映射，非原文观点。</li>
+<li>建立时间：2026-08-26（夜读自动学习）</li>
+<li>关联笔记：<code>2026-08-25-代理模型SM-vs-降阶模型ROM-AIforScience建模范式深度对比.md</code>（同夜系列）</li>
+</ul>
+</body>
+</html>
