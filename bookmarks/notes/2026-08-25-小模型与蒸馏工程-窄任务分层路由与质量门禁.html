@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小模型与蒸馏工程-窄任务分层路由与质量门禁</title>
+
+<meta property="og:title" content="小模型与蒸馏工程-窄任务分层路由与质量门禁" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/tech.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="_1">小模型与蒸馏 — 窄任务的效率工程：任务分层路由与蒸馏质量门禁</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号文章《小模型与蒸馏：不是所有场景都需要最大模型》<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/B_jpr7d_zeB6UqC7ZAfsPQ<br />
+<strong>记录日期</strong>：2026-08-25<br />
+<strong>系列关联</strong>：蒸馏系列第 7 篇（前有 知识蒸馏全景/MoE 蒸馏/软蒸馏/QAD 联合/增量蒸馏等 6 篇技术向，本文补<strong>工程落地向</strong>）</p>
+
+<p class="meta-date">生成日期 2026-08-25</p></blockquote>
+<p><strong>标签</strong>：#模型蒸馏 #小模型 #任务路由 #成本工程 #边缘部署 #评测</p>
+<hr />
+<h3 id="7">7 模块索引（本报告内容映射）</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+<td>6 个标签</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+<td>公众号文章</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~四章</td>
+<td>动机/定义/适用矩阵/工单案例</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第五章</td>
+<td>与已有 6 篇蒸馏笔记的关系 + 置信度路由数学</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第六章</td>
+<td>分层架构 + 七步流程</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第七章</td>
+<td>2 条预测</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第八章</td>
+<td>与蒸馏系列/AI4AI/Hermes 体系交叉</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第九章</td>
+<td>本机可落地场景</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第十章</td>
+<td>文章质量评估</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_2">一句话总纲</h2>
+<blockquote>
+<p><strong>成熟 AI 系统不只用一个最大模型，而是把任务拆开分层路由：窄任务（分类/抽取/改写/路由）交小模型，复杂任务交大模型，高风险加人工兜底——蒸馏是造小模型的方法（强模型输出→清洗→训练→评测→监控回流），成败在数据质量门禁与低置信度兜底，而非模型本身。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_3">一、内容详细整理</h2>
+<h3 id="11">1.1 为什么小模型重新变重要</h3>
+<p><strong>上线后才发现的真瓶颈</strong>（不是"能不能答"）：成本太高 / 延迟太长 / 并发不够 / 数据不能出内网 / 端侧要离线 / 任务其实很固定。</p>
+<p><strong>任务分层判定</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>是否需要最大模型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>判断工单类型 / 提取订单号金额 / 输出固定 JSON</td>
+<td>❌ 不一定</td>
+</tr>
+<tr>
+<td>复杂法律分析 / 多文档推理 / 代码重构</td>
+<td>✅ 可能需要</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心认知</strong>：很多业务任务是<strong>窄任务</strong>，小模型足够。</p>
+<h3 id="12">1.2 蒸馏是什么（含与微调的区别）</h3>
+<p><strong>通俗理解</strong>：让小模型学习大模型在特定任务上的表现——大模型像专家顾问，小模型像熟练员工。</p>
+<p><strong>典型流程六步</strong>：收集真实业务输入 → 强模型生成高质量输出 → 人工/规则清洗 → 训练小模型 → 独立测试集评估 → 上线监控补样本。</p>
+<p><strong>与微调的区别</strong>（关键在数据来源）：</p>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>通俗解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>微调</td>
+<td>用任务数据继续训练模型</td>
+</tr>
+<tr>
+<td>蒸馏</td>
+<td>用强模型输出作为训练目标，让小模型模仿</td>
+</tr>
+</tbody>
+</table>
+<p>蒸馏通常<strong>用</strong>微调来实现——蒸馏是目的，微调是手段。</p>
+<h3 id="13">1.3 适用性矩阵</h3>
+<p><strong>小模型适合</strong>（共性：输出空间固定/格式稳定/业务类型有限）：</p>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分类</td>
+<td>输出空间固定</td>
+</tr>
+<tr>
+<td>信息抽取</td>
+<td>格式稳定</td>
+</tr>
+<tr>
+<td>文本改写</td>
+<td>风格固定</td>
+</tr>
+<tr>
+<td>意图识别</td>
+<td>业务类型有限</td>
+</tr>
+<tr>
+<td>简单摘要</td>
+<td>输入结构稳定</td>
+</tr>
+<tr>
+<td>安全初筛</td>
+<td>先低成本过滤</td>
+</tr>
+<tr>
+<td><strong>路由</strong></td>
+<td><strong>决定请求交给哪个模型</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>小模型不适合</strong>：开放知识问答（覆盖不足）/ 高复杂推理（上限不够）/ 多跳关系（漏推理）/ 高风险决策（错误代价高）/ 未见过的新任务（泛化弱）。</p>
+<h3 id="14">1.4 蒸馏数据质量六项检查</h3>
+<blockquote>
+<p>"坏数据会把小模型教坏。不要把大模型原始输出不加审核地喂给小模型。"</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>检查项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>输入真实</td>
+<td>不全是理想化样本</td>
+</tr>
+<tr>
+<td>输出正确</td>
+<td><strong>老师模型也会错</strong></td>
+</tr>
+<tr>
+<td>格式稳定</td>
+<td>训练固定输出结构</td>
+</tr>
+<tr>
+<td>覆盖均衡</td>
+<td>不只覆盖高频简单问题</td>
+</tr>
+<tr>
+<td>隐私脱敏</td>
+<td>训练前处理</td>
+</tr>
+<tr>
+<td>边界样本</td>
+<td>拒答/异常/模糊问题要有</td>
+</tr>
+</tbody>
+</table>
+<h3 id="15">1.5 落地案例：工单分类蒸馏</h3>
+<pre><code>目标：用户反馈分 6 类
+① 收集 5000 条历史工单
+② 大模型给分类+理由
+③ 业务人员抽样校正
+④ 训练小模型
+⑤ 1000 条人工标注集评估
+⑥ 线上低置信度样本 → 转大模型或人工
+</code></pre>
+<p><strong>架构关键</strong>：省钱的同时保留质量兜底（低置信度路由）。</p>
+<h3 id="16">1.6 评测七指标</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>准确率</td>
+<td>总体分类正确</td>
+</tr>
+<tr>
+<td><strong>分类别召回</strong></td>
+<td>每一类都能识别（长尾）</td>
+</tr>
+<tr>
+<td>混淆矩阵</td>
+<td>哪些类易混</td>
+</tr>
+<tr>
+<td><strong>置信度校准</strong></td>
+<td>高置信度是否真的更准</td>
+</tr>
+<tr>
+<td>延迟</td>
+<td>实时性</td>
+</tr>
+<tr>
+<td>成本</td>
+<td>相比大模型节省</td>
+</tr>
+<tr>
+<td><strong>漂移</strong></td>
+<td>线上新问题是否降低效果</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心提醒</strong>：小模型常见问题是<strong>长尾类别表现差</strong>——不要只看总体准确率。</p>
+<h3 id="17">1.7 四个坑</h3>
+<ol>
+<li><strong>用大模型错答案做训练</strong>——老师也会错，蒸馏前必须清洗</li>
+<li><strong>测试集和训练集太像</strong>——离线分高，上线翻车（分布偏移）</li>
+<li><strong>没有低置信度兜底</strong>——不确定样本应能转大模型/人工</li>
+<li><strong>以为蒸馏后永远不用维护</strong>——业务/用户表达/产品变化都会漂移</li>
+</ol>
+<h3 id="18">1.8 实践清单（七条）</h3>
+<p>高频固定低风险任务起步 → 强模型生成候选标注 → 抽样人工校验 → <strong>训练前先定义评测集</strong> → 评估准确率/延迟/成本/长尾 → 设计低置信度兜底 → 上线错分样本回流训练。</p>
+<hr />
+<h2 id="_4">二、查询拓展</h2>
+<h3 id="21-6">2.1 与本机已有 6 篇蒸馏笔记的关系</h3>
+<p>本机蒸馏系列技术向已很完整（知识蒸馏全景/MoE 蒸馏路由迁移/软蒸馏/蒸馏量化联合/增量蒸馏范式融合/QAD-CapacityGap），本文补的是<strong>工程落地向</strong>的空白：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>已有 6 篇</th>
+<th>本文增量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>焦点</td>
+<td>算法/架构/理论</td>
+<td><strong>业务流程/评测/运维</strong></td>
+</tr>
+<tr>
+<td>数据观</td>
+<td>数据构造方法</td>
+<td><strong>质量门禁六项 + 回流闭环</strong></td>
+</tr>
+<tr>
+<td>评测</td>
+<td>benchmark</td>
+<td><strong>七指标含漂移与校准</strong></td>
+</tr>
+<tr>
+<td>架构</td>
+<td>单模型优化</td>
+<td><strong>分层路由（小→大→人工）</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 置信度路由的数学骨架（补充）</h3>
+<p>低置信度兜底的形式化：设小模型输出概率分布 p(x)，定义路由函数</p>
+<pre><code>route(x) = 小模型   if max p(x) ≥ τ_high
+         = 大模型   if τ_low ≤ max p(x) &lt; τ_high
+         = 人工     if max p(x) &lt; τ_low
+</code></pre>
+<p><strong>τ 的标定依赖置信度校准指标</strong>（ reliablity diagram / ECE）——这正是 1.6 表中"置信度校准"的用途：<strong>未校准的置信度会让路由形同虚设</strong>。</p>
+<h3 id="23">2.3 "路由"作为小模型任务的自指性</h3>
+<p>表中"路由：决定请求交给哪个模型"——用小模型给大中小模型分诊，这是 <strong>pm-master 分诊模式</strong>（08-22 pm-skills 笔记）与 <strong>adaptive-inference-routing skill</strong>（本机已有）的同构实现。蒸馏一个专用路由器的成本远低于每次全量请求大模型。</p>
+<hr />
+<h2 id="_5">三、归纳总结</h2>
+<h3 id="31">3.1 分层架构图</h3>
+<pre><code>用户请求
+   ↓
+[小模型·路由/初筛]  ← 蒸馏产物：分类/抽取/意图/固定JSON
+   ├─ 窄任务+高置信 → 小模型直接处理（省钱省时）
+   ├─ 中置信 → 大模型处理
+   └─ 低置信/高风险 → 人工兜底
+   ↓
+[监控回流] 错分样本 → 清洗 → 补训练集 → 再蒸馏（闭环）
+</code></pre>
+<h3 id="32">3.2 蒸馏工程七步（含质量门禁）</h3>
+<pre><code>选任务（高频/固定/低风险）
+→ 备数据（真实输入，非理想化）
+→ 蒸馏生成（强模型输出）
+→ ⚠️ 质量门禁（六项检查：真实/正确/格式/均衡/脱敏/边界）
+→ 训练（先定义独立评测集）
+→ 评测（七指标：别只看总体准确率，看长尾+校准+漂移）
+→ 上线（低置信兜底 + 错分回流）
+</code></pre>
+<hr />
+<h2 id="_6">四、趋势判断</h2>
+<h3 id="1-ai">趋势 1：模型分层路由将成为 AI 应用的标准架构</h3>
+<blockquote>
+<p>依据：本文的分层架构 + OpenAI 官方蒸馏流程支持 + 本机 adaptive-inference-routing 已落地——单一大模型的"能力、成本、延迟、隐私"四维平衡只能靠分层实现。端侧（离线/隐私）与内网（合规）场景会加速这一进程。</p>
+</blockquote>
+<h3 id="2">趋势 2：蒸馏的瓶颈从"算法"转向"数据治理"</h3>
+<blockquote>
+<p>依据：本文六项质量门禁全部是数据问题（输入真实/输出正确/覆盖均衡/脱敏/边界）+ 四坑中两坑是数据问题（老师错误/测试集泄漏）——与 08-23 企业知识工程"知识准入"四道关同构。<strong>蒸馏本质是把大模型能力沉淀为数据资产，数据治理不行就白蒸</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="_7">五、关联分析</h2>
+<h3 id="51-6-7">5.1 与蒸馏系列 6 篇的互引（第 7 篇定位）</h3>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>本文关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="2026-05-09-LLM知识蒸馏技术全景.md">LLM 知识蒸馏技术全景</a></td>
+<td>算法全景 → 本文工程落地</td>
+</tr>
+<tr>
+<td><a href="2026-08-16-从RL到蒸馏到软蒸馏-Why-RL-Matters.md">从 RL 到蒸馏到软蒸馏</a></td>
+<td>理论深度 → 本文流程广度</td>
+</tr>
+<tr>
+<td><a href="2026-08-19-LLM技术选型决策指南-RAG-SFT-DPO-RL-Distillation.md">LLM 技术选型决策指南 RAG-SFT-DPO-RL-Distillation</a></td>
+<td>选型框架 → 本文补"何时选蒸馏"的业务判据</td>
+</tr>
+<tr>
+<td><a href="2026-08-18-MiniMind评价与消费级可用小模型微调选型-教学脚手架不等微调基座.md">MiniMind 评价与消费级微调选型</a></td>
+<td>基座选型 → 本文任务选型</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-ai4ai">5.2 与 AI4AI 能力转移的呼应</h3>
+<p><a href="2026-08-16-AI4AI-at-TestTime-强到弱Harness能力转移.md">AI4AI-at-TestTime 强到弱 Harness 能力转移</a>讲强模型给弱模型搭脚手架——蒸馏是<strong>训练时的能力转移</strong>（一次性沉淀），Harness 是<strong>推理时的能力转移</strong>（持续借助）。本文的"路由"正是两者的调度层。</p>
+<h3 id="53-hermes">5.3 与本机 Hermes 体系的映射</h3>
+<table>
+<thead>
+<tr>
+<th>本文概念</th>
+<th>本机对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分层路由</td>
+<td>adaptive-inference-routing（按复杂度分配 token 预算）</td>
+</tr>
+<tr>
+<td>低置信兜底</td>
+<td>模型 fallback 链（429/403 降级）</td>
+</tr>
+<tr>
+<td>错分回流</td>
+<td>evolver + error-case-library</td>
+</tr>
+<tr>
+<td>评测七指标</td>
+<td>content-judge / skill-stress-test</td>
+</tr>
+<tr>
+<td>数据门禁六项</td>
+<td>企业知识工程四道关（准入/治理/权限/闭环）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>本机已是本文架构的 Agent 层实现</strong>——本文价值在于把同一思想系统化到模型层。</p>
+<hr />
+<h2 id="_8">六、拓展应用推荐</h2>
+<h3 id="61">6.1 本机可落地场景</h3>
+<ol>
+<li><strong>股票信号预处理蒸馏</strong>：涨停/炸板/量比分类用小模型（智谱 flash）预筛，复杂形态判断留主力模型——降低盘中扫描成本</li>
+<li><strong>笔记 7 模块自检蒸馏</strong>：tag 生成/格式校验用小模型，内容质量判断留大模型</li>
+<li><strong>Jetson 端侧</strong>：Nexa 本地小模型做工单类窄任务（语音指令意图识别），离线可用</li>
+</ol>
+<h3 id="62">6.2 与量化铁律的对照（元层）</h3>
+<p>蒸馏数据门禁六项 ↔ 量化外源信号纪律：<strong>外源因子必须本地回测 n&gt;100 才立规</strong>——两者都是"输入再权威也要本地验证"的实证主义。</p>
+<hr />
+<h2 id="_9">七、指南分析</h2>
+<h3 id="71">7.1 文章质量</h3>
+<ul>
+<li><strong>工程视角完整</strong>：从任务选择到上线运维全链路，不是纯算法文</li>
+<li><strong>表格密集可用</strong>：适用矩阵/检查清单/评测指标/坑列表——直接可抄</li>
+<li><strong>四坑诚实</strong>：老师会错/测试泄漏/无兜底/不维护——全是真实翻车点</li>
+<li><strong>"小模型不是降级"的定位准确</strong>：需要更严格评测证明"够准够快够稳"</li>
+</ul>
+<h3 id="72">7.2 局限</h3>
+<ul>
+<li>无数字（蒸馏样本量/成本节省幅度/延迟对比均无量化的案例数据——5000 条工单例子只给流程不给结果指标）</li>
+<li>未提蒸馏目标的技术选项（logits 蒸馏 vs 文本 SFT 的差异在工程上影响很大）</li>
+<li>未讨论老师-学生容量差距（Capacity Gap，本机 05-10 笔记已覆盖）</li>
+<li>路由阈值 τ 如何标定未展开（本文 2.2 已补）</li>
+</ul>
+<hr />
+<h2 id="_10">八、金句摘录</h2>
+<blockquote>
+<p>"大模型像专家顾问，小模型像熟练员工。不是所有任务都要请最贵的专家来做。"</p>
+<p>"坏数据会把小模型教坏。不要把大模型原始输出不加审核地喂给小模型。"</p>
+<p>"小模型常见问题是长尾类别表现差，所以不要只看总体准确率。"</p>
+<p>"真正成熟的 AI 系统不会只用一个最大模型，而是会把任务拆开：简单任务交给小模型，复杂任务交给大模型，高风险任务加人工。"</p>
+<p>"对测试工程师来说，小模型不是降级，而是需要用更严格的评测证明它在特定场景'够准、够快、够稳'。"</p>
+</blockquote>
+<hr />
+<h2 id="_11">九、行动启示</h2>
+<ul>
+<li><strong>蒸馏系列第 7 篇集齐</strong>：6 篇技术向 + 1 篇工程向——建议 homepage 做专题聚合</li>
+<li><strong>六项数据门禁可进 experience-bank</strong>：任何"用强模型输出做训练数据"的场景通用</li>
+<li><strong>低置信兜底三段路由</strong>（小→大→人工）进 adaptive-inference-routing 的阈值设计参考</li>
+<li><strong>股票信号预处理蒸馏</strong>是本机最有价值的候选试点（盘中扫描降本）</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>延伸阅读</strong>：<br />
+- 原文：https://mp.weixin.qq.com/s/B_jpr7d_zeB6UqC7ZAfsPQ<br />
+- <a href="2026-05-09-LLM知识蒸馏技术全景.md">LLM 知识蒸馏技术全景</a>（系列第 1 篇）<br />
+- <a href="2026-08-16-从RL到蒸馏到软蒸馏-Why-RL-Matters.md">从 RL 到蒸馏到软蒸馏</a>（理论深化）<br />
+- <a href="2026-08-23-AI企业知识工程四道关-土猛的员外AI落地隐性共识.md">企业知识工程四道关</a>（数据门禁同构）</p>
+</blockquote>
+</body>
+</html>
