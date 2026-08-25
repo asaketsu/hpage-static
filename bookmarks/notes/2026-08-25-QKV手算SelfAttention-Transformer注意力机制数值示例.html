@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QKV手算SelfAttention-Transformer注意力机制数值示例</title>
+
+<meta property="og:title" content="QKV手算SelfAttention-Transformer注意力机制数值示例" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="qkv-self-attention-transformer">QKV 手算 Self-Attention — Transformer 注意力机制的数值示例全解（已代码复现验证）</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号文章《大模型基础：Transformer 中的 Q、K、V 到底是什么？手算一遍就懂了》<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/lZQ-iutEugsSiXxJeaverw（版权：个人学习研究用途，禁止商用）<br />
+<strong>记录日期</strong>：2026-08-25<br />
+<strong>配套项目</strong>：<code>~/uclaw/project/qkv-self-attention/</code>（demo.py 已实测复现文章全部数字 ✅）<br />
+<strong>验证方式</strong>：文章所有手算数字经 numpy 独立复算，Output_真 = [0.474, 0.516] vs 文中 [0.474, 0.515]（末位舍入差），全部一致</p>
+
+<p class="meta-date">生成日期 2026-08-25</p></blockquote>
+<p><strong>标签</strong>：#Transformer #SelfAttention #QKV #注意力机制 #手算 #数值示例</p>
+<hr />
+<h3 id="7">7 模块索引（本报告内容映射）</h3>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>对应章节</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tag 标签</td>
+<td>头部标签行</td>
+<td>6 个标签</td>
+</tr>
+<tr>
+<td>出处</td>
+<td>头部出处行</td>
+<td>公众号 + 配套可运行项目</td>
+</tr>
+<tr>
+<td>内容整理</td>
+<td>第一~五章</td>
+<td>直觉/派生/五步手算/完整链路</td>
+</tr>
+<tr>
+<td>查询拓展</td>
+<td>第六章</td>
+<td>三个易混点辨析 + 因果掩码实验</td>
+</tr>
+<tr>
+<td>归纳总结</td>
+<td>第七章</td>
+<td>一图流 + 公式卡</td>
+</tr>
+<tr>
+<td>趋势判断</td>
+<td>第八章</td>
+<td>1 条判断（教学价值）</td>
+</tr>
+<tr>
+<td>关联分析</td>
+<td>第九章</td>
+<td>与 QKV 变体/KVCache/MLA 笔记互引</td>
+</tr>
+<tr>
+<td>拓展应用推荐</td>
+<td>第十章</td>
+<td>项目实验路线</td>
+</tr>
+<tr>
+<td>指南分析</td>
+<td>第十一章</td>
+<td>文章质量 + 复现验证声明</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>Q、K、V 是同一个输入向量经三次不同线性变换派生出的三个角色——"提问者"（Wq 投影到关注方向）、"被检索者"（Wk 投影到被匹配方向）、"内容提供者"（Wv 投影到传递方向）；注意力五步（派生→点积打分→√dk 缩放→softmax→加权聚合 V）用 3 token × 2 维可完整手算，本文所有数字已代码复现验证一致。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">一、直觉层：检索类比</h2>
+<p>把 Self-Attention 想成句子里词语间的互相"检索"（以「天气 真 好」中「真」为例）：</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>类比</th>
+<th>「真」的例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Query（问）</strong></td>
+<td>每个词带着一个问题</td>
+<td>「真」想问：句子里有没有"能被我修饰"的词？</td>
+</tr>
+<tr>
+<td><strong>Key（标签）</strong></td>
+<td>每个词挂着标签</td>
+<td>好=「形容词·可被修饰」</td>
+</tr>
+<tr>
+<td><strong>Value（内容）</strong></td>
+<td>每个词备着实际内容</td>
+<td>无论谁检索，我能贡献的信息</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键认知</strong>：Q、K、V <strong>都从同一个输入向量 x 派生</strong>——同一个 token 同时扮演三种角色（提问的同时也被提问，也提供内容）。</p>
+<p><strong>为什么三个矩阵而非一个</strong>：若 Q=K=V=x，"提问、匹配、传递内容"三种角色未解耦，表达能力明显受限。Wq/Wk/Wv 的作用是把 x 分别投影到三个方向——角色解耦是注意力表达力的来源。</p>
+<h2 id="token-qkv">二、派生层：从 token 到 Q/K/V</h2>
+<pre><code>token_id → W_e（查表）→ x        ← 词嵌入矩阵 [V×d]，本质是查找表
+x → x·Wq → Q    ← 提问方向
+x → x·Wk → K    ← 被检索方向
+x → x·Wv → V    ← 内容方向
+</code></pre>
+<p>Wq/Wk/Wv 是三个独立 2×2 矩阵（训练学到）。文中示例设定：</p>
+<pre><code>x_天气=[0.9,0.1]（名词高）  x_真=[0.2,0.8]（修饰高）  x_好=[0.1,0.9]（可被修饰高）
+第 1 维=名词程度，第 2 维=修饰/可被修饰程度（略去位置编码）
+</code></pre>
+<h2 id="_3">三、五步手算全记录（「真」的注意力）</h2>
+<h3 id="step-1-qkv">Step 1：派生 Q/K/V（矩阵乘法）</h3>
+<pre><code>Q_真 = [0.2,0.8]·Wq = [0.26, 0.70]
+K_天气=[0.55,0.27]  K_真=[0.20,0.76]  K_好=[0.15,0.83]
+V_天气=[0.58,0.25]  V_真=[0.44,0.60]  V_好=[0.42,0.65]
+</code></pre>
+<h3 id="step-2qk">Step 2：点积打分（Q·K 衡量方向相近）</h3>
+<pre><code>Q_真·K_天气 = 0.26×0.55 + 0.70×0.27 = 0.332
+Q_真·K_真   = 0.26×0.20 + 0.70×0.76 = 0.584
+Q_真·K_好   = 0.26×0.15 + 0.70×0.83 = 0.620  ← 最高（&quot;真&quot;&quot;好&quot;第二维都大）
+</code></pre>
+<h3 id="step-3dk-softmax">Step 3：√dk 缩放（降温，防 softmax 饱和）</h3>
+<pre><code>dk=2，√2≈1.41
+天气: 0.332/1.41=0.235   真: 0.584/1.41=0.414   好: 0.620/1.41=0.440
+</code></pre>
+<p><strong>为什么要缩放</strong>：高维点积是 dk 个数相加，方差随维度增大；softmax 对大数敏感——分数偏大→最高项≈1 其余≈0→梯度变小训练不稳。除以 √dk 让"谁大谁小"不变但数值温和，softmax 不过早变成"几乎只看一个词"。</p>
+<h3 id="step-4softmax-1">Step 4：softmax 归一化（和=1 的权重）</h3>
+<pre><code>e^0.235≈1.265  e^0.414≈1.513  e^0.440≈1.553   总和=4.331
+天气: 29.2%   真: 34.9%   好: 35.9%  ← 最高，符合&quot;真好&quot;修饰直觉
+</code></pre>
+<h3 id="step-5-v">Step 5：加权聚合 V（不是选一个词，是加权融合）</h3>
+<pre><code>Output_真 = 0.292×V_天气 + 0.349×V_真 + 0.359×V_好
+第1维: 0.169+0.154+0.151 = 0.474
+第2维: 0.073+0.209+0.233 = 0.515
+Output_真 = [0.474, 0.515]
+</code></pre>
+<p>x_真 从 [0.2, 0.8] 变成 [0.474, 0.515]——它依然代表"真"，但已"知道"自己和"好"关系最密切。</p>
+<h2 id="attention">四、输出层：从 Attention 到预测词</h2>
+<pre><code>token_id → W_e → x → Wq/Wk/Wv → Q/K/V → Attention → Output
+       → ×N 层（残差+LN+FFN，GPT-2=12 层，GPT-3=96 层）→ 最终 Output
+       → ×W_eᵀ（lm_head，通常复用 W_e 转置）→ logits → softmax → 概率 → 输出词
+</code></pre>
+<ul>
+<li><strong>GPT（生成）</strong>：取最后位置 token 的最终 Output → lm_head → 预测下一词；训练时加 <strong>Causal Mask</strong> 防看未来</li>
+<li><strong>BERT（理解）</strong>：取 [CLS] 或各 token 的最终 Output → 接分类器</li>
+</ul>
+<h2 id="_4">五、完整公式卡</h2>
+<pre><code>Attention(Q, K, V) = softmax( Q·Kᵀ / √dk ) · V
+</code></pre>
+<p>多头：把 Q/K/V 拆多个"头"并行算再拼接——不同子空间同时捕捉不同语言关系。</p>
+<hr />
+<h2 id="_5">六、查询拓展：三个易混点 + 一个实验</h2>
+<h3 id="61">6.1 易混点辨析</h3>
+<table>
+<thead>
+<tr>
+<th>易混点</th>
+<th>澄清</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"注意力权重最高的词=模型输出那个词"？</td>
+<td>❌ attention 只帮当前位置形成上下文表示；最终输出词取决于后续多层加工+输出投影</td>
+</tr>
+<tr>
+<td>"Attention 后 token 合并了"？</td>
+<td>❌ 每个 token 各自独立计算 Output，互不合并（n 个 token 进 n 个出）</td>
+</tr>
+<tr>
+<td>"缩放改变了谁更相关"？</td>
+<td>❌ 只降温不改变排序；dk=2 时效果微弱，高维时才关键</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62-demopy">6.2 因果掩码实验（本项目 demo.py 实测）</h3>
+<p>对同一例子加 causal mask（token 只能看自己及之前）：</p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>权重分布</th>
+<th>观察</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>天气</td>
+<td>只能看自己</td>
+<td>out=[0.48, 0.50]（退化为自投影）</td>
+</tr>
+<tr>
+<td>真</td>
+<td>看 天气+真</td>
+<td>weights=[0, 0.494, 0.506]</td>
+</tr>
+<tr>
+<td>好</td>
+<td>看 天气+真+好</td>
+<td>weights=[0, 0, 1.0]（无未来可看时=纯自投影）</td>
+</tr>
+</tbody>
+</table>
+<p>这正是 GPT 训练"不作弊"的机制——<strong>每层每步的未来信息都被遮死</strong>。</p>
+<hr />
+<h2 id="_6">七、归纳总结</h2>
+<pre><code>一次 Self-Attention = 同源三角色 × 五步流水线
+
+同源：一个 x → Wq/Wk/Wv 三投影 → Q(问)/K(标签)/V(内容)
+五步：派生 → 点积(方向相近度) → √dk(降温) → softmax(权重) → 加权聚合V(融合)
+产出：每个 token 的新表示——&quot;知道自己和谁最相关&quot;
+后续：×N 层精炼 → lm_head 反嵌入 → 预测词
+</code></pre>
+<h2 id="_7">八、趋势判断（教学价值）</h2>
+<blockquote>
+<p>这类"手算级数值示例+可验证代码"是 LLM 基础教学中信息密度最高的形态——比纯公式推导多一层"数字肌肉记忆"，比纯代码多一层"过程可见性"。本机已有的 QKV 变体/KVCache 笔记都是"机制上层建筑"，本文补上了"地基的数值直觉"，形成完整阶梯。</p>
+</blockquote>
+<h2 id="_8">九、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="2026-06-05-Transformer-QKV变体研究-投影共享与推理压缩.md">Transformer-QKV 变体研究</a></td>
+<td>变体层（共享投影/推理压缩）——建立在本文基础机制上</td>
+</tr>
+<tr>
+<td><a href="2026-08-21-LLM推理KVCache全景-原理管理与修改利用.md">LLM 推理 KVCache 全景</a></td>
+<td>K/V 一旦派生可跨生成步复用（Cache 的前提正是本文 Step 1 的独立性）</td>
+</tr>
+<tr>
+<td><a href="2026-08-23-Qwen3.8-27B本地部署2万字-三笔账方法论与四轮量化实测.md">Qwen3.8 27B 本地部署</a></td>
+<td>混合注意力（64 层仅 16 层全注意力）省 KV Cache 75%——机制层是本文，工程层是那篇</td>
+</tr>
+<tr>
+<td><a href="2026-08-23-GRPO的数学思考-DeepManifold第四篇-边界条件与堆叠分段流形.md">Deep Manifold GRPO 数学</a></td>
+<td>注意力权重=数据决定的软路由，GRPO 组内比较=训练信号路由——两层"相关性计算"的呼应</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_9">十、拓展应用推荐</h2>
+<p>项目实验路线（<code>~/uclaw/project/qkv-self-attention/</code>）：</p>
+<ol>
+<li><strong>exp1 因果掩码</strong> ✅ 已在 demo.py 实现——见第六章实验表</li>
+<li><strong>exp2 多头拆分</strong>：2 维拆两头（各 1 维）看不同子空间分工</li>
+<li><strong>exp3 缩放消融</strong>：dk 拉到 64/512 造大分数，对比有无 √dk 的 softmax 分布饱和度</li>
+</ol>
+<h2 id="_10">十一、指南分析</h2>
+<p><strong>文章质量</strong>：<br />
+- ✅ 数字全程可复现（本项目 verify.py 六项断言全过）——教学文最难得的严谨性<br />
+- ✅ 三个易混点（权重≠输出/不合并/缩放不改排序）主动澄清<br />
+- ✅ 完整链路覆盖（嵌入→N 层→lm_head 反嵌入）不只讲单层<br />
+- ✅ 类比先行（检索：问/标签/内容），数学在后——认知顺序正确</p>
+<p><strong>局限</strong>：<br />
+- 单头 2 维是示教特例，dk=2 时 √dk 缩放效果几乎不可见（文章已诚实声明）<br />
+- 未涉及 QK^T 矩阵形式（逐对展示单行）——矩阵视角是工程实现的真正形态<br />
+- 多头仅一段带过（exp2 可补）</p>
+<p><strong>复现验证声明</strong>：本笔记所有数字经 <code>demo.py --verify</code> 独立复算（numpy），六项断言全部通过，exit code 0。文章唯一"误差"是 Output 第二维 0.515 vs 精确值 0.5160——属手算舍入，非错误。</p>
+<hr />
+<blockquote>
+<p><strong>配套代码</strong>：<code>~/uclaw/project/qkv-self-attention/demo.py</code>（零依赖，--verify 六项断言）<br />
+<strong>延伸阅读</strong>：原文链接见头部；QKV 变体/KVCache 两篇见关联分析</p>
+</blockquote>
+</body>
+</html>
