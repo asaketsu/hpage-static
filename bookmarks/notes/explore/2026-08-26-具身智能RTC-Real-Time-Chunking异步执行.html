@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>具身智能RTC-Real-Time-Chunking异步执行</title>
+
+<meta property="og:title" content="具身智能RTC-Real-Time-Chunking异步执行" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="rtc-real-time-chunking-vla">RTC (Real-Time Chunking) — VLA 实时推理的异步执行框架</h1>
+<blockquote>
+<p>探索日期 2026-08-26 | 兴趣等级 L3 | 来源 5 篇 | 前序：π0.5 笔记(2026-08-11)、FLOWER VLA(2026-07-13)</p>
+
+<p class="meta-date">生成日期 2026-08-26</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>Physical Intelligence 发布、NeurIPS 2025 录用的 RTC（arXiv 2506.07339）是一个纯推理时算法：让 π0/π0.5/SmolVLA 这类高延迟 flow-matching VLA 在 50Hz 控制频率下输出平滑连续动作。核心是把异步 action chunking 表述为 inpainting 问题——机器人执行上一个 chunk 的同时后台生成下一个 chunk，冻结必然执行的前缀动作，"补全"剩余部分。无需重训练，即插即用。</p>
+<h2 id="_2">关键发现</h2>
+<ol>
+<li><strong>延迟是 VLA 落地的第一物理约束</strong>：π0（3B）在 RTX 4090 上仅 KV cache prefill 就要 46ms，而 50Hz 控制周期仅 20ms；远程推理再加 13ms+ 网络延迟。同步推理 = 每个 chunk 边界停顿 + OOD jerk（训练分布外动力学）。</li>
+<li><strong>RTC = 异步执行 + inpainting 一致性</strong>：基于 pseudoinverse guidance（ΠGDM）在去噪每步加梯度引导项，强制新 chunk 与已执行前缀对齐；soft masking（指数衰减权重 1→0）覆盖全部 H−s 重叠步而非仅 d 步前缀；guidance weight clipping β=5 防止少步去噪（n=5）下发散——这三件套缺一不可（消融验证）。</li>
+<li><strong>实验证据</strong>：Kinetix 12 个高动态任务（投掷/接取/平衡）中 RTC 全面胜出 temporal ensembling 和 bidirectional decoding（BID），且延迟越大优势越大；真机 π0.5 双臂 6 任务（点蜡烛、插网线、叠衣）在 d≈6/11/16 注入延迟下保持高成功率，吞吐量显著提升。BID 需要 64 个采样 batch，RTC 计算量远低。</li>
+<li><strong>演进：Training-Time RTC</strong>（arXiv 2512.05964）：推理时 inpainting 需每步反传 vector-Jacobian product，有开销；改在训练时模拟推理延迟、直接 condition on action prefix，零推理开销，π0.6 上装箱/做咖啡任务性能持平且更便宜，高延迟场景反超。</li>
+<li><strong>生态可用性</strong>：LeRobot 已内置（<code>lerobot-rollout --inference.type=rtc</code>）；Intel Open Edge Platform 提供 Pi0.5+RTC OpenVINO 端侧管线（MuJoCo 验证→ALOHA 真机部署）。</li>
+</ol>
+<h2 id="_3">核心概念</h2>
+<pre><code>时间线（H=50, s=25, d=6, Δt=20ms）:
+t=0    观测 o_t → 后台开始推理（约 97ms）
+t=0..6 继续执行上一 chunk 的重叠动作（frozen prefix, W=1）
+t=6    新 chunk 就绪：前 6 步冻结=旧值，6..H-s 指数衰减权重，
+       H-s..H 权重 0（自由生成）→ 无缝切换，无停顿无跳变
+</code></pre>
+<p>ΠGDM 引导项（每个去噪步）：v' = v + min(β, (1−τ)/(τ·r²)) · (Y − Â)ᵀ diag(W) ∂Â/∂Aᵗ——本质是把"与已执行动作保持一致"变成可微软约束。</p>
+<p>关键超参（LeRobot 实测）：execution_horizon 8–12 步；max_guidance_weight 10.0（10 步 flow matching）；prefix_attention_schedule 用 EXP 衰减。</p>
+<h2 id="_4">对工作的价值</h2>
+<ul>
+<li>与 embodied-ai-control skill 的大脑-小脑分离设计互补：RTC 不改架构、不加 System 1 小模型，纯执行层技巧，Jetson 边缘部署 VLA 时可直接套用（4090 级延迟数据是现成参考）。</li>
+<li>"异步生成 + 冻结前缀 + 软约束补全"是通用模式：适用于任何"生成慢于消费"的流式场景（如 TTS 流式合成、Agent 工具调用的 action pipeline）。</li>
+</ul>
+<h2 id="_5">行动建议</h2>
+<ol>
+<li>P1：为 embodied-ai-control skill 补充 RTC 小节（π0.5 部署执行层参考 + LeRobot 命令 + 超参表）。</li>
+<li>P2：若做 Jetson VLA 实验，优先 LeRobot RTC 而非自研异步逻辑；注意 RTC 相对 baseline 增加约 21ms 模型耗时（97 vs 76ms）。</li>
+</ol>
+<h2 id="_6">关键风险与盲点</h2>
+<ul>
+<li>RTC 有计算开销（vector-Jacobian product 每去噪步一次反传），边缘设备上可能得不偿失——training-time RTC 是替代路线（官方验证）。</li>
+<li>位置控制机器人上同步推理本可用，RTC 收益主要在吞吐和延迟鲁棒性；力控场景（Kinetix 类）才是刚需（官方论文）。</li>
+<li>SmolVLA 的 async 算法不解 chunk 间不连续问题，不能等同 RTC（社区对比已确认）。</li>
+</ul>
+<h2 id="_7">一页速查</h2>
+<blockquote>
+<p>RTC = 异步 chunk 推理 + ΠGDM inpainting + soft mask + β clipping。冻结 d 步前缀，补全 H−s 剩余。免训练、即插即用，LeRobot 一行启用。延迟越大越能打，BID/TE 全面下风。下一代：training-time action conditioning 零开销。</p>
+</blockquote>
+<h2 id="_8">待深入</h2>
+<ul>
+<li>Training-Time RTC 的延迟分布模拟如何选（论文 VI 节承认需按预期延迟调参）</li>
+<li>A2C2 / VLASH 两个并发工作的 correction head 路线对比</li>
+</ul>
+<h2 id="_9">来源</h2>
+<ol>
+<li>arXiv 2506.07339 (NeurIPS 2025) — Real-Time Execution of Action Chunking Flow Policies</li>
+<li>LeRobot 官方文档 — Real-Time Chunking (RTC)</li>
+<li>arXiv 2512.05964 — Training-Time Action Conditioning for Efficient RTC</li>
+<li>Intel Open Edge Platform — Pi0.5 with RTC (OpenVINO)</li>
+<li>NeurIPS 2025 Poster 117747 + Medium 解读</li>
+</ol>
+</body>
+</html>
