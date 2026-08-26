@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentWeave-先路由后推理</title>
+
+<meta property="og:title" content="AgentWeave-先路由后推理" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="agentweave">AgentWeave：工具丰富模型先路由后推理的高效函数调用</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.AI/cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2608.23078<br />
+<strong>作者</strong>：Saurav Singla, Aarav Singla, Advik Gupta, Parnika Gupta（开源研究项目）<br />
+<strong>记录日期</strong>：2026-08-26</p>
+
+<p class="meta-date">生成日期 2026-08-26</p></blockquote>
+<p><strong>标签</strong>：#函数调用 #工具路由 #LLM推理优化 #Agent架构 #边缘推理</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题：候选工具爆炸下的函数调用</h3>
+<p>LLM 日益需要在大量工具、函数、API 和专业 Agent 上运行。随着候选动作空间增长，函数调用模型必须处理更多 schema、消耗更多 prompt token，并在越来越相似或无关的候选中区分。传统评估管线把工具目录当作模型的固定输入，掩盖了一个关键系统变量：<strong>模型到底应该看到哪些函数？</strong></p>
+<p>论文的核心假设：函数调用可以分解为「候选空间构建 + 语言模型推理」两阶段。应用层先移除因角色、租户、策略、部署环境或能力约束而不可用的工具，任务感知路由器再进一步缩减目录，语言模型最后在更小的集合中选择。这种分解<strong>不需要微调下游模型</strong>，可用受控的同模型对比来评估。</p>
+<h3 id="12-agentweave">1.2 AgentWeave 架构：确定性推理前路由层</h3>
+<p>形式化定义：常规系统预测 <code>y = M(x, F)</code>，AgentWeave 引入路由函数 <code>R</code> 把请求和源目录映射到子集 <code>F' = R(x, F)</code>，下游预测变为 <code>y = M(x, F')</code>。模型权重、生成设置、评估逻辑在各条件下保持不变。</p>
+<p>架构分三层：</p>
+<ol>
+<li><strong>确定性范围与策略过滤</strong>：生产工具目录常含无需语义解释即可排除的候选。角色、租户、权限、部署环境、司法辖区、产品面或能力标签可确定性限制合格集。策略优先的范围过滤是独立的上游阶段；若确定性过滤后目录已足够小，则无需语义路由。</li>
+<li><strong>需求感知路由</strong>：对剩余候选，从请求中提取需求信号，与候选描述、能力、提供者分组匹配。路由器施加有界预算，只暴露小子集给语言模型。设计刻意与模型无关——本地模型、托管模型或提供者中立适配器都能消费选定的函数列表。</li>
+<li><strong>溯源与失败定位</strong>：分离阶段的实际收益是失败定位。若最终工具调用错误，开发者应能判定：正确工具是被过滤掉了、可见但未被选中、被选中但被授权拒绝、还是执行出错。阶段级溯源记录源目录身份、路由配置、候选计数、被滤候选、模型可见候选、选中函数和执行结果。</li>
+</ol>
+<blockquote>
+<p><strong>安全边界金句</strong>：「路由优化模型看到什么；授权治理系统被允许做什么。」pre-model 过滤可减少对无关或恶意工具描述的暴露，但不能替代授权——模型选择之后、执行之前必须保留确定性 fail-closed 授权门。</p>
+</blockquote>
+<h3 id="13-bfcl">1.3 实验设计：冻结的 BFCL 路由压力协议</h3>
+<ul>
+<li><strong>任务</strong>：48 个全新 BFCL V4 multiple-function 任务（与 v5 试点 12 任务零重叠），任务选择对内容盲、打分前冻结。记录精确的源码版本、BFCL/Gorilla commit、workflow run、artifact 标识和摘要。首次成功打分后实验视为不可变，任何影响结果的修改需新研究标识和全新样本。</li>
+<li><strong>下游模型</strong>：MadeAgents/Hammer2.1-1.5b（轻量函数调用模型），所有路由策略下固定不变。评估本地化、无密钥、零外部 API 开销。</li>
+<li><strong>路由压力构造</strong>：每个任务先放入确定性 16 工具压力环境，再施加策略特定选择。原始 BFCL 问题不重写，恢复评估结构后保留原生 BFCL 评估。</li>
+<li><strong>四种匹配条件</strong>：全工具（暴露 16 个）、随机 top-8（确定性随机缩减）、语义 top-8（嵌入/相似度缩减）、AgentWeave（需求/能力感知有界路由，平均 4.77 个）。</li>
+<li><strong>统计方法</strong>：10,000 次重采样配对 bootstrap 95% 置信区间 + 精确 McNemar 检验（适合配对任务级设计，避免把策略当独立样本）。</li>
+</ul>
+<h3 id="14">1.4 主结果：唯一非零成功 + 大幅效率收益</h3>
+<p>关键数字（48 任务冻结结果）：</p>
+<ul>
+<li><strong>原生成功率</strong>：AgentWeave 6/48（12.5%）；全工具 0/48；随机 top-8 0/48；语义 top-8 0/48。配对差异 +12.5 个百分点，bootstrap 95% CI [+4.17, +22.92]，精确 McNemar p=0.03125。</li>
+<li><strong>效率</strong>（相对全工具）：模型可见工具少 70.18%（16.00 → 4.77）；输入 token 少 61.70%（124,821 → 47,805）；平均本地模型延迟低 50.95%（55.92s → 27.43s）。</li>
+<li><strong>压缩不成比例</strong>：AgentWeave 暴露约 29.8% 的工具数，却保留约 38.3% 的输入 token 和 49.1% 的平均延迟——请求文本、系统指令、分词器和生成开销是固定成本，路由只削减推理的可变部分。</li>
+<li><strong>前导试验一致性</strong>：v5 试点（12 任务）AgentWeave 2/12 = 16.67%，基线全 0/12；v6 复制方向一致且样本更大。v5 视为假设生成，v6 视为更大规模的未触碰复制，两者不合并统计。</li>
+</ul>
+<h3 id="15">1.5 保留率悖论：最有价值的反直觉发现</h3>
+<p>路由诊断指标揭示了与直觉相反的结果：</p>
+<ul>
+<li>语义 top-8 保留诊断最强：平均原始候选召回 86.81%，全候选保留率 66.67%——但原生成功 <strong>0/48</strong>。</li>
+<li>AgentWeave 两项诊断反而更低：76.91% 和 54.17%——但原生成功 <strong>6/48</strong>。</li>
+</ul>
+<p>论文的解释假设是<strong>干扰项几何（distractor geometry）</strong>：两个候选集都可以包含所需函数，却给小语言模型呈现完全不同的决策面。语义检索倾向于收集名称、描述或参数 schema 与目标竞争的近邻函数；需求/能力感知路由虽然保留更少的原始候选，却消除了一些混淆性替代。论文诚实声明：冻结工件未直接测量成功/失败任务的成对 schema 相似度，这是可检验假设而非已证因果机制。</p>
+<h3 id="16">1.6 失败分类学与路由目标</h3>
+<p>六类失败模式：所需候选缺失（路由删掉了必需函数）、部分多重覆盖（部分必需函数存活）、schema 竞争（必需函数可见但近似干扰项导致误选）、参数生成错误（函数对了参数错了）、下游模型失败（候选集充足但模型没产出有效调用）、过度压缩（省了上下文但召回跌破可用点）。</p>
+<blockquote>
+<p><strong>关键论断</strong>：路由器不是最终决策者。500 个函数的目录中，所需函数保留在 6 个的高质量集合里且排第二，路由器已完成使命——LLM 明确保留为最终函数选择者。因此 <strong>required-tool Recall@K 和全必需工具保留率是比 router Hit@1 更忠实的路由目标</strong>。</p>
+</blockquote>
+<p>论文还提出因果式阶段分解：端到端成功 = R ∧ S ∧ A E（保留∧选择∧参数∧执行），应报告 P(R)、P(S|R)、P(A|S,R)、P(E|A,S,R) 各条件转移概率，以判断收益来自候选构建还是下游模型仍是瓶颈。</p>
+<h3 id="17">1.7 证据边界（论文自我声明的克制）</h3>
+<p>研究明确声明<strong>不</strong>主张的内容：不是官方完整 BFCL 排行榜分数；不证明 AgentWeave 普遍优于语义检索；不证明生产级端到端任务成功；不证明跨硬件/提供商的普适延迟或 token 缩减；不证明路由单独解决授权、安全或执行正确性；不证明跨多个函数调用模型的泛化。仓库保留弱结果和负结果（早期冻结评估显示简单嵌入基线可在已观测数据上超过原路由器），使路由系统演进可审计。</p>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-bfclberkeley-function-calling-leaderboard">2.1 BFCL（Berkeley Function Calling Leaderboard）</h3>
+<p>UC Berkeley Gorilla 团队维护的函数调用基准，含可执行和基于 AST 的评估框架，覆盖单函数、并行、多重、live、agentic 设置。V4 进一步纳入多轮和 agentic 评估，同时保留适合受控函数选择研究的单轮类别。BFCL 的多重函数类别要求在多个候选函数中组合选择，天然适合测试路由压力。</p>
+<h3 id="22-hammer">2.2 Hammer 系列与函数掩码</h3>
+<p>Hammer（arXiv:2410.04587）面向轻量端侧函数调用，用<strong>函数掩码（function masking）</strong>和以不相关数据为核心的数据增广提升鲁棒性——本质上是在训练侧教模型抵抗无关函数干扰。AgentWeave 与之互补：不改模型，只改推理前的候选可见集。本次实验用的 Hammer2.1-1.5b 正是该家族的 1.5B 轻量成员，也是「候选压力敏感」的可能来源。</p>
+<h3 id="23-mcnemar-bootstrap">2.3 McNemar 检验与配对 bootstrap</h3>
+<p>McNemar 检验专用于配对二元结果的显著性——同一批 48 个任务在两种策略下的成败翻转（discordant pairs）。本例中 6 次翻转全部有利于 AgentWeave（6:0），精确二项 p = 0.03125。配对 bootstrap（10,000 次重采样）则给出差异的置信区间。这套方法比「比较两个独立比例」更适合同任务匹配设计，是小样本 A/B 评估的统计学最佳实践。</p>
+<h3 id="24-recallk-vs-hit1">2.4 Recall@K vs Hit@1 的检索哲学</h3>
+<p>这是工具检索与推荐系统共享的经典议题：检索阶段的成功标准是「所需项在返回集内」而非「排第一」。Hermes 的场景同理——系统提示里塞 50 个工具定义时，关键是正确的 5 个必须在场，排序交给模型的推理能力。论文建议未来报告预算 K 上的操作曲线（保留率 vs 压缩率 vs 下游成功），以区分收益来自更好检索、更有利组合、还是单纯更大预算逼近全工具条件。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 两阶段分解框架</h3>
+<pre><code>传统: 请求 x + 全目录 F ──────────► 模型 M ──► 调用 y
+                       （schema 竞争 + token 爆炸）
+
+AgentWeave:
+ 请求 x ─┬─► [阶段0] 确定性策略过滤（角色/租户/环境/权限标签）
+         │        ↓ 合格集 F_e
+         ├─► [阶段1] 需求/能力感知路由 R(x, F_e) → F'（有界预算，均值 4.77）
+         │        ↓
+         ├─► [阶段2] 模型推理 M(x, F') → 选中函数
+         │        ↓
+         └─► [阶段3] fail-closed 授权门 → 执行 + 阶段级溯源记录
+</code></pre>
+<h3 id="32">3.2 四条件核心数据速览</h3>
+<ul>
+<li>全工具（16 个）：成功 0/48，token 124,821，延迟 55.92s</li>
+<li>随机 top-8：成功 0/48，token 69,790，延迟 30.56s</li>
+<li>语义 top-8：成功 0/48，召回 86.81% 最高，token 70,271，延迟 35.87s</li>
+<li>AgentWeave（均值 4.77 个）：成功 6/48，token 47,805，延迟 27.43s</li>
+</ul>
+<p>三个结论直接被证据支持：①候选空间构建是实验上有意义的变量（同模型同评估器，不同呈现策略产生不同原生结果）；②有界路由实质降低 schema 暴露、输入 token 和本地推理延迟；③更高的原始候选保留率本身不足以预测原生成功。</p>
+<h3 id="33">3.3 干扰项几何假说</h3>
+<pre><code>语义 top-8 的候选集:  [目标✓, 近邻A, 近邻B, 近邻C, ...]  ← 名称/schema 相似 → 决策面拥挤 → 0/48
+AgentWeave 的候选集:  [目标✓, 能力异构D, 分组代表E, ...] ← 相似干扰被剪 → 决策面清晰 → 6/48
+</code></pre>
+<p>启示：<strong>给模型看的工具集合，其「组成结构」比「覆盖完整性」更重要</strong>。这对所有 Agent 系统的工具注册表设计都有直接指导意义——不是把所有相关工具都塞给模型就好。</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1-agent">趋势1：工具路由将成为 Agent 系统的独立工程层</h3>
+<p>依据：论文形式化了 pre-inference routing 为独立阶段，且证明了不改模型即可改变行为。MCP 生态工具数爆炸（数百工具注册表已成常态）背景下，「先路由后推理」与 Hermes 已有的 skill 检索、deferred tool loading 是同一方向。预计主流 Agent 框架将内建候选预算机制。</p>
+<h3 id="2">趋势2：小模型 + 强路由组合会挑战大模型 + 全量暴露</h3>
+<p>依据：1.5B 模型在全工具暴露下 0/48，配路由后 12.5%——候选压力对小模型是显著瓶颈，路由是廉价放大器。端侧部署（Jetson 等）场景下，模型不可换时路由是唯一杠杆，成本只有 token 和延迟的一半以下。</p>
+<h3 id="3">趋势3：评估方法学走向「分阶段归因」而非端到端单一分数</h3>
+<p>依据：论文提出的 R∧S∧A E 因果分解、路由诊断与原生成功分离报告、冻结协议 + 预注册复制（v5→v6）、保留负结果，这一整套「证据边界声明」在 arXiv 预印本中相当罕见且被社区推崇。BFCL 类基准将吸收这些分阶段指标。</p>
+<h3 id="4">趋势4：路由 ≠ 安全边界成为共识</h3>
+<p>依据：论文明确 routing 管可见性、authorization 管许可权，fail-closed 授权门必须在模型选择之后。与 SlotGuard、零信任 Agent 治理等方向汇流：可见性控制（减少 prompt injection 面）与授权控制（防越权执行）是两道独立的闸门。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-screenshots-or-tools-260803327">5.1 与 Screenshots or Tools 笔记（2608.03327）的关联</h3>
+<p>2026-08-09 精读的混合 GUI-MCP Agent 论文发现工具采纳率仅 17.8%、存在符号反转现象。AgentWeave 从另一个方向论证同一问题：<strong>工具越多不等于越好用</strong>。前者证明模型会忽略可用工具，后者证明无关工具的 mere presence 会摧毁小模型的调用能力（0/48）。两篇合读得出 Agent 工具设计的双重准则：既要推动模型采纳该用的工具（训练侧），又要主动隐藏不该看的工具（系统侧）。</p>
+<h3 id="52-beyond-the-leaderboard260705775">5.2 与 Beyond the Leaderboard（2607.05775）的关联</h3>
+<p>该笔记提出 Agent 六大失败模式分类法与「组合性鸿沟」定律。AgentWeave 的六类失败分类学（缺候选/部分覆盖/schema 竞争/参数错误/下游失败/过度压缩）是工具调用子域的对应物，且其 schema 竞争类别正是组合性鸿沟在函数选择上的微观体现。</p>
+<h3 id="53-hermes-agent">5.3 与 Hermes Agent 自身架构的关联</h3>
+<p>Hermes 的 deferred tool loading（14 个按需加载工具）+ 三级技能检索本质上就是 AgentWeave 的阶段 1。可对照点：Hermes 目前按「工具类别」粗粒度分组，论文提示可加入需求信号提取（从用户请求中抽取意图关键词匹配工具描述/能力标签）。阶段级溯源（routing provenance）对应 Hermes 的工具调用日志，可增加「候选集构成」字段。</p>
+<h3 id="54-jetson">5.4 与 Jetson 边缘部署的关联</h3>
+<p>实验是本地无 API 的 keyless 评估（Hammer2.1-1.5b 在本地跑），延迟减半直接翻译为边缘设备交互响应改善。1.5B 级模型 + 70% 工具裁剪的组合是 Jetson Orin Nano 级硬件上 Agent 工具调用的现实配方。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「路由优化模型看到什么；授权治理系统被允许做什么。」（Routing optimizes what the model sees; authorization governs what the system is allowed to do.）— 安全边界一句话讲透</p>
+<p>「证据支持一个有限的结论：在受测设置下，改变候选空间构建会改变固定函数调用模型的下游行为。」— 对 12.5% 绝对成功率的诚实定位</p>
+<p>「更强的候选保留本身不能解释原生成功……模型看到所需函数伴随数个近似干扰项，与在更有区分度的集合中看到同一函数，行为可能不同。」— 干扰项几何假说的核心表述</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li>工具注册表超过 15 个时，必须引入确定性过滤层（环境/权限/能力标签），不要把全量 schema 塞进系统提示</li>
+<li>评估工具调用质量时，把「路由召回」和「模型选择正确率」分开统计，避免强模型掩盖坏路由、坏路由背锅强模型</li>
+<li>小模型函数调用失败时，先检查候选集组成（是否近邻干扰项过多），再怀疑模型能力</li>
+<li>做基准实验时学习其冻结协议：首次打分后不可变、新修改用新样本、保留负结果</li>
+</ul>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<h3 id="81-hermes-gateway-p0">8.1 Hermes Gateway 工具候选预算（P0，可直接移植）</h3>
+<p>现状：Hermes 系统提示暴露已加载工具的完整 schema，skill 检索按需注入 SKILL.md 但工具定义本身全量可见。可落地：在 prompt 组装层加「需求感知候选筛选」——用户消息提取意图关键词 → 匹配工具 name/description/category → 按预算（如 8 个）截断 + 保留确定性必选（terminal/read_file 等核心工具白名单）。工作量约 1 天，收益是系统提示 token 下降与选择精度提升。</p>
+<h3 id="82-p1">8.2 工具调用溯源字段（P1）</h3>
+<p>在工具调用日志中增加：本次可见候选集（工具名列表）、候选缩减方式（全量/过滤/路由）、被滤掉的相关工具计数。失败复盘时可直接区分「路由没给」vs「给了没选」。工作量半天。</p>
+<h3 id="83-p1">8.3 路由质量监控指标（P1）</h3>
+<p>为 8.1 的筛选器加监控：required-tool 保留率（通过事后人工/LLM 判定实际所需工具是否在候选集中）、平均候选数、schema token 节省量。对应论文的 Recall@K 哲学——监控召回而非排序第一。</p>
+<h3 id="84-jetson-agent-p2">8.4 Jetson 端侧 Agent 工具裁剪（P2，需工程改造）</h3>
+<p>nexa-local-inference 场景下，本地 1.5B-7B 模型配 Ollama function calling 时，前置 Python 路由层裁剪工具集。障碍：需要为每类任务维护工具能力标签库；收益：本地推理延迟可望减半（论文实测 50.95%）。</p>
+<h3 id="85-agent-p3">8.5 量化交易 Agent 工具门控（P3，暂不适用）</h3>
+<p>quant-trading 工作流的工具数量未达压力阈值（&lt;15 个），当前全量暴露无碍。仅当未来工具注册表膨胀（如接入多数据源多策略 API）时再启用。标记暂缓。</p>
+<hr />
+<h2 id="_9">九、指南分析</h2>
+<h3 id="91">9.1 本论文作为「预印本自我约束」的范本</h3>
+<p>AgentWeave 值得学习的不是 12.5% 的成绩，而是其方法学纪律，可直接借鉴为 Agent 评估指南：</p>
+<ol>
+<li><strong>冻结协议</strong>：任务集选择对内容盲、打分前冻结、首次成功打分后不可变、任何修改换新样本标识——Hermes 的 skill 压力测试（skill-stress-test）应采用同等纪律，防止对已知 benchmark 反复调优</li>
+<li><strong>配对统计</strong>：同任务跨条件对比用 McNemar + 配对 bootstrap，而不是独立样本 t 检验；小样本时报置信区间而非只报 p 值</li>
+<li><strong>负结果保留</strong>：语义基线召回更高却 0 成功的反直觉结果完整呈现并给出机制假说，未隐藏不利数据</li>
+<li><strong>边界清单</strong>：专门的「本文不主张什么」章节（What the Study Does Not Claim），六条否定声明逐项列出</li>
+</ol>
+<h3 id="92">9.2 分阶段评估操作指南</h3>
+<p>对任何多阶段 Agent 管线（路由→选择→参数→执行），按论文的 R∧S∧A E 分解报告条件转移概率：</p>
+<ol>
+<li>定义各阶段二元成功判据（保留/选择/参数/执行）</li>
+<li>对每任务记录四阶段结果向量，而非只记端到端成败</li>
+<li>计算各条件概率，定位瓶颈阶段</li>
+<li>改进后分别复测，验证改进作用于预期阶段（如换了路由器应提升 P(R) 而非 P(A|S)）</li>
+</ol>
+<h3 id="93">9.3 工具目录治理清单</h3>
+<ul>
+<li>目录 &lt;10：全量暴露可接受</li>
+<li>目录 10-30：确定性标签过滤（环境/权限）即可</li>
+<li>目录 &gt;30：需求感知路由 + 候选预算 + 溯源记录</li>
+<li>任何规模：授权门独立于可见性控制，fail-closed</li>
+</ul>
+</body>
+</html>
