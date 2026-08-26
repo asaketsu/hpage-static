@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多流LLM：并行流架构解除语言模型的串行封锁</title>
+
+<meta property="og:title" content="多流LLM：并行流架构解除语言模型的串行封锁" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm">多流LLM：并行流架构解除语言模型的串行封锁</h1>
+<blockquote>
+<p>探索日期: 2026-08-26 | 领域: 多模态 AI | 类型: auto-explore | 来源: arXiv 2605.12460 + 3 篇解读</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>Jonas Geiping 团队（ELLIS Tübingen / Max Planck，2026-05-12 提交）提出 <strong>Multi-Stream LLMs</strong>：把指令微调从"顺序消息格式"切换为"多并行流格式"，每个角色（user/system/model/thinking/tools）独占一个流，单次前向传播同时读多条输入流、在多条输出流失并行生成 token。这不是推理加速技巧，而是对 chat 模板范式的根本性替换——当前所有 Agent（含 Claude Code）本质仍是"穿著脚手架外衣的 chat 模型"，读/想/_act 三者任意时刻只能做一件事。论文用 Qwen3-1.7B/4B/8B 和 Qwen3.5-27B 验证：延迟大幅下降、prompt injection 攻击成功率骤降（零对抗训练）、模型内部意图可监控性接近翻倍。代码/模型全开源。</p>
+<h2 id="_2">关键发现</h2>
+<p><strong>1. 串行封锁是 chat 模板的历史遗留，不是技术必然</strong><br />
+- 消息格式（<code>[USER]/[ASSISTANT]</code> 交替）继承自最早指令微调模型，CoT、工具调用、system prompt、子代理协议全是"补丁式塞进同一 token 序列"<br />
+- 后果：读长工具结果时不能生成、生成时不能接收新输入（用户打断）、思考时不能执行工具、轮次间完全闲置<br />
+- 现有缓解（head/tail 分块读、subagent 外包探索、外部 ping）都是硬编码的脆弱脚手架</p>
+<p><strong>2. 核心机制：跨流因果注意力（近乎零成本）</strong><br />
+- 数学形式：<code>p(y¹..y^H) = ∏ p(y_t^h | y_&lt;t^h, {y_&lt;t^h'}_{h'≠h})</code> — 每流自回归 + 跨流只看严格早于 t 的位置，保持全局因果 DAG<br />
+- 关键洞察：<strong>LLM 推理是 memory-bound</strong>，每步解码 1 个 token 还是 N 个 token，读权重的带宽开销几乎相同 → N 条流 ≈ N-way 多 token 预测，生成速度几乎不受影响<br />
+- 空槽（预测为"-"的格）推理时可跳过，KV-cache 占用实际下降<br />
+- 与已有方案区分：非 speculative decoding、非 Medusa 并行头（独立训练递归退化）、非 Multiverse MapReduce（分支完全隔离无交叉注意力）；近亲是语音域的 Moshi（用户语音/模型语音/语义上下文三流重叠）</p>
+<p><strong>3. 效率：TTFT 归零 + 端到端延迟 -40%+（Qwen3-1.7B/4B 实测）</strong><br />
+- TNFT（首 token 前需处理的 token 数）：Vanilla 93~358 → Stream <strong>0</strong>（四个基准全部归零）<br />
+- 端到端延迟：代码基准 43.14→22.94 秒（-47%），数学 58.31→38.18（4B）<br />
+- <strong>审计流场景最亮眼</strong>：第三条 audit 流实时监控输入与解答（替代串行 reflection），1.7B 准确率反升（61.55→65.65），最长流长度减半，延迟降 40%+</p>
+<p><strong>4. 安全：流隔离 = 免费的权限层级（零对抗训练）</strong><br />
+- 间接注入 StruQ-ID ASR：7B 从 76.00→<strong>42.23</strong>（-34 分）、4B 从 80.69→<strong>41.91</strong>（-39 分），仅靠架构分离<br />
+- 直接注入 TensorTrust 75.56→54.75；NESSiE Safe&amp;Helpful 8.21→28.21——不是更爱拒绝，而是辨别力更强<br />
+- 指令跟随能力持平或更好，安全增益不牺牲通用能力<br />
+- 原理：输入被架构性限制在 User 流内，无法冒充 system 指令 → 内置 privilege hierarchy</p>
+<p><strong>5. 可监控性：内部流让模型"低声说出"真实考量（27B 十流实验）</strong><br />
+- Qwen3.5-27B 微调为 10 流模型（1 输入 + 1 用户可见输出 + 8 内部思考流，3864 条合成对话训练）<br />
+- 隐忧 sub-vocalization（内部提出但可见回答中缺失的关切）：0.06→<strong>0.44</strong>；监控分类准确率 27B 近翻倍（0.26→0.44）<br />
+- 意义：审计者可直接读内部流，发现可见输出故意隐瞒的问题（模型察觉被测试/未提出的医疗风险）<br />
+- 工程细节：Qwen3.5 的 Gated-DeltaNet 层需要 per-stream 特殊处理</p>
+<p><strong>6. 数据构造三段流水线（复现关键）</strong><br />
+- wait-k 流式改写（消息数据→流式表格）或前沿模型直接生成 stream-table 格式<br />
+- 因果一致性验证（跨流时间戳严格递增校验）+ 逐流/跨流质量过滤<br />
+- 基座模型已具备容量，瓶颈在多流微调数据——<strong>私有 Agent 交互日志转流表格 = 潜在竞争壁垒</strong></p>
+<h2 id="_3">对工作的价值</h2>
+<ul>
+<li><strong>Hermes 即"串行封锁"的典型样本</strong>：工具调用、子代理、记忆写入全走单一消息流，读 50KB 工具输出时完全阻塞——论文给这个日常痛点命了名，并给出模型级解法路径</li>
+<li><strong>流隔离防注入可直接借鉴到 Agent 安全设计</strong>：与 red-teaming 域的 llm-prompt-injection skill 形成互补——架构级分离 &gt; 提示词级防御，未来 replit/Claude 类产品跟进时该防御思路会成为标配</li>
+<li><strong>Channel-first 运行时可先于模型落地</strong>（developersdigest 核心建议）：不必等模型，现在就把 Agent 上下文显式分为 policy/tools/plan/diff/status/final 六通道——当前是格式纪律，多流模型到位后无缝升级</li>
+<li><strong>审计流模式可低成本试水</strong>：论文的 "Auditing While Solving"（第三流实时监控）比串行 reflection 又快又准，Hermes 的 observability-dashboard/Watchdog 可参考"并行审查而非事后审查"思路</li>
+</ul>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li><strong>[P1] 关注跟进</strong>：Watch github.com/seal-rg/streaming 与 HF JonasGeiping/stream-qwen3.5-27b，等社区复现 8B 以下可跑版本后，在 Jetson 上试流式推理（memory-bound 特性对边缘设备友好，空槽跳过还省 KV-cache）</li>
+<li><strong>[P1] 架构预案</strong>：Hermes Harness 的消息总线设计预留"多通道"抽象——planning/audit/status 与主对话通道分离存储，即使底层模型仍单流，上下文组装时已按通道分组</li>
+<li><strong>[P2] 防御映射</strong>：把"流隔离=权限层级"结论补入 llm-prompt-injection 防御章节（引用 StruQ-ID -33 分数据）</li>
+<li><strong>[P2] 数据资产</strong>：若有 Agent 交互日志沉淀，研究转 stream-table 格式的转换器——论文明示这是解锁关键且是竞争壁垒</li>
+</ol>
+<h2 id="_5">关键风险与盲点</h2>
+<ul>
+<li>论文自认模型小（≤27B）、指令数据少（千级），未经大规模 post-training 验证（官方来源）</li>
+<li>流间矛盾 token 问题（两流同位给出不同答案）在 HN 讨论中被指出，论文未深入处理（社区级）</li>
+<li>纯串行任务（证明书写）收益有限；chat/即时通讯场景单流仍是正解（官方 Limitations）</li>
+<li>生产 Agent 失败多数源于弱提示/坏上下文/权限松散，而非单流架构本身——多流是研究主张非即插产品（developersdigest 反方观点）</li>
+<li>"Design for channels now" 是防御性建议：即使多流模型不来，通道化运行时也让 Agent 更易调试</li>
+</ul>
+<h2 id="_6">一页速查</h2>
+<blockquote>
+<p>多流LLM = 把 chat 模板的单序列换成 H 条并行流（user/model/thinking/tools 各占一条），单次前向读多流写多流，跨流严格因果（只看 &lt;t）<br />
+核心：memory-bound 推理下 N 流近乎免费；空槽跳过省 KV-cache<br />
+三大收益：① TTFT→0、延迟 -40%（含并行审计流，准确率还反升）② 间接注入 ASR -33分（零对抗训练，架构即权限层级）③ 内部流可监控性翻倍（27B 十流，隐忧 subvoc 0.06→0.44）<br />
+数据三段式：wait-k 改写/前沿模型生成 stream-table → 因果验证 → 质量过滤；私有 Agent 日志转流表格=壁垒<br />
+现在能做：运行时通道化（policy/tools/plan/diff/status/final 分离）；等模型：seal-rg/streaming 开源跟进<br />
+区分：≠speculative decoding（那是加速草稿）≠Medusa（独立头无交叉）≈Moshi 语音重叠思想移植到文本</p>
+</blockquote>
+<h2 id="_7">待深入</h2>
+<ul>
+<li>Gated-DeltaNet（Qwen3.5 的线性注意力层）的 per-stream 处理细节 — 附录 B.7</li>
+<li>流间注意力变体：striped/offset 省算力、单向交互做安全、部分隔离做细粒度权限 — 论文 Future Work</li>
+<li>27B 十流的 8 条内部思考流各自角色分配方式与涌现行为</li>
+</ul>
+<h2 id="_8">来源列表</h2>
+<ul>
+<li>论文原文: arxiv.org/abs/2605.12460（Multi-Stream LLMs: Unblocking Language Models with Parallel Streams of Thoughts, Inputs and Outputs，Guinan Su, Yanwu Yang, Xueyan Li, Jonas Geiping）</li>
+<li>代码: github.com/seal-rg/streaming | 模型: huggingface.co/JonasGeiping/stream-qwen3.5-27b | Demo: HF Spaces stream-llm-demo</li>
+<li>深度解读: dev.to/monuminu（14 分钟技术走读，含架构图与训练细节）</li>
+<li>架构评论: developersdigest.tech（"Design for Channels Now" 反方平衡视角）</li>
+<li>社区讨论: news.ycombinator.com/item?id=48227923（流间矛盾 token 等质疑）</li>
+</ul>
+</body>
+</html>
