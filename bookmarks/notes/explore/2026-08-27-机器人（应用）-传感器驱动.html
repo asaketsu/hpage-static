@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器人传感器驱动架构与 ROS2 实践</title>
+
+<meta property="og:title" content="机器人传感器驱动架构与 ROS2 实践" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="ros2">机器人传感器驱动架构与 ROS2 实践</h1>
+<blockquote>
+<p>探索日期：2026-08-27 | 兴趣等级：L2 | 来源数量：3 | 前序笔记：notes/2026-06-08-ROS2实时性保障与硬件加速技术详解.md, notes/2026-07-15-Bus-Servo-Adapter-A微雪总线舵机驱动板.md</p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>本文以四足机器人/AMR 为载体，系统梳理 ROS2 传感器驱动层的架构设计、节点通信机制和 QoS 调优实践。核心要点：分层解耦的五层架构（硬件底层→驱动适配→运动控制→决策感知→应用交互）、传感器驱动的三大职责（初始化/采集/下发）、DDS QoS 依赖链与 41 条冲突规则，以及 REP 2003 传感器数据 QoS 标准提案。</p>
+<hr />
+<h2 id="_2">关键发现</h2>
+<h3 id="1">1. 五层分层解耦架构（四足机器人实证）</h3>
+<p>ROS2 机器人开发遵循<strong>分层解耦</strong>设计理念，各层独立运行、通过标准化话题通信联动：</p>
+<ul>
+<li><strong>硬件底层层</strong>：物理载体——舵机、IMU、电源检测、测距传感器</li>
+<li><strong>驱动适配层</strong>：硬件初始化 + 原始数据读取 + 控制指令下发（硬件与程序的中间桥梁）</li>
+<li><strong>运动控制层</strong>：步态规划 + 姿态解算 + 关节角度运算 + 运动平滑调控</li>
+<li><strong>决策感知层</strong>：环境感知 + 姿态补偿 + 路径规划</li>
+<li><strong>应用交互层</strong>：遥控指令 + 上位机指令 + 自主任务调度</li>
+</ul>
+<blockquote>
+<p>核心优势：可拆分调试——单独测试硬件驱动、单独优化运动算法，无需改动整体代码框架。新增避障/导航/语音控制时直接适配接入，无需重构底层代码。</p>
+</blockquote>
+<h3 id="2">2. 传感器驱动节点三大职责</h3>
+<p>驱动节点是 ROS2 与物理机器人通信的核心载体，稳定性直接决定运动可靠性：</p>
+<p><strong>初始化</strong>：端口初始化 → 波特率配置 → 设备 ID 映射 → 统一硬件索引</p>
+<p><strong>数据采集</strong>：<br />
+- 舵机驱动：实时采集角度、温度、电压，封装为标准化话题发布<br />
+- IMU 驱动：陀螺仪/加速度计原始数据 → 去噪 → 零偏校准 → 坐标系转换 → 输出俯仰/横滚/偏航角<br />
+- 以固定频率发布姿态话题，保障运动控制数据实时性</p>
+<p><strong>指令下发</strong>：监听上层关节角度话题 → 滤波 → 限幅校验 → 剔除超量程数据 → 下发执行</p>
+<blockquote>
+<p>关键设计：所有驱动节点<strong>独立进程运行</strong>，单一硬件驱动异常不影响其他模块。驱动层预留标准化接口，新增传感器直接适配接入。</p>
+</blockquote>
+<h3 id="3-dds-qos-41-arxiv-250903381">3. DDS QoS 依赖链——41 条冲突规则（arXiv 2509.03381）</h3>
+<p>ROS2 基于 DDS 中间件，支持 20+ QoS 策略，但策略间存在<strong>隐式依赖关系</strong>：</p>
+<ul>
+<li><strong>通信生命周期三阶段</strong>：Discovery（发现）→ Data Exchange（数据交换）→ Disassociation（解关联）</li>
+<li><strong>16 个核心 QoS 策略</strong>按生命周期映射：Discovery 阶段 10 个、Data Exchange 阶段 10 个、Disassociation 阶段 6 个</li>
+<li><strong>依赖分级</strong>：Critical（关键）/ Conditional（条件）/ Incidental（附带）三级</li>
+<li><strong>QoS Guard 工具</strong>：静态验证 DDS XML 配置文件，部署前离线检测 QoS 冲突，无需建立实时 ROS2 连接</li>
+</ul>
+<blockquote>
+<p>核心痛点：DDS 实现仅发出有限警告，许多 QoS 冲突只在运行时暴露为性能退化或数据丢失。多节点部署中，一个错误配置的节点会升级为"网络热点"，拖垮整个机器人平台的性能。</p>
+</blockquote>
+<h3 id="4-rep-2003-qos">4. REP 2003 传感器数据 QoS 标准提案</h3>
+<p>ROS 社区正在制定传感器数据的 QoS 规范：</p>
+<ul>
+<li>传感器驱动应使用 <code>SystemDefaultQoS</code>（reliable, volatile）发布数据</li>
+<li>消费端应使用 <code>SensorDataQoS</code>（best effort, volatile）接收，允许不可靠传输到第一阶段处理</li>
+<li><strong>常见坑</strong>：相机驱动用 <code>SensorDataQoS</code> 发布 + rosbag 录制 → 回放时 rviz 因 QoS 不兼容无法显示图像流</li>
+</ul>
+<h3 id="5">5. 通信频率分层与时间戳对齐</h3>
+<ul>
+<li><strong>高频实时数据</strong>（关节角度、IMU 姿态）：高频率话题发布，保障运动控制实时性</li>
+<li><strong>低频状态数据</strong>（故障监测、环境感知）：适当降低发布频率，减少算力占用</li>
+<li><strong>时间戳对齐机制</strong>：运动指令与姿态数据添加时间戳，保证步态运算/姿态补偿/指令下发时序一致</li>
+<li><strong>指令优先级与超时判断</strong>：无有效指令时保持静止/待机，规避失控风险</li>
+</ul>
+<hr />
+<h2 id="_3">关键概念</h2>
+<h3 id="dds-qos">DDS 通信生命周期与 QoS 映射</h3>
+<pre><code>┌─────────────┐     ┌──────────────────┐     ┌────────────────┐
+│  Discovery  │ →  │  Data Exchange   │ →  │ Disassociation │
+│             │    │                  │     │                │
+│ PDP: 发现    │    │ DATA/DATA_FRAG   │     │ dispose()      │
+│   Participant│    │ HEARTBEAT/GAP   │     │ unregister()   │
+│ EDP: 匹配    │    │ ACKNACK/NACK_FRAG│     │ SEDP 移除 GUID │
+│   Writer/   │    │                  │     │ SPDP 停止通告   │
+│   Reader    │    │ QoS: RELIABILITY │     │ 超时→清除状态   │
+│             │    │     DURABILITY   │     │                │
+│ QoS: PART   │    │     HISTORY      │     │ QoS: WDLIFE    │
+│   USRDATA   │    │     DEADLINE     │     │     RDLIFE     │
+│   ENTFAC    │    │     LIVELINESS   │     │                │
+└─────────────┘     └──────────────────┘     └────────────────┘
+</code></pre>
+<h3 id="_4">舵机驱动数据流</h3>
+<pre><code>上层运动节点                 舵机驱动节点                物理舵机
+    │                          │                          │
+    │── 关节角度话题 ──────────→│ 滤波+限幅校验            │
+    │                          │── PWM/总线指令 ──────────→│
+    │                          │                          │
+    │←── 状态回传话题 ─────────│ 角度/温度/电压采集       │
+    │                          │←── 编码器反馈 ───────────│
+    │                          │                          │
+    │  (基础补偿参数)           │ 虚位修正/响应延迟补偿     │
+</code></pre>
+<h3 id="qos-dds">QoS 策略实现状态矩阵（开源 DDS 厂商）</h3>
+<ul>
+<li>ROS 2 内置（rmw 默认）：16 策略中 12 个完全实现、1 个部分实现、3 个未实现</li>
+<li>Fast DDS：13 个完全实现</li>
+<li>Cyclone DDS：14 个完全实现</li>
+<li>Open DDS：14 个完全实现</li>
+<li>OWNERSHIP、DESTINATION_ORDER、WRITER/READER_DATA_LIFECYCLE 在不同实现间差异最大</li>
+</ul>
+<hr />
+<h2 id="_5">对工作的价值</h2>
+<h3 id="skill">与现有 Skill/笔记的关联</h3>
+<ul>
+<li><strong><code>servo-arm-control</code> skill</strong>：ESP32 舵机机器人控制，本文的舵机驱动数据流图可直接补充该 skill 的驱动层设计参考</li>
+<li><strong><code>embedded-firmware-dev</code> skill</strong>：ESP-IDF/FreeRTOS 多任务架构，本文的分层解耦理念可应用于固件设计</li>
+<li><strong><code>dual-mcu-robot-architecture</code> skill</strong>：双 MCU 架构中传感器驱动层的职责划分与本文一致</li>
+<li><strong><code>robotics-project-setup</code> skill</strong>：项目脚手架中可增加驱动层骨架代码模板</li>
+</ul>
+<h3 id="_6">改进建议</h3>
+<ul>
+<li><strong>P1</strong>：<code>servo-arm-control</code> skill 可补充"舵机驱动节点数据回传"模式（角度/温度/电压标准化话题），当前 skill 偏重控制下发，缺少状态回传设计</li>
+<li><strong>P2</strong>：<code>embedded-firmware-dev</code> skill 可增加"ROS2 micro-ROS 驱动层骨架"模板代码，降低传感器接入门槛</li>
+<li><strong>P2</strong>：考虑创建"ros2-sensor-driver-template"子 skill，包含初始化→采集→下发三段式骨架 + QoS 配置模板</li>
+</ul>
+<hr />
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li><strong>驱动层独立进程</strong>是容错关键——单一传感器故障不应拖垮运动控制。ESP32+STM32 双 MCU 架构天然满足此要求（各 MCU 独立运行）</li>
+<li><strong>QoS 策略不能孤立调参</strong>——RELIABILITY 与 DURABILITY 存在依赖关系，部署前用 QoS Guard 离线验证 XML 配置可避免运行时故障</li>
+<li><strong>传感器数据用 best effort + 控制指令用 reliable</strong>（REP 2003 提案）——这是生产环境的 QoS 默认配置原则</li>
+<li><strong>时间戳对齐</strong>是步态抖动的隐蔽根因——运动指令与 IMU 数据时序不一致会导致姿态补偿滞后，引发步态偏移</li>
+</ol>
+<hr />
+<h2 id="_7">关键风险与盲点</h2>
+<ul>
+<li><strong>DDS 厂商碎片化</strong>：16 个 QoS 策略在不同 DDS 实现间覆盖不一致，OWNERSHIP 在 ROS2 rmw 中未实现但在 Fast/Cyclone 中已实现——跨 DDS 迁移可能丢失功能</li>
+<li><strong>QoS Guard 覆盖有限</strong>：当前仅静态验证 XML 配置，无法检测运行时网络状况（延迟、丢包）引发的 QoS 失效</li>
+<li><strong>REP 2003 尚为草案</strong>：传感器 QoS 标准仍在公开征求意见阶段，生产环境不宜完全依赖</li>
+<li><strong>来源级别</strong>：arXiv 论文为学术研究（含 41 条规则的形式化推导）；21ic 文章为工业实践总结（偏教学向）；DigiKey 文章偏 AMR/AGV 商业集成视角</li>
+</ul>
+<hr />
+<h2 id="_8">一页速查</h2>
+<blockquote>
+<p><strong>传感器驱动 = 初始化(端口/波特率/ID映射) + 采集(去噪/校准/坐标转换) + 下发(滤波/限幅/执行)</strong></p>
+<p><strong>架构五层</strong>：硬件→驱动→运动→感知→交互，层间用 ROS2 话题解耦</p>
+<p><strong>QoS 三阶段</strong>：Discovery(发现/匹配) → Exchange(数据/HEARTBEAT/ACKNACK) → Disassociation(清理)</p>
+<p><strong>QoS 调参铁律</strong>：传感器=best effort+volatile，控制= reliable，地图=transient local（REP 2003 提案）</p>
+<p><strong>部署前必做</strong>：用 QoS Guard 离线验证 DDS XML 配置，41 条依赖冲突规则全覆盖</p>
+<p><strong>容错设计</strong>：驱动节点独立进程，单一故障不扩散</p>
+</blockquote>
+<hr />
+<h2 id="_9">待深入</h2>
+<ul>
+<li>micro-ROS（DDS on microcontroller）的传感器驱动适配——ESP32 直连 DDS 生态的可行性</li>
+<li>QoS Guard 工具的实际使用（安装、配置文件格式、CI 集成）</li>
+<li>多机器人场景下的 DDS 域划分与 PARTITION QoS 实践</li>
+<li>传感器数据的时间戳同步——ROS2 message_filters ApproximateTime 策略调参</li>
+</ul>
+<hr />
+<h2 id="_10">来源列表</h2>
+<ol>
+<li>21ic 电子网，《ROS2开发四足机器人，硬件驱动与运动节点开发思路》，2026-08-21 — https://www.21ic.com/a/1010407.html</li>
+<li>DigiKey，《利用 ROS 2 组件简化 AMR 和 AGV 的集成》 — https://www.digikey.cn/zh/articles/simplify-amr-and-agv-integration-with-ros-2-components</li>
+<li>arXiv 2509.03381v1，《Dependency Chain Analysis of ROS 2 DDS QoS Policies: From Lifecycle Tutorial to Static Verification》 — https://arxiv.org/html/2509.03381v1</li>
+<li>ROS 社区讨论，REP 2003: Sensor Data and Map QoS Settings — https://discourse.openrobotics.org/t/new-rep-2003-sensor-data-and-map-qos-settings/35758</li>
+<li>ROS2 官方设计文档，《ROS on DDS》 — https://design.ros2.org/articles/ros_on_dds.html</li>
+</ol>
+</body>
+</html>
