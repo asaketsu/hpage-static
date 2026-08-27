@@ -351,16 +351,19 @@ body {
 </head>
 <body><!--HPGATE--><script>(function(){
 "use strict";
-var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",bc=null;
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
 try{localStorage.removeItem(K)}catch(e){}
-function save(){try{sessionStorage.setItem(K,H)}catch(e){}}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
 function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
 function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
 function unlockedState(){
 if(bc)bc.onmessage=function(ev){var d=ev.data||{};
-if(d.q===1){try{if(sessionStorage.getItem(K)===H)bc.postMessage({a:1,h:H})}catch(e){}}};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
 function chk(){
+var v=load();
+if(!v){relock();return}
 fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
 .then(function(r){return r.text()})
 .then(function(t){
@@ -371,7 +374,7 @@ if(!m||m[1]!==H)relock();
 setInterval(chk,60000);
 window.__hpgateCheck=chk;
 }
-var ok=false;try{ok=sessionStorage.getItem(K)===H}catch(e){}
+var ok=!!load();
 if(ok){unlockedState();return}
 var st=document.createElement("style");
 st.id="hpgate-style";
@@ -396,9 +399,10 @@ go.addEventListener("click",unlock);
 pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
 setTimeout(function(){try{pw.focus()}catch(e){}},50);
 }
-function pass(broadcast){
-save();
-if(broadcast&&bc){try{bc.postMessage({u:1,h:H})}catch(e){}}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
 if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
 if(st){st.remove()}
 if(o){o.remove()}
@@ -416,7 +420,7 @@ else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
 }).catch(function(){err.textContent="验证失败，请重试"});
 }
 if(bc)bc.onmessage=function(ev){var d=ev.data||{};
-if((d.a===1||d.u===1)&&d.h===H)pass(false)};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
 if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
