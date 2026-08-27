@@ -365,12 +365,28 @@ strong { color: #8b1a1a; }
 </head>
 <body><!--HPGATE--><script>(function(){
 "use strict";
-var S="c43eabe81134e192",H="08a6c24feb14609fa1b38f7f21f0cfe994fb55fbb16ae51f0c9e15ec8e6e9f2e",K="hpgate_v2",NOW=Date.now(),ok=false;
-var TTL=12*60*60*1000,IDLE=60*60*1000;
-try{var s=JSON.parse(localStorage.getItem(K)||"null");
-if(s&&s.h===H&&s.t&&(NOW-s.t)<TTL&&(NOW-s.t)<IDLE){ok=true;s.t=NOW;localStorage.setItem(K,JSON.stringify(s))}}catch(e){}
-function lock(){try{localStorage.removeItem(K)}catch(e){}}
-if(!ok){
+var S="c43eabe81134e192",H="08a6c24feb14609fa1b38f7f21f0cfe994fb55fbb16ae51f0c9e15ec8e6e9f2e",K="hpgate_v2",bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function save(){try{sessionStorage.setItem(K,H)}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){try{if(sessionStorage.getItem(K)===H)bc.postMessage({a:1,h:H})}catch(e){}}};
+function chk(){
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=false;try{ok=sessionStorage.getItem(K)===H}catch(e){}
+if(ok){unlockedState();return}
 var st=document.createElement("style");
 st.id="hpgate-style";
 st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important}";
@@ -381,12 +397,21 @@ o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-it
 o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
 +'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
 +'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
-+'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;"/>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
 +'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
 +'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
 +'</div>';
 (document.body||document.documentElement).appendChild(o);
 var pw=o.querySelector("#hpgate-pw"),err=o.querySelector("#hpgate-err"),go=o.querySelector("#hpgate-go");
+function pass(broadcast){
+save();
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H})}catch(e){}}
+st.remove();o.remove();
+unlockedState();
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H)pass(false)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
 function unlock(){
 var v=pw.value;
 if(!v)return;
@@ -394,32 +419,13 @@ err.textContent="";
 if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
 crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
 var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
-if(h===H){try{localStorage.setItem(K,JSON.stringify({h:H,t:Date.now()}))}catch(e){}st.remove();o.remove()}
+if(h===H)pass(true);
 else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
 }).catch(function(){err.textContent="验证失败，请重试"});
 }
 go.addEventListener("click",unlock);
 pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
 setTimeout(function(){try{pw.focus()}catch(e){}},50);
-}else{
-// Heartbeat: re-fetch this page every 60s and compare the embedded gate
-// hash. Password rotation (deployed new hash) re-locks ALL open tabs
-// within ~1 minute — no reload needed by the visitor. Also refreshes the
-// activity timestamp so sibling pages stay unlocked while user is active.
-function chk(){
-var m0=null;try{m0=JSON.parse(localStorage.getItem(K)||"null")}catch(e){}
-if(!m0||m0.h!==H){lock();location.reload();return}
-m0.t=Date.now();try{localStorage.setItem(K,JSON.stringify(m0))}catch(e){}
-fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
-.then(function(r){return r.text()})
-.then(function(t){
-var m=t.match(/H="([0-9a-f]{64})"/);
-if(!m||m[1]!==H){lock();location.reload()}
-}).catch(function(){});
-}
-setInterval(chk,60000);
-window.__hpgateCheck=chk;
-}
 })();</script><!--/HPGATE-->
 <h1 id="llmkvcache-">LLM推理KVCache全景-原理管理与修改利用</h1>
 <blockquote>
