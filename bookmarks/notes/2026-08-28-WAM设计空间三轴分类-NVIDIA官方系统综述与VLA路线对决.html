@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WAM设计空间三轴分类-NVIDIA官方系统综述与VLA路线对决</title>
+
+<meta property="og:title" content="WAM设计空间三轴分类-NVIDIA官方系统综述与VLA路线对决" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function save(){try{sessionStorage.setItem(K,H)}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){try{if(sessionStorage.getItem(K)===H)bc.postMessage({a:1,h:H})}catch(e){}}};
+function chk(){
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=false;try{ok=sessionStorage.getItem(K)===H}catch(e){}
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast){
+save();
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H)pass(false)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="wam-nvidiavla">WAM设计空间三轴分类-NVIDIA官方系统综述与VLA路线对决</h1>
+<blockquote>
+<p><strong>来源</strong>：NVIDIA Developer Blog《Pretrained to Imagine, Fine-Tuned to Act: The Rise of World-Action Models》（Moritz Reuss, Seattle Robotics Lab, 2026-06-15）<br />
+<strong>原文链接</strong>：https://developer.nvidia.com/blog/pretrained-to-imagine-fine-tuned-to-act-the-rise-of-world-action-models<br />
+<strong>记录日期</strong>：2026-08-28<br />
+<strong>系列</strong>：WAM/VLA 系统跟踪第 9 篇（前序：08-12 三路线 / 08-14 分界判据 / 08-15 WorldPilot / 08-23 五方向全景）<br />
+<strong>性质</strong>：技术研究笔记（官方博客全文精读 + 系列增量定位）</p>
+
+<p class="meta-date">生成日期 2026-08-28</p></blockquote>
+<p><strong>标签</strong>：#WAM #世界动作模型 #VLA #具身智能 #机器人基础模型 #视频底座 #RoboArena #DreamZero</p>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>NVIDIA 官方判定：WAM（世界动作模型）已成为机器人基础模型与 VLM-based VLA 并列的第二大主流配方——其设计空间可用三轴正交分解（预测范式 × 动作集成 × 架构组合）完整刻画；真实世界实证 DreamZero（WAM）在 RoboArena 达 1750 Elo 超过 Pi-0.5 的 1622，但代价是 7.4 倍训练算力与 3-4 倍推理延迟；最终赢家既非纯 VLA 也非纯 WAM，而是 Motus 式混合体。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">二、内容整理</h2>
+<h3 id="21-wam">2.1 背景：为什么 WAM 现在起飞</h3>
+<p>2025-10 时 WAM 还只是 VLA 研究的小子领域；2026 年成为每日出现的新关键词。驱动因素三层：</p>
+<ol>
+<li><strong>VLM-based VLA 撞墙（grounding wall）</strong>：VLM 预训练带来互联网级知识，但"语言→动作"的接地映射仍必须从机器人数据学起。VLM2VLA 直接把 VLM→VLA 转变定性为<strong>灾难性遗忘</strong>；Knowledge Insulation（NeurIPS 2025）通过隔离 flow-matching 动作专家与 VLM 主干的梯度来保住预训练语言/视觉能力</li>
+<li><strong>视频底座成熟且开放</strong>：DiT 架构（Wan/Cosmos）取代 CNN 级联，时间压缩、flow-matching 目标、精选网络级视频数据全面超越；且开放权重——研究者可以直接微调而不必自己付 167 ZFLOPs 级的预训练成本（UniPi 时代 Imagen Video 级 CNN 视频底座必须从头训，这是当年无法复现的根本原因）</li>
+<li><strong>动作侧同步成熟</strong>：现代系统用 transformer/flow-matching 头预测 <strong>action chunk</strong>（一次策略调用输出 k 步动作序列），取代早期逐步 MLP 头</li>
+</ol>
+<h3 id="22">2.2 核心假设（作者明确标注为"假设而非结论"）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>假设</th>
+<th>支持证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>H1</td>
+<td>预测未来世界变化与生成必要动作相关——逆动力学比直接动作生成更容易</td>
+<td>Pi-0.7 视觉子目标实验：给定期望未来图像时动作预测更直接、训练收敛更快</td>
+</tr>
+<tr>
+<td>H2</td>
+<td>视频预训练提供语言↔物理变化的接地先验</td>
+<td>视频模型学到文本→视觉结果映射，若迁移成功可减少对机器人演示的依赖</td>
+</tr>
+<tr>
+<td>H3</td>
+<td>视频数据正则化机器人策略</td>
+<td>DreamZero 与 Fast-WAM 均显示：动作学习与视频预测目标<strong>共同训练</strong>时 WAM 表现最佳</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23-veo-31">2.3 Veo 3.1 零样本实验（前沿视频模型的操纵先验探测）</h3>
+<p>给 Veo 3.1 单帧 DROID 烤面包机任务上下文 + 自然语言指令（推杆→再拿起左侧橙子，组合扩展超出原演示）：</p>
+<ul>
+<li><strong>合格面</strong>：动作平滑、背景稳定、遵循任务顺序（先杆后橙）</li>
+<li><strong>失败面</strong>：未完全按下杆、夹爪"变形"成四指手、固定底座机械臂被重想象为另一个自由度更少的机器人</li>
+<li><strong>定性结论</strong>：视频模型对"机器人-物体交互应该长什么样"有有用先验，但尚不足以可靠控制——WAM 微调正是把零样本想象力转化为可靠控制的尝试</li>
+</ul>
+<h3 id="24">2.4 三轴设计空间（本文核心贡献）</h3>
+<p><strong>轴一：预测范式（模型预测什么，视频如何用于生成动作）</strong></p>
+<table>
+<thead>
+<tr>
+<th>范式</th>
+<th>机制</th>
+<th>代表（早期→现代）</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>逆动力学</strong></td>
+<td>先生成未来视频，再从视频反推动作</td>
+<td>UniPi 2023 → LingBot-VA 2026</td>
+<td>把难的 language-grounding 移到视频阶段；LingBot-VA 用 Wan 2.2-5B + 16k 小时跨体预训练，因果式闭环 rollout（非开环），MoT 架构，视频↔动作双向条件</td>
+</tr>
+<tr>
+<td><strong>联合预测</strong></td>
+<td>单模型一次输出视频+动作</td>
+<td>GR-1 2024 → DreamZero 2026</td>
+<td>DreamZero 从 Wan 2.1-I2V-14B 出发，单一单体 DiT 内<strong>共同去噪视频 token 与动作 token</strong>，无独立逆动力学模块——动作只是同一去噪过程中的另一种生成模态</td>
+</tr>
+<tr>
+<td><strong>纯表示</strong></td>
+<td>视频底座仅作表征，推理时<strong>跳过视频生成</strong></td>
+<td>Fast-WAM 2026</td>
+<td>推理快数倍；在仿真基准上逼近 LingBot-VA（且无需 16k 小时大规模机器人预训练）。但目前公开证据少，作者持保留态度</td>
+</tr>
+</tbody>
+</table>
+<p>GR-1 的历史意义：首次把视频用于学<strong>策略级表征</strong>而非仅图像级视觉表征——CALVIN ABC→D 上平均完成子任务从 &lt;1.0 提到 3.06/5。</p>
+<p><strong>轴二：动作集成（动作如何进入模型）</strong></p>
+<table>
+<thead>
+<tr>
+<th>方式</th>
+<th>机制</th>
+<th>代表</th>
+<th>风险/收益</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>默认动作 token</strong></td>
+<td>加动作 token + 动作头，动作作为与视频并列的模态</td>
+<td>UniPi/GR-1/DreamZero/LingBot-VA/VPP/Fast-WAM</td>
+<td>模态失配：动作 chunk 与预训练视觉 token 性质不同，需在动作微调中适应表征</td>
+</tr>
+<tr>
+<td><strong>动作即图像</strong></td>
+<td>把动作编码为视频模型原生可去噪的视觉/潜空间目标</td>
+<td>GENIMA 2024（SD 画关节目标）→ Cosmos Policy 2026（动作/本体感受/价值目标编码为<strong>合成潜帧</strong>，推理时空间维平均解码回动作向量）</td>
+<td>不扰动预训练视频表征，主干保持原生去噪空间</td>
+</tr>
+<tr>
+<td><strong>潜动作/潜计划</strong></td>
+<td>行为压缩为潜计划或潜动作作为条件</td>
+<td>Play-LMP 2019（先验/后验潜计划）→ Genie/LAPA（无标注视频学潜动作）→ Being-H0.7 2026</td>
+<td>Being-H0.7：后验分支用冻结 V-JEPA2.1 压缩未来为 K 个嵌入，先验分支学习从上下文预测之；测试时移除后验分支走快速潜接口；200k 小时第一人称人类视频 + 15k 小时机器人演示</td>
+</tr>
+</tbody>
+</table>
+<p><strong>轴三：架构组合</strong></p>
+<table>
+<thead>
+<tr>
+<th>架构</th>
+<th>机制</th>
+<th>代表</th>
+<th>权衡</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>分层管道</strong></td>
+<td>视频模块在前、动作模块在后，单向信息流</td>
+<td>UniPi / VPP / mimic-video / Pi-0.7（BAGEL 子目标+完整 VLA 动作专家）</td>
+<td>最灵活（动作头完全模块化）但视频↔动作耦合弱</td>
+</tr>
+<tr>
+<td><strong>单体 transformer</strong></td>
+<td>同一栈内共同去噪视频+动作</td>
+<td>DreamZero / Cosmos Policy</td>
+<td>耦合最强；风险是双优化负担（稠密视觉 token vs 稀疏动作目标）</td>
+</tr>
+<tr>
+<td><strong>MoT（Mixture-of-Transformers）</strong></td>
+<td>模态专属专家参数 + 共享自注意力</td>
+<td>Pi-0/Pi-0.5（VLA 侧）/ LingBot-VA / Fast-WAM</td>
+<td>模块化与耦合的实用折中——作者预测将成为 WAM 主导架构</td>
+</tr>
+</tbody>
+</table>
+<h3 id="25-table-4">2.5 模型对照总表（原文 Table 4 完整收录）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>范式</th>
+<th>动作集成</th>
+<th>底座</th>
+<th>架构</th>
+<th>年份</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Play-LMP</td>
+<td>—（前 WAM）</td>
+<td>潜计划</td>
+<td>Transformer+LSTM（从零）</td>
+<td>分层</td>
+<td>2019</td>
+</tr>
+<tr>
+<td>UniPi</td>
+<td>逆动力学</td>
+<td>默认动作 token</td>
+<td>CNN 视频扩散 1.7B</td>
+<td>分层</td>
+<td>2023</td>
+</tr>
+<tr>
+<td>GR-1</td>
+<td>联合预测</td>
+<td>默认动作 token</td>
+<td>Transformer（从零）</td>
+<td>统一 Transformer</td>
+<td>2024</td>
+</tr>
+<tr>
+<td>GENIMA</td>
+<td>逆动力学</td>
+<td>动作即图像</td>
+<td>Stable Diffusion/ControlNet</td>
+<td>分层</td>
+<td>2024</td>
+</tr>
+<tr>
+<td>Seer</td>
+<td>逆动力学</td>
+<td>默认动作 token</td>
+<td>视觉/动作 token Transformer</td>
+<td>统一</td>
+<td>2025</td>
+</tr>
+<tr>
+<td>VPP</td>
+<td>逆动力学</td>
+<td>默认动作 token</td>
+<td>Stable Video Diffusion</td>
+<td>分层</td>
+<td>2025</td>
+</tr>
+<tr>
+<td>mimic-video</td>
+<td>逆动力学</td>
+<td>默认动作 token</td>
+<td>Cosmos 视频扩散</td>
+<td>分层</td>
+<td>2025</td>
+</tr>
+<tr>
+<td><strong>DreamZero</strong></td>
+<td>联合预测</td>
+<td>默认动作 token</td>
+<td>Wan 14B</td>
+<td>单体 DiT</td>
+<td>2026</td>
+</tr>
+<tr>
+<td>LingBot-VA</td>
+<td>逆动力学</td>
+<td>默认动作 token</td>
+<td>Wan 2.2-5B</td>
+<td>MoT</td>
+<td>2026</td>
+</tr>
+<tr>
+<td>Cosmos Policy</td>
+<td>联合预测</td>
+<td>动作即图像</td>
+<td>Cosmos</td>
+<td>单体 DiT</td>
+<td>2026</td>
+</tr>
+<tr>
+<td>Being-H0.7</td>
+<td>联合预测（潜）</td>
+<td>潜计划/潜动作</td>
+<td>MoT（从零，200k+15k 小时数据）</td>
+<td>MoT</td>
+<td>2026</td>
+</tr>
+<tr>
+<td>Fast-WAM</td>
+<td>纯表示</td>
+<td>默认动作 token</td>
+<td>Wan 5.5B</td>
+<td>MoT</td>
+<td>2026</td>
+</tr>
+</tbody>
+</table>
+<h3 id="26-roboarena-2026-04">2.6 真实世界实证：RoboArena 2026-04 榜单</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Elo</th>
+<th>路线</th>
+<th>关键差异</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DreamZero</strong></td>
+<td><strong>1750</strong></td>
+<td>WAM</td>
+<td>仅用 DROID 训练，无额外大规模跨体机器人训练阶段</td>
+</tr>
+<tr>
+<td>Pi-0.5</td>
+<td>1622</td>
+<td>VLA</td>
+<td>VLM 协同训练+梯度隔离</td>
+</tr>
+<tr>
+<td>Pi-FAST</td>
+<td>1592</td>
+<td>VLA</td>
+<td>同 Pi-0-DROID 底座，离散 FAST token 替代 flow</td>
+</tr>
+<tr>
+<td>Pi-0</td>
+<td>1475</td>
+<td>VLA</td>
+<td>原始 flow 动作头</td>
+</tr>
+</tbody>
+</table>
+<p>三个可读信号：</p>
+<ol>
+<li><strong>DreamZero &gt; Pi-0.5（128 Elo）</strong>：WAM 配方潜力的正面信号（尚非"WAM 更优"的证明）</li>
+<li><strong>Pi-FAST &gt; Pi-0（117 Elo）</strong>：离散动作 token 化保住更多预训练能力——支持"VLM 侧避免 flow 干扰"的配方主张</li>
+<li>首批配对基准（Zhang et al.）：LingBot-VA / Cosmos Policy / Pi-0.5 在 LIBERO-Plus 与 RoboTwin 2.0-Plus 匹配扰动下对比，WAM 无需 VLA 级广谱数据混合即可达强鲁棒性——但仅限仿真</li>
+</ol>
+<h3 id="27-zflop-c6nt">2.7 算力账本（ZFLOP 下界估计，C≈6NT）</h3>
+<table>
+<thead>
+<tr>
+<th>训练项</th>
+<th>估计</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VLA Foundry 动作阶段</td>
+<td>~0.56 ZFLOPs</td>
+<td>1.65B 可训参数，不含上游 LLM/VLM</td>
+</tr>
+<tr>
+<td>Pi-FAST DROID 微调</td>
+<td>~0.77 ZFLOPs（240k 步）</td>
+<td>100k 步 OpenPI 配置约 0.32</td>
+</tr>
+<tr>
+<td>VLA Foundry 全栈（LLM→VLM→VLA）</td>
+<td>~6.9 ZFLOPs</td>
+<td>1-2B 开放配方，800B token LLM 阶段主导</td>
+</tr>
+<tr>
+<td><strong>DreamZero WAM 动作调优</strong></td>
+<td><strong>~8.6-9.0 ZFLOPs</strong></td>
+<td>100k 步 batch 128、8.0-8.4k token/序列；不含 Wan 本体</td>
+</tr>
+<tr>
+<td>MolmoAct2 全栈到 DROID</td>
+<td>~9.8 ZFLOP</td>
+<td>9216 H100-hours，不含 Molmo2/Qwen3/SigLIP2</td>
+</tr>
+<tr>
+<td><strong>Wan-14B 完整 WAM 栈（示意）</strong></td>
+<td><strong>~51 ZFLOPs</strong></td>
+<td>视频预训练代理 + DreamZero 式调优</td>
+</tr>
+<tr>
+<td>Summer-22B 视频预训练</td>
+<td>~66 ZFLOPs</td>
+<td>500B token 从零训参考点</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心差距</strong>：完整 WAM 栈（51）对高效 VLA 配方（6.9）约 <strong>7.4 倍</strong>。WAM 用算力换机器人数据效率；且对视频数据质量敏感（DreamZero 主张视频生成质量↔策略性能正相关），数据过滤/caption/潜表示/生成预训练全部成为策略配方的一部分——VLA 侧无此清晰关联（VLM4VLA 发现通用 VLM 能力是下游 VLA 性能的弱预测器）。</p>
+<h3 id="28">2.8 推理速度</h3>
+<p>Fast-WAM 参考值：联合预测与全视频生成逆动力学两种 WAM 推理模式 <strong>590-800ms/动作 chunk</strong>，对比 Pi-0.5 约 <strong>190ms</strong>——<strong>3-4 倍减速</strong>，对实时控制致命。出路：跳过视频生成（Fast-WAM 纯表示路线）与 DreamZero 论文内的加速技巧。</p>
+<h3 id="29-vla-sota">2.9 VLA 阵营的反攻配方（现代 SOTA 四件套）</h3>
+<ol>
+<li><strong>离散动作 token 化</strong>（FAST/BEAST）：把动作变成 VLM 可学的新"语言"，规避交叉熵↔flow-matching 的优化张力</li>
+<li><strong>VLM 保持协同训练</strong>：Pi-0.5 式 VLM 数据+机器人数据共训</li>
+<li><strong>梯度隔离</strong>（Knowledge Insulation）：flow 头梯度不回传污染 VLM 主干</li>
+<li><strong>更广数据混合</strong></li>
+</ol>
+<p>即便如此 grounding 墙仍在：语言是欠指定的目标表达，杂乱场景中文本指令难以锁定具体物体实例与期望物理状态——Pi-0.7 报告的"仅语言提示 vs 目标图像条件"差距佐证。</p>
+<h3 id="210">2.10 收敛预测：两条路终将合一</h3>
+<p>Motus（统一潜动作世界模型）与 BagelVLA（交错视觉-语言-动作生成长程操纵）代表第三条路：<strong>理解/VLM 塔 + 视频生成塔 + 动作专家塔</strong>，各塔专属权重、共享自注意力（常为非对称模式），Dense transformer 或 MoE 路由均可实现同一高层思想。</p>
+<hr />
+<h2 id="_3">三、查询拓展</h2>
+<h3 id="31">3.1 "为什么现在"的时间线考古</h3>
+<p>UniPi（2023）已有完整逆动力学配方却未爆发，根因是<strong>工具链缺位</strong>：CNN 级联视频扩散必须从头预训练（~167 ZFLOPs 估计）远超一般机器人实验室预算。这构成本系列 08-14 篇"分界判据"的工程注脚——范式成败不只取决于思想，还取决于<strong>可复现的基础设施成本</strong>。类比：LLM Agent 的 tool-use 范式同样在函数调用接口标准化（2023-06）后才真正起飞。</p>
+<h3 id="32">3.2 与本系列前序笔记的三轴映射</h3>
+<table>
+<thead>
+<tr>
+<th>前序笔记框架</th>
+<th>本文三轴对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>08-12 三路线（VLA/WAM/类脑）</td>
+<td>WAM 内部再按预测范式细分三支</td>
+</tr>
+<tr>
+<td>08-14 分界判据</td>
+<td>"是否复用视频/世界模型底座"仍是第一判据；本文补上动作集成与架构两个正交维度</td>
+</tr>
+<tr>
+<td>08-23 五方向全景</td>
+<td>五方向可重排进三轴立方体（如"算好了再动"=逆动力学，"边想边动"=联合预测）</td>
+</tr>
+<tr>
+<td>08-15 WorldPilot 双通道</td>
+<td>属于"WAM 先验引导 VLA"的混合路线，正对本文收敛预测</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33">3.3 潜动作学派的谱系澄清</h3>
+<p>Play-LMP（2019）的先验/后验潜计划结构在被 Being-H0.7 以基础模型规模重演——证明<strong>接口设计可以比具体模型长寿</strong>。Genie 证明潜动作可从无标注网络视频学到（无需真值机器人动作），LAPA 把它推向 VLA 式训练——这条"从视频自监督获得行为抽象"的路线与逆动力学（需配对视频-动作数据）的监督路径差异是理解 DreamDojo 等 action-conditioned 世界模型的关键。</p>
+<hr />
+<h2 id="_4">四、归纳总结</h2>
+<h3 id="41">4.1 三轴速查图</h3>
+<pre><code>WAM 设计空间 = 范式 × 动作集成 × 架构
+
+范式：      逆动力学(先想后动) | 联合预测(边想边动) | 纯表示(只借表征)
+动作集成：  默认动作token      | 动作即图像          | 潜动作/潜计划
+架构：      分层管道           | 单体DiT             | MoT共享注意力
+</code></pre>
+<h3 id="42">4.2 八条工程结论</h3>
+<ol>
+<li>WAM 是与 VLA 并列的第二配方，不是 VLA 的替代者</li>
+<li>真实世界信号：DreamZero 1750 &gt; Pi-0.5 1622（RoboArena 2026-04）</li>
+<li>算力税：完整 WAM 栈约 7.4× VLA 高效配方（51 vs 6.9 ZFLOPs）</li>
+<li>延迟税：默认 WAM 推理 3-4× 慢（590-800 vs 190ms/chunk）</li>
+<li>视频生成质量是 WAM 的必要条件；VLM 能力是 VLA 的弱预测器——两阵营的数据质量敏感点不同</li>
+<li>MoT 大概率成为双方共同主导架构（模块化×耦合的实用折中）</li>
+<li>VLA 反攻四件套（离散 token/协同训练/梯度隔离/广数据）已把 Pi-0→Pi-0.5 差距拉到 147 Elo</li>
+<li>终局是混合体（Motus/BagelVLA 式三塔结构），纯路线之争是伪命题</li>
+</ol>
+<hr />
+<h2 id="_5">五、趋势判断</h2>
+<h3 id="1">趋势 1：机器人基础模型进入"双配方竞赛"而非单范式迭代</h3>
+<p>依据：NVIDIA 官方措辞从"VLA 是默认"转为"两大配方并列"；DreamZero/Cosmos Policy（NVIDIA 自家）与 GR00T/Pi 系（VLA）在同一个 RoboArena 榜单上直接对垒。类似 BERT↔GPT 双路线时期，工程资源将向两条线同时倾斜。</p>
+<h3 id="2-wam">趋势 2：推理效率将成为 WAM 的下一主战场</h3>
+<p>依据：Fast-WAM（纯表示）以数倍推理加速逼近 LingBot-VA 性能且免 16k 小时预训练；作者明确"更快的 WAM 将成为更大的研究领域"。590-800ms 的控制延迟在真实产线不可接受，谁先把 chunk 延迟压到 200ms 级谁就拿到落地门票。</p>
+<h3 id="3-token">趋势 3：动作 token 化是跨阵营的通用收敛点</h3>
+<p>依据：VLA 侧 FAST/BEAST 离散化（Pi-FAST +117 Elo over Pi-0）；WAM 侧 action-as-image 本质是把动作伪装成视觉 token 进原生去噪接口；潜动作则是学出来的离散/连续抽象。三条路都在解决同一问题——<strong>让预训练底座不必为连续控制重写表征</strong>。</p>
+<h3 id="4">趋势 4：视频数据管线成为策略配方的一等公民</h3>
+<p>依据：DreamZero 主张视频生成质量↔策略性能正相关；过滤/captioning/潜预处理全部计入策略配方；Summer-22B 66 ZFLOPs 级预训练成为竞争门槛。机器人团队将需要视频-数据工程师而不仅是机器人-数据工程师。</p>
+<hr />
+<h2 id="_6">六、关联分析</h2>
+<h3 id="61-wamvla-9">6.1 与本机 WAM/VLA 系列笔记（第 9 篇定位）</h3>
+<table>
+<thead>
+<tr>
+<th>笔记</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-08-12 机器人大脑三条技术路线</td>
+<td>本文为其 WAM 分支提供官方级系统化细分</td>
+</tr>
+<tr>
+<td>2026-08-14 WAM与VLA分界判据解析</td>
+<td>底座判据不变；本文新增动作集成/架构两轴</td>
+</tr>
+<tr>
+<td>2026-08-15 WorldPilot-WAM先验引导VLA双通道融合</td>
+<td>混合路线的具体案例，正对本文收敛预测</td>
+</tr>
+<tr>
+<td>2026-08-23 WAM世界动作模型五方向全景</td>
+<td>五方向与三轴可互相映射，本文含官方算力/榜单硬数据</td>
+</tr>
+<tr>
+<td>2026-08-27 机器人（应用）-机器人仿真工具</td>
+<td>RoboArena/LIBERO 基准体系同源</td>
+</tr>
+</tbody>
+</table>
+<h3 id="62">6.2 与本地机器人技能栈</h3>
+<ul>
+<li><code>dual-mcu-robot-architecture</code>（ESP32+STM32 分工）：WAM/VLA 均为"大脑"层；本机 590-800ms 级 WAM 延迟证实"小脑实时控制必须独立于大脑推理"的分层必要性</li>
+<li><code>embodied-ai-control</code>（大脑-小脑分离+多层安全级联）：Pi-0.7 目标图像条件优于纯语言指令的发现，支持"视觉子目标作为中间表示"的级联设计</li>
+<li>Jetson 边缘约束：14B Wan 底座 + 8k token 序列在本地 GPU 不可运行（作者原话"good luck"），边缘侧只能走蒸馏/纯表示路线——与 07-24 端侧 VLA 8.66× 加速笔记的结论一致</li>
+</ul>
+<h3 id="63-ai-agent">6.3 与 AI Agent 架构的同构观察（克制映射）</h3>
+<p>仅一条：DreamZero"视频生成质量是策略性能的必要条件"与 Agent 领域"模型基础能力是 harness 上限"同构——底座质量无法被下游微调完全代偿。</p>
+<hr />
+<h2 id="_7">七、拓展应用推荐</h2>
+<ol>
+<li><strong>系列聚合页（P0，呼应 MEMORY 待办）</strong>：WAM/VLA 系列 9 篇 + 具身 2 篇 + 机器人 5 篇已具备建专题聚合页条件，建议以本文三轴分类为组织骨架（每篇笔记挂到立方体坐标上）</li>
+<li><strong>机器人仿真选型参考</strong>：RoboArena（真实世界开放式）/RoboLab（高保真仿真能力分析）/LIBERO（终身学习）三层基准体系可直接用于 embodied-ai-control 的仿真验证层选型</li>
+<li><strong>潜接口设计借鉴</strong>：Being-H0.7 的"后验压缩未来→先验预测潜 token→测试时移除后验"模式，对需要"昂贵规划器离线蒸馏为快速执行器"的任一系统（含 Agent 的 planner→executor 蒸馏）可复用</li>
+<li><strong>跟踪清单</strong>：DreamZero（2602.15922）/Fast-WAM（2603.16666）/Cosmos Policy（2601.16163）/Motus（2512.13030）四篇 arXiv 作为下一批精读候选</li>
+</ol>
+<hr />
+<h2 id="_8">八、指南分析</h2>
+<p><strong>质量</strong>：★★★★★——NVIDIA 官方出品但作者以研究者身份写作，三大突出优点：①三轴分类法是迄今对该领域最清晰的结构化地图；②ZFLOP 算力下界估计方法透明（C≈6NT，附完整 caveat 表）；③立场诚实——核心假设明确标注"假设而非结论"，对比表逐项注明"非干净对比"。<br />
+<strong>局限</strong>：①作者自认 WAM 分类非完美分类学（部分模型跨类）；②RoboArena 单点榜单存在时间敏感性；③对国内阵营（如 LingBot-VA 之外的国产路线）覆盖有限。<br />
+<strong>与本系列关系</strong>：官方级系统综述，作为系列第 9 篇的"骨架笔记"，后续单模型精读可直接挂载其三轴坐标。</p>
+<hr />
+<h2 id="_9">九、出处</h2>
+<ol>
+<li>NVIDIA Developer Blog: Pretrained to Imagine, Fine-Tuned to Act: The Rise of World-Action Models — Moritz Reuss, 2026-06-15<br />
+   https://developer.nvidia.com/blog/pretrained-to-imagine-fine-tuned-to-act-the-rise-of-world-action-models</li>
+<li>DreamZero — arXiv:2602.15922</li>
+<li>Fast-WAM — arXiv:2603.16666</li>
+<li>Cosmos Policy — arXiv:2601.16163</li>
+<li>LingBot-VA — arXiv:2601.21998</li>
+<li>Being-H0.7 — research.beingbeyond.com/being-h07</li>
+<li>UniPi — Du et al., NeurIPS 2023</li>
+<li>GR-1 — arXiv:2312.13139</li>
+<li>Knowledge Insulation — NeurIPS 2025</li>
+<li>Motus — arXiv:2512.13030；BagelVLA — arXiv:2602.09849</li>
+<li>NTU Survey: World Model for Robot Learning — ntumars.github.io/wm-robot-survey/</li>
+<li>RoboArena — arXiv:2506.18123 / robo-arena.github.io</li>
+</ol>
+</body>
+</html>
