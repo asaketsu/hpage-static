@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microduck开源双足机器鸭技术架构</title>
+
+<meta property="og:title" content="Microduck开源双足机器鸭技术架构" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<hr />
+<p>title: Microduck开源双足机器鸭技术架构<br />
+date: 2026-08-28<br />
+source: https://x.com/tspy/status/2093222346501107739<br />
+author: tspy (yishan)<br />
+tags: [Microduck, 机器人, 强化学习, Sim2Real, MuJoCo, Rust, 具身智能]<br />
+theme: robotics<br />
+project: /home/jc/uclaw/project/microduck</p>
+<hr />
+<h1 id="microduck">Microduck 开源双足机器鸭技术架构</h1>
+<blockquote>
+<p><strong>来源</strong>：@tspy（X 长文，2026-08-28 收录）；硬件细节与 GitHub 仓库结构补自 GitHub + IT之家 + BlockBeats + 搜狐<br />
+一句话核心：<strong>25cm / 800g / $399 的开源双足机器人；动作全部由强化学习训出；软件栈全 Apache 2.0；训练侧 MuJoCo + PPO 50Hz 与真机同频；端侧 Rust 微服务守护进程 + Unix Domain Socket JSON-RPC 2.0 特权隔离。</strong></p>
+
+<p class="meta-date">生成日期 2026-08-28</p></blockquote>
+<h2 id="0">0. 一图速览</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>出品方</td>
+<td>Poollen Robotics × Hugging Face</td>
+</tr>
+<tr>
+<td>尺寸重量</td>
+<td>高 25cm / 重 800g</td>
+</tr>
+<tr>
+<td>价格</td>
+<td>$399 预购（首批 2026 圣诞前发货）</td>
+</tr>
+<tr>
+<td>颜色</td>
+<td>奶油 / 石墨 / 薰衣草紫 / 天蓝</td>
+</tr>
+<tr>
+<td>计算核心</td>
+<td>瑞芯微 RK3566</td>
+</tr>
+<tr>
+<td>电机数</td>
+<td>15 个</td>
+</tr>
+<tr>
+<td>传感器</td>
+<td>摄像头 + 麦克风 + 扬声器 + LiDAR + Wi-Fi + BLE + 2×IMU</td>
+</tr>
+<tr>
+<td>抓取方式</td>
+<td>可活动鸭嘴兼任（无传统双臂）</td>
+</tr>
+<tr>
+<td>端侧控制频率</td>
+<td>50 Hz</td>
+</tr>
+<tr>
+<td>出厂预置动作</td>
+<td>7 个</td>
+</tr>
+<tr>
+<td>训练栈</td>
+<td>MuJoCo / MuJoCo Warp + PPO（微仓库 <code>microduck_rl</code>）</td>
+</tr>
+<tr>
+<td>部署格式</td>
+<td>ONNX</td>
+</tr>
+<tr>
+<td>端侧语言</td>
+<td>Rust</td>
+</tr>
+<tr>
+<td>进程间通信</td>
+<td>Unix Domain Socket + JSON-RPC 2.0</td>
+</tr>
+<tr>
+<td>开源协议</td>
+<td>Apache 2.0（SDK + 仿真 + RL 训练栈）</td>
+</tr>
+<tr>
+<td>主仓</td>
+<td>github.com/pollen-robotics/microduck（Rust，1046★）</td>
+</tr>
+<tr>
+<td>训练仓</td>
+<td>github.com/pollen-robotics/microduck_rl（Python，328★）</td>
+</tr>
+<tr>
+<td>产地</td>
+<td>中国制造，深圳 Seeed Studio 参与生产</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1">1. 能干什么（开箱动作 + 装轮换脑）</h2>
+<ul>
+<li>走路（手柄可直接控）</li>
+<li>摔倒后自己重新站起来</li>
+<li>低头捡地上的东西（袜子、记号笔）</li>
+<li>坐下 / 起立 / 踢球 / 前滚翻</li>
+<li>跟随激光笔移动、NFC 触发</li>
+<li>唱歌——<strong>每台首次启动获得唯一声音身份，永久绑定该硬件</strong></li>
+<li><strong>加装脚底轮子 → 切换到另一套强化学习策略</strong>：滑行、转圈、下坡，甚至能在轮滑状态下自己起身</li>
+</ul>
+<h2 id="2">2. 硬件架构与执行机构规范</h2>
+<p>原文只给了标题"硬件架构与执行机构规范"，具体明细需 GitHub 与新闻源补充：</p>
+<ul>
+<li>处理器：瑞芯微 RK3566（四核 A55 + Mali G52）</li>
+<li>传感：RGB 摄像头、立体麦克风阵列、扬声器、2D LiDAR、Wi-Fi、BLE、2× IMU</li>
+<li>电机：15 个（腿 × 2 + 头 + 颈 + 鸭嘴）</li>
+<li>无传统双臂——鸭嘴兼任抓取机构</li>
+</ul>
+<h2 id="3-sim2real">3. 强化学习与 Sim2Real 迁移流水线</h2>
+<p>依托 <code>microduck_rl</code> 开源训练仓库，系统构建了<strong>端到端的高拟真物理仿真与真机迁移框架</strong>。</p>
+<h3 id="31">3.1 仿真与优化算法</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>仿真平台</td>
+<td>MuJoCo / MuJoCo Warp</td>
+</tr>
+<tr>
+<td>核心算法</td>
+<td>PPO (Proximal Policy Optimization)</td>
+</tr>
+<tr>
+<td>训练控制周期</td>
+<td>50 Hz（与真机严格一致）</td>
+</tr>
+<tr>
+<td>部署格式</td>
+<td>ONNX（训练侧导出，真机 runtime 加载）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-sim2real-gap">3.2 物理级误差拟真（Sim2Real Gap 的核心）</h3>
+<p>在 800g 双足 + 微型舵机的量级，<strong>执行器保真度是 sim2real gap 的最大头</strong>——所以舵机不是被当作理想 PD，而是<strong>建模到电压控制律这一层</strong>。</p>
+<ul>
+<li><strong>传动非线性</strong>：显式建模舵机齿轮组的齿隙（Backlash）松动量</li>
+<li><strong>电气特性</strong>：模拟电池电量下降引起的母线电压动态波动对执行器出力的影响</li>
+<li><strong>延迟与摩擦</strong>：拟合端到端控制系统延迟 + 关节轴承的动/静摩擦力分布</li>
+<li><strong>域随机化</strong>：训练流程深度集成，覆盖上述全部维度</li>
+</ul>
+<h2 id="4">4. 端侧软件工程架构</h2>
+<ul>
+<li>语言：Rust 原生开发</li>
+<li>架构：<strong>无臃肿依赖、模块化解耦的微服务守护进程架构</strong></li>
+<li>通信：<strong>服务间统一通过 Unix Domain Socket + JSON-RPC 2.0</strong></li>
+</ul>
+<h3 id="41-github">4.1 守护服务组件矩阵（原文表格为空，此处按 GitHub 目录结构补全）</h3>
+<p><code>pollen-robotics/microduck</code> 主仓 24 个顶层模块，可归类为五层：</p>
+<p><strong>守护服务（<code>*d</code> 进程）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>robotd</code></td>
+<td>底层舵机驱动排他控制 + 安全校验（姿态极限/防撞自保）</td>
+</tr>
+<tr>
+<td><code>btd</code></td>
+<td>上层外设模块（Beak to Drive？/ 意图生成）</td>
+</tr>
+<tr>
+<td><code>padd</code></td>
+<td>上位外设/动作执行模块（提交运动意图给 robotd）</td>
+</tr>
+<tr>
+<td><code>mediad</code></td>
+<td>摄像头 / 麦克风 / 扬声器媒体管道</td>
+</tr>
+<tr>
+<td><code>configd</code></td>
+<td>配置管理守护进程</td>
+</tr>
+<tr>
+<td><code>updater</code></td>
+<td>OTA 固件交付（自愈型）</td>
+</tr>
+<tr>
+<td><code>odometry</code></td>
+<td>里程计</td>
+</tr>
+<tr>
+<td><code>tof</code></td>
+<td>Time-of-Flight 传感器</td>
+</tr>
+</tbody>
+</table>
+<p><strong>感知与策略模块</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>duck-detect</code></td>
+<td>目标检测（"duck"本体识别？）</td>
+</tr>
+<tr>
+<td><code>pet-detect</code></td>
+<td>宠物/环境物体检测</td>
+</tr>
+<tr>
+<td><code>kinematics</code></td>
+<td>运动学解算</td>
+</tr>
+<tr>
+<td><code>policies</code></td>
+<td>ONNX 策略运行时加载层</td>
+</tr>
+</tbody>
+</table>
+<p><strong>CLI 与控制平面</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>duckctl</code></td>
+<td>Microduck 主 CLI</td>
+</tr>
+<tr>
+<td><code>robotctl</code></td>
+<td>机器人底层 CLI</td>
+</tr>
+<tr>
+<td><code>duck-ipc-proto</code></td>
+<td>JSON-RPC 2.0 共享 IPC 协议定义</td>
+</tr>
+<tr>
+<td><code>duck-control</code></td>
+<td>控制器抽象层</td>
+</tr>
+<tr>
+<td><code>deploy</code></td>
+<td>部署工具</td>
+</tr>
+</tbody>
+</table>
+<p><strong>辅助与工程</strong>：<code>hooks</code> / <code>scripts</code> / <code>sounds</code> / <code>test-support</code> / <code>xtask</code> / <code>docs</code> / <code>.cargo</code> / <code>.github</code></p>
+<p><strong>协议与许可</strong>：<code>duck-ipc-proto</code> 定义全部跨守护服务调用；主仓 Apache 2.0。</p>
+<h3 id="42">4.2 动作意图与执行权限隔离（安全核心设计）</h3>
+<p>系统采取<strong>特权隔离设计</strong>：</p>
+<ul>
+<li><code>padd</code>、<code>btd</code> 等上层或外设模块 <strong>仅能向 <code>robotd</code> 提交抽象的运动意图</strong>（不能直接下发关节角）</li>
+<li><code>robotd</code> 拥有底层舵机驱动的<strong>排他性控制权</strong></li>
+<li>在下发目标关节角前 <strong>必须通过姿态极限、防撞自保等安全策略校验</strong></li>
+<li>目的：<strong>彻底杜绝非法输入损坏机械结构</strong></li>
+</ul>
+<blockquote>
+<p>这是"意图层"与"执行层"分离的经典做法，与汽车功能安全 ASIL 分级思路同构。</p>
+</blockquote>
+<h2 id="5-ota-updaterd">5. 高可用 OTA 固件交付机制（updaterd 自愈）</h2>
+<p>针对具身智能设备频繁迭代模型与控制策略的特点，<code>updaterd</code> 实现了<strong>全闭环自愈型 OTA 更新流水线</strong>：</p>
+<ul>
+<li>推送模型或代码后，即使极端情况下导致 Runtime 崩溃</li>
+<li>机器人也能在<strong>无人值守状态下自动恢复至可用版本</strong></li>
+<li>目标：<strong>杜绝变砖风险</strong></li>
+</ul>
+<h2 id="6">6. 商业模式与产业意义</h2>
+<ul>
+<li><strong>399 美元</strong> 把双足机器人从实验室价格带直接拉到消费电子区间（对比 1X NEO 2 万美元）</li>
+<li>定位不是家用家务机器人，而是<strong>低成本物理 AI 实验平台 + 教育硬件 + 开发者平台</strong></li>
+<li>软件与 Reachy Mini 一样开源，硬件本身仍需付费——<strong>开源边界恰好停在物理层</strong></li>
+<li>Clem Delangue 定位："首款可以通过强化学习教授新技能的平价 AI 机器人"</li>
+<li>官方口号："Made to move · Ready to learn" / "为运动而生，也准备好摔倒"</li>
+<li>销售表现：Thomas Wolf 称发布初期约 5 秒卖出一台，销售额已破 100 万美元</li>
+<li><strong>产业意义</strong>：Hugging Face 在具身智能领域复刻其机器学习开源路线，试图在机器人软件生态尚未定型时抢占开发者心智</li>
+</ul>
+<h2 id="7-hermes">7. 本机 Hermes 系统对照（延伸）</h2>
+<blockquote>
+<p>以下为本笔记附加的对照分析（原文之外的延伸），列出 Microduck 架构中对本机可借鉴的工程模式。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>Microduck 设计</th>
+<th>本机可借鉴点</th>
+<th>落点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>意图层/执行层特权隔离（padd → robotd）</td>
+<td>Hermes 的 skill 与 terminal 应显式分离"决策"与"执行"，高危操作强制走 tool_approval</td>
+<td><code>cron-output-verifier.py</code> 已实现部分；可考虑加"意图-执行"分层网关</td>
+</tr>
+<tr>
+<td>Unix Domain Socket + JSON-RPC 2.0</td>
+<td>Hermes Gateway 目前 REST，可评估 JSON-RPC 2.0 替代以支持 streaming notification</td>
+<td>架构级改造，暂不实施</td>
+</tr>
+<tr>
+<td>updaterd 自愈型 OTA</td>
+<td><code>hermes-upgrade</code> skill 已有热补丁重应用；缺"变砖自动回退"</td>
+<td>可补 A/B 分区 + 校验和失败回退</td>
+</tr>
+<tr>
+<td>50Hz 控制周期与真机一致</td>
+<td><code>cron-health-scan.py</code> 已落地；但 cron 与真机同频思路可推广到"训练频率=推理频率"约束</td>
+<td><code>quant-evidence-governance</code> 已有类似</td>
+</tr>
+<tr>
+<td>训练侧显式建模执行器非线性</td>
+<td>量化模型侧可借鉴"显式建模"思想：不只拟合期望值，还拟合尾部/延迟/摩擦</td>
+<td>可加入 <code>walk-forward-validation</code> skill</td>
+</tr>
+</tbody>
+</table>
+<h2 id="8">8. 出处标注</h2>
+<p><strong>原文</strong>：https://x.com/tspy/status/2093222346501107739（Microduck 开源双足机器鸭技术架构长文）</p>
+<p><strong>GitHub 补全</strong>：<br />
+- github.com/pollen-robotics/microduck（24 顶层模块目录，用于补全"守护服务组件矩阵"表）<br />
+- github.com/pollen-robotics/microduck_rl（microduck_rl 训练栈仓库结构）<br />
+- pollen-robotics.com/microduck（产品页，用于补 15 电机 / 25cm / 800g / 7 动作 / 50Hz 出厂参数）</p>
+<p><strong>新闻源</strong>：<br />
+- IT之家 8月27日：https://www.ithome.com/0/995/306.htm（RK3566 处理器、摄像头、四种配色）<br />
+- BlockBeats 快讯：https://www.theblockbeats.info/flash/363929（Apache 2.0 许可、首批 2026 圣诞前发货）<br />
+- 搜狐/华尔街见闻：https://m.sohu.com/a/1068574726_130887（Seeed Studio 深圳生产、Clem Delangue 采访）</p>
+<p><strong>本机对照</strong>：<code>/home/jc/.hermes/skills/robotics/robotics-project-setup/SKILL.md</code>、<code>/home/jc/.hermes/scripts/cron-health-scan.py</code>、<code>/home/jc/uclaw/project/microduck/</code></p>
+<p><strong>增补范围</strong>：<br />
+- 第 0 节"一图速览"、第 2 节硬件明细、第 4.1 节守护服务组件矩阵（原文章节标题在但表格为空）→ 全部为补全内容<br />
+- 第 6 节商业模式、第 7 节本机对照 → 全部为延伸分析<br />
+- 第 1、3、4.2、5 节 → 原文忠实还原</p>
+</body>
+</html>
