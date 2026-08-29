@@ -758,6 +758,103 @@ rg -n &quot;from_millis\(20\)|control_loop&quot;            # ④ 50Hz 主循环
 </tr>
 </tbody>
 </table>
+<h2 id="75-2026-08-29-sts3215-fe-urt-1">7.5 硬件定案（2026-08-29 下午增补：STS3215 + FE-URT-1）</h2>
+<blockquote>
+<p>用户指定执行器与总线方案，本节为<strong>增量定案</strong>（非源文档内容），协议细节已对照权威源码核验。</p>
+</blockquote>
+<h3 id="_1">定案内容</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>定案</th>
+<th>关键理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>执行器</td>
+<td><strong>FEETech STS3215（12V 版，C047 类）× 15</strong></td>
+<td>FE-URT-1 板 9~12.6V 输入；7.4V 版 C001 接 3S 必烧</td>
+</tr>
+<tr>
+<td>总线接口</td>
+<td><strong>FE-URT-1 驱动板</strong>（ST/SC 通用 TTL 转换）</td>
+<td>板载自动收发方向 → 免 GPIO17 方向脚、免 74HC126/241 分立电路</td>
+</tr>
+<tr>
+<td>供电</td>
+<td><strong>3S 锂电（9.9~12.6V）→ 板载 DC IN 统一供 15 舵机</strong></td>
+<td>动力+信号同板隔离；Pi 5 走独立 BEC 5V（共地不共正）</td>
+</tr>
+<tr>
+<td>电平</td>
+<td>板上跳线置 3.3V</td>
+<td>Pi 5 RP1 非 5V 容忍</td>
+</tr>
+<tr>
+<td>预算变化</td>
+<td>¥900~1300 → <strong>¥2000~2550</strong>（STS3215×15 为主增量）</td>
+<td>协议确认 + 免方向电路 + 官方调试生态</td>
+</tr>
+</tbody>
+</table>
+<h3 id="huggingfacelerobot-3-bug">协议核验（对照 huggingface/lerobot 源码，修正 3 处真 bug）</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>确认值</th>
+<th>证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>帧头</td>
+<td><code>FF FF</code></td>
+<td>lerobot <code>feetech.py</code> <code>_broadcast_ping</code> 收包匹配</td>
+</tr>
+<tr>
+<td>校验</td>
+<td><code>~(ID+LEN+CMD+P) &amp; 0xFF</code>，无 +1</td>
+<td>同上 L390（原 Rust 实现误用 Dynamixel 补码+1）</td>
+</tr>
+<tr>
+<td>应答帧</td>
+<td>含 ERROR 字节：<code>FF FF ID LEN ERROR DATA CHK</code></td>
+<td>ping 应答 status_length=6</td>
+</tr>
+<tr>
+<td>SyncWrite LEN</td>
+<td>4+3N = 49</td>
+<td>LEN 语义 = CMD+参数+CHK</td>
+</tr>
+<tr>
+<td>寄存器</td>
+<td>Torque=40 / Goal_Position=42 / 反馈区 56~63</td>
+<td>lerobot <code>tables.py</code> STS_SMS_SERIES_CONTROL_TABLE</td>
+</tr>
+<tr>
+<td>位置单位</td>
+<td>0..4095 ↔ 0..360°（0.088°/step，中位 2048）</td>
+<td><code>tables.py</code> sts3215 → 4096 分辨率</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">代码影响（全部完成并回归通过）</h3>
+<ul>
+<li><code>frame.rs</code> 一次性干净重写（STS 确认协议，6 个协议测试含黄金向量 <code>ff ff 01 02 01 fb</code>）</li>
+<li><code>pi5_uart.rs</code>：u16 steps + 14 字节应答；<code>NoDirection</code> 即生产配置</li>
+<li>电压体系 2S→3S：亏电阈值 6.4→9.9V（mock/测试/脚本/配置全同步）</li>
+<li><code>04_servo_sweep.py</code> 新增 SyncWrite 批量帧（与 Rust 逐字节一致）</li>
+<li>硬件三件套重写：BOM/power_design/wiring_diagram（含 ID 分配表）</li>
+</ul>
+<h3 id="_3">到货操作序</h3>
+<ol>
+<li>单舵机接 FE-URT-1（USB 调试模式 + FD 上位机）→ 逐台分配 ID 1~15（出厂全 ID=1）</li>
+<li><code>04_servo_sweep.py --check</code> → <code>--home</code> → <code>--sweep --amp 10</code></li>
+<li>M1 验收：<code>run_all.sh</code>（一票否决制）</li>
+</ol>
 <h2 id="8">8. 出处</h2>
 <table>
 <thead>
@@ -789,6 +886,6 @@ rg -n &quot;from_millis\(20\)|control_loop&quot;            # ④ 50Hz 主循环
 </tr>
 </tbody>
 </table>
-<p><strong>忠实性说明</strong>：§1-§4 与 §6-§7 为飞书双文档忠实还原（表格数据照录）；§5 为本笔记增补的工程落地记录（代码在本机编译测试通过）；所有"推断"标注（舵机型号/帧协议/关节命名）沿用原文标注，接真机前须对照上游源码核对。</p>
+<p><strong>忠实性说明</strong>：§1-§4 与 §6-§7 为飞书双文档忠实还原（表格数据照录）；§5 为本笔记增补的工程落地记录（代码在本机编译测试通过）；舵机型号已定案（STS3215 12V 版）、帧协议已核验为确认值（§7.5）；关节命名/零位/软限位仍为推断，接真机前须对照上游源码核对。</p>
 </body>
 </html>
