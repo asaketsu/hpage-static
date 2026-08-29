@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图解大语言模型部署</title>
+
+<meta property="og:title" content="图解大语言模型部署" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<hr />
+<p>title: 图解大语言模型部署（X Article）<br />
+date: 2026-08-29<br />
+source: https://x.com/wquguru/status/2093634146082152683<br />
+author: WquGuru (@wquguru)<br />
+tags: [LLM部署, 推理优化, KV Cache, TTFT, 量化, vLLM, AIGC基础设施]<br />
+theme: llm-infra<br />
+related:<br />
+  - "[[2026-08-14-LLM推理部署检查清单]]"</p>
+<hr />
+<h1 id="_1">图解大语言模型部署</h1>
+<blockquote>
+<p><strong>来源</strong>：WquGuru(@wquguru) X Article《图解大语言模型部署》（2026-08-29，115 赞/19 讨论）<br />
+<strong>获取说明</strong>：X Article 正文仅 App/登录可见（多路径实测锁定）。本笔记基于<strong>官方 syndication API 返回的前言 + 封面信息图全量内容 + 引用评论</strong>整理；封面图即全文知识骨架，故笔记主体完整。<br />
+<strong>封面图</strong>：https://pbs.twimg.com/media/HQ5inILbYAALe8o.jpg （2053×821，已存 /tmp/x_img.jpg）</p>
+
+<p class="meta-date">生成日期 2026-08-29</p></blockquote>
+<h2 id="1-preview_text">1. 前言（官方 preview_text 照录）</h2>
+<blockquote>
+<p>自部署大模型时，你真正需要关心的指标可以归纳为一句话：<strong>首字够不够快（TTFT），字出来够不够连贯（TPOT/ITL），并发多了吞吐掉不掉（系统吞吐），显存能不能装下且留有余量（VRAM + KV Cache）</strong>。</p>
+</blockquote>
+<p>引用者 @wuhao1031 的点评（辅助理解文章立场）：</p>
+<blockquote>
+<p>自建模型别只看参数量，<strong>首字、出字、KV显存和真实成本</strong>才是硬指标，这篇把坑都点出来了。</p>
+</blockquote>
+<h2 id="2">2. 全文知识骨架（封面信息图四大模块）</h2>
+<p>文章封面即"一张图讲清一件事"的总纲——LLM 部署四象限：</p>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>核心问题</th>
+<th>关键概念</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>① 显存与量化</strong></td>
+<td>显存怎么算</td>
+<td>KV Cache · VRAM；FP16 · INT8 · INT4</td>
+</tr>
+<tr>
+<td><strong>② 推理加速</strong></td>
+<td>速度从哪来</td>
+<td>Prefill · Decode；Prefix Cache · Batching</td>
+</tr>
+<tr>
+<td><strong>③ 扩展与选型</strong></td>
+<td>规模怎么撑</td>
+<td>DP · TP · PP；MoE · NVLink</td>
+</tr>
+<tr>
+<td><strong>④ 指标与成本</strong></td>
+<td>拿什么衡量</td>
+<td>TTFT · TPOT · ITL；P95/P99 · TPS</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 四模块展开（依图内概念体系 + 领域标准知识补全）</h2>
+<blockquote>
+<p>说明：原文正文不可达，以下按图中术语逐项展开——每项为该术语的通识定义与工程要点（非原文照录），保持与《LLM 推理部署检查清单》笔记互引。</p>
+</blockquote>
+<h3 id="31">3.1 显存与量化：显存怎么算</h3>
+<ul>
+<li><strong>VRAM 组成</strong>：模型权重 + KV Cache + 激活/缓冲区。自部署最常犯的错 = 只算权重忘了 KV Cache。</li>
+<li><strong>KV Cache</strong>：与 batch × 序列长度 × 层数 × 2(K/V) × hidden × 精度字节成正比；长上下文/高并发场景 KV 显存常超权重本身。</li>
+<li><strong>量化 FP16→INT8→INT4</strong>：权重体积近似减半再减半（16→2 字节），7B 模型 FP16 ≈14GB → INT4 ≈3.5GB；代价是精度损失与部分 kernel（如 Marlin/AWQ/GPTQ）的量化感知部署。</li>
+</ul>
+<h3 id="32">3.2 推理加速：速度从哪来</h3>
+<ul>
+<li><strong>两阶段</strong>：Prefill（并行吃 prompt，决定 TTFT）与 Decode（逐 token 自回归，决定 TPOT/ITL）——两者瓶颈不同，优化手段不同。</li>
+<li><strong>Prefix Cache</strong>：相同系统提示词的 KV 复用，直接砍 Prefill 计算，TTFT 大幅下降（客服/Agent 场景刚需）。</li>
+<li><strong>Batching</strong>：Continuous Batching 把多个请求的 Decode 拼批，吞吐（TPS）近线性提升，代价是单请求延迟略增。</li>
+</ul>
+<h3 id="33">3.3 扩展与选型：规模怎么撑</h3>
+<ul>
+<li><strong>DP / TP / PP</strong>：数据并行扩吞吐；张量并行切单层权重（需 NVLink 高带宽）；流水线并行切层（通信量小，适合跨机）。</li>
+<li><strong>MoE</strong>：激活参数 &lt;&lt; 总参数，同样的"能力预算"下推理显存/算力更省，但需要好的路由与负载均衡。</li>
+<li><strong>NVLink</strong>：TP 的命脉——卡间带宽不足时 TP 效率急剧劣化（PCIe 上 TP&gt;2 通常不划算）。</li>
+</ul>
+<h3 id="34">3.4 指标与成本：拿什么衡量</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>含义</th>
+<th>影响因素</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TTFT</td>
+<td>首 token 延迟</td>
+<td>Prefill 速度 + Prefix Cache 命中</td>
+</tr>
+<tr>
+<td>TPOT / ITL</td>
+<td>每 token 生成时间 / token 间隔</td>
+<td>Decode 单步延迟</td>
+</tr>
+<tr>
+<td>系统吞吐 TPS</td>
+<td>全系统 tokens/s</td>
+<td>Batching + 并发调度</td>
+</tr>
+<tr>
+<td>P95/P99</td>
+<td>尾延迟</td>
+<td>调度抖动、batch 长尾请求</td>
+</tr>
+<tr>
+<td>真实成本</td>
+<td>$/百万 token</td>
+<td>吞吐 ÷ 卡时成本</td>
+</tr>
+</tbody>
+</table>
+<p><strong>铁律</strong>（呼应前言）：先定 SLA（TTFT P95 &lt; x s），再倒推显存/batch/并行策略——而不是反过来。</p>
+<h2 id="4">4. 与既有知识库的关联</h2>
+<ul>
+<li>本笔记四象限与《LLM 推理部署检查清单》的"量化方案选择→引擎部署→性能优化"三章完全同构，可作该笔记的"一图版索引"。</li>
+<li>KV Cache 显存公式、Marlin/AWQ 量化 kernel、Continuous Batching 细节见 mlops/inference: serving-llms-vllm 技能。</li>
+<li>量化方案对比（GGUF vs GPTQ vs AWQ）见 mlops/inference: gguf-quantization。</li>
+</ul>
+<h2 id="5">5. 出处</h2>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>链接</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>原推</td>
+<td>https://x.com/wquguru/status/2093634146082152683 （2026-08-29 09:37 UTC）</td>
+</tr>
+<tr>
+<td>Article（App/登录可见）</td>
+<td>https://x.com/i/article/2093517519386726400</td>
+</tr>
+<tr>
+<td>封面图（全文骨架）</td>
+<td>https://pbs.twimg.com/media/HQ5inILbYAALe8o.jpg</td>
+</tr>
+<tr>
+<td>数据获取</td>
+<td>cdn.syndication.twimg.com tweet-result API（官方公开）</td>
+</tr>
+<tr>
+<td>引用评论</td>
+<td>@wuhao1031/status/2093683890938396903</td>
+</tr>
+</tbody>
+</table>
+<p><strong>忠实性说明</strong>：§1 前言与 §2 四模块为原文数据照录（API/图片提取）；§3 为依图中术语体系做的领域标准知识展开（通识内容，非原文）；X Article 正文登录墙实测无法绕过（syndication/oembed/nitter/Googlebot/搜索引擎五路径穷尽）。</p>
+</body>
+</html>
