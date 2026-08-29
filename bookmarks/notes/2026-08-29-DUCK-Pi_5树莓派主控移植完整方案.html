@@ -685,12 +685,12 @@ cyclictest -t -p99 -i200 -m -a2,3 -l1000000   # max &lt; 200µs
 <tbody>
 <tr>
 <td><code>servo-bus</code></td>
-<td>ServoBus trait + Pi5UartServoBus（半双工方向控制 + tcdrain + ASYNC_LOW_LATENCY）+ MockServoBus（一阶滞后模型 + 故障注入）+ 帧协议层</td>
-<td>4</td>
+<td>ServoBus trait + Pi5UartServoBus（半双工方向控制 + tcdrain + ASYNC_LOW_LATENCY）+ MockServoBus（一阶滞后模型 + 故障注入）+ 帧协议层（STS3215 确认实现，真机 FF FF 头实证）</td>
+<td>9</td>
 </tr>
 <tr>
 <td><code>safety-filter</code></td>
-<td>软限位/限速/姿态/看门狗/亏电/过温/审计日志，全参数 YAML 化</td>
+<td>软限位/限速/姿态/看门狗/亏电(3S 9.9V)/过温/审计日志，全参数 YAML 化</td>
 <td>6</td>
 </tr>
 <tr>
@@ -701,13 +701,45 @@ cyclictest -t -p99 -i200 -m -a2,3 -l1000000   # max &lt; 200µs
 <tr>
 <td><code>robotd-pi5</code></td>
 <td>50Hz 控制循环 + TickStats 直方图 + 桌面验证入口</td>
-<td>2</td>
+<td>6</td>
 </tr>
 </tbody>
 </table>
-<p>配置：<code>config/duck_pi5.yaml</code>（舵机映射 15 关节 + 安全参数 + 策略契约）+ systemd RT unit。<br />
-脚本：<code>pi5_setup.sh</code>（7 步初始化）+ <code>m1_desktop_check.sh</code>（M1 四件套验收）。<br />
-硬件：<code>BOM.csv</code>（15 项）+ <code>power_design.md</code> + <code>wiring_diagram.md</code>（含 74HC126/241 电平匹配要点——<strong>5V 直进 RP1 会烧，RX 必须分压或 74LVC241</strong>）。</p>
+<p>配置：<code>config/duck_pi5.yaml</code>（舵机映射 15 关节 + 3S 安全参数 + 策略契约）+ systemd RT unit。<br />
+脚本：<code>pi5_setup.sh</code>（7 步初始化）+ <code>m1_desktop_check.sh</code>（M1 四件套验收）+ 01-04 系列 + <code>run_all.sh</code>。<br />
+硬件：<code>BOM.csv</code>（STS3215×15 + FE-URT-1 + 3S，¥2000~2550）+ <code>power_design.md</code> + <code>wiring_diagram.md</code>。</p>
+<h3 id="51-phase-2vla-2026-08-29">5.1 Phase 2：VLA 集成（2026-08-29 晚增补，第二阶段进阶）</h3>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vla-bridge</code> crate</td>
+<td>VlaQueueManager：crossbeam 无锁队列 + seq 单调防过期 + VlaStats 饥饿统计（6 tests）</td>
+</tr>
+<tr>
+<td><code>robotd-pi5</code> VLA 集成</td>
+<td>tick 步骤 0（drain &lt;1µs）/2.5（pop → blend_vla_target 腿 0.5/上身 1.0 → 安全过滤不可绕过）；VLA 饥饿 → 优雅降级回纯 RL</td>
+</tr>
+<tr>
+<td><code>vla_rpcd</code></td>
+<td>独立 HTTP JSON-RPC 桥（tiny_http）——网络解析不进安全关键进程，桥崩机器人照走</td>
+</tr>
+<tr>
+<td><code>vla/vla_server.py</code></td>
+<td>SmolVLA 推理服务（stub/真机双模式，aiohttp 缺失时零依赖降级）；prompt 热更新 :8081</td>
+</tr>
+<tr>
+<td><code>docs/07_vla_phase2.md</code></td>
+<td>V1-V5 里程碑（桩联调→真机→视觉→对比实验→Hailo 加速）+ 三组 RL/VLA 对比实验设计 + 风险登记</td>
+</tr>
+</tbody>
+</table>
+<p>核心架构（飞书 VLA 文档落地）：<strong>异步分层 + 动作分块</strong>——SmolVLA 8~15s 推理一次出 10 步，底层 50Hz 平滑插值执行，宏观 ~1Hz；绝不让 VLA 接管实时环。</p>
 <h2 id="6-doc2">6. 上游源码阅读指南（半天，doc2 路线图）</h2>
 <pre><code class="language-bash">rg -n &quot;clamp|limit|safety|watchdog&quot; --type rust   # ① 安全过滤器
 rg -n &quot;ort::|onnx|Session&quot; --type rust            # ② ONNX 推理
@@ -887,5 +919,10 @@ rg -n &quot;from_millis\(20\)|control_loop&quot;            # ④ 50Hz 主循环
 </tbody>
 </table>
 <p><strong>忠实性说明</strong>：§1-§4 与 §6-§7 为飞书双文档忠实还原（表格数据照录）；§5 为本笔记增补的工程落地记录（代码在本机编译测试通过）；舵机型号已定案（STS3215 12V 版）、帧协议已核验为确认值（§7.5）；关节命名/零位/软限位仍为推断，接真机前须对照上游源码核对。</p>
+<h2 id="_4">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-29-Microduck双足机器鸭-全栈仿真实现与打印件指南.md">Microduck双足机器鸭-全栈仿真实现与打印件指南</a> — 同日姊妹篇，仿真与打印落地</li>
+<li><a href="./2026-08-28-Microduck开源双足机器鸭-Rust微服务与SimToReal全栈拆解.md">Microduck开源双足机器鸭-Rust微服务与SimToReal全栈拆解</a> — 上游架构拆解，系列第 1 篇</li>
+</ul>
 </body>
 </html>
