@@ -633,33 +633,106 @@ python train.py --data /root/autodl-tmp/data --epochs 20 --batch-size 256 --amp 
 <p>AutoDL 内存=每卡配额×卡数 → 120GB 档≈4×4090（¥7.5/时）。<strong>先判断是内存墙还是算力墙</strong>：<br />
 - 16GB 数据集 ImageFolder 流式读取：单卡 32GB 够，别为内存租 4 卡<br />
 - 真需多卡：<code>torchrun --nproc_per_node=4</code>，改动 ~25 行（DistributedSampler+set_epoch/DDP 包裹/rank0 存 ckpt/all_reduce 聚合/lr×world_size），坑表见 docs/02_ddp_notes.md</p>
-<h2 id="6">6. 已落地项目</h2>
+<h2 id="6">6. 已落地项目（四件套逐一展开）</h2>
+<p>项目路径：<code>~/uclaw/project/AutoDL-4090-Train/</code>——以下每项给出"是什么 + 怎么用 + 关键实现"。</p>
+<h3 id="61-scriptsmake_dataset_16gpy-16gb">6.1 <code>scripts/make_dataset_16g.py</code> — 现场合成 16GB 数据集</h3>
+<p><strong>是什么</strong>：没有真实数据集时，在 AutoDL 实例上直接生成一个 16GB 的 ImageFolder 布局数据集，用于验证"16GB 数据训练"的完整工程链路（磁盘占用/DataLoader 吞吐/检查点体积/训练时长）。</p>
+<p><strong>怎么用</strong>（无卡模式 ¥0.1/时 下即可跑，不占 GPU 时长）：</p>
+<pre><code class="language-bash">pip install pillow numpy
+python scripts/make_dataset_16g.py --out /root/autodl-tmp/data --target-gb 16
+# 生成约 30-40 分钟（16 核并行）；完成后自动打印总体积校验
+</code></pre>
+<p><strong>关键实现</strong>：<br />
+| 机制 | 说明 |<br />
+|------|------|<br />
+| 体积校准 | 先采样 50 张估平均单张体积（331×331 JPEG q90 ≈ 70KB），反推总张数（~80 万张/100 类） |<br />
+| 可学习设计 | 每类绑定独立 HSV 基色 + 条纹频率——是"结构化噪声"而非纯随机，训练能真收敛（精度无意义但 loss 曲线真实） |<br />
+| 断点续生成 | 已存在的文件跳过（<code>os.path.exists</code> 检查），中断后重跑同命令接着来 |<br />
+| 多进程 | <code>ProcessPoolExecutor</code> + chunksize=64，默认 <code>cpu_count()-2</code> 个 worker |</p>
+<p><strong>注意</strong>：输出布局严格遵循 <code>data/train/class_XXX/img.jpg</code> + <code>data/val/...</code>——torchvision <code>ImageFolder</code> 直接可读。</p>
+<h3 id="62-scriptstrainpy">6.2 <code>scripts/train.py</code> — 生产级单卡训练脚本</h3>
+<p><strong>是什么</strong>：完整可跑的分类训练脚本，把"tmux 长跑 + AMP + 断点续训 + 日志双写"四个生产要素全部内置。</p>
+<p><strong>怎么用</strong>：</p>
+<pre><code class="language-bash">tmux new -s train     # 先开 tmux！
+python scripts/train.py --data /root/autodl-tmp/data \
+    --epochs 20 --batch-size 256 --amp --workers 12
+# 中断后续训（同命令 + --resume，自动从 runs/exp1/latest.pt 恢复）：
+python scripts/train.py --data /root/autodl-tmp/data \
+    --epochs 20 --batch-size 256 --amp --workers 12 --resume
+# 常用参数：--img-size 331 / --lr 1e-3 / --out runs/exp1
+</code></pre>
+<p><strong>关键实现</strong>：<br />
+| 机制 | 代码要点 | 为什么 |<br />
+|------|---------|--------|<br />
+| AMP 混合精度 | <code>autocast</code> + <code>GradScaler</code> | 显存减半→bs 翻倍→吞吐近翻倍；4090 Tensor Core 全开 |<br />
+| 双检查点 | <code>latest.pt</code>（model+optimizer+scheduler+scaler+epoch 全状态）/ <code>best.pt</code>（仅权重+精度） | latest 保证断点精确恢复；best 保证成果不被覆盖 |<br />
+| warmup + cosine | 前 2 epoch 线性升温，之后余弦衰减至 0.25 倍底 | 大 bs 训练初期防炸，后期细收敛 |<br />
+| 日志双写 | 终端 print + <code>runs/exp1/train.log</code> 追加 | tmux 断线后仍可 <code>tail -f</code> 追进度 |<br />
+| 数据加载 | <code>pin_memory + persistent_workers + prefetch_factor=4 + drop_last</code> | 消除 epoch 间 worker 重启开销，GPU 不等数据 |<br />
+| 模型 | timm <code>resnet50.a1_in1k</code> 预训练优先，无 timm 自动降级 torchvision | ImageNet 权重起步，20 epoch 内即可到高精度 |</p>
+<p><strong>显存参考</strong>（331px/AMP）：bs=128 ≈14GB 稳；bs=256 ≈21GB 贴 4090 上限，OOM 就降 128。<br />
+<strong>预期耗时</strong>：单 epoch 30-40 分钟（80 万张，吞吐 2500-3500 img/s），20 epoch ≈ 10-13h ≈ ¥19-25。</p>
+<h3 id="63-docs01_full_playbookmd">6.3 <code>docs/01_full_playbook.md</code> — 九步主手册（★核心文档）</h3>
+<p><strong>是什么</strong>：从注册到关机的完整操作手册，本文笔记的命令全量版。笔记没展开的细节都在这里：</p>
 <table>
 <thead>
 <tr>
-<th>文件</th>
-<th>内容</th>
+<th>章节</th>
+<th>独有内容（笔记未展开）</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>scripts/make_dataset_16g.py</code></td>
-<td>合成 16GB 数据集（断点续生成/多进程/体积校准）</td>
+<td>§0 成本预估表</td>
+<td>无卡/有卡/数据盘三项费用逐项算账</td>
 </tr>
 <tr>
-<td><code>scripts/train.py</code></td>
-<td>生产级训练：timm ResNet-50+AMP+warmup-cosine+双检查点+日志双写</td>
+<td>§1-2 租卡+SSH</td>
+<td>镜像选择依据、VS Code Remote-SSH 配置、JupyterLab 入口</td>
 </tr>
 <tr>
-<td><code>docs/01_full_playbook.md</code></td>
-<td>★ 九步主手册（本文档命令全量版+成本+坑表）</td>
+<td>§3 传数据</td>
+<td><strong>四路径速度对比表</strong>（云盘中转/scp/FileZilla/公共数据集）+ tar.zst 压缩策略 + du 校验</td>
 </tr>
 <tr>
-<td><code>docs/02_ddp_notes.md</code></td>
-<td>4 卡 DDP 改造清单+多卡坑表</td>
+<td>§4 环境</td>
+<td>network_turbo 开关时机、目录规划（系统盘 vs 数据盘放什么）</td>
+</tr>
+<tr>
+<td>§5 训练</td>
+<td>首 10 分钟盯三件事（GPU util/显存/loss）+ OOM 降级路径</td>
+</tr>
+<tr>
+<td>§6 监控</td>
+<td><strong>异常信号速查表</strong>（GPU 周期掉 0/NaN/OOM/内存 kill/磁盘满五情形对症处理）</td>
+</tr>
+<tr>
+<td>§7 回收关机</td>
+<td>三条成果回收路径 + <strong>关机铁律四条</strong>（数据非永久/余额/无卡预留/tmux）</td>
+</tr>
+<tr>
+<td>§9 坑表</td>
+<td>10 条血泪坑一一对照解法</td>
 </tr>
 </tbody>
 </table>
+<p><strong>怎么用</strong>：照章节顺序执行即是完整流程；每步命令可直接复制粘贴。</p>
+<h3 id="64-docs02_ddp_notesmd-4-ddp">6.4 <code>docs/02_ddp_notes.md</code> — 4 卡 DDP 改造清单</h3>
+<p><strong>是什么</strong>：当确认为算力墙（而非数据加载瓶颈）需要升级 4×4090（128GB 内存档）时，在单卡 train.py 基础上的<strong>最小改动清单</strong>。</p>
+<p><strong>怎么用</strong>：按清单 7 处改动逐条套用（约 25 行代码），启动命令换 <code>torchrun --nproc_per_node=4</code>。</p>
+<p><strong>关键内容</strong>：<br />
+| 改动点 | 代码 |<br />
+|--------|------|<br />
+| 初始化 | <code>dist.init_process_group("nccl")</code> + <code>LOCAL_RANK</code> 绑卡 |<br />
+| 数据 | <code>DistributedSampler</code>（shuffle=False）+ 每 epoch <code>sampler.set_epoch()</code> |<br />
+| 模型 | <code>DDP(model, device_ids=[local_rank])</code> |<br />
+| 存储 | 只 rank 0 写日志/检查点（否则体积 ×4） |<br />
+| 验证 | <code>all_reduce</code> 聚合各卡 correct |<br />
+| 学习率 | 有效 batch ×4 → lr 线性放大（或保守 ×2） |</p>
+<p><strong>何时才需要 4 卡</strong>（重要决策，勿为内存数字倒推）：<br />
+- ❌ 16GB 数据集 + ImageFolder 流式读取 → 单卡 32GB 内存足够<br />
+- ✅ 全数据 in-memory 缓存 / 7B+ 全参微调 / epoch 时长压到 1/4 有硬需求</p>
+<p>附<strong>多卡特有坑表</strong>：NCCL hang（master_port 冲突/<code>NCCL_P2P_DISABLE=1</code>）、sampler 忘 set_epoch（每轮数据顺序相同精度差）、检查点 ×4、显存不均、计费 ×4（¥7.5/时）。</p>
 <h2 id="7">7. 出处</h2>
 <table>
 <thead>
