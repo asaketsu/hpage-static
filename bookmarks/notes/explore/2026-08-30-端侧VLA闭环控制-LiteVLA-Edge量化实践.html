@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>端侧VLA闭环控制-LiteVLA-Edge量化实践</title>
+
+<meta property="og:title" content="端侧VLA闭环控制-LiteVLA-Edge量化实践" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="litevla-edge-vla-4bitsmolvlmjetson-orin150ms">LiteVLA-Edge 端侧VLA闭环控制 — 4bit量化SmolVLM在Jetson Orin上的150ms实践</h1>
+<blockquote>
+<p>探索日期 2026-08-30 | 兴趣等级 L3 | 来源数量 3（arXiv 2603.03380 / RobotForge Jetson实测 / NVIDIA GTC 2026）| 领域：嵌入式 AI × 机器人 VLA</p>
+
+<p class="meta-date">生成日期 2026-08-30</p></blockquote>
+<h1 id="ai-vla-jetson">嵌入式AI #VLA #Jetson #边缘推理</h1>
+<h2 id="_1">核心问题</h2>
+<p>VLA（视觉-语言-动作）模型能否在 40W 级边缘设备上跑出<strong>闭环控制</strong>（而非开环"想完再动"）所需的频率？LiteVLA-Edge 给出肯定回答，且技术栈全是平民组件：SmolVLM-256M + GGUF 4bit 量化 + llama.cpp CUDA 后端 + ROS 2。</p>
+<h2 id="5">核心发现（5 条）</h2>
+<h3 id="11505ms66hz">发现 1：150.5ms（6.6Hz）——从"审议式"到"反应式"的质变阈值</h3>
+<p>在 Jetson AGX Orin（64GB）上全端侧推理，平均端到端延迟 150.5ms、<strong>标准差仅 0.125ms</strong>（300 次运行，min 150.4 / max 151.0）。相对此前 LiteVLA 在树莓派上数秒级延迟（只能开环执行），这是质变：</p>
+<ul>
+<li><strong>&gt;1s</strong>：开环模式——机器人必须"停下来想"再动</li>
+<li><strong>~150ms</strong>：进入闭环视觉伺服门槛——可在动作中途根据视觉偏差修正轨迹</li>
+<li><strong>6-10Hz</strong>：公认闭环视觉运动控制入口频率</li>
+<li>论文称比此前基线提升约 220%</li>
+</ul>
+<p>低抖动（σ=0.125ms）与 6.6Hz 推理解耦设计：VLA 在 6.6Hz "思考"，底层控制器保持 <strong>100Hz 心跳</strong>做稳定性控制——高频控制不依赖 AI 推理频率。</p>
+<h3 id="2fp32-q4_k_m-llamacpp">发现 2：三件套配方——FP32微调 + Q4_K_M量化 + llama.cpp</h3>
+<p>完整管线（全部可复现，无专有组件）：</p>
+<pre><code>RGB帧 → 视觉编码器 → SmolVLM-256M骨干(42层全GPU卸载)
+      → 动作token解码(≤12 tokens) → ROS 2 bridge → geometry_msgs/Twist
+</code></pre>
+<ol>
+<li><strong>监督微调（FP32 + LoRA r=8, α=8）</strong>：image-to-action 直接映射，训练必须全精度保电机命令保真</li>
+<li><strong>后训练量化 Q4_K_M GGUF</strong>：256M 参数全量塞进统一内存，最小化总线延迟</li>
+<li><strong>llama.cpp CUDA 后端</strong>：42 层 transformer 全部 GPU offload，n_ctx=512 + 输出限 12 token，压缩 KV cache 开销</li>
+</ol>
+<p>关键工程细节：连续控制向量（线速度 v / 角速度 ω）从生成的动作 token <strong>反量化</strong>得到；确定性解码 T=0.0 保证动作可复现。</p>
+<h3 id="34bit">发现 3：4bit 量化的"动作抖动"担忧被实测否定</h3>
+<p>机器人领域对 4bit 量化的经典批评是 action drift——电机命令数值精度退化导致抖动。本文实测：SmolVLM-256M 骨干在 Q4_K_M 下<strong>保持足够表征密度输出稳定的 Twist 命令</strong>，且延迟 σ=0.125ms 保证 ROS 2 控制心跳确定性，避免了高延迟 AI 控制器常见的危险振荡。256M 这个尺寸点恰好足够小（量化损伤可控）又足够大（保住语义推理）。</p>
+<h3 id="4">发现 4：设计空间定位——不是最大也不是最小，是"可部署点"</h3>
+<table>
+<thead>
+<tr>
+<th>系统</th>
+<th>类型</th>
+<th>参数</th>
+<th>硬件</th>
+<th>闭环</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenVLA</td>
+<td>通用VLA</td>
+<td>7B</td>
+<td>RTX 4090</td>
+<td>部分 ~5Hz</td>
+</tr>
+<tr>
+<td>EdgeVLA</td>
+<td>高频VLA</td>
+<td>~1B</td>
+<td><strong>A100-40GB</strong></td>
+<td>是 ~10Hz</td>
+</tr>
+<tr>
+<td>Qwen2-VL/PaliGemma</td>
+<td>VLM</td>
+<td>2-7B</td>
+<td>服务器GPU</td>
+<td>否（无动作头）</td>
+</tr>
+<tr>
+<td>Moondream2</td>
+<td>VLM</td>
+<td>~2B</td>
+<td>CPU/边缘GPU</td>
+<td>否</td>
+</tr>
+<tr>
+<td><strong>LiteVLA-Edge</strong></td>
+<td><strong>紧凑VLA</strong></td>
+<td><strong>256M</strong></td>
+<td><strong>Jetson AGX Orin 40W</strong></td>
+<td><strong>是 6.6Hz</strong></td>
+</tr>
+</tbody>
+</table>
+<p>讽刺点：EdgeVLA 号称边缘 VLA 却在 A100 上评估。LiteVLA-Edge 的贡献不是新策略目标，而是<strong>在"大而全通用"与"小而窄反射"之间找到真实可部署的中间点</strong>。</p>
+<h3 id="5orin-nano-8gb-robotforge">发现 5：生态参考数据——Orin Nano 8GB 实测延迟表（RobotForge）</h3>
+<p>同主题实测（TensorRT INT8）：YOLOv8n 640² ~10ms；YOLOv8m ~50ms；Depth Anything V2 small ~80ms；<strong>SmolVLA(450M) 双相机+状态 ~100ms</strong>；SAM-ViT-B encoder ~500ms；OpenVLA(7B) ~600ms（action chunked）。配套算力选型逻辑：</p>
+<ul>
+<li>Pi 5（1-2 TOPS FP32）+ Hailo-8（13-26 TOPS，$80）→ OpenVLA 仅 1-2fps，适合非AI任务+轻AI</li>
+<li>Jetson Orin Nano → 性价比之王（AI性能/价格峰值点）</li>
+<li>AGX Orin/Thor → 旗舰（Thor 128GB 统一内存 / 2070 TFLOPS FP4 / TensorRT Edge-LLM）</li>
+<li>2026 主流架构是<strong>双脑分离</strong>：语义推理 10Hz + 运动控制 120Hz，云端训练→OSMO 编排→边缘 OTA（NVIDIA GTC 2026 Isaac GR00T + Cosmos + Omniverse + Jetson 全栈）</li>
+</ul>
+<h2 id="_2">与现有工作的关联</h2>
+<p><strong>DUCK-Pi_5 项目（~/uclaw/project/DUCK-Pi_5）</strong>：二阶段 VLA 方案用的正是 SmolVLA（异步分层架构），本篇实证了同族骨干在 Orin 级硬件 4bit 量化后可闭环——对 Pi5（无NPU，1-2 TOPS）需清醒：</p>
+<ul>
+<li>Pi5 跑 SmolVLA-256M/450M 纯 CPU/VEON 无法达到 6.6Hz 闭环档位，DUCK-Pi_5 的异步分层（低层 50Hz 反射层 Rust + 高层策略低频）恰是正确架构——与本文"VLA 6.6Hz + 底层 100Hz"解耦模式同构</li>
+<li>若未来升级 Orin（Jetson 家族已在 arsenal），GGUF+llama.cpp 路线比 TensorRT 更平民（无需专有引擎，跨平台 GGUF）</li>
+<li>论文的"确定性解码 T=0.0 + 输出限 12 token + n_ctx=512"三参数是可直接抄的延迟压缩技巧</li>
+</ul>
+<p><strong>Jetson 资源保护策略</strong>：本文进一步佐证——端侧推理管线（llama.cpp + GGUF）轻量无训练负担，属于"代码管线就绪即可"范畴，不违反"不在本机跑重型 ML"约束。</p>
+<h2 id="skill">对现有 Skill 的改进建议</h2>
+<ul>
+<li><strong>P1</strong>：patch <code>edge-llm-quantization</code> —— 补充 LiteVLA-Edge 三参数延迟压缩技巧（全层GPU offload / n_ctx截断 / 输出token上限）与"256M是4bit量化动作稳定的甜点尺寸"实证。</li>
+<li><strong>P2</strong>：patch <code>embodied-ai-control</code>（或 dual-mcu-robot-architecture）—— 增加"双频解耦"参考数据：语义 6-10Hz + 控制 100Hz 心跳，引用 150ms 闭环门槛与 &gt;1s 开环分界。</li>
+<li><strong>P2</strong>：<code>jetson-orin-platform</code> 补 RobotForge 实测延迟表（YOLOv8/SmolVLA/OpenVLA/SAM 在 Orin Nano 8GB），选型时直接查表。</li>
+</ul>
+<h2 id="_3">关键风险与盲点</h2>
+<ul>
+<li>论文<strong>未做任务级基准评测</strong>——作者自己承认 scope 限于"可部署性、时序可行性、软件集成"，没有成功率/完成率对比（来源：论文 Threats to Validity 节，官方自述）</li>
+<li>闭环节点是<strong>仿真闭环</strong>（30/300 次帧序列回放），非真机闭环实验</li>
+<li>硬件表述有内部不一致：正文说 AGX Orin，V-D 节说 Orin NX——精确归属存疑，复现时以官方 repo 为准</li>
+<li>SmolVLM-256M 的语言理解能力远弱于 7B 级 VLA，复杂指令泛化未验证</li>
+<li>对比 EdgeVLA "在 A100 上评估" 的批评成立，但 LiteVLA-Edge 的 256M 模型能力上限也更低——两者是不同 trade-off 点，非全面优劣</li>
+</ul>
+<h2 id="_4">一页速查</h2>
+<blockquote>
+<p><strong>端侧 VLA 闭环三要素</strong>：小骨干（256M 甜点）+ Q4_K_M GGUF + llama.cpp 全层 GPU offload<br />
+<strong>延迟三压缩</strong>：n_ctx=512 截断 / 输出≤12 token / 确定性解码 T=0<br />
+<strong>频率分界</strong>：&gt;1s=开环审议 | 150ms/6.6Hz=闭环伺服入口 | 语义层 6-10Hz + 控制层 100Hz 解耦<br />
+<strong>Orin Nano 8GB 锚点</strong>：SmolVLA-450M ~100ms / OpenVLA-7B ~600ms / YOLOv8n ~10ms<br />
+<strong>选型</strong>：轻AI=Pi5+Hailo / 性价比=Orin Nano / 旗舰=AGX Orin/Thor</p>
+</blockquote>
+<h2 id="_5">待深入</h2>
+<ul>
+<li>SmolVLA 异步分层架构（DUCK-Pi_5 采用）与本文 image-to-action 直接映射的对比——低频高层+高频底层 vs 单模型闭环</li>
+<li>llama.cpp 在 Jetson 上的 CUDA backend 编译细节（-DGGML_CUDA=ON 与算力兼容性）</li>
+<li>NVIDIA GR00T N1 部署指南的 TensorRT 转换链（sub-30ms 声称）与 GGUF 路线的实测差距</li>
+</ul>
+<h2 id="_6">来源</h2>
+<ol>
+<li>"LiteVLA-Edge: Quantized On-Device Multimodal Control for Embedded Robotics", arXiv:2603.03380v1 (2026)</li>
+<li>RobotForge, "Jetson Orin for on-board AI" — Orin Nano 8GB 实测延迟表与算力选型（robotforge.org）</li>
+<li>NVIDIA Developer Blog, "Getting Started with Edge AI on NVIDIA Jetson"（GTC 2026 GR00T/Cosmos/Omniverse 全栈）</li>
+<li>Intel OEP, "Optimizing π0.5 VLA on Panther Lake"（对比参考：2.6× perf/W vs AGX Orin）</li>
+</ol>
+</body>
+</html>
