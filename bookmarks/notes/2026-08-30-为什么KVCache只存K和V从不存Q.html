@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>为什么 KV Cache 只存 K 和 V、从不存 Q？（X 技术长推）</title>
+
+<meta property="og:title" content="为什么 KV Cache 只存 K 和 V、从不存 Q？（X 技术长推）" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="kv-cache-k-v-q">为什么 KV Cache 只存 K 和 V、从不存 Q？</h1>
+<blockquote>
+<p><strong>原推</strong>：<a href="https://x.com/_avichawla/status/2093962020962083139">x.com/_avichawla/status/2093962020962083139</a>（Avi Chawla，2026-08-30）<br />
+号称"热门 LLM 面试题"，配四层缓存总览图，文末引流其 X Article《The Four Caches in LLM Serving》</p>
+
+<p class="meta-date">生成日期 2026-08-30</p></blockquote>
+<h2 id="1">1. 原推全文（逐字翻译照录）</h2>
+<p><strong>问题：为什么 KV cache 存 K 和 V 向量，却从不存 Q？</strong></p>
+<p>LLM 是自回归的：每个 token 由它之前的所有 token 逐个预测出来。这一性质在模型内部有直接后果——</p>
+<p><strong>一次对 n 个 token 的前向传播产生 n 个隐状态，但只有最后一个被投影到 logits 并用于生成下一个 token。</strong></p>
+<p>要理解 KV cache 为什么只存 K/V，必须回溯最后一个隐状态是如何产生的。用 10-token prompt 走一遍：</p>
+<p><strong>1) Prefill（预填充）</strong>：全部 10 个 token 并行过一遍模型（因果掩码）——整个 prompt 是已知的。每一层、每个位置产生 q/k/v 三个向量，每个位置对所有前置位置做 attention。这一步计算密集，<strong>TTFT 主要就是 prefill</strong>。</p>
+<p><strong>2) 生成第 11 个 token</strong>：只需要第 10 个位置的隐状态 → 投影到 vocab 维 → logits → softmax 采样出 token 11。</p>
+<p><strong>3) 回溯隐状态</strong>：最后隐状态是 FFN 输出的最后一行；FFN 是逐位置（position-wise）的，所以该行只来自 attention 输出的最后一行。</p>
+<p><strong>4) Attention 矩阵</strong>：10-token prompt 的 QKᵀ 是 10×10 矩阵。第 i 行 = Qᵢ 与所有 K 的点积。<strong>第 10 行因此只含 Q₁₀</strong>：<code>Q₁₀·K₁, Q₁₀·K₂, …, Q₁₀·K₁₀</code>。Q₁~Q₉ 只属于第 1~9 行——而那些行的隐状态已被丢弃（从不需要）。attention 最后一行经 softmax 后乘以全部 V₁~V₁₀ 得到输出最后一行。</p>
+<blockquote>
+<p><strong>结论：最后隐状态只依赖三样东西——Q₁₀、全部 Key、全部 Value。</strong></p>
+</blockquote>
+<p><strong>5) 生成 token 12</strong>：token 11 拼入后，需要第 11 行：Q₁₁ 对 K₁~K₁₁，乘 V₁~V₁₁。关键是：<strong>K₁~K₁₁ 和 V₁~V₁₁ 与 prefill+首 token 产生的逐位相同</strong>——因果掩码下，一个 token 的 K/V 只依赖它自己和之前的 token，永不依赖之后的内容，所以追加 token 11 不可能改变位置 3 的任何东西。</p>
+<p><strong>6) 缓存状态</strong>：每个解码步只需保留所有 K/V，<strong>只为新位置计算 Q、K、V</strong>。每步用一个 query 向量，<strong>用完即弃，永不复用</strong>——所以 Q 从不进缓存。</p>
+<p>推文配图（四层缓存总览，视觉识别还原）：</p>
+<pre><code>KV CACHE       [K|V][K|V][K|V] →  ONE REQUEST      （请求内，精确匹配）
+PREFIX CACHE   绿块 绿块 绿块  →  SHARED KV        （跨请求共享前缀）
+PROMPT CACHE   紫块 紫块 紫块 + 文档($) → BILLED KV （服务商计费层）
+SEMANTIC CACHE 查询💬 → 🔍 → ✓答案  ⚠️ FUZZY MATCH （跳过模型，模糊匹配）
+──────────────────────────────
+EXACT MATCH（前三层） vs FUZZY MATCH（第四层，有风险）
+</code></pre>
+<p>推文结尾：KV cache 只是 LLM serving 四层缓存之一，另外三层是<strong>服务端 prefix cache、按量计费的 prompt cache、完全跳过模型的 semantic cache</strong>——详见其 X Article。</p>
+<h2 id="2">2. 数学本质（领域补全，一张表说清）</h2>
+<table>
+<thead>
+<tr>
+<th>量</th>
+<th>依赖范围</th>
+<th>生成后是否复用</th>
+<th>缓存价值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Qᵢ</strong></td>
+<td>仅位置 i 的当前输入</td>
+<td>当步算完 attention 即弃</td>
+<td>❌ 无</td>
+</tr>
+<tr>
+<td><strong>Kᵢ</strong></td>
+<td>位置 i 及之前所有 token（因果掩码）</td>
+<td>之后<strong>每一步</strong>都要与最新 Q 点积</td>
+<td>✅ 必须</td>
+</tr>
+<tr>
+<td><strong>Vᵢ</strong></td>
+<td>同 Kᵢ</td>
+<td>之后每一步 softmax 加权平均都要用</td>
+<td>✅ 必须</td>
+</tr>
+</tbody>
+</table>
+<p>因果掩码是根本原因：<strong>K/V 是"只增不改"的累积量（append-only），Q 是"一次性"的消耗品</strong>。缓存的定义就是"未来还会用的东西"——Q 不满足定义。</p>
+<p>复杂度账（L 层、d 维、n 个已生成 token）：<br />
+- 无缓存 decode：每步 O(n·d²) 重算全部历史 → 总 O(n²d²)<br />
+- 有缓存 decode：每步只算新位置 O(d²) + attention O(n·d) → 显存换计算的教科书案例<br />
+- 这正是 <a href="https://hpage.top/bookmarks/notes/2026-08-29-图解大语言模型部署.html">图解大语言模型部署</a> 显存公式中 KV Cache 项的由来：<code>2 × L × n × d × precision</code></p>
+<h2 id="3">3. 四层缓存体系对照（原文框架 + 补全）</h2>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>作用域</th>
+<th>匹配方式</th>
+<th>生命周期</th>
+<th>典型实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. KV cache</td>
+<td>单请求内</td>
+<td>精确（token 级）</td>
+<td>请求结束即释放</td>
+<td>vLLM PagedAttention、SGLang RadixAttention</td>
+</tr>
+<tr>
+<td>2. Prefix cache</td>
+<td>跨请求</td>
+<td>精确（前缀哈希）</td>
+<td>分钟级驻留</td>
+<td>系统提示/多轮对话公共前缀复用</td>
+</tr>
+<tr>
+<td>3. Prompt cache</td>
+<td>服务商计费</td>
+<td>精确</td>
+<td>按策略</td>
+<td>OpenAI/Anthropic 输入缓存折扣（缓存命中 token 计费 1/10 价）</td>
+</tr>
+<tr>
+<td>4. Semantic cache</td>
+<td>跨用户跨问题</td>
+<td><strong>模糊（语义相似度）</strong></td>
+<td>小时~天</td>
+<td>GPTCache 等；⚠️ 相似≠相同，有答错风险</td>
+</tr>
+</tbody>
+</table>
+<p><strong>层级关系</strong>：1→2→3 是"精确匹配的扩大作用域"，4 是质变——不再匹配 token 而是匹配<strong>意图</strong>，收益最大（完全跳过模型）风险也最大（fuzzy match ⚠️）。</p>
+<h2 id="4">4. 值得记的三个点</h2>
+<ol>
+<li><strong>面试答案的一句话版</strong>：因果掩码下 K/V 随序列只增不改（未来每步复用），Q 只在当步出现后即被丢弃——缓存"未来要用的"，所以只有 KV</li>
+<li><strong>推文的推导路径本身值得学</strong>：不自说自话，从"最后一个隐状态怎么来"回溯到 attention 矩阵行结构，每步都贴着矩阵形状走（10×10 的第 10 行只含 Q₁₀）——这是能写进教材的讲法</li>
+<li><strong>四层缓存框架的工程价值</strong>：把"KV cache 显存爆了"“为什么多轮对话越聊越快”“prompt cache 折扣怎么来的”"semantic cache 什么时候不能用"统一进一张图</li>
+</ol>
+<h2 id="_1">出处</h2>
+<ul>
+<li>原推：https://x.com/_avichawla/status/2093962020962083139（71 段完整抓取：syndication 截断 → status 页 React 数据流提取）</li>
+<li>引流 X Article：https://x.com/i/article/2093210840468189184（《The Four Caches in LLM Serving》正文登录墙未获取，框架已从配图+推文还原）</li>
+<li>配图：https://pbs.twimg.com/media/HQzFEXmaQAAzsnc.png（GLM-4.6V 视觉识别还原四层结构）</li>
+<li>§1 逐字翻译照录；§2-§4 为领域补全分析（标注明确）</li>
+<li>相关笔记：<a href="https://hpage.top/bookmarks/notes/2026-08-29-图解大语言模型部署.html">图解大语言模型部署</a>（KV Cache/TTFT 指标层）、<a href="https://hpage.top/bookmarks/notes/2026-08-30-一文弄懂Agent-Harness与Agent-Runtime的区别.html">一文弄懂Agent-Harness与Agent-Runtime的区别</a>（部署栈侧）</li>
+</ul>
+</body>
+</html>
