@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VLA 边缘部署加速：双相位瓶颈、动作缓存与 Pi 级硬件实测</title>
+
+<meta property="og:title" content="VLA 边缘部署加速：双相位瓶颈、动作缓存与 Pi 级硬件实测" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="vla-pi">VLA 边缘部署加速：双相位瓶颈、动作缓存与 Pi 级硬件实测</h1>
+<p class="tag-line"><span class="tag">#VLA</span> <span class="tag">#边缘部署</span> <span class="tag">#推理加速</span> <span class="tag">#机器人</span></p>
+
+<blockquote>
+<p>三篇 2026 年核心论文交叉精读：SJTU 的 VLA-XPU 硬件表征（2604.24447）、ActionCache 免训练动作缓存（2607.06370）、LiteVLA 树莓派量化实测（2511.05642），叠加 SmolVLA 公开基准。目标：回答「DUCK-Pi_5（Pi 5 + SmolVLA）这类低端主控到底怎么跑 VLA」。</p>
+
+<p class="meta-date">生成日期 2026-08-31</p></blockquote>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-vla-xpu-arxiv-260424447">1.1 VLA-XPU 表征论文（arXiv 2604.24447，上海交大）核心发现</h3>
+<p><strong>Finding #1：模型大小 ≠ 推理频率的预测器。</strong> 反直觉实测：Diffusion Policy（小模型，Small Consumer）推理频率反而低于 π0（大模型，Big Consumer）——原因是扩散动作专家的迭代步数：Diffusion Policy 需要 100 步去噪，π0 只需 4 步。<strong>去噪步数比参数量更决定延迟。</strong></p>
+<p><strong>Finding #2：CET（Cost/Energy/Time）三维排行榜颠覆「旗舰卡最优」直觉。</strong></p>
+<table>
+<thead>
+<tr>
+<th>硬件</th>
+<th>BF16/FP16 算力</th>
+<th>显存</th>
+<th>带宽</th>
+<th>π0 得分场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RTX 4090</td>
+<td>330 TFLOP/s</td>
+<td>24 GB</td>
+<td>1000 GB/s</td>
+<td>延迟优先（动态任务）最优</td>
+</tr>
+<tr>
+<td>Jetson Thor</td>
+<td>258 TFLOP/s</td>
+<td>128 GB</td>
+<td>273 GB/s</td>
+<td>能耗优先最优（电池机器人）</td>
+</tr>
+<tr>
+<td>AGX Orin</td>
+<td>42 TFLOP/s</td>
+<td>64 GB</td>
+<td>204 GB/s</td>
+<td>SmolVLA 等小模型的 Cost-Energy 最优</td>
+</tr>
+<tr>
+<td>Intel B60 Pro</td>
+<td>90 TFLOP/s</td>
+<td>24 GB</td>
+<td>456 GB/s</td>
+<td>成本优先（规模化部署）最优</td>
+</tr>
+<tr>
+<td>Ascend 310P</td>
+<td>88 TFLOP/s</td>
+<td>48 GB</td>
+<td>204.8 GB/s</td>
+<td>重负载（Gr00t/π0）CE 场景占优</td>
+</tr>
+</tbody>
+</table>
+<p>π0 实测一行：4090 跑出 102.3ms/86 分；Thor 246ms；Orin 920.6ms；B60 306.5ms。<strong>7B 的 OpenVLA 塞不进 12GB 的 Ascend 310B；强行用 CPU swap 跑，磁盘 I/O 把推理拖到 &lt;1Hz，实际不可用</strong>——显存容量是与延迟门并列的硬可行性约束。</p>
+<p><strong>Finding #3：双相位计算失衡（本文最有价值的系统级洞察）。</strong> 用 Nsight Systems 对 π0 做细粒度画像：</p>
+<ul>
+<li><strong>VLM backbone = 计算受限阶段</strong>：SM 利用率 &gt;90%</li>
+<li><strong>Action Expert = 访存受限阶段</strong>：SM 利用率仅 20-40%</li>
+<li>VLM 利用率是 Action Expert 的 3 倍，但 Action Expert 延迟是 VLM 的 2 倍</li>
+<li>两阶段串行依赖 → 高性能算力单元在 Action Expert 阶段大量空转，这解释了「峰值算力规格」与「实际控制频率」之间的落差</li>
+</ul>
+<p>配套加速方案：<strong>DP-Cache</strong>（扩散过程内部冗余削减，π0 上 1.29× 加速、成功率仅降 0.6%）+ <strong>V-AEFusion</strong>（VLM 与 Action Expert 异步流水线并行，1.3×）→ 组合在 GPU 上最高 2.9×，边缘 NPU 上 6×。</p>
+<p><strong>部署三步法</strong>（论文给的可复用决策流程）：① 在排行榜选目标模型查全部硬件画像 → ② 可行性过滤（显存容量 OOM 检查 + 控制频率门限）→ ③ 按场景优先级排序（延迟/成本/能耗）。</p>
+<h3 id="12-actioncachearxiv-260706370">1.2 ActionCache（arXiv 2607.06370）：免训练的动作级缓存</h3>
+<p><strong>问题</strong>：flow matching 类 VLA（π0.5/GR00T-N1.6）的动作头迭代采样占端到端延迟 36-65%+，实时控制瓶颈。</p>
+<p><strong>方案</strong>：把「过去成功生成的动作块」变成可复用计算。</p>
+<table>
+<thead>
+<tr>
+<th>设计点</th>
+<th>实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>缓存键</td>
+<td>VLM 输出嵌入（backbone 前向的副产物，零额外计算）→ 固定稀疏三值随机投影矩阵 R∈{-1,0,1}^(d×D) 压到 d=500 维（非零密度 p=0.01），免训练免拟合</td>
+</tr>
+<tr>
+<td>缓存值</td>
+<td><strong>动作块本身</strong>（不是 KV cache/内部状态/视觉 token）→ 定义在动作空间，与 backbone 架构解耦</td>
+</tr>
+<tr>
+<td>命中规则</td>
+<td>Top-1 余弦相似度 &gt; T_hit 才算命中（π0.5: 0.85；GR00T: 0.65），未命中回退纯高斯噪声全步生成——保守回退保住泛化能力</td>
+</tr>
+<tr>
+<td>提交策略</td>
+<td>miss 时暂存 (key, τ=(N-N_hit)Δτ 处的中间噪声动作) 到 pending buffer，<strong>episode 成功才提交，失败即丢弃</strong></td>
+</tr>
+<tr>
+<td>替换策略</td>
+<td>容量 3000 条，LRU 起步；容量受限时 LFU 更优（防缓存污染）</td>
+</tr>
+<tr>
+<td>预热</td>
+<td>T_hit=1（绝不误命中）填满缓存后再降到目标阈值</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实测数据（VLABench）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>方法</th>
+<th>NFE</th>
+<th>成功率</th>
+<th>延迟</th>
+<th>加速比</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>π0.5</td>
+<td>Base (NFE=10)</td>
+<td>10</td>
+<td>38.8%</td>
+<td>18.8ms</td>
+<td>1.0×</td>
+</tr>
+<tr>
+<td>π0.5</td>
+<td>Base 直降到 NFE=1</td>
+<td>1</td>
+<td>6.8% (-32.0)</td>
+<td>2.5ms</td>
+<td>7.52×</td>
+</tr>
+<tr>
+<td>π0.5</td>
+<td>ActionCache</td>
+<td>1</td>
+<td>32.4% (-6.4)</td>
+<td>3.6ms</td>
+<td>5.22×</td>
+</tr>
+<tr>
+<td>π0.5</td>
+<td>ActionCache</td>
+<td>0</td>
+<td>32.9% (-5.9)</td>
+<td>1.6ms</td>
+<td><strong>11.75×</strong></td>
+</tr>
+<tr>
+<td>GR00T-N1.6</td>
+<td>ActionCache</td>
+<td>0</td>
+<td>22.3% (-11.7)</td>
+<td>0.7ms</td>
+<td><strong>34.43×</strong></td>
+</tr>
+<tr>
+<td>π0.5</td>
+<td>EfficientVLA（对比）</td>
+<td>1</td>
+<td>2.3% (-36.5)</td>
+<td>5.1ms</td>
+<td>3.69×</td>
+</tr>
+</tbody>
+</table>
+<p>关键结论：<strong>NFE=0（完全跳过去噪、直接复用缓存动作）在 π0.5 上成功率只掉 5.9 个点</strong>——相似视觉语境下历史动作可以不修改直接复用。键投影+查表开销 &lt;2ms，可忽略。真机验证：SO-101 机械臂 pick-and-place，LeRobot 框架微调 100 episodes。</p>
+<p>局限（论文自述）：只加速动作头，不动 VLM backbone，可与 VLM 侧免训练加速叠加；替换策略（LRU/LFU/FIFO）还能继续优化。</p>
+<h3 id="13-litevlaarxiv-251105642-4-pi">1.3 LiteVLA（arXiv 2511.05642）：树莓派 4 上的量化实测——Pi 级硬件的真实天花板</h3>
+<p>这篇是「低端硬件能跑 VLA 吗」的最直接证据：</p>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>单次推理延迟</th>
+<th>换算</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SmolVLM-256 baseline FP32（Pi 4 CPU）</td>
+<td>~11 s</td>
+<td>0.09 Hz</td>
+</tr>
+<tr>
+<td>LiteVLA 未量化 FP32（Pi 4 CPU）</td>
+<td><strong>~18 分钟</strong></td>
+<td>完全不可用</td>
+</tr>
+<tr>
+<td>LiteVLA 4-bit NF4（投影头保 FP32）</td>
+<td>~2 分钟</td>
+<td>9× 改善但仍非实时</td>
+</tr>
+<tr>
+<td><strong>量化投影头</strong></td>
+<td>严重退化</td>
+<td>输出不稳定/幻觉</td>
+</tr>
+</tbody>
+</table>
+<p>架构策略：<strong>Action Chunking + ROS 2 异步分层</strong>——VLA 以 0.09Hz 低频出「动作块」，底层运动控制器高频执行，高层推理慢不阻塞底层控制。这是 Pi 级 CPU 跑 VLA 的唯一可行姿势。<br />
+另一铁律：<strong>投影头（projection head）绝不能量化</strong>，保 FP32；只量化主干。</p>
+<h3 id="14-smolvla">1.4 SmolVLA 公开基准补充</h3>
+<ul>
+<li>GPU 上 SmolVLA 平均推理 ~87ms（learnopencv 实测），峰值显存 ~908MB</li>
+<li>基准达到 OpenVLA 成功率的 60-75%，参数量只有 1/14；单任务微调（200+ demonstrations）差距缩到 5-10%</li>
+<li>真机 SO-101 pick-and-place（SmolVLA 论文）：分布内 90% vs π0.5 70%；分布外 50% vs 40%</li>
+<li>定位：LeRobot 生态、消费级 GPU 可训、Jetson Orin NX（$499）可部署——<strong>比 AGX 便宜 4 倍的推理位</strong></li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<p>本轮检索沿三条线展开，覆盖面如下：</p>
+<ol>
+<li><strong>「VLA 边缘部署 latency」主线</strong>：命中 VLA-XPU 表征论文（CET 框架 + 双相位发现）与 LiteVLA（Pi 4 量化实测）——一 Theory 一 Practice，正好互补。</li>
+<li><strong>「flow matching 动作头加速」支线</strong>：从 VLA-XPU 的 Related Work（EfficientVLA/Cache-VLA/DeeR 四家族分类：冗余削减/架构压缩/推测推理/系统流水线）追到 ActionCache——第一个把缓存范式引入 flow-based VLA 的工作。</li>
+<li><strong>「SmolVLA 实际部署」支线</strong>：learnopencv 实测教程（87ms 数据）+ AY-Robots 2026 决策表（SO-100 级五策略对比：延迟差 24 倍、参数差 37 倍、成本差 12 倍；GR00T/Pi0.5 云端训练 vs SmolVLA/ACT 本地可训）。</li>
+<li><strong>未覆盖留待后续</strong>：VLA-XPU 论文的 DP-Cache/V-AEFusion 完整算法细节（§5 未全文精读）；Ascend NPU 6× 加速的完整实验表；Hi-robot/Gr00t 层级式 VLA 的控制频率解耦细节。</li>
+</ol>
+<h2 id="_3">三、归纳总结</h2>
+<ol>
+<li><strong>延迟的真正决定因素是迭代步数而非参数量</strong>。100 步去噪的小模型比 4 步去噪的 3B 模型慢——选型时先看动作头类型与 NFE，再看 backbone 大小。</li>
+<li><strong>VLA 推理存在结构性「双相位失衡」</strong>：VLM 阶段计算受限（SM&gt;90%）、Action Expert 阶段访存受限（SM 20-40%）。任何单一硬件都只能喂饱其中一个阶段——这为「大小核异构/异步流水线」提供了理论依据。</li>
+<li><strong>免训练加速的性价比天花板在动作头</strong>：ActionCache 证明「历史成功动作 + 语境相似度检索」可以在不动任何权重的前提下拿到 11.75×-34.43× 动作头加速，代价是个位数成功率损失。本质是把 LLM 推理里的 KV cache/prompt cache 思想移植到动作空间。</li>
+<li><strong>Pi 级 CPU 跑完整 VLA 仍是禁区</strong>（18 分钟/次 FP32、2 分钟/次 NF4），唯一可行架构是「低频 VLA 出动作块 + 高频底层控制器执行」的异步分层；而 Pi 5 级跑 SmolVLA 处于两者之间，必须依赖动作分块。</li>
+<li><strong>「成功率-延迟」是可控滑杆</strong>：NFE 从 10 降到 1，base 掉 32 个点，ActionCache 只掉 6 个点——缓存热启动把滑杆的代价压掉 80%。</li>
+</ol>
+<h2 id="_4">四、趋势判断</h2>
+<ol>
+<li><strong>双系统（dual-system）架构已成主流共识</strong>：Hi-robot、π0/π0.5、Gr00t 全部走向「VLM 慢思考 + Action Expert 快控制」解耦。2026 年的增量在系统层：怎么让两个相位在廉价硬件上并行/流水线化（V-AEFusion 方向）。</li>
+<li><strong>动作缓存会成为 VLA 推理引擎标配</strong>，正如 prompt cache 之于 LLM serving。可预期的演进：缓存键从 VLM 嵌入扩展到「视觉+语言+机器人状态」联合键（GR00T 已是如此）；替换策略从 LRU/LFU 走向学习型。</li>
+<li><strong>边缘 XPU 生态多元化</strong>：评测已覆盖 Ascend 310B/310P、Intel Arc B60、Jetson Thor/Orin。中国产 NPU 在 CE（成本-能耗）维度对 NVIDIA 形成实质竞争，机器人厂商选型将从「无脑 NVIDIA」转向 CET 三维决策。</li>
+<li><strong>1B 参数是 Small/Big Consumer 分界线</strong>（该论文的分层），与「SmolVLA 类小模型 + 动作分块」路线在低端硬件（Pi 5/Jetson Orin NX/$10k 人形）形成完整生态位。</li>
+<li><strong>量化与缓存的组合是下一步</strong>：LiteVLA 证明 NF4 量化在 CPU 上拿 9×，ActionCache 在 GPU 上拿 11.75×——两者正交，Pi 5 + 量化 SmolVLA + 动作缓存的理论叠加空间值得验证。</li>
+</ol>
+<h2 id="_5">五、关联</h2>
+<ul>
+<li><strong>DUCK-Pi_5 项目（~/uclaw/project/DUCK-Pi_5）</strong>：本笔记的直接应用对象。项目路线是 RL(M1-M5) + VLA(SmolVLA)，主控 Pi 5。关联判断：</li>
+<li>Pi 5 跑 SmolVLA 必须走 Action Chunking 异步分层（LiteVLA 模式），直接端到端 50Hz 闭环不现实</li>
+<li>项目现有的 BAM 执行器滤波链 + 解析控制器 = 论文里「高频底层控制」的角色，架构上已经对齐</li>
+<li>行走步态这类周期性极强的动作恰好是 ActionCache 的理想命中场景（视觉语境高度重复）</li>
+<li><strong>Jetson Orin 本机</strong>：本机是 AGX Orin（42 TFLOP/s/64GB/204GB/s）——论文 CET 表中 SmolVLA 的 Cost-Energy 最优硬件。若 DUCK-Pi_5 后续升级主控，Orin 是 SmolVLA 的论文背书选项。</li>
+<li><strong>既有笔记</strong>：<a href="https://hpage.top/bookmarks/notes/2026-08-29-Microduck%E5%8F%8C%E8%B6%B3%E6%9C%BA%E5%99%A8%E9%B8%AD-%E5%85%A8%E6%A0%88%E4%BB%BF%E7%9C%9F%E5%AE%9E%E7%8E%B0%E4%B8%8E%E6%89%93%E5%8D%B0%E4%BB%B6%E6%8C%87%E5%8D%97.html">Microduck双足机器鸭-全栈仿真实现与打印件指南</a>（61 维契约/安全层/BAM 执行器）、[DUCK-Pi_5树莓派主控移植完整方案]——本笔记补齐其中 VLA 推理部署的性能理论层。</li>
+<li><strong>LLM 侧同构</strong>：ActionCache 的「语境键→动作值缓存+保守回退」与 LLM 的 prompt caching、Hermes Gateway 的会话前缀复用同构；DP-Cache 的扩散步间冗余削减与 speculative decoding 同族。</li>
+</ul>
+<h2 id="_6">六、拓展应用推荐</h2>
+<ol>
+<li><strong>P0｜DUCK-Pi_5 增加 ActionCache 式动作缓存原型</strong>：在现有 microduck_sim 仿真里，对解析控制器/PPO 策略的输出动作块按「观测嵌入相似度」建缓存（观测可用低维状态向量直接做键，无需 VLM 嵌入），命中则跳过策略前向。行走场景周期性强，预期命中率可观。工作量：仿真内 ~100 行 Python。</li>
+<li><strong>P0｜Pi 5 部署前强制做「延迟预算表」</strong>：按论文三步法，先测 SmolVLA 在 Pi 5（CPU/NPU）的实际单次延迟 → 定动作块长度 H → 定控制频率。不做这步直接上真机会踩 LiteVLA 的坑（分钟级延迟）。</li>
+<li><strong>P1｜量化留投影头</strong>：若对 SmolVLA 做 INT4/NF4 量化，投影头保 FP32（LiteVLA 铁律），预期在 Pi 5 上拿到数倍改善。</li>
+<li><strong>P1｜Jetson 侧对比评测</strong>：本机 AGX Orin 可跑 SmolVLA 推理基准（论文称 Orin 是 SmolVLA CE 最优），为 DUCK-Pi_5 提供「Pi 5 vs Orin」的实测决策数据。注意遵守本机不跑重型 ML 的约束——仅轻量推理基准，训练留 AutoDL。</li>
+<li><strong>P2｜关注 VLA-XPU 排行榜</strong>（vla-leaderboard-01.vercel.app）：持续更新的模型-硬件配对数据，后续选型直接查表。</li>
+</ol>
+<h2 id="_7">七、指南分析</h2>
+<p>对「低端主控跑 VLA」的可操作决策树（综合三篇论文）：</p>
+<pre><code class="language-text">目标：机器人上跑 VLA
+→ 显存/内存装得下模型吗？（7B OpenVLA 需 &gt;12GB；SmolVLA ~1GB 级）
+  → 装不下 → 换小模型（SmolVLA/ACT 级）或云端推理
+  → 装得下 → 实测单次推理延迟
+    → &lt;200ms → 可近实时闭环（GPU/Thor 级）
+    → 200ms-2s → 动作分块（预测 10-50 步，底层 50Hz 执行）
+    → &gt;2s（Pi 级 CPU）→ 异步分层 + 量化（投影头保 FP32）
+        + 动作缓存（周期性任务命中率高）
+        + 考虑降级到「解析控制器 + VLA 仅做高层指令」
+</code></pre>
+<p>加速方法四家族选型（VLA-XPU 分类法）：<br />
+1. <strong>冗余削减</strong>（Cache-VLA/DeeR/ActionCache）：免训练，动动作头，性价比最高<br />
+2. <strong>架构压缩</strong>（TinyVLA/蒸馏/一致性模型）：需重训，上限高<br />
+3. <strong>推测推理</strong>（Spec-VLA/TS-DP）：需配套小模型<br />
+4. <strong>系统流水线</strong>（Real-Time Chunking/V-AEFusion）：不动模型，动调度</p>
+<p>工程铁律三条：投影头不量化；episode 成功才提交缓存；命中率阈值先 1 后降（预热防误命中）。</p>
+<h2 id="_8">出处</h2>
+<ul>
+<li>VLA-XPU 表征论文：arXiv 2604.24447《Characterizing Vision-Language-Action Models across XPUs: Constraints and Acceleration for On-Robot Deployment》（上海交大，2026）— https://arxiv.org/abs/2604.24447 ，排行榜 https://vla-leaderboard-01.vercel.app/</li>
+<li>ActionCache：arXiv 2607.06370《Training-Free Acceleration for Vision-Language-Action Models with Action Caching and Refinement》（2026）— https://arxiv.org/abs/2607.06370</li>
+<li>LiteVLA：arXiv 2511.05642《Lite VLA: Efficient Vision-Language-Action Control on CPU-Bound Edge Robots》— https://arxiv.org/abs/2511.05642 （Pi 4 量化实测数据）</li>
+<li>SmolVLA 实测：learnopencv.com/smolvla-lerobot-vision-language-action-model（87ms/908MB）；AY-Robots《Which VLA Policy Should You Train in 2026?》（SO-101 真机对比）</li>
+<li>提取方法：web_search 发现 + web_extract 全文（本机缓存 ~/.hermes/cache/web/）+ 中段补读，2026-08-31</li>
+</ul>
+</body>
+</html>
