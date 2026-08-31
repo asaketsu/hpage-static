@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>microduck_rl 分析学习：Sim2Real Playbook 与双足 RL 实战规则</title>
+
+<meta property="og:title" content="microduck_rl 分析学习：Sim2Real Playbook 与双足 RL 实战规则" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<hr />
+<p>title: microduck_rl 分析学习：Sim2Real Playbook 与双足 RL 实战规则<br />
+date: 2026-08-31<br />
+source: https://github.com/pollen-robotics/microduck_rl<br />
+tags: [RL, sim2real, microduck, mjlab, PPO, reward-design, 双足机器人, 课程学习]</p>
+<hr />
+<h1 id="microduck_rl-sim2real-playbook-rl">microduck_rl 分析学习：Sim2Real Playbook 与双足 RL 实战规则</h1>
+<blockquote>
+<p><strong>仓库</strong>：<a href="https://github.com/pollen-robotics/microduck_rl">pollen-robotics/microduck_rl</a>（786★，Apache-2.0，默认分支 develop）<br />
+<strong>定位</strong>：Microduck（~800g、~25cm 双足、14 个 Dynamixel XL330 舵机）的 RL 训练环境，基于 <a href="https://github.com/mujocolab/mjlab">mjlab</a>（MuJoCo Warp）+ PPO（rsl_rl）。策略在此 50Hz 训练 → ONNX 导出 → <code>pollen-robotics/microduck</code> 运行时部署真机。<strong>Sim2Real 转移就是全部意义</strong>：这份 playbook 里的每条约定都是因为破坏它曾产出"viewer 里能跑、硬件上失败"的策略。<br />
+<strong>本次增量</strong>：上游 08-26/27 刚更新——AGENTS.md 被 "make canonical"（PR#4），此前全仓法语注释/plan 批量翻成英文（10+ commits）。本笔记的增量价值在于把这份 canonical playbook 提炼成可复用资产。</p>
+</blockquote>
+<h2 id="1">1. 项目画像</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>规模</td>
+<td>49.7MB / 432 文件（src+scripts+tests+docs+uv.lock）</td>
+</tr>
+<tr>
+<td>任务数</td>
+<td><strong>17 个环境 cfg</strong>：velocity（行走基础）/ velocity_rollers / velocity_swizzle / velstand / standup / roller_standup / sitstand / roulade / spin / ground_pick / ball_kick / roller_crouch / roller_slope / backlash 变体 / slope_terrain / symmetry / testbench</td>
+</tr>
+<tr>
+<td>技术栈</td>
+<td>mjlab（MuJoCo Warp GPU 仿真）+ rsl_rl（PPO）+ uv + wandb + ONNX</td>
+</tr>
+<tr>
+<td>训练控制</td>
+<td>50Hz；simple trick ~1000 iters @4096 envs，gait/curriculum 恢复 4000–6000</td>
+</tr>
+<tr>
+<td>测试</td>
+<td>154 passed / 1 skipped（CPU，本机实测 23s）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>架构精髓</strong>：<code>velocity</code> 是主行走配方<strong>同时</strong>是共享基座（robot、DR、obs、commands），其他 env 在它上面构建或镜像——这保证了 DR / obs / noise / delays 自动同步。从零搭独立 env 必须手动搬运整个 DR + obs-noise + NaN-guard 栈。</p>
+<h2 id="2-obs-obs">2. 六大核心不变量（obs 契约与 obs 家族共享机制）</h2>
+<pre><code>61D actor obs = 48D base proprioception + 13D command block
+13D command   = [twist(3), head_pose(4), body_pose(6)]   顺序固定
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>不变量</th>
+<th>破坏后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>Obs 61D 全家共享</strong>，unused slot 用 ZERO-PAD（保留 obs term，采样极小区间）而非删除</td>
+<td>破坏 → policy 不可热切换，walk/stand/trick 不能同一 obs 接口</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>关节布局不硬编码</strong>：被动关节（轮子/backlash 铰链）会 INTERLEAVE。用 <code>_servo_joint_ids</code>/<code>_servo_joint_pos</code> helper（plain 模型上恒等，其他模型正确）</td>
+<td>写死索引 → 在 roller 模型上把指令发到轮子（真实案例见 <code>roller_standup_policy_summary.md</code>：<code>[0-4, 9-13]</code> 对无轮模型正确，在轮模型上指到轮子）</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>passive_* 命名约定</strong>：所有未驱动关节以此前缀；选择器用 <code>^(?!passive_).*</code>；新 passive regex 不能误匹配 backlash 关节（<code>^passive_.*wheel</code> 而非 <code>^passive_.*</code>）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>4</td>
+<td><strong>BAM 执行器</strong>（电压控制的 XL330 模型，摩擦由 actuator 算）：独立 env 必须注册 <code>expand_bam_friction_fields</code>；joint-friction DR 要 scale <code>friction_scale</code>——<code>dof_frictionloss</code> 在 BAM 下被清零，改它是<strong>静默 no-op</strong></td>
+<td>静默失效的 DR</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Obs 归一化 ON → normalizer 必须 bake 进 ONNX</strong>（<code>scripts/export.py</code>）。in-sim play 会自己 apply normalizer，掩盖 bug——绝不手转 checkpoint</td>
+<td>部署 obs 分布错位 = 策略失效</td>
+</tr>
+<tr>
+<td>6</td>
+<td><strong>策略 UNFILTERED</strong>（训练不加 action 低通）。要加滤波必须同步 runtime flag + 转移测试——trained-with/deployed-without 双向都破坏转移</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-reward-the-hard-way">3. Reward 设计铁律（每条都是"the hard way"学到的）</h2>
+<p><strong>符号约定（坑掉 4 个 env）</strong>：mdp.py 有两种 penalty 风格——mjlab 基础 cost 函数返回 ≥0 → 用负权重；自否定函数（<code>*_penalty</code>、<code>*_l1</code> 返回 ≤0）→ 用<strong>正权重</strong>。给自否定 penalty 配负权重 = 双重否定变成"奖励违反行为"，policy 会 farm 它（butt-hopping、crash-sits）。<strong>铁检查：每 run 的每个 <code>Episode_Reward/&lt;penalty&gt;</code> 必须 ≤0</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>规则</th>
+<th>因果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>RL 优化奖励的字面意思</strong></td>
+<td>每个未定义的自由度都会被 exploit（弹道挥鞭代替翻滚、肩滚代替矢状面、头三脚架代替站立）。把"什么算完成动作"编码进硬状态 gate（支撑接触、朝向轴检查、latch），不是小 penalty nudge</td>
+</tr>
+<tr>
+<td><strong>No jackpots</strong></td>
+<td>"到达 X" 奖励必须限速或 slew。提前到达目标态再每步打钱 = 买任意暴力。命令式转换要跟踪 slewed 内部目标（恒速 blend）——超前 ramp 不付费，<strong>慢才是 argmax</strong>。速度上限惩罚只会积成有界成本，必败</td>
+</tr>
+<tr>
+<td><strong>正面奖励绝不门控在坏状态</strong></td>
+<td>policy 会停在最便宜的合格姿势 farm。改用 potential-based shaping（付 Δprogress，如 Δcos(tilt)：上升付费、保持零、不可 farm）。休息任务要审每个正项对每种稳定躺姿（仰/俯/侧）——躺下还保留大部分奖励栈，policy 就躺</td>
+</tr>
+<tr>
+<td><strong>落地姿态任务用单一固定 target</strong></td>
+<td>t=0 就定死（Gaussian + L1 on joints 和 height，宽 std）+ <code>\|a_z\|</code> 冲击惩罚 + 双层 upright。<strong>不用 keyframe/waypoint 轨迹</strong>——policy 会 camp 在 waypoint。<strong>路径正是 RL 该发现的东西</strong></td>
+</tr>
+<tr>
+<td><strong>两类正则器分开</strong></td>
+<td>motion-blocker（body_ang_vel、angular_momentum、pose std）惩罚动态动作物理所需的东西 → 动态任务保持 LOW；smoothness（action_rate、joint_torque_rate）阻尼抖动不挡慢大动作 → 可加权，但<strong>在技能习得后再引入</strong>（curriculum 从 ~0 起步）——探索期任何 attempt-tax 都让"什么都不做"胜出</td>
+</tr>
+<tr>
+<td><strong>跨 env 复制正则器比奖励量级不比权重</strong></td>
+<td>PPO 看相对 advantage：同一 action_rate 权重在 4× 更大的正奖励栈下弱 4 倍</td>
+</tr>
+<tr>
+<td><strong>Gaussian std ≈ 还在意的误差</strong></td>
+<td>太松在小区间没梯度。但收紧前先问误差是策略可逃的还是行为固有的——38% 体重的头走路必然摆动，tight 瞬时 head-tracking std 惩罚了走路到让 policy 站死。<strong>只收可逃部分</strong>：如 1s EMA 上的 L1 收 DC 偏置、放过振荡</td>
+</tr>
+<tr>
+<td><strong>乘法组合优于加法求和</strong></td>
+<td>加法栈有妥协盆地（靠 lean 拿每项 80%），Gaussian 乘积在任一不足因子处坍塌；但 std 要宽到当前策略可见分，否则梯度不可见</td>
+</tr>
+<tr>
+<td><strong>关节卡硬限</strong></td>
+<td>qpos-side limit-proximity 惩罚加在问题关节上；stock <code>dof_pos_limits</code> 只在量程最后 ~7.5% 触发，command-side 惩罚无效（宽 ctrlrange 是刻意的——低 kp 舵机需要 overshoot）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-command">4. Command 与"死权重"陷阱</h2>
+<ul>
+<li>永不非零的 command 输入 → 死权重 forever。每个 slot 从 step 0 就采样小非零区间（即使 reward 权重 0），让输入神经元活着等后续 curriculum</li>
+<li><strong>零命令行为必须显式训练</strong>（<code>zero_command_prob</code> 式精确零采样）：均匀采样几乎永远采不到全零命令，而全零正是部署空闲态</li>
+<li>稀有但重要的命令区域要显式 bucket（如 <code>rel_turn_in_place_envs</code>）：独立均匀采样让 spinning 只占 ~2% experience，永远学不会</li>
+</ul>
+<h2 id="5-curriculum">5. Curriculum 规则</h2>
+<table>
+<thead>
+<tr>
+<th>要点</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>steps 语义</td>
+<td><code>iteration × 24</code>（<code>NUM_STEPS_PER_ENV = 24</code>）</td>
+</tr>
+<tr>
+<td>调度通道</td>
+<td><code>mdp.reward_weight</code> 管权重 + 独立 params-curriculum 管 command/event 区间。<code>reward_weight</code> 是 <strong>step function 不是插值</strong>——ramp 必须离散成 stage</td>
+</tr>
+<tr>
+<td>改 term 的正确方式</td>
+<td>走 <code>env.event_manager.get_term_cfg(...)</code>；<strong>绝不写 <code>env.cfg.events[...]</code></strong>——manager init 时 deepcopy，改 <code>env.cfg</code> 是静默 no-op（连强制 spawn state 的 eval 脚本都会踩）</td>
+</tr>
+<tr>
+<td>阶段对齐学到的能力</td>
+<td>当前 slice 没固化前不要硬化 spawn 混合；技能不存在前不要引入 tax。<strong>wandb 指标恰在 curriculum stage 边界下台阶 = pacing 错</strong>，拉长 stage 或延后引入，绝不提前</td>
+</tr>
+<tr>
+<td>逆向课程 spawn</td>
+<td>从动作中部（包括接近完成）开始 spawn，是解决"学会开头学不会最后一英里"的可靠方法——正序 frontier 拿不到 on-policy 数据</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6">6. 训练判读与"先测量后理论"</h2>
+<ul>
+<li>每 iteration 看：mean reward 上升 <strong>且</strong> episode length 按任务要求表现；每个 penalty 项 ≤0；<strong>主任务项真的在增长</strong>（总奖励可能纯靠正则器涨而 trick 根本没发生）</li>
+<li><code>Episode_Reward/&lt;term&gt;</code> 记的是<strong>加权值</strong>——权重 0 的 term 无论行为如何都读 0，必须对照权重调度解读</li>
+<li>预算参考：simple episodic trick ~1000 iters @4096 envs；gait 和课程重的恢复 4000–6000</li>
+<li><strong>Measure before theorizing</strong>：run "失败"时先跑 headless eval 真 checkpoint（per-spawn 电池、end-state 聚类、角速率曲线）再动 reward。历史上的"失败"其实是早期 checkpoint、成功判据把一个行为簇切成两半、pay cap 与实测物理打架</li>
+<li>sim metrics 可以过而视频不过人眼——<strong>看视频且查哪个 geom/axis 接触</strong></li>
+<li>如实汇报 rollout 表现（"会滚但 3 次里 1 次脸着地"），不要说"it works!"。用户决定何时够好</li>
+</ul>
+<h2 id="7-sim2real-footguns">7. Sim2Real footguns（每次坑掉数周）</h2>
+<p><strong>Wheels 按架构分</strong>（aarch64/DGX Spark/GB10 特有）：PyPI 的 linux-aarch64 torch wheel 是 <strong>CPU-only</strong>（<code>2.9.1+cpu</code>，<code>torch.version.cuda is None</code>）→ <code>torch.cuda.device_count() == 0</code> → mjlab 的 <code>select_gpus()</code> 索引空列表 → 第 0 次迭代前就 <code>IndexError</code>。修法：<code>[tool.uv.sources]</code> 只为 aarch64 把 torch 路由到 cu129 index（cu129 匹配 CUDA toolkit warp bundle；x86_64/HF Jobs 留在 PyPI）。<strong>两个静默断点</strong>，都用 <code>tests/test_aarch64_cuda_torch.py</code> 锁死：① torch 必须是 DIRECT 依赖（uv 只对 direct deps 应用 <code>[tool.uv.sources]</code>——删掉"看似冗余"的 <code>torch==</code> pin 会让路由变 no-op）；② pin 必须 <code>==</code>，因为 CUDA index 有比 PyPI 新的 build（<code>&gt;=</code> 曾静默拖 torch 2.9.1 → 2.13.0）。</p>
+<blockquote>
+<p>本机（Jetson Orin）实测对应：<code>uv sync</code> 成功且 torch 2.9.1+cu129 正确识别 Orin sm_87——sm_87 兼容性担忧被排除。</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>其他 footgun</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fresh <code>uv sync</code> 才是 ground truth</td>
+<td>HF Jobs 跑的就是 fresh sync；只靠手装本地包能跑的东西在远端必死。pyproject.toml 保持诚实</td>
+</tr>
+<tr>
+<td>物理对齐的限幅</td>
+<td>25cm 机器人 3.5–5.5 rad/s <strong>自然</strong>翻倒——别用人类速度直觉通过 cap 施加；反暴力压力放在 impact/thrash（<code>\|a_z\|</code>、action_rate、support gates），不是旋转速度</td>
+</tr>
+<tr>
+<td>IMU DR 零中心</td>
+<td>它训练对 misalignment 幅值的容忍，<strong>不能</strong>补偿系统性安装偏置（那是 runtime 标定）</td>
+</tr>
+<tr>
+<td>真机热切换 ONNX</td>
+<td>walk/stand/trick 共享 obs 契约热插拔；上真机前用 <code>scripts/infer_policy.py</code> 预演，command-slot 姿势旗标在 twist vx slot——喂全零 = "stand"，看起来像"策略忽略按钮"</td>
+</tr>
+</tbody>
+</table>
+<h2 id="8-5">8. 新环境工作流（5 步）</h2>
+<ol>
+<li><strong>选最接近的模板扩展，不从零搭</strong>：locomotion → velocity 配方；以姿态结尾的 episodic trick → standup；双态命令 → sitstand；动态机动 → roulade（读它 cfg docstring——编码了一个 5-run lesson arc）。<code>make_microduck_velocity*_env_cfg</code> 让 DR/obs/noise/delays 免费同步</li>
+<li><strong>训练前先验证物理假设</strong>（最大时间节省项）：① 目标/rest pose 必须是稳定平衡——从噪声 init 撑 ctrl 3s，查 <strong>TILT 不只 height</strong>（只记 z 的 settle test 会把跌倒状态报成"resting fine"）；② 目标高度从当前模型在 sim 里量（如站立策略下的 trunk z），<strong>不跨模型版本带旧值</strong>（一次 5mm 错的 STAND_Z 让目标变不可能，耗掉数天）</li>
+<li>配置约定：<code>ENABLE_*</code> toggles + tuned constants 在 cfg 顶部；<code>make_..._env_cfg(play: bool, rough: bool)</code> 工厂；<code>tasks/__init__.py</code> 注册（含 <code>_BACKLASH_TASKS</code> 表）；独立 <code>RslRl...RunnerCfg</code> + 不同 <code>experiment_name</code>。symmetry mirror-loss 可用（<code>symmetry.py</code> 61D 表）——默认关，<strong>绝不用</strong>于非对称任务</li>
+<li>写 cfg 测试（<code>tests/test_*_cfg.py</code>）：joint 索引在真实模型上解析、reward 权重符号正确、gate 按预期开闭。CPU 可跑，锁死不变量</li>
+<li><strong>Smoke test（64 envs × 5 iters）</strong>：构建过、NaN-free、obs 61D、每 reward term 计算、ONNX 导出。<strong>5 轮 × 64 envs 抓 ~95% 配置错误，成本几分钱——绝不做长训练前不跑它</strong></li>
+<li>训练、看 log、预期 2–5 轮 reward-hacking 打地鼠——那很正常</li>
+</ol>
+<h2 id="9-duck-pi_5">9. 本机状态与 DUCK-Pi_5 关联</h2>
+<p><strong>microduck-rl-sim mirror 实测</strong>（2026-08-30，详见项目 <code>docs/local_feasibility.md</code>）：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uv sync</code></td>
+<td>✅ torch 2.9.1+cu129 识别 Orin sm_87</td>
+</tr>
+<tr>
+<td><code>pytest tests/</code></td>
+<td>✅ <strong>154 passed / 1 skipped</strong>（23s，CPU）</td>
+</tr>
+<tr>
+<td>CPU 冒烟训练</td>
+<td>✅ 16 envs × 2 iters 完整跑通，reward 正常</td>
+</tr>
+<tr>
+<td>GPU 冒烟（64 envs）</td>
+<td>❌ warp 内核编译 OK 但 NvMap 分配 OOM（7.4GB 统一内存不足）→ 本机 GPU 训练判死</td>
+</tr>
+</tbody>
+</table>
+<p><strong>与 DUCK-Pi_5 的三大适配差距</strong>（项目 README 已列）：舵机 14→15、obs 61D→48D、BAM 执行器模型替换。本 playbook 中最该被 DUCK-Pi_5 直接继承的：</p>
+<ul>
+<li><strong>obs 家族共享契约</strong> → DUCK-Pi_5 的 M1-M5 策略必须共享 obs 布局（追加不删），否则 M1 到 M5 不能热切换</li>
+<li><strong>符号约定铁检查</strong>（每个 <code>Episode_Reward/&lt;penalty&gt;</code> ≤0）→ 直接抄进 DUCK-Pi_5 训练检查清单</li>
+<li><strong>先验证物理假设再训练</strong> → DUCK-Pi_5 站稳前先做 noise-init 撑 3s 查 TILT，不要拿 microduck 的 STAND_Z 值（我们 15 舵机 + 不同腿长）</li>
+<li><strong>aarch64 torch wheel 陷阱</strong> → AutoDL 训练机若走 ARM 实例必须锁 <code>[tool.uv.sources]</code>；若用 4090（x86_64）无此问题</li>
+<li><strong>逆向课程 spawn</strong> → DUCK-Pi_5 若训练"从跌倒中站起"类任务，正序学不会最后一步，用 mid-action spawn</li>
+</ul>
+<h2 id="10">10. 沉淀产出</h2>
+<table>
+<thead>
+<tr>
+<th>产物</th>
+<th>位置</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Skill（可复用资产）</td>
+<td><code>~/.hermes/skills/robotics/bipedal-rl-sim2real/SKILL.md</code>（git committed）</td>
+</tr>
+<tr>
+<td>上游完整 mirror</td>
+<td><code>~/uclaw/project/microduck-rl-sim/</code>（17 个 env cfg + 154 tests 实测通过）</td>
+</tr>
+<tr>
+<td>本文</td>
+<td>学习笔记</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_1">出处</h2>
+<ul>
+<li>上游仓库：https://github.com/pollen-robotics/microduck_rl（develop 分支，pushed 2026-08-30）</li>
+<li>AGENTS.md：上游 canonical playbook 245 行（本地 mirror 与上游 md5 一致 <code>ca35ed71</code>）</li>
+<li>近期演进：PR#4 docs/make-agents-guidance（08-27）、PR#3 法语→英文翻译 revert（08-26）、PR#2 aarch64 CUDA torch fix（08-26）</li>
+<li>本机验证：<code>~/uclaw/project/microduck-rl-sim/</code>（uv sync / pytest 154 通过 / CPU 训练跑通 / GPU OOM 判死）</li>
+<li>相关笔记：<a href="~/uclaw/project/microduck-rl-sim/docs/local_feasibility.md">microduck_rl 本地可行性</a>、DUCK-Pi_5 项目 docs/07_vla_phase2.md</li>
+</ul>
+</body>
+</html>
