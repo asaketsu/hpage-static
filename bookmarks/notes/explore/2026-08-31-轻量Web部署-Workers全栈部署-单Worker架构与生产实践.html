@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轻量Web部署-Workers全栈部署-单Worker架构与生产实践</title>
+
+<meta property="og:title" content="轻量Web部署-Workers全栈部署-单Worker架构与生产实践" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="cloudflare-workers-worker">Cloudflare Workers 全栈部署：单 Worker 架构与生产实践</h1>
+<blockquote>
+<p>探索日期 2026-08-31 | 兴趣等级 L3 | 来源 5（Cloudflare 官方博客 + 官方最佳实践文档 + Digital Applied 2026 指南 + BenchLM 托管选型 + AI Gateway 对比）| 关联笔记：2026-08-30-轻量Web部署-SQLite-on-NFS、2026-08-17-Fly-LiteFS（同域）</p>
+
+<p class="meta-date">生成日期 2026-08-31</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>Cloudflare Workers 在 2026 年已从边缘 API 处理器收敛为完整全栈平台：单个 Worker 内承载静态资产 + SSR 前端 + API 后端 + 数据库绑定，一次部署全局生效。技术基石是 V8 isolate（非容器）——冷启动 &lt;1ms，300+ 边缘节点 TTFB &lt;50ms。官方已明确"从 Workers 起步"，Pages 进入维护态，未来投资全部转向 Workers。配套存储矩阵（KV/D1/Durable Objects/R2/Hyperdrive）覆盖读缓存、关系型、强一致协调、对象存储、外接数据库池化五类场景。</p>
+<h2 id="_2">关键发现</h2>
+<ol>
+<li><strong>Pages→Workers 收敛是官方路线，不是社区猜测</strong>。Cloudflare 官方博客原文："您应从 Workers 着手……今后我们所有的投资、最佳化和功能工作都将专注于改善 Workers"。静态 <code>_headers</code>/<code>_redirects</code> 文件已支持，Pages 项目可零改动迁移（官方迁移指南）。新项目选 Pages = 主动登上弃船。</li>
+<li><strong>V8 isolate 消灭冷启动是结构性优势</strong>。Lambda 冷启动 100ms–1s（容器），Workers &lt;1ms（isolate 已预载运行时，只加载代码）。代价是严格限制：CPU 50ms（免费）/30s（付费）、内存 128MB、无持久 TCP socket——重计算和长连接池化必须外移。</li>
+<li><strong>单 Worker 全栈的关键拼图是 Hyperdrive</strong>。Workers 无持久连接池，直连传统数据库是历史难题；Hyperdrive 作为 Cloudflare 网络与数据库间的连接池桥，配合 Smart Placement（Worker 自动向数据库靠近重定位）解决往返延迟。<code>postgres</code> + Hono 的 SSR+API 混合应用可在一个部署单元内完成。</li>
+<li><strong>KV 最终一致 vs Durable Objects 强一致是硬边界</strong>。KV 全球传播 ~60s，读 &lt;5ms——适合特征开关/API 响应缓存/配置分发；需要协作编辑、游戏房间、限流计数等单实例串行语义时必须用 DO（单实例保证 + 串行请求 + 事务存储 10GB/object + WebSocket）。</li>
+<li><strong>渐进发布（Gradual Deployments）进入生产标配</strong>。Versions API 支持流量按 10%→50%→100% 逐步切换，配合 <code>wrangler deploy --env staging</code> 的 PR 预览部署，蓝绿/金丝雀在边缘平台原生可用——这是 Pages 时代"只能一次性全量推"的痛点补齐。</li>
+</ol>
+<h2 id="_3">决策速查</h2>
+<pre><code>选 Workers 还是别的？
+├─ 边缘规模 + 长流式生成（LLM streaming） → Workers（BenchLM 2026-07 实测结论）
+├─ 短期原型 + 预览 URL                  → Netlify（10s 流式上限）
+├─ Agent/队列/超出请求生命周期的常驻进程 → Railway/Fly.io
+└─ 重计算（&gt;30s CPU）                    → 传统云
+
+存储绑定怎么配？
+├─ 读多写少 + 可容忍 60s 传播 → KV（cacheTtl + expirationTtl）
+├─ 关系型 SQL                 → D1（或 Hyperdrive 桥接现有 Postgres/MySQL）
+├─ 强一致协调/限流/实时       → Durable Objects（串行单实例）
+└─ 大文件/训练数据            → R2（零出口费）
+</code></pre>
+<p>官方最佳实践四件套（缺一即埋雷）：</p>
+<pre><code class="language-toml">name = &quot;my-worker&quot;
+main = &quot;src/index.ts&quot;
+compatibility_date = &quot;2026-08-27&quot;        # 新项目设当天，旧项目定期升
+compatibility_flags = [&quot;nodejs_compat&quot;]  # node:crypto/buffer/stream，防运行时 import 报错
+# secrets 用 `wrangler secret put` 注入，vars 只放非敏感配置
+# Env 类型用 `wrangler types` 生成，不手写（防 config/code 漂移）
+</code></pre>
+<p>已知坑：Vitest 插件自动注入 <code>nodejs_compat</code>，测试通过 ≠ 部署配置正确——上线前必须肉眼确认 wrangler.jsonc 里有该 flag。</p>
+<h2 id="_4">对工作的价值</h2>
+<ul>
+<li><strong>轻量 Web 部署域补上 Workers 侧视图</strong>：前序笔记聚焦数据层（D1/LiteFS/Turso），本篇补齐计算层，域内"边缘数据库 × 边缘计算"拼图完整。</li>
+<li><strong>本机 homepage（GitHub Pages）有了备选路径</strong>：Workers 静态资产托管免费（仅 Worker 代码执行计费），若未来需要给笔记站加动态层（搜索 API/访问统计），无需迁移整站，<code>assets.directory</code> 直指现有 dist 即可。</li>
+<li><strong>AI Gateway 结论可复用</strong>：搜索结果显示 Workers AI 适合轻量边缘推理（50+ 模型 REST 调用），但生产级 LLM 网关治理（RBAC/预算/审计）是短板——与 free-model-apis skill 的多线免费 API 策略互补：边缘做轻推理，重路由留本地。</li>
+</ul>
+<h2 id="_5">行动建议</h2>
+<ol>
+<li>P2：下一个需要公网 URL 的轻工具（如天气 API 缓存代理）用 Workers 而非本机 cloudflared 隧道——免维护隧道进程，免费额度 10 万请求/天足够</li>
+<li>P2：验证 Workers AI 免费额度内的轻推理可用性（embedding/小模型），作为 free-model-apis 的第四线候选</li>
+<li>P3：homepage 若加动态功能，评估 <code>npm create cloudflare -- --framework=astro</code> 模板而非继续堆 GitHub Pages + 外挂服务</li>
+</ol>
+<h2 id="_6">关键风险与盲点</h2>
+<ul>
+<li>Workers AI 的 GPU 容量与限流政策随负载波动，"50+ 模型目录"≠ 稳定生产 SLA（来源级别：第三方对比文章，未官方验证）</li>
+<li>免费档 CPU 50ms 限制对任何含正则回溯/JSON 深解析的请求都偏紧，付费档 30s 才接近传统 serverless（官方平台限制文档）</li>
+<li>BenchLM 托管选型含推广链接（Netlify partner link），Netlify 推荐结论打折看待；Workers 结论与多源一致，可信</li>
+</ul>
+<h2 id="_7">来源</h2>
+<ul>
+<li>https://blog.cloudflare.com/zh-tw/full-stack-development-on-cloudflare-workers（官方：前端+后端+数据库单 Worker 化）</li>
+<li>https://developers.cloudflare.com/workers/best-practices/workers-best-practices（官方生产最佳实践）</li>
+<li>https://www.digitalapplied.com/blog/edge-computing-cloudflare-workers-development-guide-2026（2026 开发指南，含 Lambda/Vercel 对比表）</li>
+<li>https://benchlm.ai/blog/posts/best-hosting-platforms-ai-apps（2026-07 AI 应用托管选型实测）</li>
+<li>https://www.cloudflare.com/products/workers-ai（Workers AI 官方产品页）</li>
+</ul>
+</body>
+</html>
