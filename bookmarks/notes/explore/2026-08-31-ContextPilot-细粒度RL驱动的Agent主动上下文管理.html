@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ContextPilot-细粒度RL驱动的Agent主动上下文管理</title>
+
+<meta property="og:title" content="ContextPilot-细粒度RL驱动的Agent主动上下文管理" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="contextpilot-rl-agent">ContextPilot：细粒度 RL 驱动的 Agent 主动上下文管理</h1>
+<p class="tag-line"><span class="tag">#论文精读</span> <span class="tag">#Agent上下文管理</span> <span class="tag">#强化学习</span> <span class="tag">#长程推理</span></p>
+<p>tag: 论文精读</p>
+<blockquote>
+<p>探索日期 2026-08-31 | 兴趣等级 L1 | arXiv 2608.28476 | EMNLP 2026 Main Track | 领域：cs.CL（Agent / RL / 上下文工程）</p>
+
+<p class="meta-date">生成日期 2026-08-31</p></blockquote>
+<h2 id="_1">元数据</h2>
+<ul>
+<li>标题：ContextPilot: Teaching Agents for Proactive Context Management via Fine-grained RL</li>
+<li>作者：Zhuoshi Pan, Qizhi Pei, Junru Lu, Honglin Lin, H. Vicky Zhao, Di Yin, Xing Sun</li>
+<li>提交日期：2026-08-28（3 天内，满足"新"标准）</li>
+<li>发表：EMNLP 2026 Main Track（10 页，6 图，5 表）</li>
+<li>代码：已开源（论文声明 Code is available）</li>
+<li>训练框架：verl；基座：Qwen3-8B/14B、Gemma4-E4B-it、WebSailor-7B、WebExplorer-8B</li>
+</ul>
+<p>出处：arXiv 2608.28476（https://arxiv.org/abs/2608.28476），全文由 arxiv.org/html/2608.28476v1 提取。</p>
+<h2 id="_2">核心问题与研究动机</h2>
+<p>长程 Agent 任务（long-context QA、deep search）要求 LLM 在多轮交互中反复检索、整合、维护分散信息。ReAct 范式把所有历史原样追加进上下文，导致工作上下文持续膨胀。现有解法分两代：</p>
+<ul>
+<li>第一代（被动管理）：固定规则触发截断/摘要（ReadAgent、ReSum、SUPO），模型对自身上下文无控制权，难以跨场景泛化。</li>
+<li>第二代（主动管理）：给模型上下文编辑工具（MemGPT、Sculptor、StateLM、AgentFold），模型自行决定何时删除/摘要。</li>
+</ul>
+<p>但第二代仍有三大缺口（本文动机）：<br />
+1. 工具集太窄：只有 search/delete/summarize，缺全局规划、长期记忆、自适应压缩。<br />
+2. 探索效率低：传统 RL 用 trajectory-level rollout，把所有上下文编辑动作一视同仁——但实验证明不同编辑动作对最终成功率的方差影响差异巨大（Figure 2），关键决策值得更多采样预算。<br />
+3. 信用分配粗：最终轨迹级 reward 直接摊给所有中间编辑动作，无法区分好坏决策。</p>
+<h2 id="_3">内容详细整理</h2>
+<h3 id="table-1">方法论之一：上下文管理工具集扩展（Table 1）</h3>
+<p>在 StateLM 基础工具上新增三类，共 16 个工具、四大类：</p>
+<ul>
+<li>感知与规划（Perception &amp; Planning）：analyzeText（算上下文长度）、checkBudget（查 token 余量）、plan（提出简洁计划，新增）</li>
+<li>信息检索：buildIndex、searchContext、readChunk、readMultiChunks（批量加载）</li>
+<li>记忆管理（Memory Management，新增为主）：note/updateNote/readNote（轻量笔记）；memorize（抽取实体/时间戳/事件片段的结构化信息并在相关记忆项之间建边）、updateMemory、readMemory（取目标记忆及其邻居）</li>
+<li>上下文软卸载（Context Offloading，新增）：deleteContext（硬删，替换为占位符）、summarizeContext（摘要替换）、compressContext（用 llmlingua-2 等轻量模型压缩）、foldHistory（丢弃全部历史消息并构建可搜索索引，之后可用 searchContext 按关键词召回）</li>
+</ul>
+<p>关键设计：把"上下文卸载、记忆写入、记忆更新"定义为<strong>上下文编辑工具</strong>，轨迹在这些操作处切成快照（snapshot）——因为它们改写交互历史本身。</p>
+<h3 id="sft">方法论之二：SFT 数据合成</h3>
+<p>基于工具集设计 context management harness：教师模型生成时由规则在恰当步骤给提示和约束（如 search 后必须 readChunk 检查；上下文超阈值后限制只能用卸载工具清理）。这些脚手架仅用于生成期，不进入最终 SFT 轨迹。</p>
+<h3 id="context-aware-partial-rollout">方法论之三：上下文感知部分回放（Context-Aware Partial Rollout）</h3>
+<p>借鉴 ARPO。对每个上下文管理操作 a_t 计算两个变化量：</p>
+<ul>
+<li>上下文变化 ΔC_t = |len(c_t+1) − len(c_t)| / len(c_t)（相对长度变化）</li>
+<li>熵变化 ΔH_t = H_t − H_initial，其中 H_t 是收到观察后生成 k 个 token 的平均熵；基准用<strong>初始熵</strong>而非上一步熵——目的是识别相对初始查询状态产生显著不确定性变化的关键工具调用，而非相邻步的局部波动</li>
+</ul>
+<p>敏感度分数 S(a_t) = α·ΔC_t + β·ΔH_t。全局预算 N 个快照/查询：先做 8 条轨迹级 rollout 切出最多 64 个快照，剩余预算按 S 降序选 top 动作，从其父节点开始采样子轨迹（分支采样），把探索预算集中到影响最大的编辑决策上。</p>
+<h3 id="grpo">方法论之四：细粒度信用分配（快照级 GRPO）</h3>
+<ul>
+<li>终端快照奖励 R(S_M) = R_out（答案对错）+ R_fmt（可解析）+ R_pen（无效工具调用惩罚，如 readMemory 前无记忆、上下文超长）</li>
+<li>中间快照 S_i 的奖励 = 所有以 S_i 为前缀的终端轨迹奖励的均值（公式 8）——用分支轨迹回传信用</li>
+<li>同一查询下所有快照分组做组内归一化（减均值除标准差）算优势，以 GRPO 目标优化，把每个快照当独立样本。附录 A 给出方差缩减的理论讨论。</li>
+</ul>
+<h3 id="_4">实验设置</h3>
+<ul>
+<li>长上下文 QA：SFT 数据来自 NovelQA-PublicDomain + NarrativeQA 训练集，RL 在 LongBench-v2 训练集；基座 Qwen3-8B/14B、Gemma4-E4B-it。评测：NovelQA-Copyright、∞-Bench En.MC、LongMemEval-S、BrowseComp+（固定语料，无真实联网）。推理时输入上限 30K、生成上限 2K</li>
+<li>Deep Search：基座 WebSailor-7B、WebExplorer-8B（已有搜索能力，跳过 SFT 直接 RL），11K 样本来自 OpenSeeker。评测：GAIA（text-only 103 例）、BrowseComp、BrowseComp-ZH、xBench-DeepSearch</li>
+<li>对比基线：ReadAgent、MemAgent、StateLM、w/ tools（同工具纯 prompt）；ReAct truncation、ReSum、SUPO、OpenSeeker</li>
+</ul>
+<h3 id="_5">关键实验结果</h3>
+<p>长上下文 QA（Table 2，32K 窗口）：<br />
+- ContextPilot-8B-RL 平均 69.40，超 StateLM-8B-RL（65.85）3.55 分；14B 版 72.20 超 StateLM-14B（70.11）<br />
+- ContextPilot-8B-RL 仅用 32K 窗口就超过 128K 的 Qwen3-8B 裸 backbone（45.93→69.40，+23.5 分）；14B 同理（53.26→72.20）<br />
+- Qwen3.5-397B-A17B 加全套工具后（w/ tools）87.16 平均，BrowseComp+ 从 62.05 提到 80.96——工具收益在大模型上更大<br />
+- 惊人反差：Qwen3-8B 直接给工具不训练（w/ tools）反而从 45.93 跌到 27.61——小模型裸用复杂工具集会崩，SFT+RL 是必要条件</p>
+<p>Deep Search（Table 3）：<br />
+- WebSailor-7B 骨干：ContextPilot 平均 38.32，超 SUPO（36.31）、OpenSeeker（35.78）<br />
+- WebExplorer-8B 骨干：ContextPilot 50.10，超 SUPO（49.09）、OpenSeeker（47.92）</p>
+<p>Token 效率（Figure 4）：BrowseComp 上 WebExplorer-8B 每轮输入线性涨到约 30K；ContextPilot-8B 稳定在 8K–10K——3–4 倍的上下文压缩保持。</p>
+<p>RL 行为重塑（Figure 5/6）：<br />
+- RL 早期检索工具占工具调用约一半，随训练推进占比下降，规划/感知、长期记忆、卸载工具占比上升——模型从"朴素检索"转向"协调式上下文管理"<br />
+- SFT 后模型会用记忆/卸载工具但失败率高（不理解真用法）；RL 过程中工具调用失败率下降与任务成功率上升同步</p>
+<p>消融（Table 4，Qwen3.5-397B 工具叠加）：基础工具 77.89 → +Planning 80.29 → +软卸载 83.08 → +长期记忆 87.16；BrowseComp+ 从 63.49 一路涨到 80.96（+17.5）</p>
+<p>消融（Table 5，Qwen3-8B RL 组件叠加）：SFT 62.28 平均 → GRPO 66.83 → +熵回放（不稳定，BrowseComp+ 反降 1.32）→ +上下文回放（+2.11）→ +细粒度信用（+8.11，四基准全涨，BrowseComp+ +3.10）。结论：熵单独不足以定位关键编辑，加上下文变化才稳；细粒度信用分配全维度正贡献。</p>
+<h3 id="_6">局限性（作者自述）</h3>
+<ol>
+<li>工具集仍未覆盖所有上下文编辑需求（组织/压缩/检索的更丰富操作留待未来）</li>
+<li>算力限制下未充分搜索训练超参（尤其 partial rollout 与信用分配相关）</li>
+<li>实验限于长上下文 QA 与 deep search；向 agentic coding、GUI agent 扩展是开放方向</li>
+</ol>
+<h2 id="_7">归纳总结</h2>
+<p>一句话：ContextPilot 证明"主动上下文管理"的正确训练姿势 = 更全的工具箱（规划+长期记忆+软卸载）+ 为上下文编辑动作特化的 RL（敏感度引导的分支采样 + 快照级信用回传），在 1/4 的上下文窗口里打出超过 4 倍窗口裸模型的成绩。</p>
+<p>三层创新点：<br />
+- 工具层：首次把 planning、结构化长期记忆（带实体-事件图边）、可恢复软卸载（foldHistory+searchContext）整合进一个统一工具集，消融证明三件套各自贡献正增益且可叠加<br />
+- 探索层：用"上下文长度变化 + 熵变化"的复合敏感度分数识别关键编辑决策，把 rollout 预算从均匀分配改为按影响力分配——直接回应了"上下文编辑动作影响异质"这一被前人忽视的现象<br />
+- 信用层：快照作为独立样本 + 前缀分支均值回传 + 组内归一化，把 trajectory-level 粗奖励细化到 action-level，消融显示这是最大单项增益（+8.11）</p>
+<p>与既有工作的关键差异：StateLM/MemAgent 也做 RL，但它们的 rollout 和信用分配都是轨迹级通用的；ContextPilot 是第一个把 RL 三要素（工具/探索/信用）全部针对"上下文管理"特性重新设计的框架。</p>
+<h2 id="_8">查询拓展</h2>
+<p>顺着本文可继续追问的检索线索：<br />
+- StateLM（Liu et al., baseline 核心）：当前最强 baseline，其工具集与训练方案值得对照精读<br />
+- ARPO：partial rollout 的来源（agentic RL 的 turn-level 探索），ΔH 用初始熵做基准的设计与 ARPO 的差异<br />
+- AgentFold：多尺度折叠操作 SFT，与 foldHistory 的直接对比<br />
+- MemGPT：虚拟内存隐喻的鼻祖，看工具演化脉络<br />
+- llmlingua-2：compressContext 的底层压缩引擎，轻量压缩模型的能力边界<br />
+- OpenSeeker / WebSailor / WebExplorer：deep search 骨干家族，跳过 SFT 直接 RL 的可行性证据<br />
+- 附录 A 的方差缩减理论：快照级信用分配 vs 轨迹级的方差对比证明<br />
+- 未解问题：若上下文编辑动作之间存在长程依赖（A 影响 B 的效果），前缀均值回传是否仍无偏？论文未讨论 credit 的组合偏差</p>
+<h2 id="_9">趋势判断</h2>
+<ul>
+<li>上下文工程从"规则压缩"→"工具化主动管理"→"RL 优化的协调管理"三阶段演进清晰，本文是第三阶段代表作。判断：2026 下半年起，"上下文管理动作进入 RL 训练信号"会成为长程 Agent 的标配，类似 tool-use RL 在 2025 年的普及路径</li>
+<li>快照级信用分配（action-level credit）与 PPO/GRPO 社区正在推进的 process reward 方向合流：本文的"前缀分支均值"是一种免价值模型的 process reward 估计器，成本低且可即插即用</li>
+<li>软卸载（可恢复删除）优于硬截断的证据链越来越长（AgentFold、ReSum、本文消融），"上下文 = 可再生物流而非一次性仓库"的工程直觉正在定型</li>
+<li>小模型裸用复杂工具集会崩（Qwen3-8B w/ tools 跌 18 分）——工具复杂度与模型能力存在匹配门槛，给"给 7B 模型堆工具"的工程冲动泼了冷水</li>
+<li>局限方向即热点：agentic coding / GUI agent 场景的上下文管理 RL 是下一个必争之地（本文明确认领为 future work）</li>
+</ul>
+<h2 id="_10">指南分析</h2>
+<p>若要在自己的系统里复现/借鉴本文方法，工程要点：<br />
+- 工具设计四类分层（感知规划/检索/记忆/卸载）是可直接抄的 API 蓝图：checkBudget 让模型自己感知余量是低成本高收益的起点；foldHistory（全丢+建索引+关键词召回）实现简单且消融增益大（+2.79 平均）<br />
+- 敏感度分数实现成本极低：ΔC 只需前后 token 长度差，ΔH 只需 k 个生成 token 的 logprob——不需要额外模型，一次 rollout 顺手就能算<br />
+- 分支采样实现要点：在上下文编辑动作的父快照处存档（深拷贝消息列表），从存档点重启采样；快照数上限 8、总预算 128、轨迹级 8 条起步是论文的可参考配置<br />
+- R_pen 的无效调用清单值得直接抄：readMemory 前无记忆、上下文超长、格式坏参——都是可程序化判定的硬约束<br />
+- SFT 数据合成的 harness 提示（生成期脚手架不入数据）是避免污染训练分布的干净做法</p>
+<h2 id="_11">关联分析</h2>
+<ul>
+<li>与 MemDecay（2607.10582，2026-07-15 精读）互补：MemDecay 做区域感知 KV Cache 驱逐（推理侧、模型内部、被动），ContextPilot 做工具化主动上下文管理（Agent 侧、模型外部、主动）。两者可叠：KV 层管注意力权重，工具层管消息历史</li>
+<li>与 Memory Compaction Rate–Distortion（2607.08032，2026-07-12 精读）呼应：本文的 summarizeContext/compressContext 是率失真框架里"有损压缩"的具体工具化；foldHistory 是"可逆压缩"（索引可召回），与该文"可逆&gt;不可逆"结论一致</li>
+<li>与 Screenshots or Tools（2608.03327，2026-08-09 精读）同证一现象：工具不是给了就会用对——那边 17.8% 采纳率鸿沟，这边 SFT 模型高失败率，都指向"工具使用必须进训练信号"而非仅靠 prompt</li>
+<li>与 LongStraw（2607.14952）同属"时间换空间"家族：LongStraw 用逐分支回放换 KV 显存，ContextPilot 用分支采样换 RL 信用精度——分支回放（branch replay）是两者共享的底层机制</li>
+<li>关联笔记：2026-07-15-MemDecay、2026-07-12-Memory-Compaction、2026-08-09-Screenshots-or-Tools</li>
+</ul>
+<h2 id="_12">拓展应用推荐</h2>
+<p>对 Hermes Agent 生态的可落地借鉴（按收益×可行性排序）：</p>
+<ul>
+<li>P0｜checkBudget/analyzeText 式上下文自感知工具：给 Hermes 工具集加一个零依赖的"当前上下文占用+预算余量"查询工具，让长会话中的模型主动触发压缩。工作量：半天。收益：直接缓解长会话上下文溢出</li>
+<li>P0｜foldHistory 式可恢复折叠：Hermes 会话历史折叠为"关键词索引+摘要"，需要时按关键词召回原文（session 存档已具备数据基础）。与 context-compressor skill 天然衔接。工作量：1–2 天</li>
+<li>P1｜快照级事件记录：在 Hermes 工具调用日志中把"改写上下文的操作"（记忆写入、摘要、压缩）标记为 snapshot 边界，为未来做轨迹分析/信用归因提供数据结构。工作量：几小时</li>
+<li>P1｜R_pen 式硬约束校验：把"无效工具调用"（前置条件不满足、参数坏、超长）做成 Gateway 侧可程序化判定的惩罚清单，接入 observability-dashboard 做失败率追踪（复刻 Figure 6 的分析能力）</li>
+<li>P2｜敏感度分数用于任务审计：ΔC+ΔH 公式无需训练即可离线计算，可用于分析 Hermes 长任务日志中"哪些工具调用是关键决策点"，指导 skill 优化优先级</li>
+<li>P3｜完整 RL 训练管线：需要 verl + 多卡训练资源，Jetson Orin Nano 不具备训练条件，暂不适用（推理部署可行但非本文重点）</li>
+</ul>
+<p>对量化交易场景：deep search 能力（BrowseComp 系 +17.5 分）可用于公告/研报的多跳检索问答；上下文稳定在 8K–10K 意味着同等任务在边缘设备的 token 成本降 3–4 倍。</p>
+<h2 id="_13">来源</h2>
+<ul>
+<li>arXiv 2608.28476 abs 页（元数据、摘要）</li>
+<li>arxiv.org/html/2608.28476v1 全文（S1–S6、Sx1 Limitations、Table 2/3/4/5、Figure 4/5/6 说明文字）</li>
+<li>提取时间：2026-08-31；策略 B（arXiv API 结构化查询，40 篇候选中评分第一：25 分）</li>
+</ul>
+</body>
+</html>
