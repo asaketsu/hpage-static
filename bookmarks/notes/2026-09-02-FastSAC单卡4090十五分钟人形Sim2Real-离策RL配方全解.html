@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FastSAC单卡4090十五分钟人形Sim2Real-离策RL配方全解</title>
+
+<meta property="og:title" content="FastSAC单卡4090十五分钟人形Sim2Real-离策RL配方全解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="fastsac-4090-sim2real-rl">FastSAC 单卡 4090 十五分钟人形 Sim2Real — 离策 RL 配方全解</h1>
+<p class="tag-line"><span class="tag">#强化学习</span> <span class="tag">#Sim2Real</span> <span class="tag">#人形机器人</span> <span class="tag">#FastSAC</span> <span class="tag">#离策RL</span> <span class="tag">#DUCK-Pi_5</span> <span class="tag">#域随机化</span> <span class="tag">#Jetson外训</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>主论文：《Learning Sim-to-Real Humanoid Locomotion in 15 Minutes》arXiv:2512.01996，Amazon FAR（Frontier AI &amp; Robotics）</li>
+<li>作者：Younggyo Seo<em>、Carmelo Sferrazza</em>、Juyue Chen、Guanya Shi、Rocky Duan、Pieter Abbeel（UC Berkeley 系 + Amazon）</li>
+<li>项目页：https://younggyo.me/fastsac-humanoid | 代码：https://github.com/amazon-far/holosoma（开源）</li>
+<li>前序基础：FastTD3/FastSAC 原始论文 arXiv:2505.22642（Seo et al. 2025，首次离策 RL sim-to-real 上真机人形，仅部分关节）</li>
+<li>辅助对照：《Bridging the Reality Gap》IEEE RAM 2025（DOI 10.1109/MRA.2024.3505784）——单一机器上控制变量对比六种 sim-to-real 技术的系统评估</li>
+<li>阅读时间：2026-09-02 | 项目页 + 论文全文精读</li>
+<li>前序关联：[[2026-08-23-MjLabMicroban-30cm开源人形机器人RL训练与SimToReal.md]]（MjLab 用 RSL-RL/PPO 路线）、[[2026-08-31-VLA边缘部署加速-双相位瓶颈与动作缓存.md]]</li>
+</ul>
+<h2 id="_2">内容整理</h2>
+<h3 id="11">1.1 一句话结论</h3>
+<p><strong>离策 RL（FastSAC/FastTD3）+ 极简奖励（&lt;10 项）+ 精调超参，在单张 RTX 4090 上 15 分钟端到端训出全关节人形运动策略</strong>——含强域随机化（随机动力学/粗糙地形/推扰），且真机部署成功（Unitree G1 全身跟踪含 2 分钟舞蹈长序列）。对照：传统 PPO + 20+ 项奖励塑形的人形训练通常在多小时量级。</p>
+<h3 id="12-rl">1.2 为什么离策 RL 在大规模并行仿真中翻身</h3>
+<table>
+<thead>
+<tr>
+<th>对比项</th>
+<th>PPO（在策）</th>
+<th>FastSAC/FastTD3（离策）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据利用</td>
+<td>每批数据用完即弃</td>
+<td>重放缓冲区反复复用</td>
+</tr>
+<tr>
+<td>强域随机化下</td>
+<td>Push-Strong（每 1-3 秒推一次）时挣扎</td>
+<td>稳定收敛</td>
+</tr>
+<tr>
+<td>探索方式</td>
+<td>固定噪声日程</td>
+<td>最大熵学习（SAC）/混合噪声日程（TD3）</td>
+</tr>
+<tr>
+<td>墙钟时间（4090 全身人形）</td>
+<td>显著慢</td>
+<td><strong>15 分钟</strong></td>
+</tr>
+</tbody>
+</table>
+<p>关键背景：仿真速度本身常成瓶颈（非平坦地形等复杂场景），梯度步/仿真步比值高时，能复用旧数据的离策法直接摊薄仿真开销。</p>
+<h3 id="13-21">1.3 配方核心：七个精调设计选择（论文 §2.1 全量参数）</h3>
+<p><strong>① 关节限位感知的动作边界</strong>：Tanh 策略的动作界按"各关节限位 − 默认位置"的差值设定，替代手工调界。充分稳定后其实无界空间也能训，但保留此设计利于跨机器人迁移；<strong>扭矩不足（动作界过紧导致力不够）时建议放开到无界</strong>。</p>
+<p><strong>② Layer Normalization</strong>：高维任务（全身跟踪）稳定性的关键，且与下一条联动——</p>
+<p><strong>③ 弃用 Clipped Double Q（CDQ），改用双 Q 均值</strong>：CDQ 取 min 在与 LayerNorm 组合时有害（与 Nauman et al. 2024 一致），取平均反而更好。</p>
+<p><strong>④ 折扣因子分任务</strong>：速度跟踪任务 γ=0.97（短视界足够），全身跟踪 γ=0.99。</p>
+<p><strong>⑤ 分布式 critic 用 C51，不用分位数回归（QR）</strong>：大 batch 下 QR 太贵；C51 是效率/稳定折中。</p>
+<p><strong>⑥ SAC 探索超参三件套</strong>：pre-tanh 标准差上限 σ_max=1.0（不用常见的 e²≈7.39——大 α 初值 + 大 σ 上限会联合导致探索爆炸）；温度 α 初值 0.001；自动调温开启。目标熵：运动任务 0.0，全身跟踪 −|A|/2。</p>
+<p><strong>⑦ 优化器</strong>：Adam lr=3e-4；weight decay=0.001（Seo 2025 的 0.1 对高维控制正则过强）；<strong>β2=0.95</strong>（大 batch 稳定性，优于 0.99）。</p>
+<p>FastTD3 侧：混合噪声日程 (σ_min, σ_max)=(0.01, 0.05)——低噪声即可。</p>
+<h3 id="14-10-vs-20">1.4 极简奖励设计（&lt;10 项 vs 传统 20+）</h3>
+<p>运动（速度跟踪）任务奖励全清单：</p>
+<pre><code>+ 线速度/角速度跟踪奖励（主驱动）
++ 足高跟踪项（引导摆动腿，Zakka/Shao 式）
++ 每步存活奖励
+− 默认姿态惩罚（防极端关节构型）
+− 双足惩罚（保持平行相对朝向、防交叉）
+− 躯干姿态惩罚（近直立）
+− 动作变化率惩罚（平滑控制输出）
+终止条件：躯干或非足部位触地
++ 对称性增强（Mittal 2024，加速收敛）
++ 惩罚项权重课程：随训练推进/回合变长逐步上调
+</code></pre>
+<p><strong>设计哲学</strong>：只加"必要项"；不规定步态风格，只给足够结构让鲁棒步态自然涌现；奖励集跨算法（SAC/TD3/PPO）跨机器人（G1/T1）几乎同一套——<strong>少奖励项 = 快速超参扫描 = 快迭代</strong>，这正是 sim-to-real 循环最需要的性质。</p>
+<h3 id="15">1.5 训练设置与域随机化清单</h3>
+<ul>
+<li>速度指令每 10 秒重采样；<strong>20% 概率采到零速</strong>（学会站着不瞎走）</li>
+<li>平地+粗糙地形混合训练（稳定 sim-to-real 行走）</li>
+<li>DR 全家桶：推扰动（Push-Strong 每 1-3 秒）、动作延迟、PD 增益、质量、摩擦、质心（G1）</li>
+<li>全身跟踪：沿用 BeyondMimic 奖励结构 + DeepMimic 式终止；<strong>与 BeyondMimic 相反，加各种 DR（摩擦/质心/关节位置偏置/体重/PD 增益/推扰）反而稳定部署行为</strong></li>
+<li>大 batch（至 8K）一致提升性能；每仿真步多梯度步更快</li>
+</ul>
+<h3 id="16">1.6 结果与真机验证</h3>
+<ul>
+<li>G1/Booster T1 双平台：15 分钟 checkpoint 已能稳定走/侧走/转弯/抗推扰（视频均用 15 分钟 checkpoint 录制）</li>
+<li>FastSAC 在若干运动设置上略胜 FastTD3（假说：最大熵探索更高效）；Dance 长序列任务 FastSAC 明显占优</li>
+<li>真机：G1 全身跟踪策略完成多段动作含 &gt;2 分钟舞蹈——<strong>不只训得快，策略真的可部署</strong></li>
+</ul>
+<h3 id="17-ieee-ram-2025-bridging-the-reality-gap">1.7 对照：IEEE RAM 2025 系统性消融（Bridging the Reality Gap）</h3>
+<p>同一机器人上控制变量对比六种迁移技术：动力学随机化、状态历史使用、噪声/偏置/延迟建模、状态选择、扰动训练、网络大小。结论方向与 FastSAC 配方互补——<strong>单独验证了"状态历史 + 噪声/偏置/延迟建模"等观察级补偿项的价值</strong>，与 DR 形成两级防线：DR 塑造策略鲁棒性，观察建模补偿感知差距（POMDP）。</p>
+<h2 id="_3">查询拓展</h2>
+<ul>
+<li>Holosoma 仓库的 MJX（MuJoCo XLA）后端与 mjlab/MjLab 框架的关系与迁移路径</li>
+<li>FastTD3 原始论文（arXiv:2505.22642）的部分关节 → 本文全关节的跨越细节</li>
+<li>BeyondMimic（Liao 2025）的奖励结构与 DeepMimic 终止条件差异</li>
+<li>对称性增强（Mittal 2024）在非对称任务（踢球/单腿）上的退化行为</li>
+<li>STS/BAM 执行器建模（Microban 路线）与纯 DR 路线的 sim-to-real 成功率对比</li>
+<li>15 分钟配方在小尺寸舵机机器人（STS3215 级）上的适配性——位置控制 vs 力矩控制的配方差异</li>
+</ul>
+<h2 id="_4">归纳总结</h2>
+<ol>
+<li><strong>离策 RL 已在人形 sim-to-real 上完成"可用了"的证明</strong>：PPO 不是唯一选项，FastSAC/FastTD3 用数据复用 + 最大熵探索在墙钟时间上碾压，强 DR 场景（Push-Strong）下 PPO 挣扎而离策稳定。</li>
+<li><strong>七个超参是最有搬运价值的部分</strong>：σ_max=1.0、α=0.001、Q 均值替代 CDQ、γ 分任务 0.97/0.99、C51 不用 QR、wd=0.001、β2=0.95——每一条都是"上一代配置的坑"，组成一份可直接抄的检查清单。</li>
+<li><strong>奖励极简主义是快迭代的前提而非审美偏好</strong>：&lt;10 项奖励使超参扫描可行，扫描可行使 sim-to-real 循环从"天"级压到"分钟"级——<strong>迭代速度本身就是 sim-to-real 的第一生产力</strong>（论文开篇即此论点）。</li>
+<li><strong>"DR 越强部署越稳"在全身跟踪上反转了 BeyondMimic 的结论</strong>：运动跟踪任务原本少用 DR，本文证明多 DR 反而稳定真机行为——DR 的收益边界比想象的宽。</li>
+<li><strong>硬件门槛降到了单卡 4090</strong>：与 AutoDL 按小时租 4090 的成本结构完全匹配——15 分钟/策略意味着<strong>一晚上可跑 50+ 组超参/奖励变体</strong>，重训三策略（walking/standup/sitstand）的搜索预算从"精打细算"变成"可以挥霍"。</li>
+</ol>
+<h2 id="_5">趋势判断</h2>
+<ol>
+<li><strong>离策 RL 将蚕食 PPO 在 legged RL 的默认地位</strong>：Raffin 2025、Shukla 2025、Li 2023 等独立证据汇聚，2026 年新开源栈（Holosoma）已把离策作为一等公民；Isaac Lab/RSL-RL 生态的 PPO 默认将被逐步替换。</li>
+<li><strong>"配方论文"成为快迭代时代的新体裁</strong>：本文不做新算法，只做"把已知组件调到能一起工作"的系统工程——开源配方+双机器人+真机视频的披露格式会成为 Amazon FAR/学术组的标准动作。</li>
+<li><strong>仿真速度而非 GPU 算力成为新瓶颈</strong>：非平坦地形下仿真慢→梯度步/仿真步比高→离策复用数据优势放大——框架层（MJX/mjlab）的优化回报将高于算法层。</li>
+<li><strong>小尺寸/低成本人形的策略训练成本趋近于零</strong>：4090 单卡 15 分钟意味着校园级/个人级项目可负担全流程迭代；DUCK-Pi_5 这类 1kg 级机器人正是目标受益者。</li>
+<li><strong>与 VLA 汇流前的最后分工</strong>：低层运动（RL，分钟级训练）与高层任务（VLA，慢推理）的分层在 LiteVLA 的 Action Chunking + 异步控制中已现雏形——FastSAC 压低低层成本后，全栈个人机器人的算力账第一次算得平。</li>
+</ol>
+<h2 id="_6">关联分析</h2>
+<blockquote>
+<p>关联对象：DUCK-Pi_5 W2 重训计划（AutoDL 4090）、Microban/mjlab 吸收项目、bipedal-rl-sim2real skill、Jetson 本机约束</p>
+
+<p class="meta-date">生成日期 2026-09-02</p></blockquote>
+<ol>
+<li><strong>【P0】DUCK-Pi_5 W2 重训应把 FastSAC 列为 PPO 之外的第二主线</strong>：重训背景是全机 1020g（官方 sim 800g）+ STS3215 55g×14（官方 XL330 44.5g）+ 头部 CoG 前移 5mm——质量/惯量/重心全偏，<strong>预期要多轮试错调 DR 范围与奖励权重</strong>。15 分钟/轮 vs 小时级/轮的差距在"预计要失败很多次"的场景下是数量级红利；Holosoma 开源代码可直接作为骨架。</li>
+<li><strong>【P1】七个超参直接写入 bipedal-rl-sim2real skill 作对照基线</strong>：该 skill 现基于 Microban/RSL-RL（PPO）路线；应补"离策路线检查清单"（σ_max=1.0 而非 e²、Q 均值、β2=0.95、wd=0.001、γ 按任务分档），并标注"扭矩不足时放开动作界到无界"的坑位提示。</li>
+<li><strong>舵机位置控制的适配差异要预先想清楚</strong>：G1/T1 是力矩控制 + PD；STS3215 是总线位置舵机——FastSAC 配方的"关节限位感知动作界"仍适用（限位=舵机角度极限），但"PD 增益随机化"要换成"舵机内部 P 增益/速度限档位随机化 + 指令延迟建模（总线波特率决定）"。Microban 的 BAM 执行器建模正好补这块。</li>
+<li><strong>20% 零速指令的细节对 sitstand 策略有直接借鉴</strong>：DUCK 三策略中 standup/sitstand 本质是"零速指令下的姿态恢复"，20% 零速采样比例是一个已验证的起点值，避免策略学成"永远想动"。</li>
+<li><strong>与 Jetson 本机约束的一致性</strong>：训练在 AutoDL 4090（符合"不在本机跑重型训练"铁律），本机只做部署侧——LiteVLA 笔记的 Action Chunking + ROS2 异步分层（0.09Hz 高层 + 高频底层）与本文 RL 低层正好拼成 DUCK 全栈：<strong>RL 运动策略（4090 训好）+ VLA 任务头（后续）+ Jetson/Pi5 只做推理</strong>。</li>
+<li><strong>对 IEEE RAM 消融的取舍</strong>：状态历史 + 噪声/偏置/延迟建模对 STS3215（无力矩反馈、只有位置回读）价值高——历史窗口是对付舵机弹性/延迟最便宜的补偿，优先级高于更贵的感知升级。</li>
+</ol>
+<h2 id="_7">指南分析</h2>
+<p><strong>4090 单卡人形 RL 配方速查表</strong>（从论文提炼，可直接抄）：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>推荐值</th>
+<th>替代/备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>算法</td>
+<td>FastSAC（探索难任务）/ FastTD3（简单任务）</td>
+<td>PPO 仅作 wall-time 对照</td>
+</tr>
+<tr>
+<td>σ_max（pre-tanh）</td>
+<td>1.0</td>
+<td>勿用 e²；大 α+大 σ 会爆炸</td>
+</tr>
+<tr>
+<td>α 初值</td>
+<td>0.001 + 自动调温</td>
+<td>目标熵 0.0（运动）/ −|A|/2（跟踪）</td>
+</tr>
+<tr>
+<td>Q 网络</td>
+<td>双 Q 均值 + LayerNorm</td>
+<td>CDQ 与 LayerNorm 冲突</td>
+</tr>
+<tr>
+<td>Critic</td>
+<td>C51 分布式</td>
+<td>QR 大 batch 太贵</td>
+</tr>
+<tr>
+<td>γ</td>
+<td>0.97 / 0.99</td>
+<td>速度跟踪 / 全身跟踪</td>
+</tr>
+<tr>
+<td>Adam</td>
+<td>lr 3e-4, wd 0.001, β2=0.95</td>
+<td>wd=0.1 过强；β2=0.99 略差</td>
+</tr>
+<tr>
+<td>batch</td>
+<td>至 8K</td>
+<td>越大越稳</td>
+</tr>
+<tr>
+<td>动作界</td>
+<td>关节限位−默认位置</td>
+<td>力矩不足时放无界</td>
+</tr>
+<tr>
+<td>奖励</td>
+<td>&lt;10 项极简集 + 惩罚课程</td>
+<td>20+ 项塑形是反模式</td>
+</tr>
+<tr>
+<td>零速指令</td>
+<td>20% 采样概率</td>
+<td>学会站立</td>
+</tr>
+<tr>
+<td>DR</td>
+<td>推/延迟/PD/质量/摩擦/质心</td>
+<td>全家桶齐上</td>
+</tr>
+</tbody>
+</table>
+<p>→ 相关：[[2026-08-23-MjLabMicroban-30cm开源人形机器人RL训练与SimToReal.md]]（PPO/RSL-RL 路线 + BAM 执行器建模，与本文离策路线互补）<br />
+→ 相关：[[2026-08-31-VLA边缘部署加速-双相位瓶颈与动作缓存.md]]（低层 RL + 高层 VLA 的分层拼图另一半）<br />
+→ 相关：[[2026-09-01-Microban与2026双足RL前沿-低成本平台同构与重训校准.md]]（DUCK 重训三策略的背景与质量偏差清单）</p>
+</body>
+</html>
