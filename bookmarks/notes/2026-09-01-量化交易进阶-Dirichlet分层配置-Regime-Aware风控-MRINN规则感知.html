@@ -1,0 +1,327 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8"><title>量化交易进阶</title><style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:900px;margin:2em auto;padding:0 20px;line-height:1.7;color:#333}h1{color:#1a73e8;border-bottom:2px solid #1a73e8;padding-bottom:8px}h2{color:#174ea6;margin-top:32px}h3{color:#333}blockquote{border-left:4px solid #1a73e8;margin:16px 0;padding:8px 16px;background:#f8f9fa;color:#555}code{background:#f1f3f4;padding:2px 4px;border-radius:3px;font-size:0.9em}pre{background:#263238;color:#eee;padding:16px;border-radius:6px;overflow-x:auto}table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left}th{background:#f1f3f4;font-weight:600}</style></head><body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE--><h1 id="dirichlet-regime-aware-mrinn">量化交易进阶 — Dirichlet 分层配置 · Regime-Aware 风控 · MRINN 规则感知</h1>
+<blockquote>
+<p>探索日期 2026-09-01 | 兴趣等级 L4 | 来源 3 篇论文 + 综述 | 前序笔记: 2026-08-28-LLM驱动Alpha挖掘三代进化, 2026-08-25-AQuA递归自改进, 2026-08-06-泊舟AI交易员</p>
+</blockquote>
+<hr />
+<h2 id="_1">摘要</h2>
+<p>三个独立学术方向在同一主题下汇聚: <strong>交易规则如何被结构化编码进模型决策链路</strong>。Dirichlet 分层策略把「仓位大类 → 个股」拆成两级，避免单次全市场分配的不稳定; Regime-Aware (Wasserstein HMM) 把市场状态推断嵌入均值-方差优化，Sharpe 2.18 vs SPX 1.18; MRINN 把电力市场的显式定价规则嵌入神经网络潜在空间，参数从 10× 降到 1× 仍保持精度。三个方向的核心共性是 <strong>显式结构先验 &gt; 黑箱数据驱动</strong>。</p>
+<hr />
+<h2 id="5">核心发现（5 个）</h2>
+<h3 id="1-dirichlet">1. Dirichlet 分层配置: 两级策略胜过单层</h3>
+<p><strong>来源: arXiv:2605.17307 (SAC 深度强化学习多市场组合管理, 2023-2026 三市场 WFO 验证)</strong></p>
+<ul>
+<li><strong>Flat policy</strong>: 单一 Dirichlet 分布直接对所有资产+现金输出权重向量，参数空间 |assets| 维，一次分配决定全部仓位</li>
+<li><strong>Hierarchical policy</strong>: 第一级 Dirichlet 决定「权益 vs 现金」大类配比 (1 维)，第二级 Dirichlet 在权益池内分配个股权重 (|equities| 维)</li>
+<li><strong>实证结果</strong>: LSTM+Hierarchical 在 Nikkei 225 / Euro Stoxx 50 / Nasdaq-100 三个市场的所有 WFO 折叠中，<strong>波动率和最大回撤系统性低于 Flat 版本</strong></li>
+<li><strong>关键洞见</strong>: 把「要不要进场」(大类决策) 和「进哪个」(选股) 解耦，等价于在策略内部插入了一个<strong>隐含的 Regime Gate</strong>——大类层天然充当市场状态判据</li>
+</ul>
+<pre><code>决策树结构对比:
+
+Flat:        [Dirichlet] → 全资产权重
+              ↑ 一次分配 |assets|+1 维
+
+Hierarchical: [Dirichlet₁] → 权益/现金大类
+                    ↓ 权益部分
+              [Dirichlet₂] → 个股权重
+</code></pre>
+<h3 id="2-regime-aware-wasserstein-hmm">2. Regime-Aware: Wasserstein HMM 把标签稳定性变成一等公民</h3>
+<p><strong>来源: arXiv:2603.04441 (Explainable Regime-Aware Investing)</strong></p>
+<table>
+<thead>
+<tr>
+<th>对比维度</th>
+<th>Wasserstein HMM (本文)</th>
+<th>KNN 非参数基线</th>
+<th>SPX Buy &amp; Hold</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sharpe</td>
+<td>2.18</td>
+<td>—</td>
+<td>1.18</td>
+</tr>
+<tr>
+<td>Max Drawdown</td>
+<td>-5.43%</td>
+<td>高</td>
+<td>-14.62%</td>
+</tr>
+<tr>
+<td>换手率</td>
+<td>低 (平滑权重)</td>
+<td>极高 (最近邻突变)</td>
+<td>0</td>
+</tr>
+<tr>
+<td>自适应复杂度</td>
+<td>✅ 预测式模型阶选择</td>
+<td>❌ 固定 K</td>
+<td>❌</td>
+</tr>
+<tr>
+<td>标签身份保留</td>
+<td>✅ Wasserstein 模板锚定</td>
+<td>❌ 标签切换</td>
+<td>N/A</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三大技术创新</strong>:
+- <strong>严格因果滚动 HMM</strong>: 每天重新估计，不含未来信息
+- <strong>预测式模型阶选择</strong>: 用 one-step-ahead log-likelihood 决定当前应保留几个 regime，而非一次性 BIC 或手动设死
+- <strong>2-Wasserstein 模板锚定</strong>: 用闭式 Gaussian-Wasserstein 距离将新估计的 HMM 成分映射到历史模板，避免标签切换 (label switching)，这是滚动 HMM 最大痛点</p>
+<p><strong>"Liberation Day" 2025 验证</strong>: 模型检测到向 stress regime 的转移，系统性降低权益暴露，转向 USD/国债，peak-to-trough 损失显著小于 SPX。</p>
+<blockquote>
+<p>「Regime-aware investing 的核心挑战不是 regime 是否存在，而是如何稳定地推断它。」</p>
+</blockquote>
+<h3 id="3-mrinn">3. MRINN: 规则感知神经网络 — 从电力市场移植到金融的范式</h3>
+<p><strong>来源: arXiv:2605.09061 (Market-Rule-Informed Neural Network, 德国/奥地利平衡市场)</strong></p>
+<ul>
+<li><strong>问题</strong>: 不平衡电力价格由显式结算规则 P_t = g(F_t) 确定，但传统深度学习（LSTM/Transformer）把 P_t 当纯黑箱时间序列目标，让模型从数据中重新学习已知规则——<strong>浪费参数且不可解释</strong></li>
+<li><strong>MRINN 架构</strong>: 把定价规则 g(·) 编译成<strong>可微算子</strong>，嵌入神经网络潜在空间。输入原始信号 F_t → 神经编码 → <strong>规则层 (可微)</strong> → 输出</li>
+<li><strong>关键设计</strong>: 保留原始信号信息 (不预先压缩成 P_t)，避免不同 F_t → 相同 P_t 导致的信息不可逆损失</li>
+<li><strong>效果</strong>: 训练参数量大幅减少、训练时间缩短，推理 &lt;1s，精度与 iTransformer/PatchTST 持平</li>
+</ul>
+<p><strong>可移植性映射（从电力市场 → 金融市场）</strong>:</p>
+<pre><code>电力市场                    金融市场类比
+─────────────────────────────────────────────────
+不平衡定价规则 g(·)         交易规则/风控铁律
+aFRR/mFRR 信号             量价/盘口/订单流
+稀缺函数                   涨跌停/熔断/流动性冲击
+市场参考价 P_mkt            行业指数/ETF 锚定
+</code></pre>
+<h3 id="4">4. 三个方向的共同哲学: <strong>显式结构先验 = 更好的鲁棒性</strong></h3>
+<table>
+<thead>
+<tr>
+<th>技术</th>
+<th>显式先验</th>
+<th>注入位置</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Hierarchical Dirichlet</td>
+<td>大类/个股解耦</td>
+<td>策略架构层</td>
+<td>降波动+降回撤</td>
+</tr>
+<tr>
+<td>Wasserstein HMM</td>
+<td>高斯成分几何恒等性</td>
+<td>推断层</td>
+<td>降换手+稳定标签</td>
+</tr>
+<tr>
+<td>MRINN</td>
+<td>定价规则可微化</td>
+<td>模型层</td>
+<td>降参数+提推理速度</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>: 这三个方向的共同模式是「<strong>把人类/制度已知的结构知识编译进模型</strong>」，而非让模型从零学起。对 A 股交易而言，交易规则（涨跌停、换手率限制、集合竞价规则）天然就是这种「已知规则」，值得用类似 MRINN 的方式嵌入。</p>
+<h3 id="5-aqua-hierarchical-dirichlet-regime-gate">5. AQuA 密封沙箱 × Hierarchical Dirichlet × Regime Gate 的三重叠加</h3>
+<p>已有笔记 2026-08-25 AQuA 提出的「密封沙箱防过拟合」框架，可与上述三项组合：</p>
+<ul>
+<li><strong>AQuA</strong> 提供进化/过拟合检测外壳</li>
+<li><strong>Hierarchical Dirichlet</strong> 替代 AQuA 现有的单层策略输出，天然提供「市场状态门控」</li>
+<li><strong>Wasserstein HMM Regime 标签</strong> 可作为 AQuA 沙箱的<strong>外部判据</strong>——当 HMM 判定进入 stress regime 时，沙箱自动收紧策略准入阈值</li>
+</ul>
+<hr />
+<h2 id="_2">关键概念详解</h2>
+<h3 id="wasserstein-gaussian">Wasserstein 距离与 Gaussian 成分恒等性</h3>
+<p>2-Wasserstein 距离在两个多元高斯分布 N(μ₁,Σ₁) 和 N(μ₂,Σ₂) 之间有闭式解:</p>
+<pre><code>W₂²(N₁,N₂) = ‖μ₁-μ₂‖² + tr(Σ₂ + Σ₁ - 2(Σ₁^{1/2} Σ₂ Σ₁^{1/2})^{1/2})
+</code></pre>
+<ul>
+<li>不需要数值最优传输求解</li>
+<li>天然度量两个 regime 成分之间的"形状差异"</li>
+<li>模板追踪用指数平滑逐步更新，避免每次重新做组合匹配</li>
+</ul>
+<h3 id="hierarchical-dirichlet">Hierarchical Dirichlet 实现要点</h3>
+<pre><code class="language-python"># 伪代码: Hierarchical Dirichlet policy
+class HierarchicalDirichletPolicy(nn.Module):
+    def forward(self, state):
+        # 第一层: 权益/现金大类
+        alpha1 = self.net1(state)  # shape: (2,)
+        equity_frac = sample_dirichlet(alpha1)  # 权益占比
+
+        # 第二层: 个股
+        alpha2 = self.net2(state)  # shape: (N_assets,)
+        stock_weights = sample_dirichlet(alpha2)
+
+        # 组合
+        final_weights = torch.cat([equity_frac * stock_weights, 
+                                   1 - equity_frac])
+        return final_weights
+</code></pre>
+<h3 id="mrinn">MRINN 可微规则层</h3>
+<p>核心思路是把规则函数 g(·) 写成可微 Python/Torch 代码:</p>
+<pre><code class="language-python"># 示例: 模拟涨跌停规则作为可微约束
+def clip_price(price, prev_close, limit=0.1):
+    lower = prev_close * (1 - limit)
+    upper = prev_close * (1 + limit)
+    return torch.clamp(price, lower, upper)
+</code></pre>
+<p>该算子可嵌入 Transformer/MLP 的隐藏层之间，梯度正常回传。</p>
+<hr />
+<h2 id="_3">与现有工作的关联</h2>
+<h3 id="p0-a-regime-aware">P0: A股铁律策略 × Regime-Aware 风控</h3>
+<p>当前 <code>stock-iron-rules</code> skill 的 14 条铁律本质上是<strong>离散规则集合</strong>，但缺一个连续的 Regime 判据。Wasserstein HMM 可以：
+1. 用 A 股多指标（量比、换手率、涨跌家数、融资余额）构建多变量时间序列
+2. 训练滚动 HMM 识别 market regimes（如「普涨」「普跌」「结构性分化」「震荡」）
+3. 铁律按 Regime 加权——stress regime 下收紧铁律阈值，bull regime 下适当放宽</p>
+<h3 id="p1-hierarchical-dirichlet">P1: Hierarchical Dirichlet 替代单层仓位</h3>
+<p><code>quant-trading</code> skill 现有策略直接输出每只股票的目标仓位，可以改为两级:
+- 第一级: 今日权益总敞口（基于宏观/情绪信号）
+- 第二级: 备选池内个股分配（基于技术因子/基本面因子）</p>
+<h3 id="p2-mrinn">P2: MRINN 规则层 → 量化因子挖掘</h3>
+<p><code>llm-factor-mining</code> skill 用 LLM 生成因子代码，可新增一个约束: 生成的因子代码必须兼容一个可微规则层（如涨跌停裁剪、流动性阈值），确保因子天然尊重 A 股交易规则。</p>
+<hr />
+<h2 id="_4">关键风险与盲点</h2>
+<ul>
+<li><strong>Wasserstein HMM 的 Regime 稳定性依赖特征选择</strong>: 论文用多资产价格收益率做输入；如果特征选择差（如仅用单指数），标签仍可能漂移 → 官方验证</li>
+<li><strong>Hierarchical Dirichlet 的「权益/现金」二分类在 A 股不适用</strong>: A 股不能做空、现金机会成本不同，需改为「满仓/半仓/空仓」三态或引入 ETF 对冲 → 社区复现</li>
+<li><strong>MRINN 的电力市场规则与金融规则复杂度不同</strong>: 电力定价规则是确定性的分段函数；金融「规则」多为启发式约束（如涨跌停），可微化路径不同 → 未验证</li>
+<li><strong>SAC 在金融上的统计显著性有限</strong>: arXiv:2605.17307 承认「跨三市场全部达到 HAC-稳健显著超额回报的假设仅部分确认」→ <strong>RL 在金融上的优势可能不如论文声称的那么强</strong></li>
+</ul>
+<hr />
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<p><strong>Dirichlet 分层</strong>: 大类/个股解耦，隐含 Regime Gate，波动+回撤双降</p>
+<p><strong>Wasserstein HMM</strong>: 滚动 HMM + 预测阶选择 + 2-Wasserstein 标签锚定，Sharpe 2.18，dd -5.43%</p>
+<p><strong>MRINN</strong>: 规则→可微算子→嵌入神经网络，参数 10× 降到 1×，推理 &lt;1s</p>
+<p><strong>共性</strong>: 显式结构先验 &gt; 黑箱数据驱动</p>
+<p><strong>A 股落地路径</strong>: Wasserstein HMM 做 Regime 判据 → Hierarchical Dirichlet 替代单层仓位 → MRINN 规则层嵌入因子生成</p>
+</blockquote>
+<hr />
+<h2 id="_6">待深入</h2>
+<ol>
+<li><strong>MRINN 可微规则层在金融上的具体实现案例</strong>: 论文仅覆盖电力市场，金融领域的 rule-informed NN 需要查更多文献</li>
+<li><strong>A 股多变量时间序列适合哪种距离度量做 regime 模板</strong>: 论文用 Gaussian-Wasserstein，A 股收益率非高斯（厚尾、偏态），可能需要 kernel-Wasserstein</li>
+<li><strong>Hierarchical Dirichlet × Regime Gate × A 股铁律 的联合回测</strong>: 需要实盘数据验证，属于 L4 实践任务</li>
+<li><strong>AQuA 沙箱的「外部 Regime 判据」接口设计</strong>: 需要修改 <code>stock-iron-rules</code> skill</li>
+</ol>
+<hr />
+<h2 id="_7">来源列表</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>论文</th>
+<th>arXiv ID</th>
+<th>关键指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Explainable Regime-Aware Investing</td>
+<td>2603.04441</td>
+<td>Sharpe 2.18, dd -5.43%</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Deep RL for Diversified Portfolio (Hierarchical Dirichlet)</td>
+<td>2605.17307</td>
+<td>三市场 WFO, 2003-2026</td>
+</tr>
+<tr>
+<td>3</td>
+<td>MRINN for Imbalance Price Forecasting</td>
+<td>2605.09061</td>
+<td>参数 10×↓, 推理&lt;1s</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Agentic Trading Survey</td>
+<td>2605.19337</td>
+<td>综述, 规则/RL/LLM 三线</td>
+</tr>
+<tr>
+<td>5</td>
+<td>TradingAgents (多 Agent 金融框架)</td>
+<td>2412.20138</td>
+<td>7 Agent, 辩论式决策</td>
+</tr>
+</tbody>
+</table></body></html>
