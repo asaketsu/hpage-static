@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SKILL.state长程Agent状态架构-16倍Token削减与准确率反升</title>
+
+<meta property="og:title" content="SKILL.state长程Agent状态架构-16倍Token削减与准确率反升" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="skillstateagent-16token">SKILL.state长程Agent状态架构 — 16倍Token削减与准确率反升</h1>
+<p class="tag-line"><span class="tag">#Agent</span> <span class="tag">#上下文管理</span> <span class="tag">#SKILLstate</span> <span class="tag">#长程任务</span> <span class="tag">#状态架构</span> <span class="tag">#Google论文</span> <span class="tag">#token优化</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>推文：https://x.com/Xudong07452910/status/2094628562615607598（韩旭东 @Xudong07452910，171 赞 / 1.2 万浏览，2026-09-01）</li>
+<li>论文：SKILL.state: Scalable Long-Horizon Agent Skills — https://arxiv.org/abs/2608.26263（Google 团队，2026-08-26 v1 / 08-28 v2）</li>
+<li>作者：Sanket Badhe, Priyanka Tiwari, Jonghyun Chung（EMNLP）</li>
+<li>阅读时间：2026-09-01 | 推文全文 + arXiv 摘要 + daily.dev/DAIR 数据补充</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="agent">问题：Agent 上下文的"垃圾场化"</h3>
+<p>推文开篇点题（原文）：<strong>"Agent 跑得越久，上下文有时越像一个垃圾场"</strong>——几十步之后，旧观察、过期状态、工具输出和推理过程全堆在一起，模型每走一步都要重新判断哪些信息还有效。</p>
+<p>论文摘要的技术表述：现有 agent runtime 通过<strong>持续追加</strong>观察、动作和中间推理 trace 到不断增长的对话历史来维持执行，导致长程任务中的<strong>延迟劣化</strong>与<strong>上下文污染（context-poisoning）失败</strong>。</p>
+<h3 id="skillstate">解法：SKILL.state 架构</h3>
+<p>核心思想一句话：<strong>别一直保存完整历史，只维护「当前状态」</strong>。</p>
+<p>每一步 Agent 只看到三样东西（论文定义的三元组）：</p>
+<pre><code>(P, Σ_t, O_t)
+ P   = 固定的 Skill 规范（immutable skill specification）
+ Σ_t = 当前结构化执行状态（mutable execution state）
+ O_t = 最新观察（latest observation）
+</code></pre>
+<p>推理仍然正常进行，但<strong>完成这一步后就被丢弃</strong>——只把真正会影响未来执行的信息，以"验证过的状态更新 ΔΣ_t"形式写回 state。中间推理 R_t 在产出状态补丁后立即丢弃，每步 prompt 占用 <strong>O(1)</strong>，prompt 大小不随执行历史增长。</p>
+<p>关键词：<strong>explicit, mutable execution state</strong>（显式可变执行状态）替代 <strong>append-only conversational history</strong>（只增不减的对话历史）。</p>
+<h3 id="dailydev">实验结果（推文 + daily.dev 交叉印证）</h3>
+<table>
+<thead>
+<tr>
+<th>基准</th>
+<th>传统 Stateful Agent</th>
+<th>SKILL.state</th>
+<th>改善</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>100 步仓库任务（Gemini-3-Flash）</td>
+<td>累计 1,062,387 token / 准确率 0.91</td>
+<td><strong>65,408 token / 准确率 0.94</strong></td>
+<td><strong>token ↓16 倍，准确率反升</strong></td>
+</tr>
+<tr>
+<td>InterCode CTF</td>
+<td>基线</td>
+<td>同时提升成功率 + 减少 token</td>
+<td>双赢</td>
+</tr>
+<tr>
+<td>τ-Bench</td>
+<td>基线</td>
+<td>同时提升成功率 + 减少 token</td>
+<td>双赢</td>
+</tr>
+</tbody>
+</table>
+<p>补充口径（daily.dev）：LangGraph 式保留全历史的 baseline 在同一任务上的对比数据。论文自述结论：跨数据集、模型、执行环境均有效，<strong>显式执行状态是架构无关（architecture-agnostic）的可扩展长程技能抽象</strong>。</p>
+<h3 id="_3">推文作者的启发（原文照录）</h3>
+<blockquote>
+<p>长时 Agent 的上下文，可能更适合做成一个持续更新的「工作状态」。<br />
+<strong>做过什么可以忘，下一步真正需要知道什么，才值得一直留下来。</strong></p>
+
+<p class="meta-date">生成日期 2026-09-01</p></blockquote>
+<h2 id="_4">查询拓展</h2>
+<ul>
+<li>状态 schema 设计：Σ_t 的结构如何定义（字段/验证规则/ΔΣ 补丁格式）——论文正文 §3</li>
+<li>"validated state update" 的验证器实现：schema 校验 / 前后置条件 / 结构化反例</li>
+<li>与 MemGPT 分页虚拟化、ContinualMem 语义压缩的对比（经验压缩连续体定位）</li>
+<li>ReAct append-only 的 O(T²) 累计膨胀推导（旧笔记 Agentic-Skills系统基础 §⑥ 已有）</li>
+<li>Hermes 场景对照：context-compressor / checkpoint 机制与此架构的同构性</li>
+<li>τ-Bench / InterCode CTF 基准细节与复现门槛</li>
+</ul>
+<h2 id="_5">归纳总结</h2>
+<ol>
+<li><strong>本质是把"记忆"改成"寄存器"</strong>：append-only 历史像无限增长的内存转储，SKILL.state 像一组 CPU 寄存器——每步只保留体系结构状态（architecture state），中间计算全部挥发。这是操作系统进程切换思想在 Agent 上下文管理的重演。</li>
+<li><strong>Token 减 16 倍且准确率反升不是免费午餐，代价在状态设计</strong>：效果好坏取决于 Σ_t 的 schema 质量——什么信息"真正影响未来执行"需要领域知识来定义，写错 schema 就是信息丢失。论文的架构无关性声明说明抽象稳健，但落地成本在状态建模。</li>
+<li><strong>与"压缩历史"路线的根本区别</strong>：压缩/摘要历史仍保留时序包袱（且摘要有损）；状态替换直接改变信息模型——不是"把历史变小"，是"不再需要历史"。</li>
+<li><strong>验证是闭环的钥匙</strong>：ΔΣ_t 必须 validated——没有验证器的状态更新就是另一种幻觉入口。这与我们 verification-gate/确定性 check 哲学完全同构。</li>
+<li><strong>适用边界</strong>：程序性长程任务（有明确状态变量：仓库库存/CTF 进度/工单字段）最受益；开放式创意任务（历史本身是语义资源）未必适合。</li>
+</ol>
+<h2 id="_6">二、趋势判断</h2>
+<ol>
+<li><strong>"状态化上下文"会是 2026 下半年 Agent 运行时的主流改造方向</strong>：Google（SKILL.state）、LangGraph 系、各家 memory 初创都在收敛到"显式状态 + 按需检索"共识，append-only 对话历史作为执行机制正在被淘汰。</li>
+<li><strong>Token 经济学成为架构决策的第一驱动力</strong>：16 倍差距直接改写成本模型——长程 Agent 的商业可行性（客服/运维/研究自动化）此前被 token 成本卡死，此类架构解锁市场。</li>
+<li><strong>准确率反升证明"context-poisoning"是真实失败模式</strong>：更多历史≠更好决策，无关信息是负资产——这会推动"少即是多"的上下文工程成为显学（与 Lost-in-the-Middle 证据链汇合）。</li>
+<li><strong>Skill（P 不变）+ 状态（Σ_t 可变）的分离即"程序与数据分离"</strong>：这为技能复用/版本化/市场化（npx skills add 生态）提供运行时基础——skill 不再绑定具体对话，可跨任务实例化。</li>
+</ol>
+<h2 id="_7">三、关联分析（对我有什么提升 + 如何实施）</h2>
+<blockquote>
+<p>关联对象：本机 Hermes 生态（context-compressor / harness-checkpoint / cron 长任务 / 400+ skills）</p>
+</blockquote>
+<ol>
+<li><strong>与 context-compressor skill 的对照升级</strong>：我们目前的策略是"大工具输出存文件、上下文留摘要"——属于<strong>压缩历史</strong>路线；SKILL.state 是<strong>替换历史</strong>路线。<strong>实施</strong>：在 context-compressor skill 里补一节"状态化改造模式"：长任务（&gt;50 步）场景下，建议 cron/subagent 改用"active_tasks.json 式状态文件 + 每步只读状态"——其实 session-boot 的 active_tasks.json 已是雏形，差的是"丢弃中间推理"的纪律。</li>
+<li><strong>与 harness-checkpoint 的同构确认</strong>：checkpoint 保存的就是"体系结构状态"（进度快照）而非对话历史——验证了我们既有设计。<strong>实施</strong>：checkpoint 里可增加 ΔΣ 语义（每次更新写"变化了什么+为什么影响后续"），恢复时更快定位。</li>
+<li><strong>对长 cron 任务（auto-dream/sniff 处理）的直接启示</strong>：这些任务跑几十步、上下文膨胀明显。<strong>实施</strong>：评估 sniff-dequeue 等高频 cron 的 prompt 结构——工具输出尽量落盘、注入的只是"当前队列状态+本条内容"，已经部分符合 (P, Σ, O) 三元组，可以显式化改造。</li>
+<li><strong>与旧笔记 Agentic-Skills系统基础（explore/2026-09-01）的分工</strong>：那篇是 Skills 系统综述，SKILL.state 是其中"存储与记忆架构"一节的引用源之一（虚拟 OS 分页：临时推理即弃）；本篇专篇展开其 O(T²)→O(1) 机制与实证数据——两篇构成"综述→专精"两层。</li>
+<li><strong>对 Hermes 官方 context 管理的观察</strong>：Hermes 有 memory 注入与会话压缩，但 Agent 循环内的中间推理仍是 append-only——这是上游架构问题，不是我们能改的；可改的是我们自己的 skill/cron 设计模式（见 #1/#3）。</li>
+<li><strong>与量化体系"复盘"的同构（克制版）</strong>：cycle-records.json 持久化周期阶段而非全部行情历史——"只留影响未来决策的状态"与"只留周期位置不留每日波动细节"是同一原则，仅作思维印证。</li>
+</ol>
+<h2 id="_8">指南分析</h2>
+<p><strong>何时采用状态化上下文</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>适用性</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>程序性长任务（&gt;30 步，有明确状态变量）</td>
+<td>✅ 强烈</td>
+<td>token 线性化 + 免疫 context-poisoning</td>
+</tr>
+<tr>
+<td>多阶段 pipeline（每阶段产出结构化结果）</td>
+<td>✅</td>
+<td>Σ_t = 各阶段已完成产物+当前阶段输入</td>
+</tr>
+<tr>
+<td>对话式助手（用户语义依赖历史）</td>
+<td>⚠️ 慎用</td>
+<td>会话历史本身是语义资源，摘要+检索更合适</td>
+</tr>
+<tr>
+<td>一次性短任务（&lt;10 步）</td>
+<td>❌ 不值得</td>
+<td>状态 schema 设计成本 &gt; 收益</td>
+</tr>
+</tbody>
+</table>
+<p><strong>落地最小模板</strong>（从论文三元组提炼）：</p>
+<pre><code>每步 prompt = Skill 固定指令 + 当前状态 JSON + 本步观察
+状态更新 = 模型输出 ΔΣ（只含影响未来的字段）→ schema 验证 → 合并
+中间推理 = 用完即弃（不写回任何历史）
+</code></pre>
+<h2 id="_9">拓展应用推荐</h2>
+<ul>
+<li><strong>给 context-compressor skill</strong>：补"状态化改造模式"节（关联分析 #1）</li>
+<li><strong>给长 cron 任务</strong>：sniff-dequeue/auto-dream 的 prompt 结构按 (P, Σ, O) 显式化</li>
+<li><strong>给 harness-checkpoint</strong>：ΔΣ 语义增强</li>
+<li><strong>延伸阅读</strong>：explore/2026-09-01-Agentic-Skills系统基础-六元组九阶段生命周期与安全.md（综述层）、2026-05-18-agent-stability-degradation-drift-detection.md（上下文漂移实证）</li>
+</ul>
+<hr />
+<p>→ 相关：[[explore/2026-09-01-Agentic-Skills系统基础-六元组九阶段生命周期与安全.md]]（综述层，本文为其中 SKILL.state 引用的专篇展开）<br />
+→ 相关：[[2026-05-18-agent-stability-degradation-drift-detection.md]]（上下文劣化的漂移检测视角）<br />
+→ 相关：[[2026-09-01-AIPPT全栈工程吸收-质量门禁与两段式生成.md]]（确定性 check 哲学同源）</p>
+</body>
+</html>
