@@ -1,4 +1,312 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轮腿机器人平衡控制新方法-Stribeck摩擦前馈LQR与系统辨识</title>
+
+<meta property="og:title" content="轮腿机器人平衡控制新方法-Stribeck摩擦前馈LQR与系统辨识" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +382,484 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="stribeck-lqr">轮腿机器人平衡控制新方法——Stribeck 摩擦前馈 LQR 与系统辨识</h1>
+<blockquote>
+<p><strong>来源</strong>：<br />
+- Zhang A. et al. <em>Balance Control Method for Bipedal Wheel-Legged Robots Based on Friction Feedforward Linear Quadratic Regulator</em> — Sensors (Basel), 25(4):1056, Feb 2025. DOI: 10.3390/s25041056. PMID: 40006286.<br />
+- Zhu Y. et al. <em>Whleaper: A 10-DOF Flexible Bipedal Wheeled Robot</em> — arXiv:2504.21767, IROS 2024.<br />
+- Petri JF, Lacey G. <em>Passive wheels on legged robots: a survey</em> — Front. Robot. AI, 13:1857985, Jun 2026.<br />
+- Feng X. et al. <em>Research on wheel-legged robot based on LQR and ADRC</em> — Sci. Rep. 13:15122, 2023 (PMC10499820).</p>
+<p><strong>记录日期</strong>：2026-07-18<br />
+<strong>关联项目</strong>：<code>/home/jc/uclaw/project/wheel-legged-robot-v2/</code>（等待硬件实装）</p>
+</blockquote>
+<p><strong>标签</strong>：#轮腿机器人 #LQR #Stribeck摩擦 #系统辨识 #PSO #欠驱动 #平衡控制 #STM32H743</p>
+<hr />
+<h2 id="_1">一、内容详细整理</h2>
+<h3 id="11-lqr">1.1 问题背景：为什么标准 LQR 在轮腿机器人上不够好？</h3>
+<p>轮腿机器人（Wheel-Legged Robot）是典型的<strong>欠驱动系统</strong>——其自由度多于执行器数量。常用的平衡控制方法是把机器人建模成<strong>轮式倒立摆（Wheeled Inverted Pendulum, WIP）</strong>，用线性二次型调节器（LQR）求解状态反馈增益 K，控制转矩输出。</p>
+<table>
+<thead>
+<tr>
+<th>标准状态向量</th>
+<th>物理含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>θ (pitch)</td>
+<td>车身俯仰角</td>
+</tr>
+<tr>
+<td>θ̇</td>
+<td>俯仰角速度</td>
+</tr>
+<tr>
+<td>x (wheel pos)</td>
+<td>轮子位置</td>
+</tr>
+<tr>
+<td>ẋ</td>
+<td>轮子速度</td>
+</tr>
+</tbody>
+</table>
+<p><code>τ = -K·[θ, θ̇, x, ẋ]ᵀ</code></p>
+<p><strong>核心痛点</strong>：真实电机存在<strong>非线性摩擦</strong>（特别是低速 Stribeck 效应），模型未补偿时会出现：</p>
+<ul>
+<li><strong>极限环振荡</strong>（Limit Cycle Oscillation）：低速时持续抖动无法收敛</li>
+<li><strong>静摩擦导致控制死区</strong>：小信号被摩擦吸收</li>
+<li><strong>PID 积分饱和</strong>：积分项试图补偿摩擦但响应滞后</li>
+</ul>
+<p>这正是用户 V2 项目 P1（LQR 增益离线计算 + 上电必抖振）问题的学术化描述。</p>
+<h3 id="12-stribeck">1.2 摩擦模型——Stribeck 曲线</h3>
+<p>电机摩擦由四部分组成：</p>
+<pre><code>F_total = F_coulomb·sign(v) + F_viscous·v + F_static·(1 - exp(-(v/v_s)²))·sign(v) + F_presliding
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>含义</th>
+<th>数量级（小型 BLDC 如 4015）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>F_coulomb</td>
+<td>库仑摩擦（干摩擦）</td>
+<td>0.05–0.2 N·m</td>
+</tr>
+<tr>
+<td>F_viscous</td>
+<td>粘性摩擦（与速度成正比）</td>
+<td>0.01–0.1 N·m·s/rad</td>
+</tr>
+<tr>
+<td>F_static（Stribeck）</td>
+<td>静摩擦，低速时从静摩擦向动摩擦过渡的"负斜率"区</td>
+<td>引起低速抖动</td>
+</tr>
+<tr>
+<td>F_presliding</td>
+<td>预滑动（位移小于 μm 级时，呈弹性而非塑性变形）</td>
+<td>高精度伺服才需考虑</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Stribeck 效应</strong>是低速抖动的元凶：速度从零开始增加时，摩擦力先<strong>下降</strong>（从静摩擦 → 动摩擦），再上升（粘性主导），形成"负阻尼"区域。</p>
+<h3 id="13-lqr">1.3 论文方法：摩擦前馈 LQR</h3>
+<p>Zhang et al. (2025) 在 GAC R&amp;D 中心的工作给出了完整流水线：</p>
+<pre><code>┌──────────────────────────────────────────────────────────┐
+│  Phase 1: 动力学建模 → 基础 LQR                            │
+│  • WIP 线性化模型 (θ, θ̇, x, ẋ)                            │
+│  • 解 Riccati 方程得 K                                     │
+│  • τ_LQR = -K·x                                            │
+├──────────────────────────────────────────────────────────┤
+│  Phase 2: Stribeck 摩擦模型参数辨识                         │
+│  • 设计恒速激励轨迹（匀速旋转）                              │
+│  • 在多个恒定速度下记录电流（∝ 转矩）                       │
+│  • 用 PSO 算法拟合 F_c, F_v, v_s, F_s 参数                 │
+│  • 最小标准差 ≈ 0.30                                       │
+├──────────────────────────────────────────────────────────┤
+│  Phase 3: 前馈补偿                                          │
+│  • τ_feedforward = F̂_friction(v_measured)                 │
+│  • τ_total = τ_LQR + τ_feedforward                         │
+└──────────────────────────────────────────────────────────┘
+</code></pre>
+<p><strong>关键工程细节</strong>：</p>
+<ul>
+<li><strong>恒速激励</strong>比白噪声激励更稳健——低速区 Stribeck 曲线需要密集采样</li>
+<li><strong>PSO 优于最小二乘</strong>：Stribeck 是强非线性模型，最小二乘易陷入局部最优；PSO 全局搜索稳定</li>
+<li>4 参数模型 <code>(F_c, F_v, v_s, F_s)</code> 在 30 维粒子 × 200 代迭代后收敛</li>
+</ul>
+<h3 id="14-lqr-vs-lqr">1.4 实验对比：基础 LQR vs 摩擦前馈 LQR</h3>
+<p>论文在三种场景下对比：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>基础 LQR</th>
+<th>摩擦前馈 LQR</th>
+<th>改进</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平地静平衡</td>
+<td>pitch σ ≈ 1.2°，极限环明显</td>
+<td>pitch σ ≈ 0.4°</td>
+<td>抖动减少 67%</td>
+</tr>
+<tr>
+<td>单边过桥（地形扰动）</td>
+<td>收敛时间 ≈ 2.5 s</td>
+<td>收敛时间 ≈ 1.0 s</td>
+<td>快 2.5×</td>
+</tr>
+<tr>
+<td>外部冲击</td>
+<td>振荡持续 3+ s</td>
+<td>0.8 s 内收敛</td>
+<td>鲁棒性显著提升</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心结论</strong>：<strong>前馈补偿是最小代价解决低速抖动的工业级方案</strong>，不需要修改 LQR 增益矩阵或引入复杂自适应控制。</p>
+<h3 id="15-10-dof-whleaper">1.5 10-DOF Whleaper：高自由度髋关节设计</h3>
+<p>Zhu et al. (2024) 在 IROS 提出的 Whleaper 是另一条改进路径——<strong>增加机械自由度</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>设计维度</th>
+<th>传统双轮腿</th>
+<th>Whleaper</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每腿髋关节</td>
+<td>1–2 DOF（俯仰+偏航）</td>
+<td><strong>3 DOF</strong>（俯仰+偏航+滚转）</td>
+</tr>
+<tr>
+<td>总自由度</td>
+<td>4–6 DOF</td>
+<td><strong>10 DOF</strong></td>
+</tr>
+<tr>
+<td>控制挑战</td>
+<td>状态空间 4 维</td>
+<td>状态空间扩展到 8–10 维</td>
+</tr>
+<tr>
+<td>优势</td>
+<td>结构简单</td>
+<td>横向稳定性、转弯灵活性显著提升</td>
+</tr>
+</tbody>
+</table>
+<p>这呼应了用户 V2 项目讨论的"L3 偏航关节"扩展方案——Whleaper 验证了高 DOF 髋关节在仿真和实物上都能提升稳定性，但需要 MPC+WBC 两层架构（而非纯 LQR）才能发挥全部潜力。</p>
+<h3 id="16">1.6 被动轮综述：能量效率的另一种思路</h3>
+<p>Petri &amp; Lacey (2026) 的综述提出一个反直觉的方向——<strong>被动轮（Passive Wheels）</strong>：</p>
+<ul>
+<li>不给轮子装电机，<strong>靠腿部摆动驱动轮子滚动</strong>（像人类滑旱冰）</li>
+<li>机械简单、腿质量轻、CoT（Cost of Transport）降低 70–80%</li>
+<li>代价：非完整约束 + 欠驱动动力学，控制问题极难</li>
+</ul>
+<p><strong>对用户项目的启示</strong>：被动轮是远期研究方向，对当前 V2（主动轮 + ODrive）暂不适用。但综述整理了 40+ 机器人的表格，是设计参考的宝库。</p>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-pso">2.1 PSO 算法在机器人辨识中的应用</h3>
+<p>粒子群优化（Particle Swarm Optimization）是 Kennedy &amp; Eberhart (1995) 受鸟群觅食启发的元启发式算法。在机器人参数辨识中的优势：</p>
+<ul>
+<li><strong>不要求可微性</strong>：Stribeck 模型含 <code>sign(v)</code> 和 <code>exp()</code> 项，梯度法易卡死</li>
+<li><strong>全局搜索</strong>：100 粒子能覆盖整个参数空间</li>
+<li><strong>天然并行</strong>：每个粒子评估独立，适合 STM32 + 上位机协同</li>
+</ul>
+<pre><code class="language-python"># 伪代码：Stribeck 参数 PSO 辨识
+def stribeck(v, Fc, Fv, vs, Fs):
+    return Fc*np.sign(v) + Fv*v + Fs*(1 - np.exp(-(v/vs)**2))*np.sign(v)
+
+def fitness(params, data):
+    Fc, Fv, vs, Fs = params
+    v_measured, torque_measured = data
+    torque_pred = stribeck(v_measured, Fc, Fv, vs, Fs)
+    return np.std(torque_pred - torque_measured)
+
+# PSO 主循环
+for iter in range(200):
+    for particle in particles:
+        particle.fitness = fitness(particle.position, data)
+        if particle.fitness &lt; particle.best_fitness:
+            particle.best = particle.position
+        if particle.fitness &lt; global_best.fitness:
+            global_best = particle
+    for particle in particles:
+        particle.velocity = w*v + c1*r1*(p_best - p) + c2*r2*(g_best - p)
+        particle.position += particle.velocity
+</code></pre>
+<h3 id="22-vs">2.2 系统辨识 vs 强化学习：两条路径</h3>
+<p>传统系统辨识（System Identification）与 RL 学派在机器人控制上的分野：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>系统辨识 + LQR/MPC</th>
+<th>RL（如 Boston Dynamics + RAI Institute Atlas）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据需求</td>
+<td>几十次激励实验</td>
+<td>数百万次仿真步</td>
+</tr>
+<tr>
+<td>模型依赖</td>
+<td>强（需动力学方程）</td>
+<td>弱（端到端学习）</td>
+</tr>
+<tr>
+<td>Sim2Real</td>
+<td>直接（模型即真实）</td>
+<td>困难（域随机化）</td>
+</tr>
+<tr>
+<td>部署成本</td>
+<td>低（STM32 可跑 LQR）</td>
+<td>高（需神经网络推理）</td>
+</tr>
+<tr>
+<td>可解释性</td>
+<td>强</td>
+<td>弱</td>
+</tr>
+</tbody>
+</table>
+<p>Boston Dynamics 2025 年 3 月发布的 Atlas RL 演示（"Walk, Run, Crawl, RL Fun"）显示：<strong>基于人类动捕参考的 RL 策略已能生成稳定的多步态运动</strong>。但工业级产品（GAC、UBTECH）仍以模型法为主，原因在于可解释性和安全验证。</p>
+<h3 id="23-riccati">2.3 Riccati 方程的实时求解</h3>
+<p>LQR 增益矩阵 K 的计算需要解代数 Riccati 方程：</p>
+<p><code>AᵀP + PA - PBR⁻¹BᵀP + Q = 0</code></p>
+<ul>
+<li><strong>离线求解</strong>：在 PC 上用 SciPy <code>control.lqr(A, B, Q, R)</code> 一次算完</li>
+<li><strong>在线求解</strong>：STM32H743 的 M7 双精度 FPU @ 480MHz 可在 ~10 ms 内完成 4×4 矩阵 Riccati 求解，但每次更新增益会引入控制不连续</li>
+<li><strong>折中方案</strong>：<strong>增益调度（Gain Scheduling）</strong>——预先离线计算 5–10 组 K（对应不同腿长 / 负载），运行时根据状态切换</li>
+</ul>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 轮腿平衡控制算法谱系</h3>
+<pre><code>              轮腿平衡控制
+        ┌──────────┴──────────┐
+     模型法                    学习法
+   ┌────┴────┐             ┌────┴────┐
+  线性     非线性          模仿      强化
+  LQR     MPC/WBC        Learning    Learning
+   │         │             │           │
+ 基础     前馈补偿        DAgger     PPO/SAC
+ LQR     摩擦/重力                      │
+   │                                    │
+ PID ←─── 降级备用         Boston Dynamics Atlas
+                                  (RL + 动捕)
+</code></pre>
+<h3 id="32-lqr">3.2 摩擦前馈 LQR 的工程决策矩阵</h3>
+<table>
+<thead>
+<tr>
+<th>你的痛点</th>
+<th>推荐方案</th>
+<th>工作量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>低速极限环抖动</td>
+<td><strong>Stribeck 前馈</strong></td>
+<td>2–4 h</td>
+</tr>
+<tr>
+<td>不同负载下漂移</td>
+<td><strong>增益调度</strong></td>
+<td>1–2 h</td>
+</tr>
+<tr>
+<td>大冲击后失稳</td>
+<td><strong>LQR + ADRC</strong>（Feng 2023）</td>
+<td>8+ h</td>
+</tr>
+<tr>
+<td>复杂地形通过性</td>
+<td><strong>MPC + WBC</strong></td>
+<td>40+ h</td>
+</tr>
+<tr>
+<td>端到端跳跃/跑酷</td>
+<td><strong>RL（sim2real）</strong></td>
+<td>100+ h</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-v2">3.3 用户 V2 项目改进路线图</h3>
+<p>将论文方法映射到 V2 项目（STM32H743 + ODrive + 4015 BLDC + MT6701）：</p>
+<pre><code>Phase A (现在)：基础 LQR 离线参数 (M=2.5, L=0.15, J=0.02)
+    ↓ 上电后用 PID 粗调能站住
+Phase B (新)：白噪声激励 + sysid_logger 记录 → 离线拟合真实 M/L/J
+    ↓ 得到精确物理参数
+Phase C (新)：恒速激励辨识 4015 的 Stribeck 摩擦参数
+    ↓ PSO 在 PC 上跑，参数烧入 Flash
+Phase D (新)：摩擦前馈 LQR 部署
+    ↓ τ_total = -K·x + F̂_friction(v)
+最终：稳定无抖动平衡
+</code></pre>
+<p><strong>新增代码量</strong>：~150 行 C（STM32 端前馈补偿）+ ~80 行 Python（PC 端 PSO 辨识脚本）</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="41-lqr">4.1 摩擦前馈将成为 LQR 标配</h3>
+<p><strong>依据</strong>：Zhang et al. (2025) 是 GAC R&amp;D 中心（广汽研究院）的工作，代表了汽车工业界对机器人控制的工程化要求。论文方法<strong>不需要修改 LQR 增益矩阵</strong>，只需在转矩输出后加一项前馈补偿，实施成本极低。预计 1–2 年内成为轮腿机器人开源项目的标配组件。</p>
+<h3 id="42-dof">4.2 高 DOF 髋关节是下一代主流</h3>
+<p><strong>依据</strong>：Whleaper（10-DOF）展示了 3-DOF 髋关节对横向稳定性的巨大提升。人类髋关节本身就是 3-DOF（屈伸/外展内收/内旋外旋），限制在 1–2 DOF 是工程妥协而非生物学最优。随着无框力矩电机（Frameless Torque Motor）价格下降，3-DOF 髋关节将在 2026–2027 年成为高端轮腿机器人标准。</p>
+<h3 id="43-rl">4.3 RL + 模型法的混合架构将主导</h3>
+<p><strong>依据</strong>：Boston Dynamics 与 RAI Institute（原 Boston Dynamics AI Institute）的合作演示了 RL 策略在 Atlas 上的成功。但纯 RL 在安全验证和可解释性上的劣势使其难以独立部署。<strong>模型法提供安全基线 + RL 提供性能上限</strong>的混合架构将是 2026–2028 年的主流方向。用户的 V2 项目先用 LQR 打基础，未来可在此基础上叠加 RL 微调。</p>
+<h3 id="44">4.4 被动轮将开辟新应用场景</h3>
+<p><strong>依据</strong>：Petri &amp; Lacey (2026) 综述显示，被动轮机器人的 CoT 比主动轮低 70–80%，在长距离巡检、仓储物流等场景有独特优势。但控制难度极高，目前仅在学术界验证。预计 3–5 年后才有商业化产品。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-wheel-legged-robot-v2">5.1 与 wheel-legged-robot-v2 项目的关联</h3>
+<blockquote>
+<p>项目路径：<code>/home/jc/uclaw/project/wheel-legged-robot-v2/</code></p>
+</blockquote>
+<p>本笔记的核心方法<strong>直接解决项目 P1 问题</strong>（LQR 增益离线计算 → 上电必抖振）：</p>
+<table>
+<thead>
+<tr>
+<th>项目要素</th>
+<th>论文对应</th>
+<th>改进建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scripts/lqr_design.py</code> 离线 K 计算</td>
+<td>Phase 1 基础 LQR</td>
+<td>✅ 已实现，保留</td>
+</tr>
+<tr>
+<td><code>scripts/sysid_fit.py</code> 参数拟合</td>
+<td>Phase 2 辨识</td>
+<td>🔧 需补充 Stribeck 项，不能只辨识 M/L/J</td>
+</tr>
+<tr>
+<td><code>robot_config.h</code> K 矩阵</td>
+<td>Phase 1 输出</td>
+<td>✅ 已实现</td>
+</tr>
+<tr>
+<td>缺失：摩擦前馈</td>
+<td>Phase 3 核心创新</td>
+<td>🔴 <strong>必须新增 <code>friction_feedforward.c</code></strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>具体行动项</strong>：<br />
+1. 新增 <code>scripts/stribeck_pso_fit.py</code>——PC 端 PSO 辨识脚本<br />
+2. 在 <code>servo_driver.c</code> / <code>odrive_driver.c</code> 中新增 <code>friction_compensate(v)</code> 函数<br />
+3. 在 <code>balance_control.c</code> 的 <code>Balance_Update()</code> 末尾加 <code>τ += friction_compensate(wheel_vel)</code><br />
+4. <code>sysid_logger</code> 增加<strong>恒速激励模式</strong>（不只是白噪声）</p>
+<h3 id="52">5.2 与强化学习入门完全指南的关联</h3>
+<blockquote>
+<p>2026-07-14 笔记</p>
+</blockquote>
+<p>论文综述部分提到 Boston Dynamics Atlas 使用 RL + 动捕的策略学习。这验证了笔记中"PPO/SAC 是机器人 RL 主流算法"的判断。但<strong>控制频率差异巨大</strong>：Atlas 的 RL 策略在 GPU 上以 50 Hz 运行，而 V2 项目的 LQR 在 STM32 上以 1 kHz 运行——频率差 20×。对小型机器人而言，模型法在实时性上仍有压倒性优势。</p>
+<h3 id="53">5.3 与机器人学习范式对比的关联</h3>
+<blockquote>
+<p>2026-06-11 笔记</p>
+</blockquote>
+<p>那篇笔记对比了模仿学习（IL）和强化学习（RL）。本笔记补充了第三条路径——<strong>经典控制理论（LQR/MPC）</strong>。三种范式在机器人控制上的分工：</p>
+<ul>
+<li><strong>经典控制</strong>：平衡、轨迹跟踪（高频、低维度、强模型依赖）</li>
+<li><strong>模仿学习</strong>：复杂技能学习（动捕数据、中等频率）</li>
+<li><strong>强化学习</strong>：极限运动（跑酷、跳跃、低频率但高策略复杂度）</li>
+</ul>
+<h3 id="54-stm32">5.4 与 STM32 嵌入式开发的关联</h3>
+<blockquote>
+<p>Skill: stm32-embedded-dev</p>
+</blockquote>
+<p>本笔记的工程实现深度依赖 STM32H743 的能力：<br />
+- <strong>双精度 FPU</strong>：Riccati 方程求解和矩阵运算的硬件基础<br />
+- <strong>FDCAN1</strong>：与 ODrive 3.6 的高速通信（500 kbps）<br />
+- <strong>FreeRTOS</strong>：1 kHz 平衡环 + 200 Hz 安全监控的任务调度<br />
+- <strong>DMA + TC 中断</strong>：STS3025 半双工方向控制的关键</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>"电机摩擦会导致低速运动时的收敛性差和振荡，这是基础 LQR 控制器在轮腿机器人上的核心瓶颈。" — Zhang et al. (2025)</p>
+<p>"Stribeck 摩擦辨识的最小标准差约为 0.30，辨识值与实际值高度吻合，表明 PSO 是有效的辨识方法。"</p>
+<p>"轮子结合了腿的适应性和轮的能量效率，但被动轮机器人的非完整约束使控制问题极为复杂。" — Petri &amp; Lacey (2026)</p>
+<p>"增加髋关节自由度可以显著提升轮腿机器人的稳定性和灵活性。" — Zhu et al. (Whleaper, 2024)</p>
+<p>"模型法提供安全基线，RL 提供性能上限——混合架构将主导未来机器人控制。" — 笔者归纳</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>行动</th>
+<th>优先级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>摩擦是 LQR 抖动的根因</td>
+<td>在 V2 项目增加 Stribeck 摩擦辨识流程</td>
+<td><strong>P0</strong></td>
+</tr>
+<tr>
+<td>PSO 优于最小二乘辨识</td>
+<td>编写 <code>stribeck_pso_fit.py</code> 脚本</td>
+<td><strong>P0</strong></td>
+</tr>
+<tr>
+<td>恒速激励是辨识关键</td>
+<td><code>sysid_logger</code> 增加恒速激励模式</td>
+<td><strong>P1</strong></td>
+</tr>
+<tr>
+<td>高 DOF 髋关节是趋势</td>
+<td>V2 的"L3 偏航关节"扩展方案有学术支撑</td>
+<td>P2</td>
+</tr>
+<tr>
+<td>RL + 模型法混合是未来</td>
+<td>关注 Boston Dynamics + RAI Institute 后续工作</td>
+<td>P3</td>
+</tr>
+<tr>
+<td>被动轮是新方向</td>
+<td>长期关注 Petri 综述的引用论文</td>
+<td>P4</td>
+</tr>
+</tbody>
+</table>
+<h3 id="v2">立即可执行的代码改进（针对 V2 项目）</h3>
+<pre><code class="language-c">// robot_config.h 新增
+#define FRICTION_COULOMB     0.08f    // N·m, 待 PSO 辨识
+#define FRICTION_VISCOUS     0.02f    // N·m·s/rad
+#define FRICTION_STRIBECK_VS 0.05f    // rad/s, Stribeck 临界速度
+#define FRICTION_STATIC      0.12f    // N·m, 静摩擦
+
+// balance_control.c 新增
+static float friction_compensate(float wheel_vel_rad_s) {
+    float v = wheel_vel_rad_s;
+    float sign = (v &gt; 0) ? 1.0f : ((v &lt; 0) ? -1.0f : 0.0f);
+    float abs_v = fabsf(v);
+    return FRICTION_COULOMB * sign
+         + FRICTION_VISCOUS * v
+         + FRICTION_STATIC * (1.0f - expf(-(abs_v/FRICTION_STRIBECK_VS)*(abs_v/FRICTION_STRIBECK_VS))) * sign;
+}
+
+// 在 Balance_Update() 末尾
+ctrl-&gt;torque_left  += friction_compensate(ctrl-&gt;wheel_vel_left);
+ctrl-&gt;torque_right += friction_compensate(ctrl-&gt;wheel_vel_right);
+</code></pre>
+</body>
+</html>

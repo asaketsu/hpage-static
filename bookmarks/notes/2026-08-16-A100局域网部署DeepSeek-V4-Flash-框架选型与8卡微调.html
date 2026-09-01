@@ -1,4 +1,351 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A100局域网部署DeepSeek-V4-Flash-框架选型与8卡微调</title>
+
+<meta property="og:title" content="A100局域网部署DeepSeek-V4-Flash-框架选型与8卡微调" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-16-A100%E5%B1%80%E5%9F%9F%E7%BD%91%E9%83%A8%E7%BD%B2DeepSeek-V4-Flash-%E6%A1%86%E6%9E%B6%E9%80%89%E5%9E%8B%E4%B8%8E8%E5%8D%A1%E5%BE%AE%E8%B0%83.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +421,274 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="a100-deepseek-v4-flash-8">A100 局域网部署 DeepSeek-V4-Flash：框架选型与 8 卡微调指南</h1>
+<p class="note-date">生成日期 2026-08-16</p>
+<blockquote>
+<p><strong>出处</strong>：飞书知识库《在A100的gpu配置下在局域网中部署deepseek-v4-flash》（wiki S6YMw41Qoi2vtWksLRocG0FknLh）——AI 生成文档（含引用标注 [1]-[9]），经交叉核对后收录<br />
+<strong>记录日期</strong>：2026-08-16</p>
+</blockquote>
+<p><strong>标签</strong>：#A100 #DeepSeek #vLLM #SGLang #Ollama #DeepSpeed #局域网部署 #推理服务</p>
+<hr />
+<h2 id="_1">一、核心内容（原文完整还原）</h2>
+<p>文档分三大块：<strong>推理框架对比选型 → 8 卡微调指南 → SGLang 进阶部署</strong>。</p>
+<h3 id="11">1.1 推理框架三选一（原文决策规则）</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>选型</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>协同 &gt;10 人 / 高并发 API</td>
+<td><strong>vLLM</strong></td>
+<td>PagedAttention 吃满 A100 2TB/s 带宽</td>
+</tr>
+<tr>
+<td>个人开发 / 小团队偶尔调用</td>
+<td><strong>Ollama</strong></td>
+<td>快速搭 UI（+Open WebUI）</td>
+</tr>
+<tr>
+<td>DeepSeek MLA/MoE 架构极致优化</td>
+<td><strong>SGLang</strong></td>
+<td>RadixAttention + DPA+EP 混合并行</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-vllm">1.2 vLLM 生产级部署（原文命令）</h3>
+<p><strong>单卡启动</strong>：</p>
+<pre><code class="language-bash">python3 -m vllm.entrypoints.openai.api_server \
+    --model deepseek-ai/DeepSeek-V4-Flash \
+    --host 0.0.0.0 --port 8000 \
+    --max-model-len 4096 --gpu-memory-utilization 0.90
+</code></pre>
+<p><strong>多卡并行</strong>（关键：<code>--tensor-parallel-size</code> = 实际卡数）：</p>
+<pre><code class="language-bash">export CUDA_VISIBLE_DEVICES=0,1
+python3 -m vllm.entrypoints.openai.api_server \
+    --model deepseek-ai/DeepSeek-V4-Flash \
+    --host 0.0.0.0 --port 8000 \
+    --tensor-parallel-size 2 --trust-remote-code
+</code></pre>
+<p><strong>局域网验证</strong>（任意内网机器 OpenAI 协议 curl）：</p>
+<pre><code class="language-bash">curl http://192.168.1.100:8000/v1/chat/completions \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;model&quot;: &quot;deepseek-ai/DeepSeek-V4-Flash&quot;,
+       &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;你好，请确认你的模型名称。&quot;}]}'
+</code></pre>
+<h3 id="13-ollama">1.3 Ollama 轻量部署（原文要点）</h3>
+<p>Ollama 默认只听 127.0.0.1，<strong>必须改 systemd 配置</strong>开局域网：</p>
+<pre><code class="language-ini"># sudo systemctl edit ollama.service
+[Service]
+Environment=&quot;OLLAMA_HOST=0.0.0.0&quot;
+</code></pre>
+<pre><code class="language-bash">sudo systemctl daemon-reload &amp;&amp; sudo systemctl restart ollama
+ollama run deepseek-v4-flash
+</code></pre>
+<h3 id="14-8-accelerate-deepspeed-zero-3">1.4 8 卡微调：Accelerate + DeepSpeed ZeRO-3（原文流程）</h3>
+<p><strong>架构理由</strong>：ZeRO-3 把参数/梯度/优化器状态切分 8 卡（单机可微调千亿级）；NVLink 带宽吃满；MASTER_ADDR 配局域网 IP 后任意客户端 SSH 提交。</p>
+<p><strong>环境验证</strong>（第一步）：</p>
+<pre><code class="language-bash">nvidia-smi topo -m   # 卡间显示 NV8/NVLink = 全互联正常，8 卡微调前提
+</code></pre>
+<p><strong>accelerate 交互配置</strong>（8 卡 bf16 DeepSpeed ZeRO-3）：This machine → multi-GPU → 1 机 → 8 GPU → bf16 → DeepSpeed → ZeRO Stage 3。</p>
+<p><strong>ds_config.json 关键段</strong>：</p>
+<pre><code class="language-json">{
+  &quot;bf16&quot;: { &quot;enabled&quot;: true },
+  &quot;zero_optimization&quot;: {
+    &quot;stage&quot;: 3,
+    &quot;offload_optimizer&quot;: { &quot;device&quot;: &quot;cpu&quot;, &quot;pin_memory&quot;: true },
+    &quot;offload_param&quot;: { &quot;device&quot;: &quot;none&quot; },
+    &quot;overlap_comm&quot;: true,
+    &quot;reduce_bucket_size&quot;: &quot;auto&quot;,
+    &quot;stage3_prefetch_bucket_size&quot;: &quot;auto&quot;
+  },
+  &quot;train_batch_size&quot;: &quot;auto&quot;,
+  &quot;train_micro_batch_size_per_gpu&quot;: &quot;auto&quot;
+}
+</code></pre>
+<p><strong>局域网远程提交</strong>（客户端无需 CUDA）：</p>
+<pre><code class="language-bash">ssh user@192.168.1.100 &quot;cd /path/to/project &amp;&amp; conda activate deepseek &amp;&amp; nohup accelerate launch train.py &gt; train.log 2&gt;&amp;1 &amp;&quot;
+</code></pre>
+<p><strong>监控</strong>：<code>tensorboard --host=0.0.0.0 --port=6006</code> → 内网浏览器 http://192.168.1.100:6006</p>
+<p><strong>多人分卡</strong>（轻量团队替代 Slurm）：<code>CUDA_VISIBLE_DEVICES=0,1,2,3</code> 给工程师 A / <code>4,5,6,7</code> 给工程师 B。</p>
+<h3 id="15-sglang">1.5 SGLang 进阶（原文宣称的优势）</h3>
+<ul>
+<li><strong>RadixAttention</strong>：共享 System Prompt 前缀"零开销"复用，TTFT 降低 70%+</li>
+<li><strong>DPA+EP 混合并行</strong>：MoE 专家用 FlashInfer+DeepEP 算子，吞吐比纯 TP 高 3-5×</li>
+<li><strong>FP8/FP4 混合量化内核</strong>：省显存换更大 KV Cache 批并发</li>
+<li><strong>部署</strong>：官方建议 Docker（<code>lmsysorg/sglang:latest</code>），8 卡 <code>--tensor-parallel-size 8</code>；高并发改 <code>--tp 4 --dp 2</code>；配 <code>--moe-runner-backend flashinfer_mxfp4</code> 与 <code>--reasoning-parser deepseek-v4</code></li>
+</ul>
+<hr />
+<h2 id="_2">二、五要素展开</h2>
+<h3 id="21">2.1 功能清单</h3>
+<table>
+<thead>
+<tr>
+<th>功能</th>
+<th>命令/配置</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>vLLM 单卡/多卡推理服务</td>
+<td>api_server + TP 参数</td>
+<td>原文 §二</td>
+</tr>
+<tr>
+<td>Ollama 局域网化</td>
+<td>systemd OLLAMA_HOST</td>
+<td>原文 §三</td>
+</tr>
+<tr>
+<td>OpenAI 协议验证</td>
+<td>curl /v1/chat/completions</td>
+<td>原文 §四</td>
+</tr>
+<tr>
+<td>8 卡 ZeRO-3 微调</td>
+<td>accelerate + ds_config</td>
+<td>原文 §四(微调)</td>
+</tr>
+<tr>
+<td>SSH 远程提交 + nohup</td>
+<td>断线训练不断</td>
+<td>原文 §四</td>
+</tr>
+<tr>
+<td>TensorBoard 局域网监控</td>
+<td>--host 0.0.0.0:6006</td>
+<td>原文 §四</td>
+</tr>
+<tr>
+<td>多人分卡</td>
+<td>CUDA_VISIBLE_DEVICES</td>
+<td>原文 §五</td>
+</tr>
+<tr>
+<td>SGLang Docker 部署</td>
+<td>lmsysorg/sglang</td>
+<td>原文 SGLang 节</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 使用性评估（含可信度核对）</h3>
+<p><strong>可直接照抄的部分</strong>：vLLM/Ollama 启动命令、systemd 局域网配置、accelerate 交互流程、ds_config.json、SSH+nohup 提交、TensorBoard 监控、CUDA_VISIBLE_DEVICES 分卡——与官方文档惯例完全一致，<strong>低风险</strong>。</p>
+<p><strong>需要存疑的部分（AI 文档幻觉风险点）</strong>：<br />
+- <code>deepseek-ai/DeepSeek-V4-Flash</code> 的模型 ID 是否在 HF 真实存在需核验（AI 生成文档常见"拼装型号名"）<br />
+- SGLang "TTFT 降 70%/吞吐 3-5×" 是无出处的数字，方向正确（RadixAttention/DP-EP 均为真机制）但幅度未经独立基准验证<br />
+- <code>--moe-runner-backend flashinfer_mxfp4</code>、<code>--reasoning-parser deepseek-v4</code> 参数名需对 SGLang 当前版本文档核验<br />
+- A100（SM80）<strong>不支持 FP8 硬件加速</strong>（Hopper 起）；SGLang 的 FP8 优势在 A100 上大打折扣——原文未提示此硬件限制</p>
+<h3 id="23">2.3 指导性意见</h3>
+<ul>
+<li><strong>决策顺序</strong>：先用 vLLM 起服务（生态最稳）→ 并发痛了再迁 SGLang（DeepSeek MLA 专属优化）→ 个人玩用 Ollama</li>
+<li><strong>A100 上别指望 FP8</strong>：量化优势场景在 H100/H200；A100 的甜点是 bf16 + PagedAttention/RadixAttention 这类显存管理优化</li>
+<li><strong>微调选型对齐既有手册</strong>：全量微调用本文 ZeRO-3 流程；LoRA/QLoRA 调行为直接套 <code>a100-training-playbook</code> 三档模板（更省显存）</li>
+<li><strong>多人共用先分卡后上 Slurm</strong>：&lt;5 人 CUDA_VISIBLE_DEVICES 够用；任务排队/优先级需求出现再上 Slurm/K8s+Volcano</li>
+<li><strong>局域网安全</strong>：0.0.0.0 监听 = 局域网裸奔，内网可信环境可接受，跨网段务必加反向代理+鉴权</li>
+</ul>
+<h3 id="24">2.4 案例可寻</h3>
+<ul>
+<li>原文自带完整命令链（环境→启动→验证→监控→远程提交）可直接作为最小落地案例</li>
+<li>体系内姊妹实例：<code>lan-llm-farm</code>（Jetson 网关已建）承接本文的"局域网调用层"；<code>a100-training-playbook</code>（7 脚本实测）承接"训练工程层"——本文补齐"推理服务层"最后一块</li>
+</ul>
+<h3 id="25">2.5 使用方法借鉴（最小落地路径）</h3>
+<pre><code class="language-bash"># ① 环境（A100 服务器）
+conda create -n deepseek python=3.10 -y &amp;&amp; conda activate deepseek
+pip install vllm
+# ② 起服务（8 卡全量）
+python3 -m vllm.entrypoints.openai.api_server \
+    --model &lt;核验后的真实模型ID&gt; --host 0.0.0.0 --port 8000 \
+    --tensor-parallel-size 8 --gpu-memory-utilization 0.90
+# ③ 局域网任意机器验证
+curl http://&lt;服务器IP&gt;:8000/v1/chat/completions -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;model&quot;:&quot;...&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;ping&quot;}]}'
+</code></pre>
+<hr />
+<h2 id="_3">三、查询拓展</h2>
+<ol>
+<li><strong>模型 ID 核验优先</strong>：AI 生成文档的型号名（V4-Flash）先在 HF/官方渠道确认存在与确切 repo 路径，再抄命令——模型名错则全链路白搭</li>
+<li><strong>vLLM vs SGLang 的真实分界</strong>：vLLM 通用生态强（/v1 兼容、工具链全），SGLang 在 DeepSeek MLA/MoE + 高并发多轮对话场景有结构优势（前缀缓存/专家并行）——先跑 vLLM 基准再决定迁移</li>
+<li><strong>RadixAttention 原理</strong>：基数树组织的 KV 前缀缓存，多用户共享 system prompt 时命中即免重算——与 vLLM 的 automatic prefix caching 同思想不同实现</li>
+<li><strong>ZeRO-3 offload 取舍</strong>：显存够（A100 80G×8）就 <code>offload_param: none</code> 保速度；40G 卡微调大模型才开 CPU offload（速度降但能装下）</li>
+<li><strong>Slurm 最小化引入</strong>：团队规模到排队冲突时，先试 <code>submitit</code>/<code>torchrun --rdzv</code> 这类轻量方案，Slurm 是终极形态不是第一步</li>
+</ol>
+<hr />
+<h2 id="_4">四、内容整理</h2>
+<p><strong>原文信息架构</strong>：推理三框架对比（决策规则清晰）→ vLLM 命令（单卡/多卡/验证）→ Ollama UI 路线 → 8 卡微调全流程（拓扑验证→accelerate→ds_config→SSH 提交→监控→分卡）→ SGLang 进阶（三优势+Docker）。</p>
+<p><strong>本笔记动作</strong>：全文收录命令层（可抄）+ 逐段可信度分层（AI 文档必须做幻觉排查）+ 与既有体系三件套对位（本文=推理服务层）。</p>
+<p><strong>体系拼图完成度</strong>：a100-training-playbook（训练层）+ lan-llm-farm（网关层）+ 本文（推理服务层）= 局域网 A100 全栈调用方案。</p>
+<hr />
+<h2 id="_5">五、趋势判断</h2>
+<ol>
+<li><strong>SGLang 类专用框架会吃掉 DeepSeek 系部署份额</strong>：MLA/MoE 专属优化+前缀缓存是通用框架难追的结构性优势，6-12 个月内成为 DeepSeek 部署默认选项</li>
+<li><strong>FP8/FP4 是 Hopper+ 世代红利</strong>：A100 集群部署文档里的量化收益宣传要打折——Ada/Hopper 才有硬件加速，A100 停留在 bf16/int8</li>
+<li><strong>推理与训练一体化调度</strong>：白天推理服务/夜间微调训练的时分复用（gpu-farm-engineering 模式）会成为小团队算力标配</li>
+<li><strong>Docker 成为复杂算子栈唯一发行方式</strong>：SGLang/DeepEP/FlashMLA 依赖链手装地狱，容器化是不可逆趋势</li>
+<li><strong>局域网 LLM 服务标准化</strong>：OpenAI 协议 + 0.0.0.0 监听 + curl 验证三件套已是行业惯例，差异只在并行策略与缓存机制</li>
+</ol>
+<hr />
+<h2 id="_6">六、归纳总结</h2>
+<p><strong>一句话</strong>：A100 局域网部署三档选型——vLLM（高并发生产）/Ollama（轻量 UI）/SGLang（DeepSeek 专属优化），8 卡微调走 accelerate+ZeRO-3+SSH 提交；本文是 AI 生成文档，命令层可信可直接抄，数字层（70%/3-5×）与参数名需上机核验，A100 无 FP8 硬件加速是原文未提示的最大盲区。</p>
+<p><strong>结构记忆</strong>：<br />
+- 三框架：vLLM 稳 / Ollama 轻 / SGLang 专（DeepSeek）<br />
+- 微调五步：topo 验证 → accelerate 配置 → ds_config ZeRO-3 → SSH nohup 提交 → TensorBoard 监控<br />
+- 三个核验点：模型 ID / 性能数字 / FP8 硬件限制<br />
+- 体系定位：本文=推理服务层，与 training-playbook/lan-llm-farm 组成全栈</p>
+<hr />
+<h2 id="_7">七、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>关联</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a100-training-playbook</td>
+<td>训练工程层姊妹篇：本文微调流程的深度展开与模板化</td>
+</tr>
+<tr>
+<td>lan-llm-farm</td>
+<td>网关层：本文部署的服务可挂入其统一提交入口</td>
+</tr>
+<tr>
+<td>Qwen3.8-27B 部署研究</td>
+<td>同类部署方法论（VRAM 核算→引擎选型→启动命令），可互为参照</td>
+</tr>
+<tr>
+<td>gpu-farm-engineering</td>
+<td>时分复用：白天推理（本文）/夜间训练（playbook）</td>
+</tr>
+<tr>
+<td>代理模型 vs 降阶模型笔记</td>
+<td>A100 负载画像的另一极：LLM 推理服务 vs 科学计算训练</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">八、行动清单</h2>
+<ul>
+<li style="list-style:none"><input type="checkbox" disabled checked> 飞书文档全文提取 + 可信度分层笔记</li>
+<li style="list-style:none"><input type="checkbox" disabled> 上机核验：模型 ID 真实 repo、SGLang 参数名、TTFT/吞吐数字</li>
+<li style="list-style:none"><input type="checkbox" disabled> A100 真机：vLLM 8 卡 TP 部署基准（TTFT/吞吐实测）</li>
+<li style="list-style:none"><input type="checkbox" disabled> SGLang vs vLLM 对比基准（共享前缀多轮场景）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 与 lan-llm-farm 网关联调（OpenAI 协议统一入口）</li>
+</ul>
+<hr />
+<h2 id="_9">九、一句话总结</h2>
+<blockquote>
+<p>局域网 A100 部署 DeepSeek 三档口诀——多人并发 vLLM、个人把玩 Ollama、DeepSeek 极致 SGLang；8 卡微调 ZeRO-3 + SSH 提交；命令可直接抄，数字须核验，A100 没有 FP8 红利。</p>
+</blockquote>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="./2026-08-16-8卡A100局域网训练微调全流程指导.md">8卡A100局域网训练微调全流程指导</a> — 姊妹篇：部署（本文）+ 训练微调</li>
+<li><a href="./2026-08-14-LLM推理引擎竞争-vLLM-vs-SGLang.md">LLM推理引擎竞争-vLLM-vs-SGLang</a> — 三档框架选型的引擎层对比</li>
+<li><a href="./2026-08-15-局域网A100算力池×双OCR-批量文档与微调业务流程.md">局域网A100算力池×双OCR-批量文档与微调业务流程</a> — 算力池业务化应用层</li>
+<li><a href="./2026-08-17-投机解码生产化指南-EAGLE-3到P-EAGLE的vLLM实践.md">投机解码生产化指南-EAGLE-3到P-EAGLE的vLLM实践</a> — 部署后叠加投机解码提速</li>
+</ul>
+</body>
+</html>

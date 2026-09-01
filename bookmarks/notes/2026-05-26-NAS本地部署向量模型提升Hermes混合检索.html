@@ -1,4 +1,312 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NAS本地部署向量模型提升Hermes混合检索</title>
+
+<meta property="og:title" content="NAS本地部署向量模型提升Hermes混合检索" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-26-NAS%E6%9C%AC%E5%9C%B0%E9%83%A8%E7%BD%B2%E5%90%91%E9%87%8F%E6%A8%A1%E5%9E%8B%E6%8F%90%E5%8D%87Hermes%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +382,204 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="nashermes">NAS本地部署向量模型提升Hermes混合检索能力</h1>
+<blockquote>
+<p><strong>来源</strong>：设计虱聊科技 · 微信公众平台 · 2026-05-26<br />
+<strong>原文</strong>：https://mp.weixin.qq.com/s/qjSOnPMbdkeW9GgfSIAvEA<br />
+<strong>笔记ID</strong>：nas-embedding-hermes-hybrid<br />
+<strong>格式</strong>：双格式(MD + HTML) · 含借鉴进化点 · RAG/wiki联动<br />
+<strong>关联</strong>：<a href="2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md">MCP协议生态与Agentic-RAG架构深度学习</a> <a href="2026-04-26-RAG与MCP架构差异.md">RAG与MCP架构差异</a> <a href="2026-04-11-gbrain-hybrid-search-proposal.md">gbrain-hybrid-search-proposal</a></p>
+</blockquote>
+<h2 id="_1">摘要</h2>
+<p>文章以绿联DX4600 NAS为例，讲解如何通过Docker部署Ollama + 向量模型（dmeta-embedding-zh / bge-base-zh-v1.5），实现Hermes的本地向量搜索，与FTS5关键词检索形成混合检索。核心观点：AI"记不住"不是模型笨，是搜索方式有天花板——关键词搜"字一样"的，向量搜"意思一样"的。</p>
+<h2 id="_2">核心内容</h2>
+<h3 id="1-fts5">1. 问题：FTS5关键词搜索的局限</h3>
+<ul>
+<li>Hermes 历史会话存入 SQLite，FTS5 建索引</li>
+<li>FTS5 本质是关键词匹配，必须精确知道原文用了什么词</li>
+<li>典型失败：聊过"Docker容器OOM被kill"，问"上次那个NAS内存问题"→搜不到</li>
+<li>对话越多，匹配不精准问题越明显</li>
+</ul>
+<h3 id="2">2. 解法：向量搜索补位</h3>
+<ul>
+<li>向量 = 把文字变成数字串，代表"意思"</li>
+<li>"NAS内存不够用"和"Docker容器OOM"字面不同但向量接近</li>
+<li>不用记原话，大概描述就能找到</li>
+</ul>
+<h3 id="3">3. 两种搜索各有优劣</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>关键词搜索(FTS5)</th>
+<th>向量搜索</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>擅长</td>
+<td>精确匹配：型号名、参数名</td>
+<td>语义匹配：模糊描述、同义词</td>
+</tr>
+<tr>
+<td>弱点</td>
+<td>必须字面一致</td>
+<td>精确术语可能不如关键词</td>
+</tr>
+<tr>
+<td>最佳实践</td>
+<td>混合使用，各取所长</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4">4. 为什么本地部署</h3>
+<ul>
+<li>一次部署永远能用，不用月交API费</li>
+<li>不依赖网络，断网也能用</li>
+<li>数据不出门，对话记录留在本地</li>
+</ul>
+<h3 id="5-dx4600">5. 部署方案（绿联DX4600为例）</h3>
+<p>Docker Compose 部署 Ollama：</p>
+<pre><code class="language-yaml">services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    network_mode: host
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OMP_NUM_THREADS=2
+    volumes:
+      - ./ollama-data:/root/.ollama
+    restart: unless-stopped
+</code></pre>
+<p>推荐模型：<br />
+- <strong>herald/dmeta-embedding-zh</strong> — 200MB，768维，低功耗CPU友好<br />
+- <strong>bge-base-zh-v1.5</strong> — 200MB，768维，中文优化<br />
+- bge-m3（1024维）— NAS CPU跑不动，经常超时</p>
+<p>配置Hermes：告知向量模型地址 <code>NAS_IP:11434</code>，Hermes自动调用。向量化成功标志：Ollama日志返回200。</p>
+<h2 id="_3">关键概念</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>定义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FTS5</td>
+<td>SQLite全文搜索引擎，基于关键词倒排索引，精确匹配</td>
+</tr>
+<tr>
+<td>向量搜索</td>
+<td>将文本转为向量（数字串），通过余弦相似度匹配语义</td>
+</tr>
+<tr>
+<td>混合检索</td>
+<td>关键词 + 向量双路检索，合并排序，兼顾精确和语义</td>
+</tr>
+<tr>
+<td>Ollama</td>
+<td>开源本地LLM运行框架，支持模型下载和管理</td>
+</tr>
+<tr>
+<td>dmeta-embedding-zh</td>
+<td>200MB中文向量模型，768维，适合低功耗设备</td>
+</tr>
+<tr>
+<td>上下文窗口</td>
+<td>128K~1M Token，存最近对话，满了就淘汰旧内容</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">能力边界</h2>
+<ul>
+<li>文章偏向入门教程，未涉及混合检索的具体融合算法（如何合并两路结果排序）</li>
+<li>未讨论向量化历史会话的增量更新机制（新对话如何自动向量化）</li>
+<li>bge-m3 在 NAS 上失败，但未测试中间档模型（如 bge-large-zh）</li>
+<li>"下一篇讲踩坑"暗示还有后续，当前篇为上篇/部署篇</li>
+</ul>
+<h2 id="_5">最佳实践</h2>
+<ol>
+<li>低功耗设备选 200MB 级模型（dmeta / bge-base），别贪大</li>
+<li>混合检索是正解：关键词保精准，向量保语义</li>
+<li>不同设备多试几个模型，选最适合的</li>
+<li>Docker Compose 部署，方便管理和重启</li>
+</ol>
+<h2 id="_6">🔍 借鉴学习进化点（必填）</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>点</th>
+<th>原文要点</th>
+<th>对当前系统的借鉴</th>
+<th>行动计划</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>混合检索验证</td>
+<td>关键词+向量各取所长</td>
+<td>ubot 已有 FTS5 + RAG 混合搜索（hybrid-search skill），可验证实际效果</td>
+<td>检查当前 hybrid-search 配置是否最优，向量模型是否已启用</td>
+</tr>
+<tr>
+<td>2</td>
+<td>低功耗向量模型选择</td>
+<td>dmeta-embedding-zh 200MB/768维，N5105 CPU能跑</td>
+<td>jc-server 有 GPU，可用更高维模型，但 NAS 端 jbot 需轻量模型</td>
+<td>确认 jbot 的向量模型配置，评估是否需降级到 dmeta</td>
+</tr>
+<tr>
+<td>3</td>
+<td>增量向量化</td>
+<td>文章未提及，但向量化历史会话后新对话需自动向量化</td>
+<td>hybrid-search skill 的 rag-index-rebuild 需支持增量更新</td>
+<td>rag-index-rebuild 增加 watch 模式，新笔记自动索引</td>
+</tr>
+<tr>
+<td>4</td>
+<td>搜索降级链整合</td>
+<td>文章只讲向量，实际搜索需降级链</td>
+<td>search-fallback-chain skill 可将向量搜索纳入降级链</td>
+<td>确认 hybrid-search 在 fallback chain 中的位置</td>
+</tr>
+<tr>
+<td>5</td>
+<td>向量化健康监控</td>
+<td>Ollama 返回200=成功</td>
+<td>可增加向量搜索健康检查到 auto-dream</td>
+<td>auto-dream 增加向量服务可用性检测</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rag-wiki">🔗 RAG / Wiki 联动（必填）</h2>
+<h3 id="_7">当前状态</h3>
+<ul>
+<li>RAG：已有 hybrid-search skill，支持语义+关键词检索</li>
+<li>wiki-kb：已建立 [[wikilinks]] BFS 检索</li>
+<li>向量模型：ubot(jc-server) 已配置，jbot 桌面端配置待确认</li>
+</ul>
+<h3 id="_8">改进方案</h3>
+<ol>
+<li>确认两端向量模型版本和维度一致性</li>
+<li>rag-index-rebuild 增加增量更新模式（watch）</li>
+<li>向量搜索纳入 search-fallback-chain 降级链</li>
+</ol>
+<h3 id="_9">已执行操作</h3>
+<ul>
+<li>✅ 笔记已存入 bookmarks/notes/，双格式输出</li>
+<li>⏳ jbot 向量模型配置确认待执行</li>
+<li>⏳ rag-index-rebuild 增量模式待开发</li>
+</ul>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li>[[2026-05-26-治好内耗的四句话见招拆招心态教育.md|治好内耗的四句话——"见招拆招"心态教育]]</li>
+<li>[[2026-05-26-AI时代科研人6个不可替代品质.md|AI时代科研人6个不可替代品质]]</li>
+<li>[[2026-05-22-Hermes-Agent四层记忆架构深度分析.md|Hermes Agent 四层记忆架构 — 深度分析与进化笔记]]</li>
+</ul>
+</body>
+</html>
