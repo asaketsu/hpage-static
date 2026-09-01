@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM批处理三策略详解-静态动态连续与ChunkedPrefill</title>
+
+<meta property="og:title" content="LLM批处理三策略详解-静态动态连续与ChunkedPrefill" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="llm-chunked-prefill">LLM批处理三策略详解 — 静态动态连续与Chunked-Prefill</h1>
+<p class="tag-line"><span class="tag">#LLM推理</span> <span class="tag">#批处理</span> <span class="tag">#连续批处理</span> <span class="tag">#ChunkedPrefill</span> <span class="tag">#vLLM</span> <span class="tag">#吞吐量优化</span> <span class="tag">#GPU利用率</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>推文：https://x.com/yibie/status/2094599262474776891（@yibie 中文转译，2026-09-01，1332 浏览）</li>
+<li>原文：《LLM 中的静态、动态与连续批处理，清晰讲透》— Akshay Pachaar（@akshay_pachaar，Daily Dose of Data Science 联合创始人，前 LightningAI AI 工程师）</li>
+<li>原文链接：https://x.com/i/article/2094327005449965568</li>
+<li>阅读时间：2026-09-01 | 全文转译完整（约 3K 字，含 vLLM/SGLang/Triton 配置实例）</li>
+<li>深化关系：[[2026-04-28-LLM推理优化前沿技术2026.md]] 组合拳清单中"连续批处理"一项的专篇展开</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="gpu">第一性原理：GPU 在等内存，不在算数</h3>
+<p>一块 A100：<strong>312 teraFLOPS</strong>（BF16 算力）vs <strong>2 TB/s</strong>（内存带宽）。LLM 解码完全依赖后一个数字。</p>
+<p><strong>生成单个 token = 把模型里每一个权重从内存读一遍</strong>。读取主导时间，计算单元大部分时间在等数据——这份闲置算力是"免费容量"。</p>
+<p>批处理的本质：<strong>权重只加载一次，多条序列推过同一次前向传播，内存成本摊给所有人</strong>。一批 60 条和一批 1 条坐的是同一次权重读取。</p>
+<p><strong>吞吐量曲线的形状</strong>：陡峭上升后变平——<br />
+- 拐点以下：<strong>内存受限</strong>，批处理几乎免费<br />
+- 拐点以上：<strong>算力受限</strong>，每加一条序列都要花真时间<br />
+- 拐点随模型/GPU/序列长度移动，<strong>必须在自己的硬件上实测</strong></p>
+<h3 id="llm">LLM 破坏了传统批处理的三个前提</h3>
+<p>分类器/embedding 模型的批处理是装箱问题（pad 到公共长度→叠张量→一次前向），成立依赖三件事，而自回归 LLM 全破坏：</p>
+<table>
+<thead>
+<tr>
+<th>传统前提</th>
+<th>LLM 现实</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一次前向传播产生完整答案</td>
+<td>一次传播只产 1 个 token，400 token 回复=400 次前向</td>
+</tr>
+<tr>
+<td>行与行互不依赖</td>
+<td>行依赖自己的历史（每步读写 KV cache）</td>
+</tr>
+<tr>
+<td>每行成本开始前已知</td>
+<td>成本到结束才知道（stop token 决定，12 或 4000 token 后）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Padding 救不了</strong>：它拉平输入宽度，拉不平请求占用 GPU 的<strong>时长</strong>。固定批次按最慢成员速度跑——三种策略是对这个问题的三种回答，按"为此做了多少"递增。</p>
+<h3 id="static-batching">策略一：静态批处理（Static Batching）</h3>
+<p><strong>做法</strong>：收集固定数量请求→一起跑→等最后一个结束全部返回。</p>
+<p><strong>最慢成员问题的两笔账</strong>：R3 在 t=9 就停止生成，却坐到 t=15（等 R2）——① 用户答案早好了却多等延迟；② 槽位被占，排队请求进不来。</p>
+<p><strong>量化</strong>：Anyscale 在 40GB A100 + OPT-13B 实测——输出长度分布拉开后，静态批处理掉到 <strong>~81 token/s</strong>，连续批处理<strong>高一个数量级</strong>。</p>
+<p><strong>它仍然正确的场景</strong>：输出长度无差异的负载——分类、embedding、打分（每条输出固定大小：一个标签/一个向量，几乎同时结束，没有人等落后者）。此时静态批处理更简单且零损失。</p>
+<pre><code class="language-python"># vLLM 静态批处理：llm.generate 一次性交整个负载
+from vllm import LLM, SamplingParams
+llm = LLM(model=&quot;meta-llama/Llama-3.1-8B-Instruct&quot;)
+outputs = llm.generate(prompts, SamplingParams(max_tokens=64))
+</code></pre>
+<p>👉 HF pipeline 的 batch_size 参数也是静态批处理——评测脚本可用，线上流量不合适。</p>
+<h3 id="dynamic-batching">策略二：动态批处理（Dynamic Batching）</h3>
+<p><strong>新增的东西：计时器</strong>。批次在"达到大小上限"或"窗口到期"时触发（先到先得）。</p>
+<p>修好了"等凑批"（R1/R2 在窗口到期就开跑，不用等第 3 个），<strong>但没修最慢成员</strong>：R1 在 t=7 结束仍要等到 t=12。</p>
+<p>每批决定一次→控制权交给引擎直到全部结束。对固定输出模型这就是完整答案——<strong>Triton 内置的正是它</strong>：</p>
+<pre><code class="language-json">dynamic_batching {
+  preferred_batch_size: [4, 8]
+  max_queue_delay_microseconds: 100
+}
+</code></pre>
+<ul>
+<li><code>preferred_batch_size</code>：调度器试图凑成的批大小列表</li>
+<li><code>max_queue_delay_microseconds</code>：请求等同伴的最长时间</li>
+</ul>
+<h3 id="continuous-batching">策略三：连续批处理（Continuous Batching）— 现代引擎吞吐量的来源</h3>
+<p><strong>扔掉的假设</strong>："批次是一个工作单元，跑到全部结束"。</p>
+<p><strong>迭代级调度</strong>：调度器跑一次迭代→拿回控制权→再决定一次。序列发出最终 token 的<strong>瞬间</strong>离开批次，等待中的请求下一轮占这个槽位。批次组成每个迭代都在变——没有槽位等最慢序列，输出长度天差地别 GPU 也保持饱和。</p>
+<p><strong>新限制是内存不是算力</strong>：每条活跃序列占一份随 token 增长的 KV cache；40GB A100 驻留 13B 模型时一次只能容纳几条长序列。池子用尽时调度器<strong>逐出（preemption）</strong>一条运行中请求，之后再重算——看起来像没余量，其实只是同一段 prefill 被算两遍。</p>
+<p><strong>各引擎命名对照</strong>：vLLM/SGLang/TGI = continuous batching；TensorRT-LLM = <strong>in-flight batching</strong>；LMDeploy = <strong>persistent batching</strong>。</p>
+<h3 id="chunked-prefill">衍生问题与解法：Chunked Prefill（分块预填充）</h3>
+<p><strong>新问题</strong>：每轮重建批次修好最慢成员，又引入<strong>卡顿</strong>——新请求的一次性 prefill 是一大块吃算力的前向传播（32K prompt = 一整块），所有活跃解码排在后面等，"别人的输出说到一半停住，因为有人贴了一篇长文档"。</p>
+<p><strong>解法</strong>：把 prompt 切成固定大小 token 段（如 2K/块），安排在若干次前向传播中，每次扩展该请求的 KV cache。注意力数学不变（后面的块 attend 前面块处理过的内容），第一个 token 在最后一块处理完后到达。</p>
+<p><strong>深层价值</strong>：<strong>Prefill 是算力受限，解码是内存受限</strong>——一个批次同时含两者，就把芯片的两部分都用上了。</p>
+<p><strong>块大小权衡</strong>（无通用最优）：<br />
+- 更小块 → 调度器更多机会跑解码 → 活跃请求 ITL（token 间延迟）尖峰更低<br />
+- 更大块 → 处理新 prompt 更高效 → TTFT（首 token 延迟）通常更好，但活跃解码可能等更久<br />
+- 块太小 → GPU 利用率降 + 注意力开销增（后面块要重读前面块创建的 KV cache）</p>
+<pre><code class="language-bash"># vLLM V1 默认开启 chunked prefill
+vllm serve meta-llama/Llama-3.1-8B-Instruct --max-num-batched-tokens 8192
+# SGLang
+sglang serve --model-path ... --chunked-prefill-size 8192   # -1 关闭
+</code></pre>
+<h3 id="_3">结论（原文）</h3>
+<p>三种策略的区别<strong>只在于什么时候固定批次</strong>，每种对应一种工作负载形态。对输出长度可变的线上流量，连续批处理是唯一站得住的——且每个主流引擎默认就给你。全文建立在一个 GPU 事实上：<strong>一次前向传播的瓶颈是把权重从内存读出来，不是数学运算</strong>。</p>
+<h2 id="_4">查询拓展</h2>
+<ul>
+<li>PagedAttention 与连续批处理的配合：KV cache 分页如何决定"能塞多少条序列"</li>
+<li>Preemption 重算 vs swap 两种逐出策略的成本对比</li>
+<li>ITL vs TTFT 的 SLO 设计：不同产品形态（聊天/流式/批处理）该优化哪个</li>
+<li>《How a GPU Actually Works》（原文作者的姊妹篇）：内存-算力竞争的硬件根源</li>
+<li>投机解码与批处理的交互：高并发下 draft model 的边际价值</li>
+<li>TensorRT-LLM in-flight batching 的额外原语（如 cancellation、context fault 处理）</li>
+</ul>
+<h2 id="_5">归纳总结</h2>
+<ol>
+<li><strong>一条主线贯穿全文：批次什么时候定下来</strong>。静态=开始前一次；动态=计时器每批一次；连续=每次前向传播都重定。决策频率越高，GPU 饱和度越高，工程复杂度也越高——这是"调度粒度换吞吐量"的连续谱。</li>
+<li><strong>每代策略修上一代的病、留自己的病</strong>：静态批处理病在最慢成员；动态修了凑批等待、仍病在最慢成员；连续修了最慢成员、病在长 prefill 卡顿；chunked prefill 修了卡顿、引入块大小权衡。技术演进链=缺陷传递链。</li>
+<li><strong>内存/算力二相性是理解一切的钥匙</strong>：解码内存受限（权重读取主导）、prefill 算力受限（并行注意力计算）——批处理摊薄内存成本，chunked prefill 让两类负载混跑榨干两部分芯片。</li>
+<li><strong>没有银弹，只有负载匹配</strong>：固定输出（分类/embedding/打分）用静态最简；可变输出线上流量必须连续批处理；块大小取决于模型/GPU/prompt 分布/SLO 指标——"要在自己的硬件上量"出现两次不是偶然。</li>
+<li><strong>量化的表达力</strong>：81 token/s vs 高一个数量级（静态 vs 连续）——同一个 GPU 同一个模型，调度策略差异就是 10 倍吞吐，这是"软件吃掉硬件红利"的典型样本。</li>
+</ol>
+<h2 id="_6">二、趋势判断</h2>
+<ol>
+<li><strong>连续批处理已成事实标准并默认化</strong>：vLLM V1 默认开 chunked prefill、各引擎默认 continuous batching——"要不要用"的讨论结束了，剩"怎么调参"（块大小/最大 token 数/逐出策略）。</li>
+<li><strong>推理引擎竞争焦点从吞吐量转向延迟分布</strong>：吞吐量优化接近物理上限（权重读取摊无可摊），TTFT/ITL 尖峰等尾延迟指标成为差异化战场——chunked prefill 的块大小权衡正是这个转向的缩影。</li>
+<li><strong>调度粒度继续细化</strong>：从批级→迭代级的路径会继续走到 token 级（与投机解码/多 token 预测汇合），调度器越来越像操作系统的进程调度器。</li>
+<li><strong>"在自家硬件上实测拐点"会是推理部署的必修课</strong>：模型/GPU/序列长度的组合空间爆炸，任何通用建议都只是起点——这与 GPU capacity estimation 技能的方法论一致。</li>
+</ol>
+<h2 id="_7">三、关联分析（对我有什么提升 + 如何实施）</h2>
+<blockquote>
+<p>关联对象：Jetson 本机推理（nexa-local-inference）、edge-llm-quantization、GPU 云（modal/4090 租用）、DUCK 重训（AutoDL 4090）</p>
+
+<p class="meta-date">生成日期 2026-09-01</p></blockquote>
+<ol>
+<li><strong>给 Jetson 本机推理的定位判断</strong>：Orin 的内存带宽（~200 GB/s 级）远低于 A100 的 2TB/s——内存受限更极端，批处理"免费容量"逻辑更成立。但 nexa/Ollama 本机是单用户低并发场景，连续批处理收益有限——<strong>本机该关心的是量化（减权重读取量）而非批处理（摊权重读取）</strong>，这确认了 edge-llm-quantization 的优先级排序。</li>
+<li><strong>给 DUCK 重训的推理侧预热</strong>：重训完成后 AutoDL 4090 上若要部署 policy 推理服务或 VLM 服务，本文的三策略选择表直接适用：线上流量开引擎默认连续批处理即可，无需手调；batch 评测脚本用 llm.generate 静态批处理最简。</li>
+<li><strong>与 04-28 推理优化笔记的升级关系</strong>：那篇把 chunked prefill 列为组合拳一项（长提示优化），本文补上了它的完整因果链（修谁的病/块大小三权衡/两相性价值）——组合拳清单升级为机理图谱。<strong>实施</strong>：在那篇笔记的相关链接区补本篇引用（已做反向链接）。</li>
+<li><strong>与 SKILL.state/GrokBot 笔记的方法论共振</strong>：三篇共同指向"决策粒度与信息保留"的权衡——批处理是"什么时候定批次"，SKILL.state 是"什么时候丢历史"，GrokBot 压缩是"什么时候摘要"——调度/记忆/压缩本质同构：<strong>都是在资源约束下选择信息处理的时机</strong>。</li>
+<li><strong>对量化体系的借喻（克制版）</strong>："拐点以下免费、拐点以上花钱"的分界思维与仓位管理的"盈亏比阈值"同构——拐点位置必须实测，正如阈值必须回测。仅作思维框架。</li>
+</ol>
+<h2 id="_8">指南分析</h2>
+<p><strong>策略选择速查表</strong>（从原文提炼）：</p>
+<table>
+<thead>
+<tr>
+<th>你的负载</th>
+<th>该用策略</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分类/embedding/打分（固定输出）</td>
+<td>静态批处理</td>
+<td>同时结束无短板，最简单零损失</td>
+</tr>
+<tr>
+<td>评测脚本/离线批量</td>
+<td>静态（llm.generate + 限 max_tokens）</td>
+<td>一次性提交最省事</td>
+</tr>
+<tr>
+<td>线上聊天/流式（可变输出）</td>
+<td>连续批处理（引擎默认）</td>
+<td>唯一站得住，无需手配</td>
+</tr>
+<tr>
+<td>长 prompt 混合短对话流量</td>
+<td>连续 + chunked prefill</td>
+<td>防 32K prompt 卡住所有人</td>
+</tr>
+<tr>
+<td>内存池吃紧（长序列多）</td>
+<td>关注 preemption 行为</td>
+<td>同段 prefill 算两遍是代价</td>
+</tr>
+</tbody>
+</table>
+<p><strong>调参要点</strong>：块小→ITL 平滑；块大→TTFT 好；块过小→利用率降+KV 重读开销。三个变量（模型/GPU/SLO 指标）定块大小，无通用值。</p>
+<h2 id="_9">拓展应用推荐</h2>
+<ul>
+<li><strong>给 edge-llm-quantization</strong>：补"本机单用户场景量化&gt;批处理"的优先级判断（关联分析 #1）</li>
+<li><strong>给 gpu-capacity-estimation</strong>：吞吐量拐点"必须实测"原则与容量规划方法互证</li>
+<li><strong>给 DUCK-Pi_5</strong>：重训后 4090 部署 VLM/policy 服务的批处理策略速查</li>
+<li><strong>延伸阅读</strong>：04-28 组合拳笔记（全景）、《How a GPU Actually Works》（硬件根源前传）</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-04-28-LLM推理优化前沿技术2026.md]]（组合拳全景，本篇为其"连续批处理"项的机理展开）<br />
+→ 相关：[[2026-05-21-MLA多头潜在注意力-DeepSeek-KV缓存压缩与推理优化.md]]（KV cache 内存限制的压缩解法）<br />
+→ 相关：[[2026-05-22-Multi-Stream-LLMs-并行流解锁语言模型.md]]（并行生成的另一维度）<br />
+→ 相关：[[2026-09-01-SKILL.state长程Agent状态架构-16倍Token削减与准确率反升.md]]（"决策时机"同构方法论）</p>
+</body>
+</html>
