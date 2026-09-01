@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化交易进阶-RAmmStein-增量-OLS估计与懒惰边界实证</title>
+
+<meta property="og:title" content="量化交易进阶-RAmmStein-增量-OLS估计与懒惰边界实证" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | finance" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/finance.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Noto Sans SC', sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1a2e1a;
+  background: #f4f7f4;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #14532d;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f7f0;
+  color: #166534;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #16653430;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1a2e1a88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #14532d;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e8d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #14532dcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #14532daa;
+}
+
+a {
+  color: #15803d;
+  text-decoration: none;
+  border-bottom: 1px solid #15803d30;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #15803d;
+}
+
+code {
+  background: #f0f7f0;
+  color: #166534;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1a2e1a;
+  color: #d4edda;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #166534;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1a2e1acc;
+  background: #e8f5e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1a2e1a88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #166534;
+  background: #16653418;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #166534;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1a2e1a88;
+  text-decoration-color: #166534aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #166534;
+  background: #16653418;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e8d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e8d4;
+  display: table-cell;
+}
+th {
+  background: #e8f5e8;
+  font-weight: 600;
+  color: #166534;
+  border-bottom: 2px solid #166534;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f5e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e8d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #14532d; }
+
+
+        h1::before { content: '📈 '; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rammstein-ou-ols">RAmmStein 增量追踪：OU θ 的 OLS 滚动估计与懒惰边界的实证数据</h1>
+<blockquote>
+<p>探索日期：2026-09-01 | 兴趣等级：L4 | 来源数量：5 | 类型：增量更新（76 天后）<br />
+前序笔记：<a href="./2026-06-17-量化交易进阶-RAmmStein-制度.md">RAmmStein：制度感知懒惰（2026-06-17）</a></p>
+
+<p class="meta-date">生成日期 2026-09-01</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>本次为 76 天后的增量追踪。RAmmStein（arXiv:2602.19419）核心框架未变，但本次精读论文全文后获得三个前序笔记未覆盖的关键增量：(1) <strong>OU θ 参数的滚动 OLS 估计法</strong>——比 MLE 轻量一个数量级的工程实现；(2) <strong>数据集 θ 分布的实证统计</strong>——强均值回归仅占 8.7%，中位半衰期约 2 分钟；(3) <strong>作者页面更新的实验数据</strong>——net ROI 从 0.72% 上修至 1.60%，降频从 67% 提升至 85%，疑似修订版结果。另补充脉冲控制 QVI 理论与 Stein 悖论的联系。</p>
+<hr />
+<h2 id="_2">关键发现（增量）</h2>
+<p><strong>1. θ 的滚动 OLS 估计 — 工程实现比 MLE 轻量得多</strong></p>
+<p>前序笔记只记录了 MLE 估计路径（scipy minimize 迭代优化）。论文实际采用的是<strong>滚动窗口 OLS 回归</strong>，在 1800 秒窗口上回归 <code>S_{t+1} - S_t</code> 对 <code>S_t</code>，直接从回归系数提取 OU 参数：</p>
+<pre><code>ΔS_t = α + β·S_t + ε        （一阶差分自回归）
+
+θ̂ = (1 - β̂) / Δt            （均值回归速度）
+μ̂ = α̂ / (1 - β̂)             （长期均值）
+半衰期 = ln(2) / θ̂
+</code></pre>
+<ul>
+<li>优势：OLS 是闭式解，无需迭代优化，单次估计开销 O(n)，可直接嵌入 1Hz 实时流水线逐秒更新</li>
+<li>对比：MLE（quant-ou-estimator skill 现有方案）需 L-BFGS-B 迭代，初值敏感（ADF 提供初值），批量离线场景更稳但实时性差</li>
+<li><strong>量化数据实证</strong>：中位 θ = 0.0056 → 半衰期约 2 分钟；θ &gt; 0.01 的强均值回归观测仅占 <strong>8.7%</strong>——绝大多数时间市场处于弱回归/趋势态，这正是"懒惰等待"只在少数时刻正确的统计基础</li>
+</ul>
+<p><strong>2. 作者页面数据更新 — 疑似修订版结果</strong></p>
+<ul>
+<li>前序笔记（基于 arXiv v1 摘要）：net ROI 0.72%，降频 67%，活跃时间 88%，盈亏平衡 gas 容忍度 $35 vs $9</li>
+<li>作者 Pranay Anchuri 个人页面（2026-09 查证）：<strong>net ROI 1.60%，降频 85%</strong></li>
+<li>判断：数字显著上修且方向一致（更懒、更赚），大概率是回测配置修订或基线口径调整后的更新，需关注 arXiv v2 动态</li>
+</ul>
+<p><strong>3. 脉冲控制 QVI 理论骨架与 Stein 悖论的联系</strong></p>
+<pre><code>max{ L·V(x) + f(x),  M·V(x) - V(x) } = 0     （HJB 准变分不等式）
+
+L：扩散无穷小生成元（漂移+波动结构）
+f：连续区瞬时收益（LP 费率 accrual）
+M：干预算子（跳跃后价值 - 干预成本）
+
+连续区（等待）：L·V + f = 0
+跳跃区（再平衡）：M·V - V = 0
+两区边界 = 智能体学到的&quot;懒惰边界&quot;
+</code></pre>
+<ul>
+<li><strong>Stein 悖论连接</strong>（前序笔记未覆盖）：Stein 收缩估计证明了"隐含均值回归假设的收缩估计量可以显著优于 MLE"——论文将 θ 命名为 Stein Signal 正是致敬这一联系：把均值回归速度作为先验注入决策，等价于对状态估计做收缩</li>
+<li>Bensoussan &amp; Lions 框架：最优脉冲策略天然具有<strong>阈值结构</strong>——状态空间划分为连续区与跳跃区，边界由运行收益、干预成本、随机动力学共同决定。这解释了为什么二值动作空间（等待/再平衡）的 DDQN 能学到接近理论最优的边界</li>
+</ul>
+<p><strong>4. 完整实验与训练配置（前序笔记缺失的工程细节）</strong></p>
+<ul>
+<li>环境：Uniswap V3 风格，区间宽度 20 bps，费率档 0.05%，gas $2/次，初始资金 $10K，池 TVL $500K，DEX/CEX 成交量比 α=10%</li>
+<li>数据：ETH-USD Coinbase WebSocket，2026-01-20 至 02-03（两周，6.8M 笔），聚合成 1Hz OHLCV；价格区间 $2,108–$3,067，净跌 26.2%；70/15/15 训练/验证/测试切分防前视</li>
+<li>DDQN：8 维状态输入，128/64 隐层，lr=1e-4，γ=0.99，replay 100K，batch 128，300 episodes × 36K steps（每 episode 10 小时）</li>
+<li>奖励设计：<code>r = (ΔFees - ΔGas)/K · λ + ε·1_in</code>——Active Bonus 项 ε·1_in 是归纳偏置，鼓励智能体保持在场内</li>
+<li>基线命名彩蛋：Arthurian 传说人物——Merlin（全知被动上界）、Bedivere（固定不动）、Lancelot（贪心再平衡）</li>
+</ul>
+<p><strong>5. 均值回归的微观结构来源（理论支撑）</strong></p>
+<p>高频价格均值回归并非假设而是微观结构必然：做市商库存管理（单边库存→报价偏移→价格回拉）、跨场所套利（价差→套利交易→回归共识价）、订单簿恢复力（大单消耗→限价单回补→反向压力）。这三机制保证 1Hz 尺度上 OU 假设有物理基础。</p>
+<hr />
+<h2 id="_3">对工作的价值（增量）</h2>
+<ul>
+<li><strong>θ 估计方案升级</strong>：quant-ou-estimator skill 应补充 OLS 滚动估计作为实时路径（MLE 保留为离线路径）。OLS 闭式解可嵌入 A 股分钟级监控流水线而无优化器开销</li>
+<li><strong>制度分布统计可迁移</strong>：强回归仅占 8.7% 的发现提示——A 股滚动 θ 监控中，"等待"信号天然稀缺，策略应默认偏保守（少动），只在 θ 显著抬升时才激活均值回归仓位</li>
+<li><strong>奖励设计的归纳偏置技巧</strong>：Active Bonus 项把业务偏好（保持在场）编码进奖励而非约束，可借鉴到自有 RL 策略的仓位管理</li>
+<li><strong>Half-life 快速心算</strong>：t½ = ln(2)/θ ≈ 0.693/θ。θ=0.01/s → 69 秒；θ=0.0056/s → ~124 秒。监控面板可直接展示半衰期替代 θ 原始值，可解释性更强</li>
+</ul>
+<h2 id="_4">行动建议（增量）</h2>
+<ol>
+<li><strong>P0</strong>：patch quant-ou-estimator skill，新增"滚动 OLS 估计"章节（公式 + numpy 两行实现 + 与 MLE 的选型对比：实时→OLS，离线拟合→MLE）</li>
+<li>在 A 股分钟数据上复现 θ 分布统计（rolling 30bar OLS），验证"强回归占比 &lt;10%"是否在 A 股同样成立，作为制度切换阈值的设计依据</li>
+<li>跟踪 arXiv 2602.19419 v2（作者页面数据已更新，论文正文可能滞后）</li>
+<li>评估论文未来工作三项的适配性：gas 预测入状态（A 股对应：交易成本/滑点预测入特征）、MEV 防护（不适用）、连续动作空间控制再平衡宽度（适用于仓位比例调节）</li>
+</ol>
+<h2 id="_5">关键风险与盲点</h2>
+<ul>
+<li>作者页面 1.60%/85% 与论文正文 0.72%/67% 并存（官方页面 vs 论文 v1，存在版本不确定性，以论文正文为准直到 v2 发布）</li>
+<li>回测用 CEX 价格 + α=10% 线性缩放模拟 DEX 成交量，真实 DEX 流动性与价格影响被简化（论文自认）</li>
+<li>单一两周窗口、单一币对（ETH-USD）、含 26.2% 大跌行情，regime 覆盖面有限（社区复现级别，未见第三方验证）</li>
+</ul>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="./2026-06-17-量化交易进阶-RAmmStein-制度.md">RAmmStein：制度感知懒惰（2026-06-17 首版）</a></li>
+<li><a href="./2026-08-22-技术指标复合策略-权重评分制与市场状态门控.md">技术指标复合策略（2026-08-22）</a> — 制度门控的指标层实现</li>
+<li><a href="./2026-08-22-KVarN-KV缓存量化-Sinkhorn方差归一化.md">KVarN KV 量化（2026-08-22）</a> — 无关领域，跳过</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ul>
+<li>论文全文：https://arxiv.org/html/2602.19419v1（本次精读 Sections II–VI）</li>
+<li>作者页面（更新数据）：https://pranayanchuri-site.pages.dev/publications/rammstein-amm-2026</li>
+<li>alphaxiv 镜像：https://www.alphaxiv.org/abs/2602.19419</li>
+<li>OU 交易实务（FX 半衰期/regime 警示）：https://emergingmarketquests.substack.com/p/trading-mean-reversion-with-ornsteinuhlenbeck</li>
+<li>Regime-Aware LightGBM（HMM 三制度 + SHAP）：https://www.mdpi.com/2079-9292/15/6/1334</li>
+</ul>
+</body>
+</html>

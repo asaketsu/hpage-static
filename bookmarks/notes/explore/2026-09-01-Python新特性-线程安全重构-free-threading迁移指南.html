@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python新特性-线程安全重构-free-threading迁移指南</title>
+
+<meta property="og:title" content="Python新特性-线程安全重构-free-threading迁移指南" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="python-free-threading">Python 线程安全重构：free-threading 时代的迁移指南</h1>
+<blockquote>
+<p>探索日期：2026-09-01 | 兴趣等级：L3 | 来源数量：6 | 类型：首版<br />
+领域：Python 新特性 / 并发编程 / 工程迁移</p>
+
+<p class="meta-date">生成日期 2026-09-01</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>Python 3.14（2025-10 发布）通过 PEP 779 将 free-threaded 构建（无 GIL）从实验态升级为<strong>官方支持</strong>，PEP 703 的三阶段路线图已走到 Phase II。"GIL 保证线程安全"这一三十年隐式契约正式失效——所有依赖 GIL 做隐式同步的代码模式都成为技术债。本次研究以 SGLang #22889 工程审计为案例，提炼 free-threading 迁移的完整方法论。</p>
+<hr />
+<h2 id="_2">关键发现</h2>
+<p><strong>1. 官方路线图与现状（2026-09 时点）</strong></p>
+<ul>
+<li>Phase I：3.13（2024-10）实验构建，<code>--disable-gil</code> 编译</li>
+<li>Phase II：3.14（2025-10）<strong>官方支持</strong>，仍需单独的 <code>cp314t</code> wheel（ABI 不兼容，t 后缀）</li>
+<li>Phase III：预计 2027-2028，GIL-off 成为默认（运行时 flag 可开回）</li>
+<li>Phase IV：预计 2029-2030，GIL 彻底移除</li>
+<li>性能账单：单线程开销 5-10%，多线程 CPU 密集 ~4x 加速，内存 +15-20%</li>
+<li>3.14t 显著更稳的关键依赖就位：PyTorch 2.10（2026-01）全量 cp314t wheels，numpy/scipy/aiohttp/pydantic/orjson 已支持</li>
+</ul>
+<p><strong>2. 内置类型线程安全语义的微妙变化</strong></p>
+<pre><code>GIL 时代：dict/list/set 的并发修改行为&quot;未定义但实践中被 GIL 串行化&quot;
+free-threading 时代：内置类型用内部锁保护，行为&quot;接近 GIL 时代&quot;
+
+⚠️ 官方立场（docs.python.org/3/howto/free-threading-python.html）：
+   这是&quot;当前实现的描述&quot;而非&quot;语言保证&quot;。
+   复合操作（check-then-act、读-改-写）依然不安全，
+   即使单操作本身不再崩。
+</code></pre>
+<ul>
+<li>对象头变大（None 32B vs 16B），全量驻留字符串 immortal 化</li>
+<li>行为变化：context variables、warning filters 语义调整；iterator 并发使用明确不安全</li>
+</ul>
+<p><strong>3. SGLang 工程审计的 GIL 依赖模式分类（最有价值的实战参考）</strong></p>
+<p>高风险模式（必须重构）：<br />
+- <strong>显式 GIL 排序假设</strong>：代码注释写着 "CPython GIL guarantees ordering" 的标志位跨线程可见性 → 换 <code>threading.Event</code> 或 atomics<br />
+- <strong>跨线程共享可变容器</strong>：weight iterator 在多线程间裸共享 → 加 <code>threading.Lock</code> 或改 <code>queue.Queue</code></p>
+<p>中风险模式：<br />
+- <strong>模块级可变注册表</strong>（model registry/format registry）：并发 import 或首次访问初始化竞态 → lazy init 加锁<br />
+- <strong><code>concurrent.futures</code> + 共享闭包</strong>：闭包捕获的变量被多 worker 读写 → 审计捕获链</p>
+<p>低风险模式：<br />
+- C++ 扩展里的 <code>py::gil_scoped_release</code>：free-threading 下变为 no-op，但裸露的数据结构必须自行线程安全<br />
+- 纯 asyncio 单事件循环代码：设计上单线程，天然安全</p>
+<p><strong>4. C/Rust 扩展生态的分野</strong></p>
+<ul>
+<li>ABI 断裂是硬约束：free-threaded 构建对象头不同（biased refcounting），必须重编译，wheel 带 <code>cp314t</code> 标签</li>
+<li>检测宏：C 扩展编译时 <code>Py_GIL_DISABLED</code> 置位，代码需条件分支</li>
+<li>PyO3（Rust）：0.23+ 支持 free-threading，可用 <code>#[pyo3(gil_used = false)]</code> 显式声明——Rust 的 Send/Sync trait 使"构造即线程安全"成为可能</li>
+<li>flashinfer 的修复案例值得借鉴：问题不是不兼容，而是"stable ABI + limited API"组合与 free-threading 冲突，去掉 limited API 即解决</li>
+<li>vLLM 已先行验证（#28762）：大型 CUDA serving 框架可在 free-threaded 解释器下运行</li>
+</ul>
+<p><strong>5. 重构方法论：五步审计法</strong></p>
+<pre><code>Step 1: grep 注释与文档中的 &quot;GIL&quot; 关键字 — 显式假设优先清理
+Step 2: 扫描 threading.Thread / ThreadPoolExecutor / daemon thread
+        的共享对象捕获链
+Step 3: 模块级可变全局（registry/cache/config）逐一加锁或
+        改 functools.lru_cache（线程安全）
+Step 4: C 扩展 audit：Py_GIL_DISABLED 条件编译 + 重出 cp314t wheel
+Step 5: CI 加 3.14t 矩阵（先 with-GIL 3.14，再 free-threaded）
+</code></pre>
+<hr />
+<h2 id="_3">对工作的价值</h2>
+<ul>
+<li><strong>Hermes/Jetson 生态影响</strong>：本地 nexa/llama.cpp/Ollama 栈短期内不受影响（C++ 生态主导），但 2027 Phase III 默认化后所有 Python 项目需过审计关。提前建立审计清单 = 提前 18 个月消化技术债</li>
+<li><strong>量化流水线收益场景</strong>：A股盯盘的多标的并行指标计算（CPU 密集 + pure Python）是 free-threading 的理想受益者，~4x 加速无需 multiprocessing 的序列化开销</li>
+<li><strong>SGLang 审计模板可直接复用</strong>：风险分级表（High/Medium/Low + 模式 + 位置 + 缓解措施）可作为任何 Python 项目的 GIL 依赖审计起点</li>
+<li><strong>PyCon 2026 议题信号</strong>：free-threading + mypyc 组合号称理想情况 10×10=100× 加速空间，AOT 编译 + 无 GIL 并行是 Python 性能工程的下一波</li>
+</ul>
+<h2 id="_4">行动建议</h2>
+<ol>
+<li>在 quant 监控流水线选一个 CPU 密集纯 Python 模块（如批量指标计算），用 <code>uv python install 3.14t</code> 做加速 A/B 验证（预期 2-4x，受内存 +20% 约束）</li>
+<li>将 SGLang 五类风险模式（GIL 排序假设/共享容器/注册表竞态/闭包捕获/asyncio 回调）写进代码 review checklist</li>
+<li>关注 PyTorch 2.10 cp314t wheels 落地后 Jetson ARM64 生态的跟进节奏（aarch64 wheel 构建通常滞后 x86_64 1-2 个季度）</li>
+<li>新项目依赖选型时检查 https://pydevtools.com/py314/ 兼容面板，避开无 cp314t 路径的关键依赖（如当前 ray 完全不支持 3.14）</li>
+</ol>
+<h2 id="_5">关键风险与盲点</h2>
+<ul>
+<li>Phase III/IV 时间表（2027/2030）是社区预估而非官方承诺，依赖生态长尾（C 扩展）可能拖慢默认化（官方文档验证）</li>
+<li>单线程 5-10% 开销 + 内存 +15-20% 对 Jetson 边缘设备是显著成本，不是免费午餐（官方基准）</li>
+<li>"内置类型有内部锁"不等于业务复合操作安全——check-then-act 竞态依然存在，这是迁移中最易被低估的坑（官方文档明确警告）</li>
+<li>SGLang issue 状态 inactive，计划是 RFC 性质，其 Phase 0-6 尚未全部执行（社区单点信息，非官方）</li>
+</ul>
+<h2 id="_6">相关笔记</h2>
+<ul>
+<li><a href="./2026-09-01-trl-verl-post-training-frameworks-2026.md">trl-verl-post-training-frameworks-2026（2026-09-01）</a> — 同为 Python ML 生态工程化</li>
+<li><a href="../2026-07-19-LLM推理引擎对决-SGLang-vLLM-吞吐实测.md">SGLang vs vLLM 选型（2026-07-19）</a> — SGLang 依赖栈的选型背景</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ul>
+<li>Python 官方 howto：https://docs.python.org/3/howto/free-threading-python.html</li>
+<li>SGLang free-threading RFC（审计案例）：https://github.com/sgl-project/sglang/issues/22889</li>
+<li>PEP 779 讨论帖：https://discuss.python.org/t/pep-779-criteria-for-supported-status-for-free-threaded-python/84319</li>
+<li>PEP 703 解读（pydevtools）：https://pydevtools.com/handbook/explanation/what-is-pep-703</li>
+<li>Quansight 首年总结：https://labs.quansight.org/blog/free-threaded-one-year-recap</li>
+<li>PyCon 2026 free-threading + mypyc：https://us.pycon.org/2026/schedule/presentation/72</li>
+<li>PyO3 free-threading 指南：https://pyo3.rs/main/free-threading</li>
+</ul>
+</body>
+</html>
