@@ -1,0 +1,272 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VLM 架构五纪元演进</title><style>
+body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; line-height: 1.7; color: #333; }
+h1 { border-bottom: 2px solid #eaecef; padding-bottom: 8px; }
+h2 { border-bottom: 1px solid #eee; padding-bottom: 4px; margin-top: 32px; }
+h3 { color: #555; }
+blockquote { border-left: 4px solid #ddd; padding: 8px 16px; margin: 16px 0; background: #f9f9f9; }
+table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
+th { background: #f6f8fa; }
+code { background: #f6f8fa; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+pre { background: #f6f8fa; padding: 16px; border-radius: 6px; overflow-x: auto; }
+hr { border: none; border-top: 1px solid #eee; margin: 32px 0; }
+</style></head><body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE--><h1 id="vlm-clip-2026">VLM 架构五纪元演进：从 CLIP 到世界-动作模型（2026 前沿综述）</h1>
+<blockquote>
+<p>探索日期 2026-09-02 | 兴趣等级 L2 | 来源 4 篇 | 类型 auto-explore（嗅探队列）
+前序笔记：<a href="2026-08-29-多模态-AI-Visual-Perceiver.md">Visual Perceiver</a>（架构机制层）、<a href="2026-08-25-多模态-AI-Molmo指向能力.md">Molmo 指向能力</a>（空间感知层）
+本次互补角度：<strong>宏观架构演进谱系 + 2026 前沿格局 + 后训练对齐方法</strong>——前序聚焦单一架构（Perceiver）和单一能力（指向），本次覆盖 VLM 整体演化路径和产业级趋势。</p>
+</blockquote>
+<hr />
+<h2 id="_1">摘要</h2>
+<p>arXiv 综述（2501.02189v7）将 VLM 演进划分为五个纪元：Era 1 对比式双塔（CLIP/BLIP）→ Era 2 投影器式 LLM 骨干（LLaVA/Qwen2-VL）→ Era 3a 原生多模态输入（Gemini 3.6/Claude Opus 4.6/Qwen3.8-Max）→ Era 3b 统一多模态输入输出（Emu3/Janus-Pro）→ Era 4 世界-动作模型（Cosmos 3/Kairos）。2026 年前沿从"给 LLM 接视觉编码器"彻底转向"预训练单一多模态主干"，GRPO 系后训练成为多模态推理对齐的事实标准，但 modality gap（模态鸿沟）经 CrossMath 和 BabyVision 实测<strong>不随规模收敛</strong>。</p>
+<hr />
+<h2 id="1">一、五纪元架构演进（关键发现 1）</h2>
+<pre><code>Era 1: 对比式双塔        Era 2: 投影器式骨干     Era 3a: 原生多模态输入
+ CLIP / BLIP              LLaVA / Qwen2-VL        Gemini 3.6 / Claude 4.6
+ ┌─────┐  ┌─────┐        ┌─────┐  ┌──────┐      ┌──────────────┐
+ │ IMG │──│ TXT │        │ ViT │→│ Proj │→LLM   │  单一多模态   │
+ │ Enc │  │ Enc │        └─────┘ └──────┘      │   Trunk      │
+ └──┬──┘  └──┬──┘           ↑                    │ (img+txt+vid)│
+    └──对比──┘           视觉为辅，文本为核心     └──────────────┘
+                                            ↑
+               Era 3b: 统一输入输出          │  Era 4: 世界-动作模型
+               Emu3 / Janus-Pro             │  Cosmos 3 / Kairos
+               ┌──────────────┐            │  ┌──────────────┐
+               │ 理解+生成共享 │            └──│ 感知+生成+决策 │
+               │  同一 Trunk   │               │  闭环预测动作  │
+               └──────────────┘               └──────────────┘
+</code></pre>
+<p>五个纪元的核心变化不是"新组件"的发明，而是<strong>融合位置和输出范围的变化</strong>：</p>
+<ul>
+<li><strong>融合位置上移</strong>：从外部投影器对齐（Era 2）→ 预训练阶段共享 token 空间（Era 3a）</li>
+<li><strong>输出范围扩展</strong>：从纯文本输出（Era 2/3a）→ 多模态生成（Era 3b）→ 动作预测（Era 4）</li>
+<li><strong>模态角色转变</strong>：视觉从"辅助通道"变为"与文本平权的表示空间"</li>
+</ul>
+<hr />
+<h2 id="2026-2">二、2026 前沿家族格局（关键发现 2）</h2>
+<p>当前前沿已从"独立单点发布"变为"少数实验室的多模态家族快速迭代"：</p>
+<ul>
+<li><strong>闭源前沿</strong>：GPT-5.6 Sol（OpenAI）、Gemini 3.6 Flash（Google，1M 上下文）、Claude Opus 4.6（Anthropic）、Grok 4.5（xAI，~1.5T 参数 500K 上下文）</li>
+<li><strong>开源前沿</strong>：Qwen3.8-Max（2.4T/95B active）、Qwen3.6-27B（27B dense，1M 上下文，SWE-bench 77.2 超越 397B 前代）、Kimi K3（2.8T/104B active，1M 上下文）、MiniMax M3（428B/23B active）</li>
+<li><strong>特殊定位</strong>：GLM-5V-Turbo（智谱，vision-to-code 专用，CogViT + MTP 多 token 预测，200K 上下文）、Claude Mythos（Anthropic 首次以安全为由 gated preview，仅 ~50 合作方可用）</li>
+</ul>
+<blockquote>
+<p>Qwen3.6-27B 的关键突破：27B dense 模型在 SWE-bench Verified 上超越 397B-A17B MoE 前代，引入"preserved thinking"标志跨多轮 agent 任务保持推理上下文。<strong>密度 &gt; 稀疏的实证信号</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="grpo-3">三、GRPO 系后训练对齐（关键发现 3）</h2>
+<p>2025-2026 多模态后训练的收敛趋势：<strong>GRPO + 精细信用分配 + 回放卫生</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>年份</th>
+<th>信号类型</th>
+<th>核心创新</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MM-RLHF</td>
+<td>2025</td>
+<td>DPO</td>
+<td>120k 偏好对 + Critique-Based Reward Model</td>
+</tr>
+<tr>
+<td>MM-Eureka</td>
+<td>2025</td>
+<td>RLOO</td>
+<td>规则 RL 诱导更长更强多模态推理链</td>
+</tr>
+<tr>
+<td>Vision-R1</td>
+<td>2025</td>
+<td>GRPO</td>
+<td>DeepSeek-R1 式推理激励迁移到 VLM</td>
+</tr>
+<tr>
+<td>R1-VL</td>
+<td>2025</td>
+<td>逐步 GRPO</td>
+<td>强化中间推理步而非仅最终答案</td>
+</tr>
+<tr>
+<td>S-GRPO</td>
+<td>2026</td>
+<td>监督 GRPO</td>
+<td>冷启动：真实轨迹 + GRPO 稳定弱初始策略</td>
+</tr>
+<tr>
+<td>Faithful GRPO</td>
+<td>2026</td>
+<td>约束 GRPO</td>
+<td>显式一致性约束减少视觉-空间捷径推理</td>
+</tr>
+<tr>
+<td>ZPPO</td>
+<td>2026</td>
+<td>Prompt-zone 策略优化</td>
+<td>用 prompt 级教师指导替代梯度蒸馏</td>
+</tr>
+<tr>
+<td>AlphaGRPO</td>
+<td>2026</td>
+<td>GRPO + 分解奖励</td>
+<td>从理解扩展到生成和编辑</td>
+</tr>
+</tbody>
+</table>
+<p>VLM 对齐比 LLM 多两重负担：(1) 模型必须在仅部分语言化的证据上推理；(2) 奖励信号须区分真实视觉 grounding 与似是而非的语言先验答案。</p>
+<hr />
+<h2 id="modality-gap-4">四、Modality Gap 不随规模收敛（关键发现 4）</h2>
+<p>CrossMath 基准（2026-04）在相同数学题上隔离纯文本、纯图像、图文三种输入，测得前沿 VLM 仍严重依赖文本先验。BabyVision（2026-04）用幼儿级感知任务测试，SoTA VLM 在幼儿能完成的任务上失败。</p>
+<blockquote>
+<p>产业调查信号：68% 从业者认为 VLM 增长将因训练数据耗尽而停滞——与 LLM 面临的数据墙同步。57% 预期每年用更少标注数据达到同等性能，效率提升快于数据量需求。</p>
+</blockquote>
+<hr />
+<h2 id="_2">五、评测范式迁移</h2>
+<table>
+<thead>
+<tr>
+<th>旧范式</th>
+<th>新范式</th>
+<th>代表基准</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>短式 VQA</td>
+<td>长视频推理</td>
+<td>Video-MME-v2（3300+ 小时标注）</td>
+</tr>
+<tr>
+<td>访问计数</td>
+<td>对抗鲁棒性</td>
+<td>WebForge（自动构建环境+弹窗噪声）、GameWorld</td>
+</tr>
+<tr>
+<td>正确性评分</td>
+<td>校准敏感</td>
+<td>ExtractBench（schema 驱动结构化抽取）、OSReward（长程 GUI agent 自评）</td>
+</tr>
+<tr>
+<td>文本 QA</td>
+<td>模态隔离诊断</td>
+<td>CrossMath（视觉 vs 文本贡献隔离）、BabyVision（幼儿级感知）</td>
+</tr>
+</tbody>
+</table>
+<p>WebVoyager 已"饱和"于 97-98%，评测焦点从"能不能做"转向"能不能稳定"。</p>
+<hr />
+<h2 id="skill">六、对现有 Skill/笔记的改进建议</h2>
+<ul>
+<li><strong>[P1] patch <code>llm-inference-optimization</code> skill</strong>：补充 VLM 效率优化新趋势——QUOTA（联合 token 剪枝 + W4A4 量化校准，破除朴素叠加脆性）和 Fast-dVLM（AR VLM → block-diffusion VLM，6×+ 解码加速）。两者证明"视觉 token 效率已是精度×剪枝×解码范式的多轴问题"。</li>
+<li><strong>[P2] 补充 <code>embedded-firmware-dev</code> / <code>embodied-ai-control</code> skill</strong>：Era 4 世界-动作模型（Cosmos 3/Kairos）对具身 AI 控制架构有直接影响——感知+生成+决策单循环模型可能替代当前 VLM+策略分离架构。</li>
+<li><strong>[P2] 更新 <code>vision-image-recognition</code> skill</strong>：当前依赖 vision_analyze 单模型调用，可补充 modality gap 诊断意识——当 vision 报错或结果差时，考虑文本先验干扰而非仅模型不可用。</li>
+</ul>
+<hr />
+<h2 id="_3">七、关键风险与盲点</h2>
+<ul>
+<li><strong>数据墙逼近（来源：Voxel51 产业调查，社区级）</strong>：68% 从业者预期 VLM 增长因数据耗尽停滞，但 57% 同时预期效率提升快于数据需求下降——两信号矛盾，需持续观察哪个先到。</li>
+<li><strong>Claude Mythos gated release（来源：whatllm.org，单一来源）</strong>：首次前沿实验室以安全为由限制旗舰模型公开发布，仅 ~50 合作方可用。这是行业级信号但来源单一，需官方确认。</li>
+<li><strong>GRPO 收敛风险（来源：arXiv 综述，学术级）</strong>：八种 GRPO 变体同时涌现说明最佳实践尚未稳定，过度拟合某一变体可能在 3-6 个月后过时。</li>
+</ul>
+<hr />
+<h2 id="_4">八、一页速查</h2>
+<blockquote>
+<p><strong>VLM 五纪元</strong>：对比双塔(CLIP) → 投影器骨干(LLaVA) → 原生多模态输入(Gemini3.6) → 统一输入输出(Emu3) → 世界-动作(Cosmos3)</p>
+<p><strong>2026 格局</strong>：9 大前沿家族(GPT/Gemini/Claude/Grok/Qwen/Gemma/DeepSeek/Kimi/MiniMax)，开源旗舰 Qwen3.6-27B dense 超 MoE 前代</p>
+<p><strong>后训练铁律</strong>：GRPO + 信用分配 + 回放卫生 = 事实标准；VLM 对齐比 LLM 多视觉 grounding 负担</p>
+<p><strong>核心警示</strong>：modality gap 不随规模收敛(CrossMath/BabyVision 实证)；68% 从业者预警数据墙</p>
+</blockquote>
+<hr />
+<h2 id="_5">九、待深入</h2>
+<ul>
+<li>Qwen3.6 "preserved thinking" 标志的机制细节——跨多轮 agent 任务保持推理上下文的具体实现</li>
+<li>Era 4 世界-动作模型在 Jetson 边缘部署的可行性（Cosmos 3 参数规模 vs Jetson Orin Nano 算力）</li>
+<li>GLM-5V-Turbo 的 MTP 多 token 预测在 vision-to-code 场景的吞吐量优势量化</li>
+</ul>
+<hr />
+<h2 id="_6">来源列表</h2>
+<ol>
+<li>arXiv 2501.02189v7 — <em>Frontier Vision-Language Models: Architectural Evolution, Benchmarks, Applications, and Challenges</em>（2026 综述，web_extract 全文）</li>
+<li>GitHub zli12321/Vision-Language-Models-Overview — <em>Progressive Report 2026-04-28</em>（web_extract 全文，含 Qwen3.6/GPT-5.4/GLM-5V-Turbo 等最新条目）</li>
+<li>Voxel51 — <em>State of Visual and Physical AI Survey 2026</em>（web_search 结果摘要，产业调查数据）</li>
+<li>Overshoot.ai — <em>Open Source Vision Language Models 2026</em>（web_search 结果摘要，开源模型部署矩阵）</li>
+</ol></body></html>
