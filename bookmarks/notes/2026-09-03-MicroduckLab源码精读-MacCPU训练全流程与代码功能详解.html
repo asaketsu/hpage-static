@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MicroduckLab源码精读-MacCPU训练全流程与代码功能详解</title>
+
+<meta property="og:title" content="MicroduckLab源码精读-MacCPU训练全流程与代码功能详解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | ocean" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/ocean.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e3a5f;
+  background: #f0f9ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #ecfeff;
+  color: #0891b2;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0891b230;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e3a5f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d0e8f0;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'DM Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0e7490;
+  text-decoration: none;
+  border-bottom: 1px solid #0e749030;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0e7490;
+}
+
+code {
+  background: #ecfeff;
+  color: #0891b2;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2d48;
+  color: #cffafe;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0891b2;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e3a5fcc;
+  background: #ecfeff;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e3a5f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0891b2;
+  background: #0891b218;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0891b2;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e3a5f88;
+  text-decoration-color: #0891b2aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0891b2;
+  background: #0891b218;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d0e8f0;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d0e8f0;
+  display: table-cell;
+}
+th {
+  background: #ecfeff;
+  font-weight: 600;
+  color: #0891b2;
+  border-bottom: 2px solid #0891b2;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ecfeff80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d0e8f0;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::after { content: ''; display: block; width: 50px; height: 3px; background: linear-gradient(90deg, #0891b2, #06b6d4); margin-top: 10px; border-radius: 3px; }
+        pre { border: 1px solid #d0e8f0; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="microducklab-mac-cpu">MicroduckLab源码精读 — Mac CPU训练全流程与代码功能详解</h1>
+<p class="tag-line"><span class="tag">#MicroduckLab</span> <span class="tag">#强化学习</span> <span class="tag">#PPO</span> <span class="tag">#Sim2Real</span> <span class="tag">#DUCK相关</span> <span class="tag">#奖励设计</span> <span class="tag">#课程学习</span> <span class="tag">#CPU训练</span></p>
+<p class="note-date">生成日期 2026-09-03</p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>原项目：https://github.com/jonathanhawkins/microduck-lab（jonathanhawkins，53 stars，<strong>2026-09-01 创建</strong>，社区项目非 Pollen 官方）</li>
+<li>定位：<strong>在普通 Mac（无 CUDA GPU）上为 Microduck 训练 RL 策略，浏览器实时观看学习过程</strong></li>
+<li>分析日期：2026-09-03 | 深度模式：clone + 全源码精读（114 文件，microduck_local 9227 行 Python + duck-viewer Next.js）</li>
+<li>与我们的关系：<strong>DUCK-Pi_5 的直接同源项目</strong>——同样基于官方 microduck_rl 的 61-obs/14-action 契约、同 MJCF、同 50Hz；本仓库 = 官方 GPU 栈的"CPU 原型环"</li>
+</ul>
+<h2 id="_2">一、内容详细整理（详细训练过程）</h2>
+<h3 id="11">1.1 总体架构：四仓并排工作区</h3>
+<table>
+<thead>
+<tr>
+<th>仓库</th>
+<th>角色</th>
+<th>技术栈</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>microduck_local/</code>（本仓）</td>
+<td><strong>CPU-MuJoCo + SB3 PPO 原型训练harness</strong> + duck-lab 流式后端 + 🎓教学环</td>
+<td>Python 3.12/uv</td>
+</tr>
+<tr>
+<td><code>duck-viewer/</code>（本仓）</td>
+<td>Next.js + react-three-fiber 浏览器查看器：多策略并排走、WS 25Hz 实时</td>
+<td>Next.js/TS</td>
+</tr>
+<tr>
+<td><code>microduck/</code>（上游 clone）</td>
+<td>机器人本体软件、官方 ONNX 策略、文档</td>
+<td>Rust</td>
+</tr>
+<tr>
+<td><code>microduck_rl/</code>（上游 clone）</td>
+<td>官方 GPU 训练栈（MuJoCo Warp + mjlab + PPO）、BAM sim2real 配方</td>
+<td>Python/uv</td>
+</tr>
+</tbody>
+</table>
+<p><strong>定位哲学</strong>（README 原文）：官方栈需要 CUDA GPU，本项目跑在你已有的笔记本上——它是"奖励设计、课程、新技巧的原型环"，行为在这里发明后<strong>直接移植到官方栈做最终 sim2real</strong>，导出的 ONNX 与官方工具链 drop-in 兼容。</p>
+<h3 id="12-readme-quick-start">1.2 完整训练工作流（README quick start 还原）</h3>
+<pre><code class="language-bash"># 0. 环境准备（Apple Silicon Mac 或 Linux，uv + Node 20+，~3GB 磁盘）
+git clone microduck-lab &amp;&amp; cd microduck-lab
+git clone pollen-robotics/microduck      # 官方策略/文档
+git clone pollen-robotics/microduck_rl   # MJCF 模型/官方栈
+cd microduck_local &amp;&amp; uv sync
+
+# 1. 契约测试（训练前必跑——obs 布局/DR 恢复/惩罚符号/官方 alpha_walking 存活回归）
+uv run --with pytest pytest tests/       # 应全绿
+
+# 2. 训练第一个步态策略（M 系列 Mac 几分钟）
+uv run train-walk --envs 32 --steps 3_000_000 --run-name first-gait
+
+# 3. 导出 ONNX（obs 归一化器烘焙进去）
+uv run export-walk runs/first-gait
+
+# 4. 无头评估（摔倒/指令跟踪电池）
+uv run eval-walk runs/first-gait/policy.onnx
+
+# 5. 渲染查看（mp4 给人 + 带字幕帧接触表给 AI 读）
+uv run render-rollout --policy runs/my-run/policy.onnx --behavior stand --out /tmp/rr
+
+# 6. 启动实验室 + 查看器
+uv run duck-lab runs/first-gait ../microduck/policies/alpha_walking.onnx
+cd ../duck-viewer &amp;&amp; npm install &amp;&amp; npm run dev  # 浏览器打开
+</code></pre>
+<h3 id="13-walk_envpy792">1.3 训练环境核心（walk_env.py，792 行）</h3>
+<p><strong>MicroduckWalkEnv(gym.Env)</strong> 的关键设计：</p>
+<ul>
+<li><strong>双执行器模型</strong>：<code>actuator="xml"</code>（快速线性化 XML 舵机，日常步态）或 <code>"bam"</code>（<strong>诚实 BAM XL330 电压模型</strong>，numba 融合，用于会打满舵机的机动动作）——与 DUCK-Pi_5 已知的 BAM 电压模型同源</li>
+<li><strong>域随机化</strong>（<code>_apply_domain_rand</code>）：<strong>先恢复编译时默认再施加</strong>——绝不允许跨 reset 累积（契约测试锁定）</li>
+<li><strong>观测 61 维</strong>（顺序即热交换契约，永不重排）：<br />
+<code>[base_ang_vel(3), projected_gravity(3), joint_pos_rel(14), joint_vel(14), last_action(14), twist_cmd(3), head_pose_cmd(4), body_pose_cmd(6)]</code></li>
+<li><strong>动作 14 维</strong>：<code>target = DEFAULT_POSE + action</code>（scale 1.0，弧度）</li>
+<li><strong>joint_vel 滞后一个控制步</strong>（Dynamixel 移动平均），匹配训练与硬件——<strong>"别修它"</strong>（不变量）</li>
+<li>未用指令槽<strong>零填充且保留微小采样范围</strong>——保持 normalizer 活着，永不移除</li>
+</ul>
+<h3 id="14-ppo-trainpy-ppo_hparamspy">1.4 PPO 超参与网络（train.py + ppo_hparams.py）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>值</th>
+<th>来源与理由（注释原文还原）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>网络结构</td>
+<td>pi/vf 各 [512,256,128] MLP</td>
+<td>"rsl_rl 风味：偏大的 MLP"</td>
+</tr>
+<tr>
+<td>激活函数</td>
+<td><strong>ELU</strong></td>
+<td>对齐官方 rsl_rl cfg</td>
+</tr>
+<tr>
+<td>n_steps</td>
+<td>256</td>
+<td>共享常量</td>
+</tr>
+<tr>
+<td>batch 策略</td>
+<td>目标 1024×4 minibatch</td>
+<td>复杂两段规则（见下）</td>
+</tr>
+<tr>
+<td>n_epochs</td>
+<td>5</td>
+<td>—</td>
+</tr>
+<tr>
+<td>learning_rate</td>
+<td><strong>1e-3</strong></td>
+<td>对齐官方栈；"一半熵+三分之一学习率在更少样本上会坍缩到最安全的策略——站着不动（first-gait 学到的）"</td>
+</tr>
+<tr>
+<td>gamma / gae_lambda</td>
+<td>0.99 / 0.95</td>
+<td>—</td>
+</tr>
+<tr>
+<td>ent_coef</td>
+<td>0.01</td>
+<td>对齐官方</td>
+</tr>
+<tr>
+<td>vf_coef</td>
+<td><strong>1.0</strong></td>
+<td>rsl_rl 的 value_loss_coef（SB3 默认 0.5 会让 critic 只有 GPU 栈一半响度）</td>
+</tr>
+<tr>
+<td>log_std_init</td>
+<td>0.0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>对称损失系数</td>
+<td>0.5</td>
+<td>上游 SYMMETRY_CFG 的 mirror_loss_coeff</td>
+</tr>
+</tbody>
+</table>
+<p><strong>batch_size 两段规则</strong>（ppo_hparams.py 精读）：<br />
+- buffer &lt; 1024×4：取 ≤1024 的最大约数（16 envs → 4×1024，与上游一致）<br />
+- buffer ≥ 1024×4：固定 4 个 minibatch（24 envs → 4×1536 而非 6×1024；28 → 4×1792 而非 7×1024）——<strong>加 helper duck 买的是 rollout 不是更长 update</strong>（28 envs 曾让串行 update 增长 75% 换 ~8% 更多 rollout，核全闲着）</p>
+<p><strong>TORCH_INTRA_THREADS=8 的测量依据</strong>：1024×512 Linear 在 8 线程峰值 0.38ms，PyTorch 默认 6 P-core 0.42ms，18 线程 0.42ms（E-core 帮倒忙）。<strong>ppo_hparams 刻意不 import torch</strong>——train.py fork SubprocVecEnv worker 之前不能拉起 OpenMP 线程池，否则 macOS fork 死锁。</p>
+<h3 id="15-symmetrypy883">1.5 双侧对称镜像增强（symmetry.py，883 行——本项目最有价值的算法组件）</h3>
+<p><strong>原理</strong>：步态是左右对称技能，每个转移 <code>(o,a)</code> 有物理合法的孪生 <code>(M·o, M·a)</code>。<strong>预先告诉策略这个结构，而不是让它从样本中重新发现</strong>——这是相对官方栈的唯一差距补齐，<strong>买的是样本效率而非更多样本</strong>，是 CPU 训练器唯一的货币。</p>
+<p><strong>镜像算子 M</strong>（带符号置换，M∘M=I 对合）：<br />
+- <strong>关节块（14）</strong>：左腿(0-4)↔右腿(9-13) 交换后<strong>全部取负</strong>（MJCF 左右 home 坐标系相反）；中线 neck/head(5-8) 不动<br />
+- <strong>head_yaw/head_roll 取负</strong>（左右反射下 yaw/roll 轴反转）；neck_pitch/head_pitch 是矢状面关节<strong>不取负</strong><br />
+- <strong>base_ang_vel（陀螺仪）是伪向量</strong>：取负 roll(x) 和 yaw(z)，保留 pitch(y)。形式化：S=diag(1,-1,1)，镜像体旋转 R'=SRS，ω'_body=-S·ω_body<br />
+- <strong>projected_gravity 是真向量</strong>：g'_body=S·g_body（仅 gy 取负）<br />
+- <strong>twist 指令</strong>：lin_vel_y 和 ang_vel_z 取负，lin_vel_x 不变<br />
+- 验证方式：test_symmetry.py 把一个 pose 镜像后检查 MuJoCo 正运动学把每个 body 放到伙伴的反射帧</p>
+<p><strong>FastActorCriticPolicy</strong>（symmetry.py 内）：手写 diag-Gaussian rollout 前向，batch 32 时 234→215μs，log-prob 与 evaluate_actions 浮点容差一致（test_fast_policy.py 锁定）。</p>
+<h3 id="16-behaviors">1.6 九个可教技巧（behaviors/）</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>Behavior</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>locomotion.py</td>
+<td>行走族</td>
+<td>速度指令跟踪</td>
+</tr>
+<tr>
+<td>poses.py</td>
+<td>4 个姿态 trick</td>
+<td>站立类</td>
+</tr>
+<tr>
+<td>headstand.py</td>
+<td>倒立</td>
+<td><strong>servo-ladder 模式的诞生地</strong>（见 1.8）</td>
+</tr>
+<tr>
+<td>backflip.py</td>
+<td>后空翻</td>
+<td><strong>5 阶段链式课程</strong>：reverse curriculum（spawn 族环境旋钮）+ 分阶段 <code>--init-from</code> 链</td>
+</tr>
+<tr>
+<td>airflip.py</td>
+<td>空翻</td>
+<td>—</td>
+</tr>
+<tr>
+<td>imitate.py</td>
+<td>模仿</td>
+<td>Animate 面板关键帧→RL 学着物理执行</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Behavior 数据类</strong>（core.py）：奖励项（signed per 规则）+ 友好字符串 + 聊天关键词 + 可选 CurriculumStage。<strong>奖励项目录</strong>（head_up/flat_feet/calm_body/smooth_torque 等）让查看器教学面板能以滑块提供——"看起来不对的 trick 通常需要目录项，不是新的定制项"。</p>
+<p><strong>教学面板反幻觉设计</strong>：只提供 behaviors/ 里存在的 trick——<strong>未识别的请求返回目录而非即兴编配方</strong>（与我们的 LLM 反幻觉纪律同构）。</p>
+<h3 id="17-2026-08-31-speed-pass">1.7 性能工程（2026-08-31 speed pass 全记录）</h3>
+<p><strong>实测数字</strong>（M 系列）：~16.5k env-steps/s（32-env 出厂配方，1M 步约 1 分钟）；峰值 ~27k。</p>
+<table>
+<thead>
+<tr>
+<th>优化</th>
+<th>手段</th>
+<th>效果</th>
+<th>采纳状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>共享模型 fork</td>
+<td>编译一次 mjModel（~470MB）+ fork worker 写时复制</td>
+<td>64 envs 内存 <strong>41GB→1.5GB</strong>；vec env 启动 7.8s→0.2s</td>
+<td>✅ 默认（吞吐中性 +3.9~8.3% 但一段 -4.5%，"不更慢"）</td>
+</tr>
+<tr>
+<td>Semaphore IPC</td>
+<td>共享内存+信号量替代每步管道+pickle</td>
+<td>32 envs 无策略地板 1.61→1.08ms</td>
+<td>✅ 精确语义+奇偶测试</td>
+</tr>
+<tr>
+<td>numba 融合 BAM</td>
+<td>~48 次 numpy dispatch/substep → 3 个编译核</td>
+<td><strong>BITWISE 移植</strong>（exp/power 留 numpy——SIMD 不可复现），float64 黄金 rollout 锁定</td>
+<td>✅ numba 可选，无则回退 numpy</td>
+</tr>
+<tr>
+<td>Overlapped update</td>
+<td>rollout k+1 用冻结快照采集时后台 update k</td>
+<td>+25% steps/s，<strong>但 seed 匹配 A/B：reward/step 掉一半</strong>（seed4@1.45M：ep_rew 530 vs 270）</td>
+<td>❌ opt-in 旗标（lr=1e-3 下每 update KL 太大，陈旧数据落在 clip 窗外被代理丢弃）</td>
+</tr>
+<tr>
+<td>大 batch</td>
+<td>64-env batch-4096</td>
+<td>+40% steps/s，<strong>~2x 更少学习/步</strong></td>
+<td>❌ opt-in（加倍 lr 大部分但不完全恢复）</td>
+</tr>
+<tr>
+<td>MPS 更新</td>
+<td>minibatch 环上 GPU</td>
+<td>batch 1024 是 LOSS（13.5k vs 14.8k），4096 大赢（18k vs 12.5k）</td>
+<td>✅ auto 仅 batch≥2048 启用</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最重要的结论</strong>：<strong>reward-per-wall-second 才是真正的指标</strong>，两个吞吐"胜利"都牺牲了每步学习——<strong>质量安全的甜点是 32 envs（~14.8k steps/s，工作区起点的 2.2 倍）</strong>。</p>
+<h3 id="18-agentsmd-duck">1.8 奖励设计规则（AGENTS.md 精读——DUCK 重训最该抄的部分）</h3>
+<ol>
+<li><strong>永不奖励策略无法观测的东西</strong>：obs 契约没有 yaw 和世界位置——航向/世界锚定的奖励项是不可学习的噪声（<strong>一个这样的项产生了 30M 步的绕圈</strong>，看着像优化器问题）。直线度/航向属于速度指令器，不属于奖励。<strong>加项前，指出让策略看到你打分的 obs 索引</strong></li>
+<li><strong>小心 MuJoCo 速度坐标系</strong>：<code>mj_objectVelocity(..., flg_local=0)</code> 是世界系；naive 索引曾把侧向拖步奖成"前进"。写读速度的项前，先在一个你能推理的 pose 里打印它</li>
+<li><strong>没有头奖</strong>：稠密有界塑形胜过稀疏横财——<strong>策略能爆一次并刷分的项一定会被刷</strong></li>
+<li><strong>奖励设计无法修复探索缺口</strong>：如果 rollout 从不包含目标技能（连瞬态/随机都没有），任何项/权重/门/ramp 都教不会——<strong>从未采样的状态的价值永远不会被学习</strong>。headstand 付出了整晚代价：5 个配方变体（扩展 pay ramp/坚持奖励/3× 梯度/惩罚移除/静止 spawn）全部收敛到同一个简单局部 pose，因为在诚实 BAM 舵机下<strong>从随机行为中采不出"持续伸展的倒立"</strong>。<strong>修复从来不在奖励里：给物理搭梯子</strong>——强舵机(xml)钻台阶段 + ~80% 放入式 spawn，几分钟内技能就出现在 rollout 里，然后舵机降回诚实 BAM。<strong>动项之前先问一句："有没有 ANY rollout 做过这个事？"没有就改世界，不是改工资</strong></li>
+<li><strong>课程阶段只能梯子化物理、spawn、严格度——永不奖励</strong>：第一代分阶段失败因为每级带自己的项编辑，每级长出自己的作弊窝。headstand 梯子<strong>每阶段保持同一密封项集</strong>（测试强制 stage-env 旋钮白名单）——阶段可以让世界更容易或评判更严格，但<strong>永不改变付什么钱</strong>。查看器的 stageWeights 滑块是刻意例外（人看的实时重定价是实验不是配方；CurriculumStage 没有 weights 字段，阶段调优必须挣回来变成 term 或物理旋钮才能出厂）</li>
+</ol>
+<h3 id="19">1.9 验证纪律（六条防自欺规则）</h3>
+<ol>
+<li><strong>训练图度量的是噪声拐杖的随机策略</strong>——对 run 的断言用确定性导出 ONNX，从不用 ep_rew 曲线。导出→评估→看</li>
+<li><strong>下结论前先看</strong>：render-rollout 写 mp4（人）+ 带字幕帧接触表（agent 读，含每帧高度/角度/接触）。<strong>奖励电池在这里曾把脸朝下的蹲姿评为"站立"</strong></li>
+<li><strong>渲染空对照</strong>（<code>--policy limp</code>/<code>zero</code>）再归功于策略——spawn pose 或重力能做的事不算数</li>
+<li><strong>吞吐不是学习速度</strong>：任何让训练更快的改动在成为默认前，做 seed 匹配 A/B（匹配步数）</li>
+<li><strong>诡异的优化器指标通常是坏奖励</strong>：一次 KL 爆炸被当 PPO 调参问题追了一天，原因是不可学习的奖励项。<strong>重新调"问多用力"之前先查"在要什么"</strong></li>
+<li><strong>Warm-start 链会把 action std 悄悄棘轮成 bang-bang</strong>：每次 <code>--init-from</code> 重载前 run 的 log_std，熵奖励每代推高；一条长链在 ±4 动作空间达到 std 21-26——<strong>裁剪噪声分布在承载行为</strong>（随机 episode 活 6.9s）而导出的确定性均值是饱和垃圾（0.5s 摔倒），遥测分不出来。LOG_STD_MAX 在加载和每次 rollout 时封顶；均值中毒的谱系无法巩固，必须从头重启。<strong>每个 checkpoint 确定性探测 live.onnx——那才是出厂的策略</strong></li>
+</ol>
+<h3 id="110-duck-viewer-duck-lab">1.10 duck-viewer 与 duck-lab（浏览器实时观看）</h3>
+<ul>
+<li>架构：duck-lab（Python，每个策略一个 CPU-MuJoCo env 实时 50Hz）→ GET /scene 一次性给 mesh+颜色（从编译 MuJoCo 模型直提几何，无资产管线）→ WS ~25Hz 推 body poses+stats ← 查看器发 <code>{"cmd":[vx,vy,wz]}</code>/<code>{"reset"}</code></li>
+<li><strong>多鸭并排</strong>：每个参数一只鸭；<strong>训练 checkpoint 串</strong>（--checkpoints）一只鸭一个快照——看策略在 500k 步快照间学会</li>
+<li><strong>策略芯片热交换</strong>：拖芯片到鸭身上，<strong>步态中途换脑</strong></li>
+<li>🎓 教学面板：关键字匹配（无 LLM 环路）；每 ~15s 热载 live 快照看学员进步；拖奖励滑块实时微调——<strong>无 Python 环路的奖励塑形</strong></li>
+<li>🎬 Animate 面板：关键帧 pose 编辑器+游戏风格控制 rig；浏览器里编动作片段，"train this"让 RL 学着物理执行</li>
+<li>🎥 Capture 面板：📷 全分辨率 PNG；🎥 摄像机框住一只鸭拍成 mp4+GIF（可直接贴 PR）</li>
+</ul>
+<h3 id="111-sim2real">1.11 sim2real 诚实条款</h3>
+<p>本 harness 是<strong>分钟级反馈环的原型</strong>。即使在 <code>actuator="bam"</code> 下它也只是官方域随机化栈的子集。行为在这里跑通后，<strong>把 env 设计移植到上游 microduck_rl 的 mjlab cfg 并在 GPU 上重训</strong>——那才是能在真实硬件上活下来的策略配方。导出的 ONNX 虽 drop-in 兼容，但<strong>上硬件的策略要官方栈重训</strong>。</p>
+<h2 id="_3">二、代码功能地图（模块级）</h2>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>行数</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>viz_server.py</td>
+<td>3582</td>
+<td>duck-lab 流式后端：多策略 env 管理/WS/teach API/capture</td>
+</tr>
+<tr>
+<td>symmetry.py</td>
+<td>883</td>
+<td>双侧镜像算子+FastActorCriticPolicy+SymmetryPPO</td>
+</tr>
+<tr>
+<td>walk_env.py</td>
+<td>792</td>
+<td>训练环境（双执行器/DR/obs/奖励计算）</td>
+</tr>
+<tr>
+<td>bam_actuator.py</td>
+<td>728</td>
+<td>BAM XL330 电压模型（numba 融合核，BITWISE 对齐 numpy 参照）</td>
+</tr>
+<tr>
+<td>render_rollout.py</td>
+<td>704</td>
+<td>mp4+帧接触表渲染（AI 可读字幕）</td>
+</tr>
+<tr>
+<td>vec_env.py</td>
+<td>583</td>
+<td>ForkVecEnv（共享模型/信号量 IPC/四后端）</td>
+</tr>
+<tr>
+<td>train_behavior.py</td>
+<td>532</td>
+<td>trick 训练器（LOG_STD_MAX/阶段链）</td>
+</tr>
+<tr>
+<td>bench_envs.py</td>
+<td>453</td>
+<td>worker 数扫描推荐（真实 PPO 非裸步进）</td>
+</tr>
+<tr>
+<td>motion.py</td>
+<td>218</td>
+<td>关键帧动作片段</td>
+</tr>
+<tr>
+<td>distill.py</td>
+<td>177</td>
+<td>mjlab 蒸馏奖励</td>
+</tr>
+<tr>
+<td>train.py</td>
+<td>162</td>
+<td>步态训练主入口</td>
+</tr>
+<tr>
+<td>contract.py</td>
+<td>—</td>
+<td>61obs/14act 契约单一真相源（镜像自上游 infer_policy.py）</td>
+</tr>
+<tr>
+<td>behaviors/</td>
+<td>—</td>
+<td>9 trick + 奖励项目录 + 课程阶段</td>
+</tr>
+</tbody>
+</table>
+<p><strong>测试（19 个文件）</strong>：契约锁（env_contract/behaviors 符号与关键词）、BAM 性能奇偶（float64 黄金 rollout）、对称（正运动学反射验证）、快速策略（log-prob 容差）、向量环境奇偶、导出、训练恢复、渲染 rollout、捕获、自适应 lr、惩罚尺度、bench、clips、lab、overlap、step 性能奇偶——<strong>每个性能优化都带奇偶测试</strong>。</p>
+<h2 id="_4">三、查询拓展</h2>
+<ul>
+<li>mjlab_distill（distill.py）如何从官方 GPU 栈蒸馏奖励到本地</li>
+<li>backflip 5 阶段的具体 spawn-family 旋钮与 stage detail 叙事</li>
+<li><code>MICRODUCK_SPAWN_FAMILY_PROBS</code> 的族分布设计</li>
+<li>ForkVecEnv 的 semaphore 协议细节（信号量环）</li>
+<li>duck-viewer 的 GPU 陷阱（README 提到"已踩的坑"）</li>
+<li>Animate 面板关键帧→RL 的 imitate 数据流</li>
+</ul>
+<h2 id="_5">四、归纳总结</h2>
+<ol>
+<li><strong>本仓库是"官方栈的原型环"这个定位本身就是最大工程智慧</strong>：CPU 分钟级迭代（1M 步/分钟）做奖励/课程设计，收敛后移植 GPU 栈做 sim2real——<strong>两层栈分工而非替代</strong>，与 DUCK-Pi_5 的 AutoDL 重训计划完全同构。</li>
+<li><strong>样本效率是 CPU 训练的唯一货币</strong>：双侧对称镜像增强（买样本效率）、稠密有界奖励（防刷分）、课程只动物理不动奖励（防作弊窝）——三条规则全部围绕"从每一步榨出最多学习"。</li>
+<li><strong>"改世界不改工资"是探索缺口的唯一解</strong>：headstand 整晚失败→servo-ladder（强舵机+spawn 注入）几分钟解决的案例，是 RL 课程设计的教科书级叙事——<strong>从未采样的状态价值永远不会被学习</strong>。</li>
+<li><strong>反自欺纪律密度全开源项目罕见</strong>：确定性 ONNX 断言/render-rollout 帧表/null 对照/seed 匹配 A/B/LOG_STD_MAX 防棘轮——六条规则每条都来自真实翻车（奖励电池把脸朝下蹲姿评为站立）。</li>
+<li><strong>性能工程的双账本</strong>：吞吐优化全记录含被拒项（overlapped update +25% steps/s 但学习减半）——<strong>reward-per-wall-second 才是真指标</strong>，这个纪律值得所有训练项目抄。</li>
+<li><strong>AI 协作设计贯穿产品</strong>：render-rollout 的"给 AI 读的带字幕帧接触表"、behaviors 的"未识别返回目录"、AGENTS.md 的 agent playbook——这仓库把 LLM 当一等公民协作者设计。</li>
+</ol>
+<h2 id="_6">五、趋势判断</h2>
+<ol>
+<li><strong>CPU 原型环会成为腿足 RL 的标准配置</strong>：GPU 贵且慢启动，Mac CPU 分钟级迭代做设计、GPU 做最终训练的分层会普及（本项目 + 我们 DUCK 计划同构）。</li>
+<li><strong>对称性先验/结构先验注入会从论文走向标配</strong>：symmetry.py 式的"告诉策略物理结构而非让它发现"在样本受限场景是免费午餐。</li>
+<li><strong>"AI 可读的策略检查产物"会成为训练工具标配</strong>：帧接触表（每帧高度/角度/接触烧进图）让 LLM 能审策略——与我们的 render+看 流程同构，但更系统。</li>
+<li><strong>奖励设计规则的形式化</strong>（可观测性检查/无头奖/课程不改奖励）会被更多项目写成测试而非文档。</li>
+</ol>
+<h2 id="duck-pi_5">六、关联分析（对 DUCK-Pi_5 的直接价值 + 如何实施）</h2>
+<ol>
+<li><strong>【最高优先】奖励规则五条直接进 DUCK 重训 checklist</strong>：尤其"永不奖励不可观测项"（obs61 无 yaw/世界位置——航向项是 30M 步绕圈的坑）和"课程只梯子物理/spawn/严格度"。<strong>实施</strong>：docs/09 实战手册重训节补引这五条（引用本笔记）。</li>
+<li><strong>servo-ladder 模式是 STS3215 出域问题的直接对策</strong>：DUCK 换 STS3215 增重 69% 出域，重训时若遇到"技能采不出来"，先用 xml 强舵机+spawn 注入让技能出现在 rollout，再降回诚实 BAM——<strong>这比调奖励高效一个数量级</strong>。<strong>实施</strong>：重训 runbook 加"探索缺口诊断第一步：有没有 ANY rollout 做过这个事？"</li>
+<li><strong>验证纪律六条抄进 W0 门禁</strong>：确定性 ONNX 断言（不用 ep_rew 曲线）、null 对照、render 后亲眼看——与我们的"渲染后看"流程互补成完整纪律。LOG_STD_MAX 防棘轮对 --init-from 链式训练是刚需。</li>
+<li><strong>symmetry.py 可直接移植</strong>：883 行自包含（含对上游表的交叉校验），DUCK 重训若用 SB3 PPO 路线可整文件搬——<strong>但我们的 microduck_rl 栈已含镜像增强</strong>（上游 SYMMETRY_CFG mirror_loss_coeff 0.5），此件主要价值是<strong>理解</strong>而非搬运。</li>
+<li><strong>fork 共享模型模式对 AutoDL 多 env 训练直接适用</strong>：41GB→1.5GB 的内存优化在 GPU 服务器同样成立（CPU 内存侧），64 env 以上必抄。</li>
+<li><strong>与既有笔记链的合流</strong>：本篇补上了"DUCK 训练侧外部参考"的最后一块——docs/08 官方栈精读（GPU 侧）+ 本篇（CPU 原型侧）+ Microban（低成本平台同构）+ bipedal-rl-sim2real（规则层）四层参考体系齐了。</li>
+</ol>
+<h2 id="_7">七、指南分析</h2>
+<p><strong>DUCK 重训时的对照使用表</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查本笔记哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>超参配置</td>
+<td>§1.4（对齐官方 rsl_rl 的完整参数表+两段 batch 规则）</td>
+</tr>
+<tr>
+<td>奖励项设计</td>
+<td>§1.8 五条规则</td>
+</tr>
+<tr>
+<td>技能学不会</td>
+<td>§1.8 规则 4（servo-ladder）+ §1.9 规则 5（先查奖励可学习性）</td>
+</tr>
+<tr>
+<td>判断策略好坏</td>
+<td>§1.9 六条（确定性 ONNX+render+null 对照）</td>
+</tr>
+<tr>
+<td>训练链 --init-from</td>
+<td>§1.9 规则 6（LOG_STD_MAX）</td>
+</tr>
+<tr>
+<td>多 env 内存爆</td>
+<td>§1.7（fork 共享模型 41GB→1.5GB）</td>
+</tr>
+<tr>
+<td>需要新 trick</td>
+<td>§1.6（Behavior 数据类+奖励项目录模式）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>禁止项</strong>（不变量）：改 obs 布局/移除零填充槽/"修"joint_vel 滞后/手递 raw checkpoint/在本地 harness 出硬件策略。</p>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>给 DUCK-Pi_5 docs/09</strong>：奖励五规则+验证六纪律引用补入重训节（关联分析 #1/#3）</li>
+<li><strong>给 bipedal-rl-sim2real skill</strong>：servo-ladder 案例与"改世界不改工资"原则补入</li>
+<li><strong>给本机 render 流程</strong>：帧接触表（AI 可读字幕）模式可借鉴到 DUCK 可视化（docs/12）</li>
+<li><strong>延伸阅读</strong>：microduck_rl 官方 AGENTS.md（上游完整 sim2real playbook）、jenga-stacker web viewer（几何直提模式来源）</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-08-31-microduck_rl分析学习-Sim2Real实战规则.md]]（官方 GPU 栈精读，本篇是其 CPU 原型侧）<br />
+→ 相关：[[2026-09-01-Microban与2026双足RL前沿-低成本平台同构与重训校准.md]]（低成本平台同构）<br />
+→ 相关：[[2026-09-01-MuJoCo仿真到Three.js可视化全链路-千问工程还原.md]]（duck-viewer 的同构实现）<br />
+→ 相关：[[2026-09-02-MiniMind从零训练LLM全链路-3块钱64M模型与AgenticRL.md]]（同周"消费级硬件训练"叙事）</p>
+</body>
+</html>
