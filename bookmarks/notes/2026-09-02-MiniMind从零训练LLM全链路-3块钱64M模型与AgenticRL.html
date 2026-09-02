@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniMind从零训练LLM全链路-3块钱64M模型与AgenticRL</title>
+
+<meta property="og:title" content="MiniMind从零训练LLM全链路-3块钱64M模型与AgenticRL" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="minimindllm-364magentic-rl">MiniMind从零训练LLM全链路 — 3块钱64M模型与Agentic RL</h1>
+<p class="tag-line"><span class="tag">#MiniMind</span> <span class="tag">#LLM训练</span> <span class="tag">#GRPO</span> <span class="tag">#AgenticRL</span> <span class="tag">#MoE</span> <span class="tag">#开源项目吸收</span> <span class="tag">#PyTorch原生实现</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>原项目：https://github.com/jingyaogong/minimind（jingyaogong，<strong>57,754 stars</strong> / 7,508 forks，2024-07 创建，Apache 2.0）</li>
+<li>分析日期：2026-09-02 | 深度模式：clone + 源码精读（49 文件 / 4647 行 Python 全读）</li>
+<li>项目沉淀：<code>~/uclaw/project/minimind-analysis/</code>（分析报告 + 借鉴点矩阵）</li>
+<li>口号："大道至简"——3 块钱成本 + 2 小时训练一个 64M 超小语言模型</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="_3">项目画像与定位</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>定位</td>
+<td>从 0 训练 LLM 的全链路开源复现 + 教学项目——"从零开始<strong>训练</strong>，而非停留于<strong>推理</strong>"</td>
+</tr>
+<tr>
+<td>模型</td>
+<td>minimind-3：Dense 64M（GPT-3 的 1/2700）；minimind-3-moe：198M-A64M</td>
+</tr>
+<tr>
+<td>结构对齐</td>
+<td>Qwen3 / Qwen3-MoE 生态（2026-04 主线更新，移除 shared expert）</td>
+</tr>
+<tr>
+<td>链路覆盖</td>
+<td>Tokenizer 训练 → Pretrain → SFT → LoRA → DPO → PPO/GRPO/CISPO → <strong>Agentic RL</strong> → 蒸馏</td>
+</tr>
+<tr>
+<td>实现纪律</td>
+<td><strong>所有核心算法从 0 用 PyTorch 原生实现，不依赖 transformers/trl/peft 高层抽象</strong></td>
+</tr>
+<tr>
+<td>成本口径</td>
+<td>"2 小时"= SFT 1 epoch 单张 3090 实测；"3 块钱"= 对应时段 GPU 租用</td>
+</tr>
+<tr>
+<td>姊妹项目</td>
+<td>minimind-v（视觉）/ minimind-o（Omni）/ dLM（离散扩散语言模型）/ Linear Attention</td>
+</tr>
+<tr>
+<td>生态兼容</td>
+<td>同时兼容 transformers/llama.cpp/vllm/ollama/Llama-Factory——从零实现但不自绝于生态</td>
+</tr>
+</tbody>
+</table>
+<p>README 的动机陈述（原文要义）："用 LoRA 微调现有大模型学新指令，更像是在教牛顿如何使用 21 世纪的智能手机——虽然有趣，却偏离了理解物理本质的初衷。""用乐高自己拼出一架飞机，远比坐在头等舱里飞行更让人兴奋。"</p>
+<h3 id="_4">代码架构（源码精读）</h3>
+<p><strong>model/model_minimind.py（287 行，一个文件装下完整 Transformer）</strong>：<br />
+- <code>MiniMindConfig</code>：hidden_size=768 / 8 层 / use_moe 开关 / num_experts=4 / top-1 路由<br />
+- <code>RMSNorm</code>、<code>precompute_freqs_cis</code>（RoPE，rope_base=1e6，支持 rope_scaling=YaRN 长文本外推）<br />
+- <code>Attention</code>：GQA（repeat_kv 共享 KV 头）、FlashAttention 可选<br />
+- <code>MOEFeedForward</code>：gate Linear 打分 → topk 选专家 → 加权输出（148-176 行，MoE 核心仅 30 行）<br />
+- <code>MiniMindForCuraiveLM</code>：继承 PreTrainedModel + GenerationMixin——<strong>从零实现但保持 HF 接口兼容</strong>（这个双面性是设计精髓）</p>
+<p><strong>trainer/（11 个脚本，每个 170-500 行）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>脚本</th>
+<th>行数</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>train_pretrain / full_sft</td>
+<td>~171/172</td>
+<td>基础两阶段，DDP 支持</td>
+</tr>
+<tr>
+<td>train_lora</td>
+<td>185</td>
+<td>LoRA 从零实现（model_lora.py 65 行）</td>
+</tr>
+<tr>
+<td>train_dpo</td>
+<td>227</td>
+<td>DPO 直接偏好优化</td>
+</tr>
+<tr>
+<td>train_ppo</td>
+<td>450</td>
+<td>PPO 全流程（最长脚本之一）</td>
+</tr>
+<tr>
+<td>train_grpo</td>
+<td>333</td>
+<td><strong>GRPO 组内基线</strong>（见下文）</td>
+</tr>
+<tr>
+<td>train_agent</td>
+<td>492</td>
+<td><strong>Agentic RL 多轮工具调用训练</strong>（最长脚本）</td>
+</tr>
+<tr>
+<td>train_distillation</td>
+<td>247</td>
+<td>模型蒸馏</td>
+</tr>
+<tr>
+<td>rollout_engine</td>
+<td>224</td>
+<td><strong>生成后端解耦</strong>：TorchRolloutEngine / SGLangRolloutEngine</td>
+</tr>
+<tr>
+<td>train_tokenizer</td>
+<td>168</td>
+<td>BPE+ByteLevel 分词器自训</td>
+</tr>
+</tbody>
+</table>
+<p><strong>dataset/lm_dataset.py</strong>：5 类 Dataset 按阶段分流（Pretrain/SFT/DPO/RLAIF/AgentRL）。精读发现两个训练技巧：<br />
+- <code>pre_processing_chat(add_system_ratio=0.2)</code>：20% 概率加 system prompt——让模型对有无 system 都鲁棒<br />
+- <code>post_processing_chat(empty_think_ratio=0.2)</code>：20% 概率注入空 <code>&lt;think&gt;</code>——<strong>自适应思考</strong>的训练基础（模型学会"该想才想"）</p>
+<h3 id="grpo-train_grpopy">GRPO 实现精读（train_grpo.py）</h3>
+<p>组内相对优化核心（121-124 行）：</p>
+<pre><code class="language-python">grouped_rewards = rewards.view(-1, num_generations)        # [B, num_gen]
+mean_r = grouped_rewards.mean(dim=1).repeat_interleave(...)  # 组内均值
+std_r  = grouped_rewards.std(dim=1, unbiased=False).repeat_interleave(...)
+advantages = (rewards - mean_r) / (std_r + 1e-4)            # 组内标准化
+</code></pre>
+<p><strong>与 PPO 的本质差异显性化</strong>：PPO 需要 value 网络估计基线（还要训 critic），GRPO 用"同一 prompt 的多条采样的组内统计"当基线——去掉 value 网络，代价是每 prompt 采样 num_generations 条。132-133 行的 KL 约束用 <code>exp(Δ)-Δ-1</code>（k3 无偏估计），比 naive KL 数值更稳。</p>
+<p><strong>混合奖励设计</strong>（calculate_rewards，工程模板价值）：<br />
+- 格式奖励：响应长度 20-800 字 ±0.5；think 内容 20-300 字 ±0.5；<code>&lt;/think&gt;</code> 恰好出现 1 次 ±0.25<br />
+- 重复惩罚：rep_penalty（n-gram 重复封顶 0.5）<br />
+- RM 打分：reward_model.get_score 加权<br />
+各项系数显式可调——<strong>规则奖励保底、RM 奖励提升、惩罚项防退化</strong>的三层结构。</p>
+<h3 id="agentic-rl-train_agentpy492">Agentic RL 实现精读（train_agent.py，492 行）</h3>
+<p><code>rollout_single</code> 的多轮循环（98-158 行）：</p>
+<pre><code>while turns &lt; max_turns and unfinished:
+    apply_chat_template(messages, tools=tools, open_thinking=open_thinking)
+    rollout_engine.rollout(...) → completion + per_token_logps
+    parse_tool_calls(text)  # 正则解析 &lt;tool_call&gt;...&lt;/tool_call&gt;
+    if calls: execute_tool(name, args) → 结果截断 2048 字符防 tokenizer 爆炸
+    messages.append({&quot;role&quot;: &quot;tool&quot;, &quot;content&quot;: result_str})
+</code></pre>
+<ul>
+<li>奖励信号：ground truth 出现在最终文本（validate_gt_in_text）+ 工具名合法性 + 格式分</li>
+<li><code>thinking_ratio=0.5</code>：一半 rollout 开思考一半关——同时训练两种模式</li>
+<li>工具执行结果 <code>[:2048]</code> 截断+"tool not found" 兜底 JSON——<strong>对 tokenizer 和幻觉的防御性编程</strong></li>
+</ul>
+<h3 id="rolloutengine-rollout_enginepy">RolloutEngine 解耦（rollout_engine.py）</h3>
+<p>ABC 基类定义 <code>rollout()</code> → RolloutResult（completions/completion_ids/per_token_logps）；两个实现：<br />
+- TorchRolloutEngine：transformers 原生生成（慢但零依赖）<br />
+- SGLangRolloutEngine：连 sglang server（快，<code>python -m sglang.launch_server</code> 拉起）<br />
+<code>compute_per_token_logps(model, input_ids, n_keep)</code> 独立函数统一 logprob 计算——<strong>RL 训练与推理加速完全解耦</strong>，这是 2026-04 更新的核心架构改进（"RLAIF / Agentic RL 训练流程完成 rollout engine 解耦"）。</p>
+<h3 id="_5">数据与工程细节</h3>
+<ul>
+<li>数据集：pretrain_t2t / sft_t2t（含 toolcall 能力混入主线数据）/ rlaif / agent_rl / agent_rl_math——全阶段开源，经"收集、蒸馏、清洗与去重"</li>
+<li>Tokenizer：BPE+ByteLevel，含 <code>&lt;tool_call&gt;</code>/<code>&lt;tool_response&gt;</code>/<code>&lt;think&gt;</code> 标记 + 预留 buffer token</li>
+<li>服务：serve_openai_api.py 兼容 OpenAI 协议（支持 reasoning_content/tool_calls/open_thinking），web_demo.py Streamlit UI</li>
+<li>评测：C-Eval/C-MMLU/OpenBookQA；YaRN 长文本外推</li>
+<li>训练基建：DDP/DeepSpeed、wandb/swanlab、<strong>动态启停训练</strong>（断点续训）</li>
+</ul>
+<h2 id="_6">查询拓展</h2>
+<ul>
+<li>CISPO（Clipped IS-weight Policy Optimization）：README 提及但当前主线脚本以 GRPO 为主，CISPO 的 clipped importance weight 机制值得对照</li>
+<li>Qwen3-MoE 结构细节：无 shared expert 的 top-1 路由负载均衡策略</li>
+<li>minimind dLM（离散扩散语言模型）与 LLaDA 类工作的关系</li>
+<li>GRPO 的 num_generations 采样数与方差缩减的定量关系</li>
+<li><code>&lt;think&gt;</code> 自适应思考与 Qwen3 thinking mode 的训练对齐方案</li>
+<li>Dreamer 世界模型 vs minimind 的 model-based RL（PILCO）路线对比</li>
+</ul>
+<h2 id="_7">归纳总结</h2>
+<ol>
+<li><strong>教学级代码的"三个一"设计</strong>：一个文件 287 行装下完整 Transformer（含 MoE）；每个 trainer 一个脚本平均 300 行；一条命令跑通全链路——<strong>代码量本身就是教学法的载体</strong>，4647 行覆盖了商业公司数百万行做的事的核心骨架。</li>
+<li><strong>"从零实现 + 生态兼容"的双面策略是最大工程智慧</strong>：MiniMindForCausalLM 继承 PreTrainedModel、模型可被 llama.cpp/vllm/ollama 加载——从零是为了理解，兼容是为了可用，两者不冲突且互相成就。</li>
+<li><strong>GRPO 去价值网络的三重意义</strong>：省一个 critic 模型的显存与训练、组内基线天然无偏、与 LLM 生成采样天然契合（反正要采多条）——DeepSeek 系算法民主化的样板。</li>
+<li><strong>Agentic RL 的本质是"带工具的轨迹收集 + 延迟奖励"</strong>：rollout_single 的多轮循环（生成→解析工具→执行→观测回填→继续）与 Hermes 的工具调用循环同构——差异只在训练侧需要 logprob 跟踪与奖励回传。</li>
+<li><strong>防御性编程密度高</strong>：工具结果截断 2048、长度不匹配 Logger、"tool not found" 兜底、thinking_ratio 0.5 双模式——每个防御都是真实踩坑的结晶。</li>
+<li><strong>20% 空 think 与 20% 随机 system 的共同哲学</strong>：让模型对"格式存在与否"都鲁棒——自适应能力的本质是条件化训练，而非增加开关。</li>
+</ol>
+<h2 id="_8">二、趋势判断</h2>
+<ol>
+<li><strong>"从零实现"教学项目成为 LLM 知识民主化的主通道</strong>：57.7k stars 超过多数生产级框架——当 trl/peft 把开发者与底层隔离开，"能读完的完整实现"成为稀缺品，minimind 式项目填的是抽象层太多留下的理解真空。</li>
+<li><strong>Agentic RL 训练框架会从研究代码下沉为标准组件</strong>：train_agent.py 的 rollout-工具-奖励结构正在成为共识范式（与 OpenAI/Anthropic 的内部做法收敛），2026 下半年预计进入主流训练框架的默认模板。</li>
+<li><strong>RolloutEngine 式生成后端解耦会成为 RL 训练基建标配</strong>：训练用 HF 慢速生成、调试切 sglang 加速——推理加速与策略训练解耦的接口设计会被 verl/AReaL 等框架普遍采纳。</li>
+<li><strong>超小模型（&lt;100M）的定位从"玩具"转向"教学基准 + 边缘部署 + 算法验证台"</strong>：64M 模型 2 小时训练完成，让"想法→验证"的周期从周级压到小时级——算法研究的快速迭代基础设施。</li>
+<li><strong>结构对齐主线生态（Qwen3）是教学项目的生存策略</strong>：跟住主流结构让学习成果可迁移，自创结构则毕业即失业。</li>
+</ol>
+<h2 id="_9">三、关联分析（对我有什么提升 + 如何实施）</h2>
+<blockquote>
+<p>关联对象：DUCK-Pi_5（microduck_rl 重训栈）、Hermes 生态（工具调用/RL 知识）、mlops/training skills</p>
+
+<p class="meta-date">生成日期 2026-09-02</p></blockquote>
+<ol>
+<li><strong>【已落实】项目沉淀</strong>：<code>~/uclaw/project/minimind-analysis/</code> 建成，README 含架构精读结论 + 6 条可借鉴模式矩阵（RolloutEngine 解耦/GRPO 组内基线/Agentic rollout/混合奖励/k3 KL/LoRA 合并导出）。</li>
+<li><strong>对 DUCK 重训的直接价值——GRPO 与 PPO 的选型认知</strong>：microduck_rl 栈若含 on-policy RL 阶段，GRPO 的"组内基线去 value 网络"思路可显著降低训练复杂度（腿足控制无语言模型那么好训 critic）。<strong>实施</strong>：重训配置阶段对照 minimind 的 train_grpo.py（333 行可读参考）评估是否采组内基线变体。</li>
+<li><strong>Agentic RL 参考实现补齐 Hermes 工具调用的训练侧认知</strong>：我们天天用工具调用，但训练侧的 logprob 跟踪/奖励回传/多轮 rollout 是黑箱——train_agent.py 492 行把这个黑箱摊开了。<strong>实施</strong>：无需改 Hermes（上游架构），作为"工具调用 RL 训练"的知识底座存档，未来自训小模型接工具时直接参考。</li>
+<li><strong>与 mlops/training skills 的互补</strong>：grpo-rl-training/axolotl/trl 等 skill 讲"怎么用框架"，minimind 补"框架内部发生了什么"——理论侧与实操侧配对。<strong>实施</strong>：grpo-rl-training skill 可引用 minimind 作为"从零参考实现"链接（低优先级，下次维护该 skill 时顺手）。</li>
+<li><strong>与今日早些时候 BBT 笔记的呼应</strong>：BBT 证明"先验注入优于纯微调"，minimind 证明"从零实现优于抽象封装"——两者共同指向"理解底层 &gt; 调用高层"的学习哲学，但方向不同（BBT 是模型结构层，minimind 是工程实现层）。</li>
+<li><strong>20% 空 think 技巧对 Hermes 的借喻（克制版）</strong>：让系统对"格式存在与否"都鲁棒的思路，与 skill 的"有 skill/无 skill 都能干活"设计目标同构——条件化优于硬依赖。仅作设计哲学印证。</li>
+</ol>
+<h2 id="_10">指南分析</h2>
+<p><strong>什么时候用 minimind</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>用法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>想理解 GRPO/PPO/DPO 内部机制</td>
+<td>直接读对应 trainer（300 行级，一次读完）</td>
+</tr>
+<tr>
+<td>要搭 Agentic RL 训练</td>
+<td>抄 train_agent.py 的 rollout_single 结构</td>
+</tr>
+<tr>
+<td>RL 训练想接推理加速</td>
+<td>抄 rollout_engine.py 的 ABC 双实现设计</td>
+</tr>
+<tr>
+<td>奖励函数设计没头绪</td>
+<td>参照 calculate_rewards 的三层结构（规则保底/RM 提升/惩罚防退化）</td>
+</tr>
+<tr>
+<td>想快速验证一个结构想法</td>
+<td>64M 模型 2 小时迭代周期，改 model_minimind.py 即可</td>
+</tr>
+<tr>
+<td>生产部署</td>
+<td>❌ 不适用——它是教学骨架，不是生产框架</td>
+</tr>
+</tbody>
+</table>
+<p><strong>复现路径</strong>（README 提炼）：租单卡 3090（~¥3/2h）→ train_tokenizer（或用现成）→ pretrain → sft → 按需 dpo/grpo/agent → convert 导出 GGUF → ollama 本地跑。</p>
+<h2 id="_11">拓展应用推荐</h2>
+<ul>
+<li><strong>给 DUCK-Pi_5</strong>：重训配置期对照 train_grpo.py 评估组内基线（关联分析 #2）</li>
+<li><strong>给 mlops/training 域</strong>：grpo-rl-training skill 补 minimind 参考链接（下次维护时）</li>
+<li><strong>延伸学习</strong>：姊妹项目 minimind-v（视觉多模态，与 DUCK 的 VLA 方向相关）；verl/AReaL（工业级 RL 训练框架，与 minimind 是教学/生产两极）</li>
+</ul>
+<hr />
+<blockquote>
+<p><strong>项目</strong>：~/uclaw/project/minimind-analysis/（分析报告 + 借鉴矩阵）</p>
+</blockquote>
+<p>→ 相关：[[2026-09-01-贝叶斯与神经网络世纪和解-BBT两阶段配方与人脑偏爱简单.md]]（"理解底层&gt;调用高层"的学习哲学呼应）<br />
+→ 相关：[[2026-08-31-microduck_rl分析学习-Sim2Real实战规则.md]]（DUCK 重训栈，GRPO 选型落点）<br />
+→ 相关：[[2026-09-01-SKILL.state长程Agent状态架构-16倍Token削减与准确率反升.md]]（Agent 执行侧 vs 训练侧认知配对）</p>
+</body>
+</html>
