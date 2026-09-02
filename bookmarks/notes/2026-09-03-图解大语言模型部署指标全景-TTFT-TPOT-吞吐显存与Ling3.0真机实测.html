@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图解大语言模型部署指标全景-TTFT-TPOT-吞吐显存与Ling3.0真机实测</title>
+
+<meta property="og:title" content="图解大语言模型部署指标全景-TTFT-TPOT-吞吐显存与Ling3.0真机实测" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="ttfttpotling-30">图解大语言模型部署指标全景 — TTFT/TPOT/吞吐/显存与Ling-3.0真机实测</h1>
+<p class="tag-line"><span class="tag">#LLM部署</span> <span class="tag">#TTFT</span> <span class="tag">#TPOT</span> <span class="tag">#KVCache</span> <span class="tag">#vLLM</span> <span class="tag">#投机解码</span> <span class="tag">#PrefixCaching</span> <span class="tag">#真机实测</span> <span class="tag">#量化</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>原文：X Article《图解大语言模型部署》（WquGuru @wquguru，AI+量化+工程，2026-08-29，29470 浏览 169 赞 42 RT）</li>
+<li>全文结构：前言（一句话指标总纲）→ 十节：实际案例/延迟类/吞吐类/资源类/服务质量/成本/进阶优化专属指标/硬件选型对照/<strong>Ling-3.0-Flash 真机实测</strong>/监控工具</li>
+<li>笔记日期：2026-09-03 | 189 blocks 完整提取；实测数字来自 2026-08-17~18 DGX Spark（GB10）实测，配置脚本可复现</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 一句话总纲（原文前言）</h3>
+<p>自部署 LLM 关心的指标：<strong>首字够不够快（TTFT）、字出来够不够连贯（TPOT/ITL）、并发多了吞吐掉不掉（系统吞吐）、显存装得下且留余量（VRAM + KV cache）、每百万 token 实际成本（cost per M tokens）</strong>。</p>
+<h3 id="12">1.2 延迟类指标</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>定义</th>
+<th>关键规律</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prefill Time</td>
+<td>读完 prompt 到开始产出首字的内部耗时</td>
+<td>Prefill=<strong>计算密集</strong>（算力跑满）；Decode=<strong>访存密集</strong>（算力常只用一小部分）</td>
+</tr>
+<tr>
+<td><strong>TTFT</strong></td>
+<td>请求发出→收到第一个输出 token</td>
+<td><strong>TTFT = Prefill Time + 排队等待</strong>；70B 单卡 H100 短 prompt 几百 ms~2s；系统忙时 TTFT 大头是排队不是计算慢</td>
+</tr>
+<tr>
+<td><strong>TPOT/ITL</strong></td>
+<td>逐 token 间隔（稳态出字速度）</td>
+<td>H100 INT4 70B 常见 50~120 tok/s（8~20ms/token）；<strong>上下文越长出字越慢</strong>（KV cache 越大搬的数据越多）</td>
+</tr>
+<tr>
+<td>端到端延迟</td>
+<td>TTFT + 生成总时长</td>
+<td>文件总结/代码生成更看这个</td>
+</tr>
+<tr>
+<td><strong>P95/P99</strong></td>
+<td>慢的 5%/1% 请求的最差延迟</td>
+<td><strong>生产看分位数不看均值</strong>；P99 远高于 P50=偶发抖动（GC/队列堵/OOM 重试）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13">1.3 吞吐类指标</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TPS（三口径）</td>
+<td>单流 decode/单流含 prefill/系统聚合——<strong>最容易混淆的指标</strong>；70B INT4 H100 decode 上限 ~100+ tok/s；7B 在 4090 可 200+（小模型计算占比高更吃算力）</td>
+</tr>
+<tr>
+<td>QPS</td>
+<td>交互场景一个 QPS 对应几十路并发对话；QPS×TPS 关系取决于并发度</td>
+</tr>
+<tr>
+<td>连续批处理有效性</td>
+<td>判定标准：<strong>同等显存下并发提升时吞吐是否线性增长</strong>；<strong>断崖有两种</strong>（无连续批处理 vs <code>--max-num-seqs</code> 槽位上限卡队列）——实测同一 8 并发：槽位卡住 104.9 tok/s 且 TTFT 涨 24 倍 vs 放开 167.9 tok/s，<strong>差别只在一个参数</strong>。看到断崖先查槽位再怀疑框架</td>
+</tr>
+<tr>
+<td>多卡线性扩展效率</td>
+<td>效率比 = 实测多卡吞吐 ÷（单卡×卡数）；实际 7~9 折；<strong>&lt;0.7 = 并行策略或互联成瓶颈</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="14">1.4 资源类指标</h3>
+<p><strong>VRAM 三件套</strong>：总显存 = 权重 + KV cache + 运行时碎片。<br />
+- 权重粗算：参数量(十亿) × 精度字节数（BF16=2B，INT4≈0.75B 含元数据）<br />
+- <strong>经验法则：理论值 × 1.2 安全系数</strong>。70B INT4 单卡装得下但并发稍高就 KV cache 不足 OOM——"能安装但运行中挂"的根源</p>
+<p><strong>KV cache 公式</strong>：<code>2 × 层数 × KV_head数 × head_dim × 精度字节 × token数</code><br />
+- Llama-3-70B（80 层/GQA 8 KV head/head_dim 128/BF16）：≈ <strong>0.31 MB/token</strong> → 4K=1.3GB，128K=<strong>40GB</strong><br />
+- <strong>长上下文(≥32K)+多并发时 KV cache 可超权重本身</strong>成第一瓶颈 → KV 量化/CPU 卸载<br />
+- <strong>反向错误更隐蔽</strong>：按最大上下文×最大并发开满 KV 池实际只用百分之几——实测<strong>超配 24 倍</strong>（池 109.8 万 token 实用 4.6 万，usage 4.2%）；调低后腾出 12GB 显存换更高聚合吞吐。<strong><code>--gpu-memory-utilization</code> 配方通常是为"装得下"配的，不是为"跑得稳"配的——抄配方注意</strong></p>
+<p><strong>利用率辨析</strong>：decode 阶段 GPU 利用率 30% 也可能正常（卡在带宽）；<strong>真正瓶颈指标是显存带宽</strong>——H100 SXM 3TB/s、H200 4.8TB/s、A100 2TB/s、4090 1TB/s。<strong>带宽差几倍出字速度就差几倍</strong></p>
+<p><strong>量化损失</strong>：INT4（AWQ/GPTQ）对话类肉眼难辨，复杂推理/长链思考掉 1~5 个百分点——<strong>选 INT4 前必须实测自己业务题型的跌落</strong>（MMLU/GSM8K/HumanEval 量化前后对比）</p>
+<h3 id="15">1.5 服务质量与可靠性</h3>
+<ul>
+<li><strong><code>/health</code> 返回 200 不代表引擎在出字</strong>：健康检查探的是 API server，真正干活的是背后的引擎进程——两者可以分开死。<strong>存活探针要探真实生成</strong>（发 1 token 请求看回不回）</li>
+<li><strong>判活不能用请求超时</strong>：满负载排队是正常的——用超时判活等于让流量高峰重启你的服务；看<strong>引擎是否在推进</strong>（Avg generation throughput 是否连续多周期为 0）</li>
+<li>OOM 重试是 P99 抬头常见原因；99.9% 可用 ≈ 每月 &lt;44 分钟不可用；<strong>开流式</strong>让感知延迟接近 TTFT</li>
+</ul>
+<h3 id="16">1.6 成本类</h3>
+<ul>
+<li>Cost per token / tokens per dollar / <strong>tokens per kWh</strong>（H100 SXM 700W vs 4090 450W——电力是长期账）</li>
+<li>TCO = 硬件折旧(3~4 年) + 电费 + 机网 + 运维人力；<strong>月调用数十亿 token 级才回本</strong>；峰值波动大租云更灵活</li>
+</ul>
+<h3 id="17">1.7 进阶优化专属指标</h3>
+<table>
+<thead>
+<tr>
+<th>优化</th>
+<th>关键指标</th>
+<th>实测/陷阱</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>投机解码</strong></td>
+<td>加速比 1.5~3×（解码瓶颈中低并发最明显）；接受率决定效果</td>
+<td><strong>统计陷阱</strong>：SSE chunk 数计速会<strong>系统性低估</strong>——被接受草稿 token 和验证 token 挤同一 chunk。实测把 41 tok/s 报成 20.5（几乎等于关掉投机采样的参考值，看起来完全可信）。正确：<code>stream_options:{"include_usage":true}</code> 读 completion_tokens。实测 MTP 接受率 65.4%、单次验证 1.65 token、上限 1.6×</td>
+</tr>
+<tr>
+<td><strong>Prefix Caching</strong></td>
+<td>命中率（Agent/RAG 场景 50%~70%）；TTFT 降 40%~90%</td>
+<td>全不命中反略增开销；命中率低=场景前缀重复度低不划算</td>
+</tr>
+<tr>
+<td>多卡并行</td>
+<td>DP/TP/PP 选型</td>
+<td>70B 以上基本多卡；NVLink 优于 PCIe</td>
+</tr>
+</tbody>
+</table>
+<h3 id="18">1.8 硬件选型对照（原文经验值）</h3>
+<table>
+<thead>
+<tr>
+<th>规模</th>
+<th>配置</th>
+<th>重点盯</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>≤7B</td>
+<td>一张 24G 消费卡</td>
+<td>TPOT、QPS</td>
+</tr>
+<tr>
+<td>70B</td>
+<td>H100/A100 80G 或双卡 A800/H20</td>
+<td>INT4 质量验证</td>
+</tr>
+<tr>
+<td>长文档/企业 RAG</td>
+<td>—</td>
+<td>KV cache 总量、prefix 命中率、长上下文降速</td>
+</tr>
+<tr>
+<td>多用户在线</td>
+<td>—</td>
+<td>连续批处理、P95/P99、排队、OOM</td>
+</tr>
+</tbody>
+</table>
+<h3 id="19-dgx-spark-ling-30-flash-int4">1.9 真机实测六坑（第九节精华，DGX Spark × Ling-3.0-Flash-INT4）</h3>
+<p>被测：Ling-3.0-Flash（<strong>124B MoE/仅激活 5.1B</strong>，KDA+MLA 混合注意力，价格 Qwen3.8-27B 的零头）；vLLM + CUDA Graphs + MTP 投机解码；<code>--max-model-len 16384</code>；统一按 <code>usage.completion_tokens</code> 计数。</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>坑</th>
+<th>数字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>TTFT 飙升先查排队</td>
+<td>监控报警 TTFT 暴涨时先看并发队列与排队耗时，别盲目归咎算力</td>
+</tr>
+<tr>
+<td>2</td>
+<td>假性吞吐断崖</td>
+<td>seqs=4 时 8 并发吞吐不涨延迟暴增——看似连续批处理失效，实为槽位限制；1→16 并发总吞吐 ×6.7（36.3→242.1）但单流 36.3→15.1 tok/s</td>
+</tr>
+<tr>
+<td>3</td>
+<td>KV cache 超配 24 倍</td>
+<td>gpu-mem-util 0.80 分 21GiB 池（110 万 token）实用 4.6 万（4.2%）；调低释放 12GB 吞吐反升</td>
+</tr>
+<tr>
+<td>4</td>
+<td>长上下文 Decode 腰斩</td>
+<td>prompt 300→15K：decode 39.0→18.2 tok/s（<strong>16K 窗口内已腰斩</strong>）；49K 时 7.1（慢 5.6×）。Prefill 恒定 2400+ tok/s（混合线性注意力优势）。<strong>测点放窗口中段 8K~16K，别只测首尾；别把 Prefill 不掉速当 Decode 不掉速</strong></td>
+</tr>
+<tr>
+<td>5</td>
+<td>投机解码统计陷阱</td>
+<td>chunk 数计速 20.5 tok/s 假数据 vs usage 口径 41 tok/s 真 2×</td>
+</tr>
+<tr>
+<td>6</td>
+<td>质量评测两盲区</td>
+<td>①<strong>思维链截断</strong>：IFEval 开思考模式 0.789→0.207，根因 max_tokens=2048 截断 CoT——表现为分数低而非报错；②<strong>FC 分层</strong>：BFCL-v3 综合 0.744 但单轮 0.887 vs 多轮自主循环仅 0.438——<strong>Agent 系统应由外层工作流编排驱动，不能全靠模型长链自主规划</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="110">1.10 工具链</h3>
+<p>vllm bench serve / SGLang 压测（TTFT/TPOT/吞吐/接受率）→ NVIDIA GenAI-Perf（MLPerf 规范）→ EvalScope / lm-evaluation-harness（量化前后精度回归）→ Prometheus+Grafana（/metrics 持续监控 P95/P99/排队/显存）→ nvidia-smi/gpustat（实时）。</p>
+<h2 id="_3">二、查询拓展</h2>
+<ul>
+<li>Ling-3.0-Flash 的 KDA+MLA 混合注意力为何 Prefill 恒速（线性注意力家族的上下文无关性）</li>
+<li>MTP（Multi-Token Prediction）投机解码与 EAGLE 系的对比</li>
+<li>DGX Spark（GB10）121GB 统一内存架构对 MoE 部署的意义</li>
+<li>BFCL-v3 多轮自主循环 0.438 的失败模式分解</li>
+<li>KV cache 量化（FP8/INT4 KV）与 CPU 卸载的实测代价</li>
+<li>vLLM <code>--max-num-seqs</code> 与调度器的交互细节</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li><strong>指标分层的心智模型</strong>：延迟（用户感知）→ 吞吐（系统容量）→ 资源（硬件门槛）→ 质量（可靠性）→ 成本（钱）——五层各自独立又互相牵制，任何单指标优化都可能伤另一层</li>
+<li><strong>"排队是 TTFT 的大头"是排障第一问</strong>：TTFT=Prefill+排队——监控报警先查队列再怪算力，这条纪律能省一半误诊</li>
+<li><strong>KV cache 是双向陷阱</strong>：开小了并发 OOM，开大了挤占运行缓冲（24 倍超配实测）——<code>--gpu-memory-utilization</code> 的抄配方时代该结束了，要看 usage 实测调</li>
+<li><strong>带宽是 decode 的真瓶颈</strong>：GPU 利用率 30% 可能正常、显存带宽差几倍出字速度差几倍——选卡比算力更该看 GB/s</li>
+<li><strong>投机解码的统计陷阱具有普遍教训</strong>：计量口径错误产生的"看起来完全可信"的假数据（20.5 恰好等于关闭时的参考值）是最危险的——<strong>所有性能测量先审统计口径</strong></li>
+<li><strong>质量评测的"低分≠模型差"</strong>：CoT 截断表现为掉分而非报错、FC 多轮弱必须靠外层编排补——<strong>评测配置错误会伪装成能力缺陷</strong></li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<ol>
+<li><strong>MoE 小激活大总参会成为端侧部署主流</strong>：124B 总参/5.1B 激活+统一内存机器——"大模型塞小机器"的性价比路线被跑通，价格是稠密 27B 的零头</li>
+<li><strong>混合线性注意力（KDA+MLA）解决长上下文降速</strong>：Prefill 恒定 2400+ tok/s 实测证明非全注意力架构的工程价值——Decode 端仍是 KV 搬运瓶颈，架构创新在两头分别发力</li>
+<li><strong>"假性断崖"类排障知识会成为部署工程师的核心经验</strong>：一个参数（max-num-seqs）造成 24 倍 TTFT 差异——调优知识从"指标定义"下沉到"参数级手感"</li>
+<li><strong>评测配置审计会标准化</strong>：CoT 截断陷阱（0.789→0.207）这类"配置错误伪装能力缺陷"的案例会推动 eval harness 的配置校验成为标配</li>
+<li><strong>统一内存机器（DGX Spark 类）开辟新生态位</strong>：121GB CPU/GPU 共享空间让百亿级 MoE 单机可跑——大小厂的成本结构都会被重估</li>
+</ol>
+<h2 id="_6">五、关联分析（对我有什么提升 + 如何实施）</h2>
+<blockquote>
+<p>关联对象：自有推理笔记链（KVCache/批处理/投机解码/量化四篇）、Hermes 网关 LLM 调用、未来 DUCK VLA 部署</p>
+
+<p class="meta-date">生成日期 2026-09-03</p></blockquote>
+<ol>
+<li><strong>推理笔记链的"指标篇"补齐</strong>：我们有机制篇（KVCache 为什么只存 K/V）、策略篇（批处理三策略）、优化篇（EAGLE3 投机解码）、本篇补<strong>指标与实测篇</strong>——四篇构成部署侧完整闭环。<strong>实施</strong>：本笔记作为部署指标的索引页，四篇互链已建</li>
+<li><strong>投机解码统计陷阱直接修正我们的测量方法</strong>：我们测 Hermes 网关响应速度时若用 chunk 数计速，开了投机解码的引擎（智谱 GLM 系）会系统性低估。<strong>实施</strong>：任何吞吐测量统一 <code>usage.completion_tokens</code> 口径——写进 zhipu-quota-monitor 的测量注释（已在用 API 计数，合规）</li>
+<li><strong>KV cache 超配 24 倍的教训对 Jetson 部署直接适用</strong>：本机 Orin Nano 跑 Ollama/nexa 时显存是稀缺资源，<code>gpu-memory-utilization</code> 式的池预分配同样存在。<strong>实施</strong>：nexa-local-inference 技能补一条"KV 池按实测 usage 调"的检查项（低成本 patch）</li>
+<li><strong>FC 多轮 0.438 vs 单轮 0.887 的分层证据支持我们的编排哲学</strong>：Hermes 的 skill+cron+工作流本质就是"外层工作流编排驱动"而非"全靠模型长链自主规划"——与 Anthropic《Building effective agents》的 workflow&gt;agent 论点三源互证（今日学习路线图笔记已录）。<strong>实施</strong>：无新增，作为已有设计的实证引用</li>
+<li><strong>TTFT=Prefill+排队的分解对 Feishu 网关体验监控有用</strong>：用户感知"卡"时先分清是模型慢还是队列堵。<strong>实施</strong>：暂不建监控（量小），标记为网关扩容时的前置知识</li>
+<li><strong>与量化笔记的衔接</strong>：INT4 复杂推理掉 1~5 分的量化与"实测自己业务题型"纪律——我们 free-model-apis 技能已在用智谱/GLM 系，其量化版的推理任务表现可按此法抽测。<strong>实施</strong>：低优先级观察项</li>
+</ol>
+<h2 id="_7">六、指南分析</h2>
+<p><strong>按场景查本笔记</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>选硬件/估显存</td>
+<td>§1.4 权重粗算+KV 公式+1.2 安全系数；§1.8 对照表</td>
+</tr>
+<tr>
+<td>TTFT 报警排查</td>
+<td>§1.9 坑 1（先查排队）；§1.2 分位数</td>
+</tr>
+<tr>
+<td>吞吐断崖</td>
+<td>§1.9 坑 2（先查 max-num-seqs 槽位）；§1.3 断崖两分法</td>
+</tr>
+<tr>
+<td>OOM/显存</td>
+<td>§1.4 KV 双向陷阱；§1.9 坑 3（usage 实测调池）</td>
+</tr>
+<tr>
+<td>长上下文慢</td>
+<td>§1.9 坑 4（测点放中段；Decode≠Prefill）</td>
+</tr>
+<tr>
+<td>测速不准</td>
+<td>§1.9 坑 5（usage 口径）；§1.7 投机解码</td>
+</tr>
+<tr>
+<td>评测分数低</td>
+<td>§1.9 坑 6（先查 CoT 截断再怪模型）</td>
+</tr>
+<tr>
+<td>建监控</td>
+<td>§1.5 探活两铁律；§1.10 工具链</td>
+</tr>
+</tbody>
+</table>
+<p><strong>抄配方警句</strong>：<code>--gpu-memory-utilization</code> 是为装得下配的，不是为跑得稳配的。</p>
+<h2 id="_8">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给 nexa-local-inference 技能</strong>：补"KV 池按实测 usage 调"检查项（关联分析 #3）</li>
+<li><strong>给推理笔记链</strong>：本篇作指标索引页与机制/策略/优化三篇互链（#1）</li>
+<li><strong>延伸阅读</strong>：Ling-3.0-Flash 模型卡、DGX Spark 参考配方（github.com/sudoingX/dgx-spark-ling）、MLPerf Inference 规范</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-08-30-为什么KVCache只存K和V从不存Q.md]]（KV 机制篇；本篇 §1.4 KV 公式与超配陷阱是其工程落地）<br />
+→ 相关：[[2026-09-01-LLM批处理三策略详解-静态动态连续与ChunkedPrefill.md]]（批处理策略篇；本篇 §1.3 假性断崖是其排障延伸）<br />
+→ 相关：[[2026-09-03-Speculative-Decoding全景-EAGLE3时代的生产口径.md]]（投机解码优化篇；本篇 MTP 实测与统计陷阱互补）<br />
+→ 相关：[[2026-09-03-LLM推理与RL入门四讲-NVIDIA与DLAI资源地图.md]]（同域资源地图；Moyou 视频即本篇指标体系的课程版）</p>
+</body>
+</html>
