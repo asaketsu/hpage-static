@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AKQuant对比分析-Rust回测引擎与我们脚本量化体系的互补进化</title>
+
+<meta property="og:title" content="AKQuant对比分析-Rust回测引擎与我们脚本量化体系的互补进化" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="akquant-rust">AKQuant对比分析 — Rust回测引擎与我们的脚本量化体系互补进化</h1>
+<p class="tag-line"><span class="tag">#AKQuant</span> <span class="tag">#量化框架</span> <span class="tag">#Rust</span> <span class="tag">#WalkForward</span> <span class="tag">#回测引擎</span> <span class="tag">#A股T+1</span> <span class="tag">#对比分析</span> <span class="tag">#开源吸收</span></p>
+<p class="note-date">生成日期 2026-09-03</p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>原项目：https://github.com/akfamily/akquant（akfamily，<strong>2,239 stars</strong>，2026-01-30 创建，v0.3.54，MIT）</li>
+<li>出品方：AKShare 作者（数据侧权威的量化生态延伸）</li>
+<li>分析日期：2026-09-03 | 深度模式：zip 镜像下载 + 源码精读（Rust 108 文件 31,788 行 + Python 全模块 + CHANGELOG 全读）</li>
+<li>定位："专为量化投研设计的下一代高性能混合框架——Rust 核心 + Python 接口"</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="_3">项目画像</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>架构</td>
+<td>Rust 核心引擎（pyo3 abi3-py310）+ Python 策略层</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>Zero-Copy <code>add_arrays</code> 借用 NumPy 缓冲；策略侧 <code>get_history</code> 返回安全快照</td>
+</tr>
+<tr>
+<td>ML</td>
+<td>内置 Walk-forward Validation（<code>SklearnAdapter</code>/<code>PyTorchAdapter</code> + <code>ValidationConfig</code>）</td>
+</tr>
+<tr>
+<td>指标</td>
+<td><code>akquant.talib</code> 双后端（python/rust）103 个 TA-Lib 指标</td>
+</tr>
+<tr>
+<td>因子</td>
+<td>Polars 驱动表达式引擎：<code>Rank(Ts_Mean(Close, 5))</code> Alpha101 风格</td>
+</tr>
+<tr>
+<td>优化</td>
+<td>多进程网格搜索</td>
+</tr>
+<tr>
+<td>风控</td>
+<td>RiskRule 体系：RestrictedList / MaxOrderSize / MaxOrderValue / MaxPositionSize / CashMargin，按 stock/futures/option/portfolio 分册</td>
+</tr>
+<tr>
+<td>实盘</td>
+<td>CTP/miniqmt/ptrade 三内置 broker；<code>session_tag</code> 多任务委托隔离</td>
+</tr>
+<tr>
+<td>测试</td>
+<td><strong>198 个测试文件 + golden 基线测试</strong>（BASELINE_REPORT + baselines + 数据 + runner）</td>
+</tr>
+<tr>
+<td>示例</td>
+<td>74 个 examples（快速入门→参数优化→ML walk-forward→实盘 CTP→期权→因子表达式）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">源码精读三大发现</h3>
+<p><strong>① Walk-forward 的框架化实现（与我们 skill 同域）</strong></p>
+<p><code>python/akquant/ml/model.py</code>（312 行）：</p>
+<pre><code class="language-python">self.model.set_validation(
+    method=&quot;walk_forward&quot;,
+    train_window=50,    # 用最近 50 根 bar 训练
+    test_window=20,     # 样本外预测窗口
+    rolling_step=10,    # 每 10 根 bar 重训
+    frequency=&quot;1m&quot;,
+)
+</code></pre>
+<ul>
+<li><code>QuantModel</code> ABC（fit/predict/save/load/clone）+ 双适配器（Sklearn/PyTorch）</li>
+<li>特征工程 <code>prepare_features(df, mode)</code> 训练/预测共享，<code>mode</code> 区分 label 有效性</li>
+<li><code>on_train_signal</code> 回调可跳过 warmup 期训练</li>
+<li><strong>启示</strong>：walk-forward 被做成"模型包装器的验证配置"而非独立流程——策略代码不感知切片细节</li>
+</ul>
+<p><strong>② A 股规则建模精度（CHANGELOG 揭示的硬功夫）</strong></p>
+<p>T+1 卖单修复（issue #391，<code>__engine_rule_version__</code> 1.5.4）堪称教材级：<br />
+- <strong>问题</strong>：<code>NextOpen</code> 成交策略下，<code>on_cross_section</code> 提交的卖单在下一根 bar 开盘成交，但可用持仓风控读的是<strong>下单时刻</strong>快照——T 日买入的持仓在快照里仍被 T+1 锁定，卖单被误拒，连锁导致买入腿 <code>Insufficient margin</code>，<strong>整条日频调仓链路瘫痪</strong><br />
+- <strong>修法</strong>：<code>RiskRule</code> 新增 <code>defer_for_delayed_execution()</code>——延迟撮合的股票卖单跳过提交时校验，撮合时按成交时点复查；撮合侧维护 slice 内逐笔推进的 <code>projected_available_positions</code>，<strong>同 slice 多笔卖单累计扣减</strong>（裸卖/超卖仍被拒）<br />
+- <strong>三处边界刻意不放宽</strong>：同周期成交仍按提交时校验；买单不查可用持仓；<strong>实盘不延后</strong>（柜台报单时就要校验）<br />
+- <strong>黄金基线联动</strong>：<code>stock_t1</code> 基线更新——"挂单/成交"两笔转为成交、<strong>策略注释明确期望失败的日内 T+0 转卖仍为拒单</strong>（关键不变量未破坏）</p>
+<p><strong>③ daily_returns 非交易日伪零（我们同样会踩的坑）</strong></p>
+<p><code>resample("D").last().ffill()</code> 把周末节假日补成权益点 → <code>pct_change()</code> 产生 28.7% 人造零 → <strong>年化波动率 0.194 稀释到 0.164、Sharpe 0.662 掉到 0.560（偏差 15.5%）</strong>。更隐蔽的是"同一份回测两个矛盾的 Sharpe"：Rust 侧 metrics 用 BTreeMap 按实际交易日聚合（对的），Python 报告图走 daily_returns（错的）——摘要卡和图表对不上。修法：非交易日不进索引、序列长度=交易日数-1、跨周回归测试锁定口径。</p>
+<h3 id="changelog">CHANGELOG 的质量文化（本项目最深护城河）</h3>
+<p>每条 fix 的结构：现象 → 根因 → 影响面（"不是边缘场景而是整条链路"）→ 修法原理 → 刻意不放宽的边界 → 行为变更提示 → golden 基线联动 → 回归测试（"已用改坏实现验证过可复现失败，非恒真断言"）。<strong><code>__engine_rule_version__</code> 语义化版本追踪规则行为变更</strong>——回测结果的可比性靠它保证。</p>
+<h2 id="_5">二、与我们量化体系的对比</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>AKQuant</th>
+<th>我们的体系（stock-iron-rules/screener/cron 盯盘）</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>架构</td>
+<td>事件驱动回测引擎，Rust 性能</td>
+<td>轻量 Python 脚本 + cron 自动化</td>
+<td><strong>互补不替代</strong>：我们重"盯盘+铁律执行"，它重"研究+回测"</td>
+</tr>
+<tr>
+<td>A 股规则</td>
+<td>T+1 校验时点精细到撮合时刻；golden 基线锁定</td>
+<td>铁律逻辑在策略层，回测精度有限</td>
+<td><strong>它的规则引擎值得抄思想</strong></td>
+</tr>
+<tr>
+<td>Walk-forward</td>
+<td>ValidationConfig 框架化（模型包装器）</td>
+<td>walk-forward-validation skill（方法论文档）</td>
+<td><strong>同域不同层</strong>：它给代码实现参考</td>
+</tr>
+<tr>
+<td>因子</td>
+<td>Polars 表达式引擎（Alpha101 风格）</td>
+<td>quant-ic-validation + llm-factor-mining（LLM 侧挖掘）</td>
+<td>方向不同：它算得快，我们挖得新</td>
+</tr>
+<tr>
+<td>ML 集成</td>
+<td>SklearnAdapter/PyTorchAdapter 内置</td>
+<td>quant-ml-pipeline skill</td>
+<td>可参考其 Adapter 设计</td>
+</tr>
+<tr>
+<td>风控</td>
+<td>RiskRule 编译进引擎</td>
+<td>agent-trading-safety skill + 半仓铁律</td>
+<td><strong>我们的安全层在 Agent 侧</strong>，它的在引擎侧——层次不同</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>AKShare 同门（数据兼容零成本）</td>
+<td>腾讯/akshare/iwencai 多源</td>
+<td>数据侧已对齐（都用 akshare）</td>
+</tr>
+<tr>
+<td>质量文化</td>
+<td>golden 基线 + engine rule versioning + 198 测试</td>
+<td>error-case-library + quant-evidence-governance</td>
+<td><strong>理念同源，它更机械化</strong></td>
+</tr>
+<tr>
+<td>成本</td>
+<td>需学习框架 + Rust 黑盒风险</td>
+<td>零学习成本，脚本即改即用</td>
+<td>我们的实用主义在盯盘场景成立</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心判断</strong>：不引入 akquant 作依赖（我们的主力场景是实时盯盘+铁律执行，不是研究回测；框架锁定成本 &gt; 收益），但<strong>吸收它的四个工程模式</strong>进化现有 skill。</p>
+<h2 id="_6">三、进化落实（三档处理）</h2>
+<h3 id="1">① 有利进化（已落实/立即可用）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>借鉴点</th>
+<th>落点</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>非交易日伪零陷阱（Sharpe 偏差 15.5% 案例）</td>
+<td>walk-forward-validation skill 补"日收益序列口径"节</td>
+<td>✅ 已 patch</td>
+</tr>
+<tr>
+<td>2</td>
+<td>T+1 卖单校验时点语义（下单时点 vs 成交时点）</td>
+<td>a-stock-quant-system skill 补 A 股回测规则精度提醒</td>
+<td>✅ 已 patch</td>
+</tr>
+<tr>
+<td>3</td>
+<td>golden 基线测试模式（改规则→基线对比→不变量锁定）</td>
+<td>quant-evidence-governance skill 补"规则变更防回归"节</td>
+<td>✅ 已 patch</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Walk-forward ValidationConfig 参数化设计（train_window/test_window/rolling_step）</td>
+<td>walk-forward-validation skill 补框架参考</td>
+<td>✅ 已 patch（与 #1 合并）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2">② 有价值备用（记入本笔记备查）</h3>
+<ul>
+<li><code>session_tag</code> 委托隔离（<code>{broker}-{session_tag}-{run_salt}{seq}</code> 的 client_order_id 设计）——未来多任务实盘时参考</li>
+<li><code>defer_for_delayed_execution()</code> 的"校验时点对齐成交时点"思想——任何延迟执行系统的风控设计通则</li>
+<li>零数据标的告警（"没成交"与"没数据"必须可区分）——screener 静默失败防御</li>
+<li>Polars 因子表达式引擎——若因子计算成为瓶颈再考虑</li>
+</ul>
+<h3 id="3">③ 知识性存档</h3>
+<ul>
+<li>Rust+Python 混合架构的 pyo3 实践（abi3-py310 稳定 ABI）</li>
+<li>CHANGELOG 写法范式（Keep a Changelog + 行为变更显式提示）</li>
+<li>CTP broker 的 client_order_id 幂等键设计（409 Conflict 案例）</li>
+</ul>
+<h2 id="_7">查询拓展</h2>
+<ul>
+<li>AKShare↔AKQuant 数据管道的完整链路（ParquetDataCatalog 设计）</li>
+<li>期权/期货保证金模块（src/margin、src/settlement）的规则库</li>
+<li>golden 测试 runner.py 的基线管理机制</li>
+<li>与 vnpy/backtrader/qlib 的详细对比（akquant 的差异化是 Rust 性能 + A 股规则深度）</li>
+<li><code>on_cross_section</code> 横截面回调与 <code>rebalance_weights</code> 调仓 API</li>
+</ul>
+<h2 id="_8">归纳总结</h2>
+<ol>
+<li><strong>AKQuant 与我们不是竞品是邻座</strong>：它做"研究回测的重工业"（Rust 引擎+规则建模），我们做"盯盘执行轻步兵"（脚本+铁律+cron）——数据侧同源（akshare），层次互补。</li>
+<li><strong>本项目最该学的不是代码是"规则版本化"纪律</strong>：<code>__engine_rule_version__</code> 让每次规则变更可追踪、回测结果可比——我们的铁律/screener 改版时同样需要（目前只靠 git log）。</li>
+<li><strong>两个数值陷阱是全行业通病</strong>：非交易日伪零（Sharpe 偏差 15.5%）和 T+1 校验时点错位（整条调仓链路瘫痪）——都是"框架级隐蔽错误"，任何自研回测都要自查。</li>
+<li><strong>golden 基线 = 量化系统的回归测试</strong>：改一个规则后"哪些用例该变、哪些不该变"必须预先声明（日内 T+0 转卖必须仍被拒）——这与 error-case-library 的"复现失败验证"同源但更前置。</li>
+<li><strong>CHANGELOG 即文档的极致形态</strong>：每条修复自带根因-影响面-边界-基线联动，2239 stars 但工程纪律是万星级——akfamily 从 AKShare 带来的口碑方法论。</li>
+</ol>
+<h2 id="_9">四、趋势判断</h2>
+<ol>
+<li><strong>Rust 内核 + Python 接口会成为量化框架标配架构</strong>：性能敏感层下沉 Rust、策略层保持 Python 灵活——2026 年新框架（akquant/rust-vnpy 系）全面采用此模式。</li>
+<li><strong>A 股规则建模深度成为本土框架的分水岭</strong>：T+1 细节、涨跌停、申报价格笼子这些"脏规则"的精确处理比回测速度更稀缺——akquant 在这条线上建立护城河。</li>
+<li><strong>Walk-forward 从方法论下沉为框架内置件</strong>：ValidationConfig 式的"验证即配置"会普及——防过拟合不再是研究纪律而是工程默认。</li>
+<li><strong>golden 基线测试会在量化工程中普及</strong>：规则引擎复杂化后，"改 A 不破坏 B"只能靠基线锁定——这是量化系统从脚本走向工程化的必经之路。</li>
+</ol>
+<h2 id="_10">五、指南分析</h2>
+<p><strong>什么时候用 akquant</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>日频/分钟级策略的系统回测</td>
+<td>✅ 直接用（A 股规则最全）</td>
+</tr>
+<tr>
+<td>ML 因子策略 walk-forward 验证</td>
+<td>✅ ValidationConfig 开箱即用</td>
+</tr>
+<tr>
+<td>因子表达式批量计算</td>
+<td>✅ Polars 引擎</td>
+</tr>
+<tr>
+<td>CTP 期货实盘</td>
+<td>✅ 内置 broker</td>
+</tr>
+<tr>
+<td>轻量盯盘/铁律执行</td>
+<td>❌ 我们的 cron+脚本更轻</td>
+</tr>
+<tr>
+<td>LLM 因子挖掘</td>
+<td>❌ 与它正交，我们继续 llm-factor-mining</td>
+</tr>
+</tbody>
+</table>
+<p><strong>依赖决策</strong>：暂不引入本机（Jetson 跑回测违反资源铁律；且我们无重型回测需求）——AutoDL 侧如需系统回测可直接 pip install akquant。</p>
+<h2 id="_11">拓展应用推荐</h2>
+<ul>
+<li><strong>给 walk-forward-validation / a-stock-quant-system / quant-evidence-governance</strong>：已 patch 四个借鉴点（见 §三①）</li>
+<li><strong>给 tdx-quant-trader / stock-analysis-system</strong>：T+1 校验时点语义作为回测精度自查项</li>
+<li><strong>延伸阅读</strong>：AKShare（同门数据源）、quant-evidence-governance skill（我们的证据治理）</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-09-02-MiniMind从零训练LLM全链路-3块钱64M模型与AgenticRL.md]]（同周开源吸收：教学极简 vs 工程极重两极样本）<br />
+→ 相关：[[2026-09-01-贝叶斯与神经网络世纪和解-BBT两阶段配方与人脑偏爱简单.md]]（"结构化先验"哲学呼应：规则引擎=先验）<br />
+→ 相关：[[2026-08-22-同花顺FinancialAPI-官方A股数据与AgentSkill全家桶.md]]（A股数据侧对照）</p>
+</body>
+</html>
