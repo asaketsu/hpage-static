@@ -1,4 +1,16 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>2026-08-28-本地模型部署-引擎场景分化矩阵</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:860px;margin:0 auto;padding:20px;line-height:1.7;color:#2d3436;background:#f5f6fa}
+h1{color:#0984e3;border-bottom:3px solid #0984e3;padding-bottom:10px}
+h2{color:#6c5ce7;border-left:4px solid #6c5ce7;padding-left:12px;margin-top:30px}
+h3{color:#00b894}
+blockquote{border-left:4px solid #fdcb6e;background:#fef9e7;padding:10px 15px;margin:15px 0;color:#6c5ce7}
+code{background:#dfe6e9;padding:2px 6px;border-radius:3px;font-size:0.9em}
+pre{background:#2d3436;color:#dfe6e9;padding:15px;border-radius:8px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:15px 0}
+th,td{border:1px solid #dfe6e9;padding:8px 12px;text-align:left}
+th{background:#0984e3;color:#fff}
+tr:nth-child(even){background:#f5f6fa}
+strong{color:#e17055}</style><meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-28-%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%E9%83%A8%E7%BD%B2-%E5%BC%95%E6%93%8E%E5%9C%BA%E6%99%AF%E5%88%86%E5%8C%96%E7%9F%A9%E9%98%B5_tech-blue.png" />
+</head><body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -73,4 +85,127 @@ if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(f
 if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
-</script><!--/HPGATE-->
+</script><!--/HPGATE--><h1 id="_1">本地模型部署：推理引擎场景分化矩阵</h1>
+<blockquote>
+<p>探索日期 2026-08-28 | 兴趣等级 L3 | 来源数量 5 | 前序笔记 <code>notes/2026-07-19-LLM推理引擎对决-*</code></p>
+</blockquote>
+<h2 id="5">核心发现（5个）</h2>
+<p><strong>1. TGI 正式进入维护模式（2025-12-11），新项目不应选 TGI</strong>
+HuggingFace 官方明确推荐 vLLM 或 SGLang 替代 TGI 用于 Inference Endpoints。TGI 仅接受 minor bugfix 和文档维护。这意味着 2026 年推理引擎选型从"五选一"变成了"四选一"（vLLM / SGLang / TensorRT-LLM / llama.cpp），TGI 降级为遗留系统迁移对象。</p>
+<p><strong>2. 场景分化已成定局：没有"万能引擎"，只有"场景最优"</strong>
+五大引擎已各自锁定不可替代的场景壁垒：
+- vLLM = 高吞吐通用默认（PagedAttention + 连续批处理）
+- SGLang = 共享前缀 + 结构化输出（RadixAttention 前缀树复用）
+- TensorRT-LLM = NVIDIA 极限性能（编译期内核融合，2-3× 通用引擎）
+- llama.cpp = CPU/边缘/离线（GGUF 量化，零 GPU 依赖）
+- Ollama = 开发者本地原型（llama.cpp 封装，一键部署）</p>
+<p><strong>3. SGLang 的 TTFT 优势在交互场景碾压 vLLM</strong>
+SGLang TTFT 80ms vs vLLM 150ms（A100, Llama 70B），快 47%。但 vLLM 吞吐量 3,500 tok/s vs SGLang 2,800 tok/s，vLLM 高 25%。核心分水岭：<strong>批处理排队可接受 → vLLM；首 Token 延迟敏感 → SGLang</strong>。</p>
+<p><strong>4. MAX（Modular）是新变量：硬件可移植性赛道</strong>
+MAX 不与 vLLM/SGLang 在吞吐量上正面竞争，而是押注"跨硬件部署"——OpenAI 兼容端点 + Docker/云部署 + 非 CUDA 硬件支持。适合 AMD GPU 或异构硬件团队，但模型覆盖和结构化输出支持需逐模型验证。</p>
+<p><strong>5. 成本差异在混合负载下可达 20-30%</strong>
+Q2 2026 实测每百万 Token 成本（50% GPU 利用率，混合负载）：
+- Triton-TRT: $0.48 | SGLang: $0.51 | vLLM: $0.55 | TGI: $0.63
+但这是最优配置下的理论值，运维 expertise 不足会快速抹平这些差距。</p>
+<h2 id="_2">关键概念</h2>
+<h3 id="_3">引擎场景分化矩阵</h3>
+<div class="codehilite"><pre><span></span><code>┌──────────────────┬───────────┬───────────┬──────────────┬────────────┬──────────┐
+│ 维度             │ vLLM      │ SGLang    │ TensorRT-LLM │ llama.cpp  │ Ollama   │
+├──────────────────┼───────────┼───────────┼──────────────┼────────────┼──────────┤
+│ 核心技术         │ PagedAttn │ RadixAttn │ 编译期融合   │ GGUF量化   │ llama.cpp│
+│                  │ 连续批处理│ 前缀树复用│ 内核融合     │ SIMD指令   │ 封装层   │
+├──────────────────┼───────────┼───────────┼──────────────┼────────────┼──────────┤
+│ 吞吐量(tok/s)    │ 3,500     │ 2,800     │ 4,500(H100)  │ 20(CPU)    │ ~1,800   │
+│ TTFT(ms)         │ 150       │ 80        │ 150          │ 800        │ ~800     │
+│ GPU要求          │ 必需NVIDIA│ 首选GPU   │ 必需NVIDIA   │ 可选       │ 可选     │
+│ 量化支持         │ AWQ/GPTQ  │ GPU优化   │ INT4/FP8     │ GGUF全系   │ GGUF     │
+│                  │ FP8       │           │              │            │ Q4-Q6    │
+│ 结构化输出       │ Outlines  │ 原生语法  │ logits处理器 │ 不支持     │ 不支持   │
+│                  │ (-15~30%) │ (一等公民)│ (快但开发重) │            │          │
+│ 部署复杂度       │ 低(pip)   │ 低(pip)   │ 高(编译30m)  │ 极低(单二) │ 极低     │
+│ OpenAI兼容       │ 是        │ 是        │ 需适配器     │ 否         │ 是       │
+│ 维护状态         │ 活跃      │ 活跃      │ 活跃         │ 活跃       │ 活跃     │
+└──────────────────┴───────────┴───────────┴──────────────┴────────────┴──────────┘
+</code></pre></div>
+
+<h3 id="_4">选型决策树</h3>
+<div class="codehilite"><pre><span></span><code>你的场景是什么？
+├── 单用户笔记本/开发机
+│   └── Ollama（易用）或 llama.cpp（极致便携）
+├── 边缘设备/离线/无GPU
+│   └── llama.cpp（唯一选择，GGUF Q4_K_M）
+├── 生产多用户API
+│   ├── 混合/不确定负载 → vLLM（默认）
+│   ├── 共享前缀多(RAG/Agent) → SGLang（RadixAttention）
+│   ├── 结构化输出为主 → SGLang（原生语法引擎）
+│   └── NVIDIA极限性能 → TensorRT-LLM（接受编译开销）
+├── 异构硬件/AMD/可移植
+│   └── MAX（Modular，验证模型覆盖后采用）
+└── 遗留 TGI 部署
+    └── 保持运行 + 规划迁移到 vLLM/SGLang
+</code></pre></div>
+
+<h3 id="sglang-radixattention">SGLang RadixAttention 原理</h3>
+<div class="codehilite"><pre><span></span><code>传统缓存: 每个请求独立计算 attention → 重复计算相同前缀
+                  ┌──────────────┐
+  Request A: [系统提示][文档A]    │  全量计算
+  Request B: [系统提示][文档B]    │  全量计算（重复算系统提示）
+                  └──────────────┘
+
+RadixAttention (Trie 前缀树):
+                  ┌──────────────┐
+  [系统提示] ← 共享节点（缓存复用）
+   ├── [文档A] → 只算增量
+   └── [文档B] → 只算增量
+                  └──────────────┘
+  → 多轮对话/RAG/Agent 场景计算量骤降
+</code></pre></div>
+
+<h2 id="_5">与现有工作的关联</h2>
+<h3 id="skill">对 Skill / 笔记改进建议</h3>
+<p><strong>P0 — patch <code>llm-inference-optimization</code> skill</strong>
+当前 skill 已有 SGLang vs vLLM 决策铁律（2026-07-19 patch），但缺少：
+- TGI 维护模式状态更新（应标注"2025-12 进入维护，新项目勿选"）
+- MAX（Modular）作为异构硬件选项的记录
+- Ollama 在开发场景的定位说明
+- 完整的场景分化矩阵图</p>
+<p><strong>P1 — Jetson 本地部署参考</strong>
+llama.cpp 是 Jetson Orin Nano 上唯一可行的推理引擎（CUDA 兼容但显存受限）。GGUF Q4_K_M 是 Jetson 量化的默认选择。vLLM 理论支持但实际显存不足。nexa-local-inference skill 已覆盖此场景。</p>
+<p><strong>P2 — 量化格式与引擎绑定关系</strong>
+引擎选型直接决定量化格式：vLLM/SGLang → AWQ/GPTQ；llama.cpp/Ollama → GGUF；TensorRT-LLM → INT4/FP8。选引擎前先确定量化方案。</p>
+<h3 id="actionable-insights">Actionable Insights</h3>
+<ol>
+<li><strong>新项目默认 vLLM，有共享前缀特征则优先试 SGLang</strong> — 这条铁律已在 2026-07-19 笔记中确立，本次验证仍然有效</li>
+<li><strong>TGI 迁移窗口已打开</strong> — 如果有任何 TGI 部署，现在就应规划迁移路径，不要等到功能停滞才行动</li>
+<li><strong>结构化输出场景 SGLang 有原生优势</strong> — vLLM 的 Outlines 集成会损失 15-30% 吞吐，SGLang 的语法引擎是一等公民无此代价</li>
+<li><strong>成本最优不等于性能最优</strong> — Triton-TRT 理论成本最低（$0.48/M tok），但编译开销和运维复杂度可能抵消优势</li>
+</ol>
+<h3 id="_6">关键风险与盲点</h3>
+<ul>
+<li>⚠️ 吞吐量基准测试高度依赖模型/硬件/提示长度/批大小，<strong>不可直接跨来源对比</strong>（deploybase 用 A100+Llama 70B，sesamedisk 用 4×A100+FP8，iotdigitaltwin 用混合负载）</li>
+<li>⚠️ SGLang 生产成熟度弱于 vLLM（生态覆盖、文档量、社区规模），企业部署需评估运维能力</li>
+<li>⚠️ MAX 的模型覆盖未完全验证，采用前必须测试你的具体模型+量化+结构化输出需求</li>
+<li>⚠️ TensorRT-LLM 编译后锁定特定 GPU 型号和 CUDA 版本，换卡需重新编译</li>
+</ul>
+<h2 id="_7">一页速查</h2>
+<blockquote>
+<p><strong>选型铁律：不确定就选 vLLM。共享前缀/结构化输出选 SGLang。NVIDIA 极限性能选 TRT-LLM。CPU/边缘选 llama.cpp。开发原型选 Ollama。TGI 只做迁移不做新项目。</strong></p>
+<p>吞吐排序：TRT-LLM(4500) &gt; vLLM(3500) &gt; SGLang(2800) &gt; TGI(2500) &gt; Ollama(1800) &gt; llama.cpp(20)
+延迟排序：SGLang(80ms) &lt; vLLM/TRT(150ms) &lt; TGI(250ms) &lt; llama.cpp(800ms)
+成本/百万Token：TRT $0.48 &lt; SGLang $0.51 &lt; vLLM $0.55 &lt; TGI $0.63
+维护状态：vLLM✅活跃 SGLang✅活跃 TRT-LLM✅活跃 llama.cpp✅活跃 Ollama✅活跃 TGI⚠️维护模式</p>
+</blockquote>
+<h2 id="_8">待深入</h2>
+<ul>
+<li>DeepSeek 自研推理引擎开源后对 vLLM/SGLang 的反向贡献（EP 专家并行 + 低比特量化）</li>
+<li>Speculative Decoding 在不同引擎上的配置差异（SpecKV 自适应 gamma）</li>
+<li>多模态模型（VLM）推理引擎选型分化</li>
+</ul>
+<h2 id="_9">来源列表</h2>
+<ol>
+<li>deploybase.ai — "Best LLM Inference Engines 2026: vLLM vs SGLang vs TGI vs llama.cpp" (2026-02-23)</li>
+<li>effloow.com — "LLM Inference Engines Compared 2026: vLLm vs SGLang vs TGI vs MAX" (2026-04-22, primary sources checked 2026-06-16)</li>
+<li>sesamedisk.com — "Local AI Inference Engines: 2026 Landscape" (2026-05-20, updated 2026-08-07)</li>
+<li>iotdigitaltwinplm.com — "Q2 2026 LLM Inference Benchmark: vLLM vs TGI vs SGLang vs Triton"</li>
+<li>ppio.com — "一文了解vLLM、SGLang等主流推理引擎" (2025-05-06, DeepSeek 开源周背景)</li>
+</ol></body></html>

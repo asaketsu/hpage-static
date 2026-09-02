@@ -1,4 +1,369 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KVCache压缩2026前沿-TriAttention基建突围与生产级落地</title>
+
+<meta property="og:title" content="KVCache压缩2026前沿-TriAttention基建突围与生产级落地" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-22-KVCache%E5%8E%8B%E7%BC%A92026%E5%89%8D%E6%B2%BF-TriAttention%E5%9F%BA%E5%BB%BA%E7%AA%81%E5%9B%B4%E4%B8%8E%E7%94%9F%E4%BA%A7%E7%BA%A7%E8%90%BD%E5%9C%B0.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +439,222 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="kv-cache-2026-triattention">KV Cache 压缩 2026 前沿：TriAttention 基建突围与生产级落地</h1>
+<blockquote>
+<p><strong>来源</strong>：NVIDIA Research (Efficient AI Lab) / MarkTechPost / The Kaitchup / arXiv<br />
+<strong>原文链接</strong>：https://research.nvidia.com/labs/eai/blogs/kv-cache-compression-and-its-infra-problems<br />
+<strong>记录日期</strong>：2026-08-22</p>
+
+<p class="meta-date">生成日期 2026-08-22</p></blockquote>
+<p><strong>标签</strong>：#KVCache #LLM推理优化 #TriAttention #FlashAttention #vLLM #模型压缩</p>
+<hr />
+<h2 id="_1">出处</h2>
+<ul>
+<li>NVIDIA EAI Blog（2026-06-12，Weian Mao / Yukang Chen / Song Han 等）：《KV Cache Compression and Its Infra Problems》</li>
+<li>MarkTechPost（2026-04-29）：《Top 10 KV Cache Compression Techniques for LLM Inference》</li>
+<li>The Kaitchup（NeurIPS 2026 现场报告）：《Efficient LLMs at Scale: My NeurIPS Week in KV Caches, Spec Decoding, and FP4》</li>
+<li>TriAttention：ICML 2026，github.com/WeianMao/triattention；TurboQuant：arXiv:2504.19874（ICLR 2026，Google Research）</li>
+<li>ACL 2026 Survey：jjiantong/Awesome-KV-Cache-Optimization；《KV Cache Optimization Strategies》arXiv:2603.20397</li>
+</ul>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11-kv-cache">1.1 问题的规模：为什么 KV Cache 是头号敌人</h3>
+<p>推理模型（reasoning model）常态化产出 32K token 级推理轨迹。NVIDIA 博客给出实测锚点：<strong>Qwen3-32B 4-bit 权重在 24GB GPU 上，生成约 24,000 token 后 OOM 崩溃</strong>——权重固定不变，崩溃完全由 KV Cache 增长驱动。MarkTechPost 侧数据：30B 模型 batch=128、输入 1024 token 时 KV Cache 可达 <strong>180GB</strong>；7B 模型权重 14GB 而同场景 KV Cache 约 72GB——cache 比权重大 5 倍。</p>
+<h3 id="12-nvidia">1.2 两堵基建墙：论文不谈、生产必撞（NVIDIA 博客核心论点）</h3>
+<p>2023-2025 的压缩方法（H2O/SnapKV/PyramidKV 家族）共享一个前提：<strong>读取历史 attention scores</strong> 来判断哪些 token 重要。这个前提在生产基建上撞两堵墙：</p>
+<blockquote>
+<p><strong>墙 1：FlashAttention 根本不写出 attention scores。</strong> 生产推理全部跑 FlashAttention——它把 attention 计算分块装进 SRAM，<strong>从不把 N×N score 矩阵物化到 HBM</strong>，这正是它快的原因。H2O 式累计打分需要<strong>每一个 decode step</strong> 的完整 scores；参考实现只能<strong>退回 eager attention、物化全量 score 矩阵、放弃 FlashAttention</strong>。</p>
+<p><strong>墙 2：paged attention 整块回收，eviction 后内存根本没回来。</strong> vLLM 把 KV Cache 切成 ~16 token 的物理块，<strong>只有整块全空才能释放</strong>。decode 期反复 evict 会把幸存者打散：evict 16,000 中的 14,400 个，1,600 个幸存者散布在约 1,000 个块里，<strong>几乎每块都剩至少一个幸存者 → allocator 一块都收不回</strong>。R-KV（NeurIPS 2025，专为推理模型设计的最强 prior evictor）宣称 90% 内存节省，但那是<strong>预分配连续张量上测的，不是 vLLM 里</strong>；其附录 D 自己承认 paged attention 集成"non-trivial"。</p>
+</blockquote>
+<p><strong>推论</strong>：过不了墙 2 的方法只省 compute 不省 memory——而长推理的稀缺资源恰恰是 memory。</p>
+<h3 id="13-triattentionicml-2026">1.3 TriAttention（ICML 2026）：换问题，不换启发式</h3>
+<p><strong>思路转换</strong>：从「哪些 token 最近收到高 attention」改为「<strong>模型表示空间的几何结构是否预言 token 重要</strong>」。打分完全基于 <strong>pre-RoPE 的 Q/K 几何性质</strong>（三角函数式打分），运行时<strong>从不观测任何 attention score</strong>——墙 1 直接不适用。且 pre-RoPE 几何可预测任意距离上的重要性，不受 SnapKV 式 ~25 query 观察窗的距离限制。</p>
+<p><strong>物理紧缩（过墙 2）</strong>：每 ~128 个 decode token 执行一次 forward-packing，两种变体：<br />
+- <strong>order-preserving repack</strong>：幸存者逐块前移，保持原 token 序，gather-clone-scatter 单趟完成，vLLM 改动最小<br />
+- <strong>hole-filling</strong>：新幸存者直接填入 eviction 腾出的洞——数据搬运量 1/6（3 次拷贝 vs 18 次），代价是物理序打乱需额外位置记账</p>
+<p><strong>成绩单（竞赛数学，KV 预算 2,048 = 完整 32K 轨迹的 1/16）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>AIME 2024</th>
+<th>AIME 2025</th>
+<th>MATH 500</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full Attention</td>
+<td>57.1%</td>
+<td>40.8%</td>
+<td>69.6%</td>
+</tr>
+<tr>
+<td>SnapKV</td>
+<td>34.6%</td>
+<td>20.0%</td>
+<td>49.2%</td>
+</tr>
+<tr>
+<td>R-KV</td>
+<td>25.4%</td>
+<td>17.5%</td>
+<td>46.4%</td>
+</tr>
+<tr>
+<td><strong>TriAttention</strong></td>
+<td><strong>42.1%</strong></td>
+<td><strong>32.9%</strong></td>
+<td><strong>56.0%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>预算放大到 3,072：<strong>追平 full attention 的 40.8%，同时 2.5× 吞吐（563 vs 223 t/s）+ 10.7× KV 内存压缩</strong>。</p>
+<h3 id="14-2026-marktechpost-top-10">1.4 量化路线 2026 成熟度（MarkTechPost Top 10 精要）</h3>
+<ul>
+<li><strong>KIVI</strong>（ICML 2024）：2-bit 即插即用，K 按 channel / V 按 token 的非对称方案（K 有 channel 级离群、V 分布更适合 per-token），峰值内存（权重+KV）降 2.6×，batch 4×，吞吐 2.35-3.47×</li>
+<li><strong>KVQuant</strong>：预校准混合精度——pre-RoPE K 量化（避开位置编码扭曲分布）+ 敏感度加权非均匀量化 + 稠密-稀疏分解处理离群值，可推到 <strong>10M context</strong></li>
+<li><strong>TurboQuant</strong>（Google，ICLR 2026）：两段式——PolarQuant 随机正交旋转把方差均匀摊到各坐标（无需训练/校准）+ 1-bit QJL（Quantized Johnson-Lindenstrauss）修正量化残差得到<strong>无偏内积估计器</strong>。3-bit 下 <strong>6× 内存 + 8× attention 加速</strong>，距信息论极限仅 ~2.7× 因子。用随机矩阵而非学习矩阵 → 推理时适用于任何模型、零离线准备</li>
+<li><strong>KVarN</strong>（Huawei，vLLM fork）：Reddit 社区实测 3-4× 压缩、1.3× 加速，精度/速度均超 TurboQuant</li>
+<li>架构级：MQA/GQA 从源头减少 KV 头数，与上述方法正交可叠加</li>
+</ul>
+<h3 id="15-neurips-2026-kaitchup">1.5 NeurIPS 2026 全景：一个配方、四个轴（Kaitchup 现场观察）</h3>
+<p>所有论文本质是同一配方：<strong>打分 → 缩 cache → 必要时修补</strong>。差异只在四轴：重要性信号是什么 / 何时计算 / 是否重算 / 什么粒度。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>信号</th>
+<th>时机</th>
+<th>修补</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SmallKV</td>
+<td>大模型真 attention + 小模型代理</td>
+<td>prefill+decode 全程</td>
+<td>小模型补 marginal token 的 attention</td>
+</tr>
+<tr>
+<td>AttentionPredictor</td>
+<td>微型 CNN 预测未来 attention</td>
+<td>decode 在线 + 周期真值校准</td>
+<td>定期 full attention 重校</td>
+</tr>
+<tr>
+<td>KVzip</td>
+<td>上下文重构误差（query 无关）</td>
+<td>每上下文一次，查询到来前</td>
+<td>无——专攻 KV 复用场景</td>
+</tr>
+<tr>
+<td>R-KV</td>
+<td>attention − key 冗余度</td>
+<td>decode 流式</td>
+<td>无</td>
+</tr>
+<tr>
+<td>ChunkKV</td>
+<td>观察窗 attention 按语义块聚合</td>
+<td>prefill 后</td>
+<td>跨层复用同一索引集省算力</td>
+</tr>
+<tr>
+<td>REFORM</td>
+<td>query vs 跨层上下文嵌入相似度</td>
+<td>初始 pass 建索引</td>
+<td>只对选中段落重算全量 KV，撑 ~1M token</td>
+</tr>
+<tr>
+<td>ScaleKV</td>
+<td>按层/尺度的离线 attention 统计</td>
+<td>部署前定预算</td>
+<td>无（视觉自回归专用，内存降到 10%）</td>
+</tr>
+<tr>
+<td>SkipV1Former</td>
+<td>架构内置：第二层起复用首层一半 value 头</td>
+<td>训练期</td>
+<td>无（表示质量反而提升）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>KVzip 值得单独记</strong>：面向「一次压缩、多次查询」的 KV 复用（长文档/用户画像/系统提示词），压缩时未来 query 未知 → 不能依赖 query-dependent attention → 用「抽掉这个 token 后 LLM 自身重构上下文有多痛」做重要性。这正是 RAG 前缀缓存和 Agent 常驻 system prompt 的生产痛点。</p>
+<h3 id="16">1.6 领域迁移：视频生成先撞墙、先出解</h3>
+<p>自回归视频生成器为每帧缓存空间 patch 的 KV——480p 数秒内 cache 超过模型权重本身：<br />
+- <strong>Quant VideoGen</strong>（ICML 2026）：相邻帧近重复 → 按组存残差再量化，<strong>2-bit、7× 压缩、&lt;4% 延迟开销</strong><br />
+- <strong>LongLive 2.0</strong>：权重+KV 全 NVFP4，关键是<strong>融合并行反量化 kernel</strong>——逐块反量化的 naive 循环把可并行的负载藏进了串行 kernel 队列；融合后单次 launch 线程一一映射所有 FP4 对，量化总开销压到 <strong>&lt;2%</strong>，5B 生成器 1.84× 吞吐<br />
+- TriAttention 打分已移植到 Wan2.1-T2V-1.3B（LongLive），cache 减 50% 质量无损</p>
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-pre-rope-vs-post-rope">2.1 pre-RoPE vs post-RoPE 几何</h3>
+<p>RoPE 按 token 位置旋转 Q/K 向量。NVIDIA 博客指出 RoPE 使「只有最近 ~25 个 query 反映模型真实注意力去向」——这是 SnapKV 观察窗不能开大的根本原因。而 <strong>pre-RoPE 的 Q/K 几何（旋转前的原始向量）不受位置扭曲</strong>，其内积结构对任意距离的 token 重要性都有稳定预测力。这与 KVQuant 的「pre-RoPE K 量化避开分布扭曲」是同一洞察的两个应用：一个用于量化分布整形，一个用于重要性打分。</p>
+<h3 id="22-turboquant">2.2 无偏内积估计（TurboQuant 的数学内核）</h3>
+<p>此前量化器的通病：MSE 最优的标量量化器在<strong>内积估计上引入系统性偏差</strong>，attention 计算是海量内积的复合，偏差层层累积。TurboQuant 的 QJL 残差修正产出无偏估计器——这就是它能同时做到激进压缩与精度保持的原因，也是它不需要校准数据的原因（随机正交旋转对任何分布都成立）。</p>
+<h3 id="23-vllm-paged-attention">2.3 vLLM paged attention 的块回收机制</h3>
+<p>物理块 ~16 token，逻辑块→物理块的页表映射，块内 slot 有引用计数。eviction 只是把逻辑条目标记为死，<strong>不等于物理块空</strong>。这就是「论文报 90% 节省、生产 0% 回收」的机械原因。TriAttention 的 forward-packing 本质是在 eviction 之后补一步<strong>显式碎片整理</strong>，把死 slot 挤到尾部整块归还。</p>
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31-20232026">3.1 2023→2026 范式转移图</h3>
+<pre><code>2023-2025「找更好的启发式」          2026「对齐生产基建」
+┌─────────────────────────┐        ┌──────────────────────────┐
+│ H2O: 累计 attention      │        │ TriAttention: pre-RoPE几何 │
+│ StreamingLLM: sink+滑窗  │  ──→   │   + forward-packing 物理紧缩│
+│ SnapKV: 观察窗一次性打分  │        │ TurboQuant: 无偏内积估计    │
+│ PyramidKV: 层级预算      │        │ LongLive2.0: 融合反量化kernel│
+└─────────────────────────┘        └──────────────────────────┘
+命中墙1(FlashAttn不写scores)         墙1不适用(不需要scores)
+命中墙2(paged块回收失败)             墙2被紧缩步攻破
+</code></pre>
+<h3 id="32">3.2 方法选型速查（按部署场景）</h3>
+<ul>
+<li><strong>长推理轨迹（reasoning 模型 32K+）</strong>：TriAttention（唯一同时省 memory+compute 且 vLLM 可落地）</li>
+<li><strong>超长上下文 RAG（1M token）</strong>：REFORM（存嵌入、查询时重算选中段）</li>
+<li><strong>系统提示词/长文档 KV 复用</strong>：KVzip（query 无关、一次压缩）</li>
+<li><strong>GPU 带宽受限的 batch 服务</strong>：KIVI/KVarN/TurboQuant 量化系</li>
+<li><strong>视频生成</strong>：NVFP4 + 融合 kernel（LongLive 2.0 路线）或 TriAttention 帧级 evict</li>
+<li><strong>不能改推理引擎时</strong>：MQA/GQA 模型选型 + TurboQuant（零校准、推理时生效）</li>
+</ul>
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1-benchmark-vllm">趋势 1：压缩论文的评审标准将从 benchmark 分数转向「vLLM 内实测内存回收」</h3>
+<p>依据：R-KV 的 90% 宣称与 vLLM 实际 0% 回收的落差已被 NVIDIA 博客公开点名；ACL 2026 survey 标题即为 "System-Aware KV Cache Optimization"。未来论文必须报告 paged attention 下的真实 allocator 行为。</p>
+<h3 id="2pre-rope">趋势 2：pre-RoPE 几何将成为通用工具信号</h3>
+<p>依据：KVQuant（量化分布）与 TriAttention（重要性打分）已各自独立利用同一性质。博客明确指出 per-head 距离偏好曲线还能做 head 分类（local/sink/range-specific），预算按 head 复杂度分配是下一步。</p>
+<h3 id="3kv">趋势 3：KV 复用（一次压缩多查询）成为独立赛道</h3>
+<p>依据：KVzip 专为 query-agnostic 场景设计；HiFC（Flash 介质 GPU↔SSD swapping）、TinyServe（query-aware cache selection）在 ACL 2026 survey 中单列。Agent 常驻 system prompt + 工具 schema 前缀的缓存复用是确定性需求。</p>
+<h3 id="4-kv">趋势 4：文本/视频共享同一套 KV 基建教训</h3>
+<p>依据：Quant VideoGen 的近重复残差、LongLive 2.0 的融合 kernel、TriAttention 的视频移植——三个系统各自独立重发现了「算法idea只占一半、另一半在 kernel/allocator 细节」。</p>
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-2026-08-21-llmkvcache-">5.1 与 <a href="2026-08-21-LLM推理KVCache全景-原理管理与修改利用.md">2026-08-21-LLM推理KVCache全景-原理管理与修改利用</a> 的关联</h3>
+<p>昨天的笔记覆盖 KVCache <strong>语义资产化</strong>光谱（CacheBlend/CachePrune/NeuralKVDB/位置绑定）——即「怎么把 cache 当资产复用」。本篇覆盖<strong>压缩与生产基建</strong>——即「怎么让 cache 放得下」。两篇互补构成完整视图：先压缩到放得下（本篇 TriAttention/量化系），再资产化复用（KVzip 正是两篇的交点：复用场景下的压缩）。</p>
+<h3 id="52-2026-05-08-kvcache-">5.2 与 <a href="2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理.md">2026-05-08-推理加速深度解析-投机解码-KVCache-连续批处理</a> 的关联</h3>
+<p>该笔记讲 PagedAttention 基础机制与投机解码。本篇 NVIDIA 博客的墙 2 正是 PagedAttention 块回收语义的暗面——三个月前的机制笔记提供了理解本篇问题所需的全套背景。</p>
+<h3 id="53-hermesjetson">5.3 与 Hermes/Jetson 本地部署的关联</h3>
+<p>Jetson Orin 8-16GB 统一内存 = 24GB GPU OOM 问题的放大版。Qwen3-32B 24K token 崩溃的算术在 Jetson 上更早触发；TriAttention 的 10.7× 压缩直接决定端侧能否跑长推理。KIVI 类 2-bit 量化与 llama.cpp GGUF 生态（见 edge-llm-quantization skill）叠加路径清晰。</p>
+<h2 id="_7">六、金句摘录</h2>
+<blockquote>
+<p>「The hard part of KV cache compression is not choosing which tokens to keep — it is two collisions with production infrastructure.」— NVIDIA EAI</p>
+<p>「Problem 1 is not worked around; it simply does not apply.」— 对 TriAttention 不需要 attention scores 的评价</p>
+<p>「A method that cannot clear the second wall saves compute but not memory — the scarcer resource during long inference.」</p>
+<p>「Good compression is not primarily about finding the right scoring heuristic. It is about understanding why a signal has the structure it has — and exploiting that structure at the kernel level.」</p>
+</blockquote>
+<h2 id="_8">七、行动启示</h2>
+<ul>
+<li><strong>跟进 TriAttention 仓库</strong>（github.com/WeianMao/triattention）：hole-filling 变体自 v0.1.0 可用，观察 vLLM 集成 PR 进展</li>
+<li><strong>评估 TurboQuant/KVarN 用于本地 llama.cpp 栈</strong>：TurboQuant 零校准特性对 Jetson 端侧最有价值</li>
+<li><strong>Agent system prompt 前缀缓存</strong>：Hermes 场景的 skill/工具 schema 常驻前缀天然适合 KVzip 式一次压缩多查询</li>
+<li><strong>读论文先问两墙</strong>：后续评估任何 KV 压缩方法，第一问「需要 attention scores 吗」，第二问「paged 块回收验证了吗」</li>
+</ul>
+<h2 id="_9">八、拓展应用推荐</h2>
+<ul>
+<li><strong>Jetson 端侧长推理</strong>：TriAttention 式 eviction + KIVI 2-bit 量化的组合，理论上让 8GB 统一内存跑 8B 模型 32K 推理轨迹（本地回测优先，Jetson 不跑重训练）</li>
+<li><strong>RAG 索引前缀缓存</strong>：为高频查询的文档集建 KVzip 式压缩缓存，查询时直接挂载——省去每次 prefill</li>
+<li><strong>多模态扩展观察</strong>：TriAttention 已入 Wan2.1 视频生成；关注是否有音频/时序模态的移植</li>
+</ul>
+<h2 id="_10">九、指南分析</h2>
+<ul>
+<li><strong>NVIDIA 博客的方法论价值</strong>高于单篇论文：它给了「评估任何压缩方法的两问框架」，可作为审稿/选型 checklist</li>
+<li><strong>Kaitchup 的四轴分类</strong>（信号/时机/重算/粒度）是快速定位新论文位置的最简心智模型</li>
+<li><strong>警惕点</strong>：R-KV「压缩后反而超 full-KV 精度」的宣称被 Kaitchup 作者直评为「更像评测伪影」——压缩方法的自报精度需打折看</li>
+<li><strong>本篇与昨天 KVCache 全景笔记构成系列</strong>：建议后续遇到 KV 复用/前缀缓存主题时延续互引</li>
+</ul>
+</body>
+</html>
