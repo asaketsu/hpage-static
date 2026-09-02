@@ -8,7 +8,7 @@
 <meta property="og:title" content="为什么 KV Cache 只存 K 和 V、从不存 Q？（X 技术长推）" />
 <meta property="og:type" content="article" />
 <meta property="og:description" content="笔记 | cyber" />
-<meta property="og:image" content="https://hpage.top/homepage/covers/2026-08-30-%E4%B8%BA%E4%BB%80%E4%B9%88KVCache%E5%8F%AA%E5%AD%98K%E5%92%8CV%E4%BB%8E%E4%B8%8D%E5%AD%98Q.png" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
@@ -553,13 +553,136 @@ EXACT MATCH（前三层） vs FUZZY MATCH（第四层，有风险）
 <li><strong>推文的推导路径本身值得学</strong>：不自说自话，从"最后一个隐状态怎么来"回溯到 attention 矩阵行结构，每步都贴着矩阵形状走（10×10 的第 10 行只含 Q₁₀）——这是能写进教材的讲法</li>
 <li><strong>四层缓存框架的工程价值</strong>：把"KV cache 显存爆了"“为什么多轮对话越聊越快”“prompt cache 折扣怎么来的”"semantic cache 什么时候不能用"统一进一张图</li>
 </ol>
+<hr />
+<blockquote>
+<p><strong>【2026-09-01 增补】</strong> 以下 4.1–4.3 为引流 X Article《The Four Caches in LLM Serving》正文获取后的体系化补全。<br />
+来源：Avi Chawla 博客完整版《KV vs Prefix vs Prompt vs Semantic Caching》（blog.dailydoseofds.com，X Article 同源正文）。<br />
+§4.1 修正原笔记 §3 表格中两处不精确表述；§4.2/§4.3 按用户指令重点展开。</p>
+</blockquote>
+<h3 id="41-3">4.1 四层缓存的精确机制（原文细节补全，含对 §3 表格的修正）</h3>
+<p><strong>各层"存的对象"精确化</strong>（原 §3 表格已涉及，此处补机制细节）：</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>存的对象</th>
+<th>索引/匹配键</th>
+<th>原文关键机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV cache</td>
+<td>单请求的 attention 张量</td>
+<td>请求内位置</td>
+<td>请求结束即释放——20 轮对话第 20 轮要把 1~19 轮<strong>全额重算 prefill</strong></td>
+</tr>
+<tr>
+<td>Prefix cache</td>
+<td>同样的 KV 张量，但<strong>留在服务端</strong></td>
+<td><strong>token ID 的哈希链</strong></td>
+<td>vLLM 16-token 定长块；块哈希=父块哈希+块内 token ID；引用计数 pin 住使用中的块</td>
+</tr>
+<tr>
+<td>Prompt cache</td>
+<td>仍是 KV 张量（<strong>不是你的 prompt 文本</strong>）</td>
+<td>完全渲染后上下文的精确前缀匹配</td>
+<td>计费层：Anthropic 写 1.25×/读 0.1×；OpenAI 同结构</td>
+</tr>
+<tr>
+<td>Semantic cache</td>
+<td><strong>完整响应字符串</strong></td>
+<td>embedding 余弦相似度</td>
+<td>命中即完全跳过模型，省输出 token+输入 token</td>
+</tr>
+</tbody>
+</table>
+<p><strong>对原笔记 §3 的两处修正</strong>：<br />
+1. Prefix cache 的匹配不是笼统的"前缀哈希"——是<strong>链式哈希</strong>（子块哈希含父块哈希），块匹配天然蕴含"之前全部匹配"，这正是"前缀查找"的数学来源<br />
+2. Prompt cache 生命周期原写"按策略"——精确说是 <strong>TTL+断点</strong>双约束：只有你在断点处写入的 entry 才能被后续读；Anthropic 回溯上限 <strong>20 块</strong>，两次调用间插入超过 20 块对话，上一次写入就"出圈"，命中停止</p>
+<h3 id="42">4.2 层间交互与失效传播（重点展开）</h3>
+<p>四层不是并列菜单，是<strong>嵌套依赖链</strong>——上层的命中以下层的存在为前提，上层的失效会沿链向下传染：</p>
+<p><strong>① 失效的物理载体：一个前缀变量污染整条链</strong></p>
+<p>Prompt 前部任何变量（时间戳/请求 ID/用户名）都使其后的<strong>每一个块</strong>失效。失效不是"该块作废"而是"从该点起全链断裂"——因为链式哈希中子块身份依赖父块，父块变了，后面所有块的哈希全变。工程口诀（原文 Takeaways）：<strong>稳定内容放最前、变量放最后、边界处放标记</strong>。</p>
+<p><strong>② 隐性失效源（最容易被忽视的四类）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>失效源</th>
+<th>机制</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工具 schema 重排</td>
+<td>tool schemas 通常渲染在 system prompt 之前，重排=重写前缀</td>
+<td>Agent 升级工具列表</td>
+</tr>
+<tr>
+<td>设置项重渲染</td>
+<td>Anthropic 上开/关 web search、citations、thinking config、<code>tool_choice</code> 会<strong>重写 prompt 文本</strong></td>
+<td>A/B 测试两档 reasoning effort = 缓存裂成两半</td>
+</tr>
+<tr>
+<td>历史摘要</td>
+<td>摘要=重写前缀，下一次调用全部按冷 token 全价</td>
+<td>多轮对话压缩策略</td>
+</tr>
+<tr>
+<td>跨模型路由</td>
+<td>cache entry <strong>绑定模型</strong>，路由到便宜模型=全部历史冷 prefill</td>
+<td>降本切模型反而不省钱</td>
+</tr>
+</tbody>
+</table>
+<p><strong>③ 缓存与批处理的内存竞争（与批处理笔记的交叉点）</strong>：prefix cache 与运行中的 batch <strong>共用同一 GPU 内存池</strong>——缓存越大并发序列越少；内存压力下 vLLM 按 LRU 逐出无引用块。混合流量雪上加霜：<strong>长共享前缀占块最多，恰好是丢了最疼的那些</strong>。</p>
+<p><strong>④ 与 RAG 的结构性冲突</strong>：RAG prompt = 系统指令 + 检索块 + 查询，而检索块<strong>每次变化且顺序不定</strong>——两个请求检索到相同文档但顺序不同，在链式哈希下<strong>共享为零</strong>。这是 prefix caching 在 RAG 流量上欠佳的根因（朴素修法"每块独立 prefill 再拼接缓存"有更深的问题，原文留给其 RAG 课程 Part 12）。</p>
+<p><strong>⑤ 层级语义总结</strong>：1→2→3 层是"精确匹配、correctness-neutral"——miss 只损失钱和延迟，不损失正确性；第 4 层质变为 fuzzy match——hit 可能<strong>带着 200 状态码返回错误答案</strong>。失效传播在前三层是"成本事件"，在第四层是"正确性事件"。</p>
+<h3 id="43-semantic-cache">4.3 Semantic Cache 的阈值困境与不可靠性根源（重点展开）</h3>
+<p><strong>① 运作与代价结构</strong>：对入站 prompt 做 embedding → 对已存 prompt 做最近邻搜索 → 相似度超阈值即直接返回存储的响应。<strong>省输出 token 是它与前三层的本质区别</strong>（前三层只省 prefill、仍跑模型）；代价是<strong>每个请求都要付一次 embedding 往返——包括所有 miss</strong>。</p>
+<p><strong>② 阈值的两难（原文）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>阈值方向</th>
+<th>hit rate</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>调高</td>
+<td>崩塌</td>
+<td>每次调用仍在付 embedding 钱，命中率却没了</td>
+</tr>
+<tr>
+<td>调低</td>
+<td>上升</td>
+<td><strong>自信的错误答案</strong>同步上升</td>
+</tr>
+</tbody>
+</table>
+<p>已发表默认值从 <strong>0.75 到 0.97</strong> 不等——这个范围本身就是证据：<strong>阈值是你流量的属性，不是可抄的常数</strong>。</p>
+<p><strong>③ 不可靠性的表征层根源</strong>（任何阈值都挡不住的失败）：</p>
+<ol>
+<li><strong>否定句在向量空间中彼此邻近</strong>："X 有效"与"X 无效"embedding 距离极近——语义相似度对<strong>否定词不敏感</strong>，这是分布表征的结构性盲区</li>
+<li><strong>句式框架主导向量</strong>：两个 prompt 共享句式框架、只差一个操作性数值（如"利率 3% 还是 5%"），得分近乎相同——因为<strong>框架贡献了向量的大部分</strong>，关键差异被稀释</li>
+</ol>
+<p>这两条决定了 semantic cache 的安全边界：<strong>只适用于"问法不同但答案确实等价"的封闭类目</strong>（FAQ/固定口径），不适用于事实精度敏感场景。</p>
+<p><strong>④ 缓解前沿（增量调研）</strong>：<br />
+- <strong>Apple Krites</strong>（machinelearning.apple.com）：静态阈值政策在关键路径上行为不变；对"恰好低于阈值"的最近邻<strong>异步调用 LLM judge 复核</strong>，通过则提升进动态缓存——对话/搜索流量上策展静态答案服务占比提升至 <strong>3.9×</strong><br />
+- <strong>阈值即产品策略</strong>（Ace The Cloud）：阈值调优不是 ML 调参是产品决策——低阈值=高命中/低成本/高假阳性风险；配套纪律：semantic hit 需要证据链而非仅相似度、缓存响应附源哈希与策略版本、先影子模式再上线<br />
+- <strong>SAECache</strong>（arXiv:2605.18825）：前缀缓存逐出不应均匀对待所有块——复用概率强烈依赖 token 语义/prompt 结构/会话类型，语义感知逐出可带来 1.4–2.7× TTFT 改善——语义信息反过来救精确缓存，形成有趣闭环</p>
+<p><strong>⑤ 度量学结论（原文）</strong>：前三层报 hit rate 是对的（miss 只体现在成本与延迟）；<strong>semantic cache 不该报 hit rate</strong>——它的风险维度是假阳性，正确指标是安全命中率/假阳性率/过期命中拦截数/避免的成本（Ace The Cloud 指标组）。</p>
 <h2 id="_1">出处</h2>
 <ul>
 <li>原推：https://x.com/_avichawla/status/2093962020962083139（71 段完整抓取：syndication 截断 → status 页 React 数据流提取）</li>
-<li>引流 X Article：https://x.com/i/article/2093210840468189184（《The Four Caches in LLM Serving》正文登录墙未获取，框架已从配图+推文还原）</li>
+<li>引流 X Article：https://x.com/i/article/2093210840468189184（《The Four Caches in LLM Serving》，2026-09-01 经博客完整版补全正文）</li>
+<li><strong>增补来源</strong>：Avi Chawla《KV vs Prefix vs Prompt vs Semantic Caching》（blog.dailydoseofds.com/p/kv-vs-prefix-vs-prompt-vs-semantic，X Article 同源博客版全文）；Apple ML Research（Krites）；arXiv:2605.18825（SAECache）；Ace The Cloud（阈值产品策略）</li>
 <li>配图：https://pbs.twimg.com/media/HQzFEXmaQAAzsnc.png（GLM-4.6V 视觉识别还原四层结构）</li>
-<li>§1 逐字翻译照录；§2-§4 为领域补全分析（标注明确）</li>
-<li>相关笔记：<a href="https://hpage.top/bookmarks/notes/2026-08-29-图解大语言模型部署.html">图解大语言模型部署</a>（KV Cache/TTFT 指标层）、<a href="https://hpage.top/bookmarks/notes/2026-08-30-一文弄懂Agent-Harness与Agent-Runtime的区别.html">一文弄懂Agent-Harness与Agent-Runtime的区别</a>（部署栈侧）</li>
+<li>§1 逐字翻译照录；§2-§4 为领域补全分析；<strong>§4.1-§4.3 为 2026-09-01 增补</strong>（原文机制补全 + 层间交互/失效传播 + semantic cache 阈值困境，出处节已标注增补范围）</li>
+<li>相关笔记：<a href="https://hpage.top/bookmarks/notes/2026-08-29-图解大语言模型部署.html">图解大语言模型部署</a>（KV Cache/TTFT 指标层）、<a href="https://hpage.top/bookmarks/notes/2026-08-30-一文弄懂Agent-Harness与Agent-Runtime的区别.html">一文弄懂Agent-Harness与Agent-Runtime的区别</a>（部署栈侧）、<a href="https://hpage.top/bookmarks/notes/2026-09-01-LLM批处理三策略详解-静态动态连续与ChunkedPrefill.html">LLM批处理三策略详解</a>（缓存与 batch 的内存竞争，§4.2③）</li>
 </ul>
 </body>
 </html>
