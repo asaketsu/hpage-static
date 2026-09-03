@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>轻量Web部署-浏览器WASM-SQLite</title>
+
+<meta property="og:title" content="轻量Web部署-浏览器WASM-SQLite" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="web-wasm-sqlite-sqljs-wa-sqlite-sqlite-wasm-powersync">轻量 Web 部署：浏览器 WASM SQLite 持久化全景 — sql.js / wa-sqlite / sqlite-wasm / PowerSync</h1>
+<blockquote>
+<p>探索日期 2026-09-03 | 兴趣等级 L2 | 来源 5 篇 | 类型 auto-explore（嗅探队列）</p>
+
+<p class="meta-date">生成日期 2026-09-03</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>浏览器端 SQLite 持久化在 2026 年已从"实验性"迈入"可用"阶段。四个项目各有定位：sql.js（2014，仅内存，最简但无持久化）、wa-sqlite（2021，多 VFS 后端，性能最优）、官方 sqlite-wasm（2022，SQLite 官方维护，OPFS 支持）、PowerSync（商业 SDK，封装 wa-sqlite + Postgres 同步）。核心突破是 OPFS SyncAccessHandle API 使同步文件操作成为可能，解决了 WASM SQLite 的同步 VFS 需求。2026 年 4 月新增的 OPFSWriteAheadVFS 首次实现浏览器端读写并发。选型铁律：通用首选 wa-sqlite OPFSCoopSyncVFS，读密集选 OPFSWriteAheadVFS，兼容旧浏览器降级 IDBBatchAtomicVFS。</p>
+<hr />
+<h2 id="1">一、四个项目定位速查（关键发现 1）</h2>
+<pre><code>时间线：
+2014  sql.js         ← 第一个 SQLite→Web 编译，仅内存，无持久化
+2021  wa-sqlite       ← 实验性 IndexedDB 持久化，多 VFS 架构
+2021  absurd-sql      ← IndexedDB + 性能优化，但项目已停更
+2022  sqlite-wasm     ← SQLite 官方 Wasm build，OPFS 原生支持
+2024  PowerSync      ← 商业 SDK，wa-sqlite + Postgres 同步
+2026  OPFSWriteAheadVFS ← wa-sqlite 新增，首个支持读写并发的 VFS
+</code></pre>
+<ul>
+<li><strong>sql.js</strong>：2014 年发布，Alon Zakai 将 SQLite 交叉编译到 JS 再到 Wasm。仅支持内存数据库，持久化只能整体导入导出数据库文件。<strong>定位</strong>：快速原型、一次性数据处理，不适合生产持久化。</li>
+<li><strong>wa-sqlite</strong>：2021 年发布，核心创新是支持用 JavaScript 完全实现 SQLite 虚拟文件系统（VFS），可接入 IndexedDB 和 OPFS 等浏览器存储。<strong>定位</strong>：生产级持久化的首选底层库，1.4k ⭐。</li>
+<li><strong>sqlite-wasm（官方）</strong>：2022 年底 SQLite 官方发布 beta Wasm build，是首个与 SQLite 项目正式关联的 Wasm 制品。<strong>定位</strong>：官方背书、互操作性最好，但 OPFS VFS 需要跨域隔离头。</li>
+<li><strong>PowerSync</strong>：商业服务，在 wa-sqlite 之上封装 Kysely/Drizzle ORM + Postgres 双向同步。<strong>定位</strong>：需要后端数据库同步的完整方案。</li>
+</ul>
+<h2 id="vfs-2">二、核心技术难题：同步 VFS 的三种解法（关键发现 2）</h2>
+<blockquote>
+<p>SQLite 是 C 库，操作是同步的；编译到 Wasm 后 VFS 实现也必须同步。但浏览器文件系统 API 通常是异步的。</p>
+</blockquote>
+<h3 id="21-emscripten-asyncify">2.1 Emscripten Asyncify</h3>
+<ul>
+<li>将同步调用翻译为异步调用，允许 VFS 异步</li>
+<li>代价：Wasm 体积 2×，性能降 2-5×，SQLite 行为可能受影响</li>
+<li>SQLite 官方不用此方案</li>
+</ul>
+<h3 id="22-sharedarraybuffer-atomics">2.2 SharedArrayBuffer + Atomics</h3>
+<ul>
+<li>独立 Worker 进程处理文件操作</li>
+<li>需要 COOP + COEP 跨域隔离头（部署复杂度增加）</li>
+<li>额外开销显著</li>
+</ul>
+<h3 id="23-opfs-filesystemsyncaccesshandle">2.3 OPFS FileSystemSyncAccessHandle（推荐）</h3>
+<ul>
+<li>File System API 提供 <code>createSyncAccessHandle()</code> → 在 Worker 中同步读写 OPFS 文件</li>
+<li>Chrome/Safari/Firefox 全部支持</li>
+<li>限制：打开文件仍异步；默认独占锁（仅单连接）</li>
+</ul>
+<h3 id="24-jspi2026">2.4 JSPI（2026 新标准）</h3>
+<ul>
+<li>WebAssembly JavaScript Promise Integration：核心浏览器特性，性能优于 Asyncify</li>
+<li>Chrome 137+ 无需 flag；Firefox 仍需 flag；Safari Technology Preview 可用</li>
+<li>2026 Interop 重点领域</li>
+</ul>
+<h2 id="vfs-3">三、VFS 实现全景对比（关键发现 3）</h2>
+<blockquote>
+<p>来源：PowerSync 博客（2026-05 更新），最权威的 WASM SQLite 持久化综述</p>
+</blockquote>
+<h3 id="31-wa-sqlite-vfs">3.1 wa-sqlite VFS 家族</h3>
+<table>
+<thead>
+<tr>
+<th>VFS</th>
+<th>存储</th>
+<th>需 Asyncify/JSPI</th>
+<th>并发</th>
+<th>文件透明</th>
+<th>COOP+COEP</th>
+<th>推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IDBBatchAtomicVFS</td>
+<td>IndexedDB</td>
+<td>是</td>
+<td>并发读</td>
+<td>否</td>
+<td>否</td>
+<td>旧浏览器降级</td>
+</tr>
+<tr>
+<td>OPFSAdaptiveVFS</td>
+<td>OPFS</td>
+<td>是</td>
+<td>并发读</td>
+<td>是</td>
+<td>否</td>
+<td>—</td>
+</tr>
+<tr>
+<td>AccessHandlePoolVFS</td>
+<td>OPFS</td>
+<td>否</td>
+<td>无</td>
+<td>否</td>
+<td>否</td>
+<td>—</td>
+</tr>
+<tr>
+<td>OPFSCoopSyncVFS</td>
+<td>OPFS</td>
+<td>否</td>
+<td>并发连接</td>
+<td>是</td>
+<td>否</td>
+<td><strong>通用首选</strong></td>
+</tr>
+<tr>
+<td>OPFSWriteAheadVFS</td>
+<td>OPFS</td>
+<td>否</td>
+<td><strong>并发写+读</strong></td>
+<td>否</td>
+<td>否</td>
+<td><strong>读密集首选</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="32-sqlite-wasm-vfs">3.2 sqlite-wasm VFS</h3>
+<table>
+<thead>
+<tr>
+<th>VFS</th>
+<th>存储</th>
+<th>需 Asyncify</th>
+<th>并发</th>
+<th>文件透明</th>
+<th>COOP+COEP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>opfs</td>
+<td>OPFS</td>
+<td>否</td>
+<td>并发连接</td>
+<td>是</td>
+<td>是</td>
+</tr>
+<tr>
+<td>opfs-sahpool</td>
+<td>OPFS</td>
+<td>否</td>
+<td>无</td>
+<td>否</td>
+<td>否</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-opfswriteaheadvfs-2026-04">3.3 OPFSWriteAheadVFS 详解（2026-04 新增，最重要突破）</h3>
+<p>首个支持浏览器端读写并发的 VFS，实现类 WAL 模式：</p>
+<pre><code>写事务流程：
+1. SQLite 正常用 journal，但 VFS 拦截写入
+2. 追加到内部 write-ahead log（不直接写 OPFS）
+3. 读事务启动时：将 WAL 至当前位置视为主库 overlay
+
+优势：多 tab / 单 tab 多 Worker 均可并发读
+限制：
+- 写事务必须 BEGIN IMMEDIATE
+- VACUUM 需 PRAGMA locking_mode = EXCLUSIVE
+- 默认弱持久性（crash 可能丢最近事务），PRAGMA synchronous 恢复全持久
+- readwrite-unsafe 模式仅 Chrome 121+ 支持
+</code></pre>
+<h2 id="4">四、性能调优四板斧（关键发现 4）</h2>
+<ol>
+<li><strong>Batch-atomic 写事务</strong>：IndexedDB 可保证一批写入全成功或全失败 → SQLite 免除回滚日志 → 显著性能提升</li>
+<li><strong>Exclusive 锁定</strong>：<code>PRAGMA locking_mode = EXCLUSIVE</code> → 单连接独占 → 减少锁开销 → 写入显著加速</li>
+<li><strong>宽松持久性</strong>：<code>PRAGMA synchronous = NORMAL</code>（OS crash 可能丢数据，应用 crash 安全）或 <code>OFF</code>（不等待文件系统，吞吐极高但可能损坏）</li>
+<li><strong>组合最优</strong>：Exclusive + synchronous=OFF → 写入不等待文件系统 → 极高 TPS</li>
+</ol>
+<h2 id="powersync">五、真实世界踩坑（PowerSync 生产经验）</h2>
+<ol>
+<li>IDBBatchAtomicVFS 在 100MB+ 数据库性能退化；OPFSCoopSyncVFS 1GB+ 仍稳定</li>
+<li>Safari + IDBBatchAtomicVFS 大查询触发 <code>RangeError: Maximum call stack size exceeded</code>；OPFSCoopSyncVFS 无此问题</li>
+<li>Safari 无痕模式不支持 OPFS → IDBBatchAtomicVFS 降级</li>
+<li>Chrome 无痕模式 100MB 数据库上限 → 超限报错</li>
+<li>OPFSCoopSyncVFS 事务中途抛 SQLITE_BUSY → 应用需处理重试</li>
+<li>OPFSCoopSyncVFS 需 dedicated worker（SharedWorker 不支持 OPFS）→ 跨 tab 需 MessageChannel 到单 worker</li>
+<li>Chrome/Edge 标签页可被"挂起" → worker 失效 → 用 Web Lock 防止挂起</li>
+<li>Ionic Capacitor 后台关闭 access handle → 用原生 SQLite 或 IDBBatchAtomicVFS</li>
+</ol>
+<h2 id="_2">六、加密支持</h2>
+<ul>
+<li><strong>SQLite Encryption Extension (SSE)</strong>：商业方案，支持 sqlite-wasm build</li>
+<li><strong>SQLite3 Multiple Ciphers</strong>：社区方案，兼容 sqlite-wasm 和 wa-sqlite；PowerSync Web SDK 内含</li>
+<li><strong>SQLCipher</strong>：尚不支持 Wasm build</li>
+</ul>
+<h2 id="orm">七、ORM 层选项</h2>
+<ul>
+<li><strong>SQLocal</strong>：Drizzle + Kysely on sqlite-wasm</li>
+<li><strong>kysely-sqlite-tools</strong>：Kysely on sqlite-wasm 和 wa-sqlite</li>
+<li><strong>PowerSync SDK</strong>：Kysely + Drizzle on wa-sqlite（需完整 SDK）</li>
+</ul>
+<h2 id="_3">八、选型决策铁律</h2>
+<pre><code>需求 → 推荐方案：
+┌─────────────────────────┬─────────────────────────────────────┐
+│ 通用生产部署             │ wa-sqlite OPFSCoopSyncVFS            │
+│ 读密集(并发读)           │ wa-sqlite OPFSWriteAheadVFS(Chrome+) │
+│ 旧浏览器兼容             │ wa-sqlite IDBBatchAtomicVFS          │
+│ 快速原型/无持久化        │ sql.js                               │
+│ 官方背书+互操作          │ sqlite-wasm opfs-sahpool             │
+│ 后端同步(Postgres等)     │ PowerSync SDK                        │
+│ 需加密                   │ SQLite3 Multiple Ciphers             │
+└─────────────────────────┴─────────────────────────────────────┘
+</code></pre>
+<h2 id="skill">九、对现有 Skill/笔记的改进建议</h2>
+<ul>
+<li><strong>P2</strong>：当前无专门 Web 前端部署 skill，但此知识对 Hermes homepage/dashboard 等浏览器端项目有参考价值。如果后续需要在浏览器端做本地数据库（如离线笔记浏览），OPFSCoopSyncVFS + Drizzle ORM 是首选栈。</li>
+</ul>
+<h2 id="actionable-insights">十、Actionable Insights</h2>
+<ol>
+<li><strong>浏览器端 SQLite 已可用于生产</strong>：PowerSync 自 2025 年初在客户端 SDK 中支持 OPFSCoopSyncVFS 和 IDBBatchAtomicVFS，实测 1GB+ 数据库稳定。</li>
+<li><strong>OPFS 是关键分水岭</strong>：所有基于 OPFS SyncAccessHandle 的 VFS 都不需要 Asyncify/JSPI，性能和兼容性最优。</li>
+<li><strong>JSPI 是 2026 值得关注的新标准</strong>：Chrome 137+ 无 flag，性能接近 Asyncify，比 SharedArrayBuffer 方案更简洁。但 Firefox/Safari 支持尚不完整。</li>
+<li><strong>并发是最后的短板</strong>：即使 2026 年 4 月新增 OPFSWriteAheadVFS，浏览器端 SQLite 仍无完整 WAL 模式支持。并发写仍只能单事务串行。</li>
+</ol>
+<h2 id="_4">十一、关键风险与盲点</h2>
+<ul>
+<li><strong>跨浏览器一致性</strong>：OPFS readwrite-unsafe 模式仅 Chrome 121+ 支持，Firefox/Safari 尚未跟进 → OPFSWriteAheadVFS 实际仅 Chrome 可用。</li>
+<li><strong>SharedWorker 限制</strong>：OPFS sync access handle 在 SharedWorker/ServiceWorker 中不可用 → 跨 tab 共享数据库必须用 dedicated worker + MessageChannel，架构复杂。</li>
+<li><strong>持久性 vs 性能权衡</strong>：<code>synchronous=OFF</code> 性能极高但 OS crash 可能损坏数据库 → 生产环境需评估数据可恢复性。</li>
+<li><strong>无 WAL 模式</strong>：截至 2026-05，浏览器端无 VFS 完整支持 SQLite WAL journal 模式。OPFSWriteAheadVFS 在 VFS 层模拟类似行为，但非 SQLite 原生 WAL。</li>
+</ul>
+<h2 id="_5">十二、一页速查</h2>
+<pre><code>┌──────────────────────────────────────────────────────────┐
+│  浏览器 WASM SQLite 速查 (2026-05)                        │
+├──────────────────────────────────────────────────────────┤
+│  四个项目：                                                │
+│  sql.js(2014,内存only) / wa-sqlite(2021,多VFS)           │
+│  sqlite-wasm(2022,官方) / PowerSync(商业,wa-sqlite+同步) │
+│                                                          │
+│  同步VFS三解法：                                           │
+│  Asyncify(2×体积,2-5×降速) / SAB+Atomics(需COOP+COEP)    │
+│  OPFS SyncAccessHandle(推荐,全浏览器支持)                  │
+│  JSPI(2026新标准,Chrome137+无flag)                       │
+│                                                          │
+│  VFS选型：                                                 │
+│  通用 → OPFSCoopSyncVFS(wa-sqlite)                       │
+│  读密集 → OPFSWriteAheadVFS(2026-04,首个读写并发)        │
+│  旧浏览器 → IDBBatchAtomicVFS(IndexedDB)                 │
+│  官方 → sqlite-wasm opfs-sahpool                          │
+│                                                          │
+│  性能四板斧：batch-atomic写 / exclusive锁 /               │
+│             relaxed持久性 / 组合最优                       │
+│                                                          │
+│  踩坑：Safari无痕不支持OPFS / Chrome无痕100MB上限        │
+│       SharedWorker不支持OPFS / Capacitor后台关handle      │
+│                                                          │
+│  未解：无完整WAL模式支持 / 跨浏览器并发不一致              │
+└──────────────────────────────────────────────────────────┘
+</code></pre>
+<h2 id="_6">十三、待深入</h2>
+<ul>
+<li>PowerSync 的 Postgres 双向同步协议设计（Conflict resolution 策略）</li>
+<li>OPFSWriteAheadVFS 在生产环境的稳定性（2026-04 才发布，缺乏大规模验证）</li>
+<li>WASM SQLite 在移动端（iOS Safari / Android Chrome）的实际性能基线</li>
+<li>将 Hermes homepage data.json 迁移到浏览器端 SQLite 的可行性（离线搜索 + 全文检索）</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ol>
+<li>PowerSync 博客 — The Current State Of SQLite Persistence On The Web: May 2026 Update — https://powersync.com/blog/sqlite-persistence-on-the-web</li>
+<li>Chrome for Developers — 由源私有文件系统提供支持的浏览器中的 SQLite Wasm — https://developer.chrome.com/blog/sqlite-wasm-in-the-browser-backed-by-the-origin-private-file-system</li>
+<li>SQLite 官方 — About the sqlite3 WASM/JS Subproject — https://sqlite.org/wasm/doc/trunk/about.md</li>
+<li>wa-sqlite GitHub — https://github.com/rhashimoto/wa-sqlite</li>
+<li>Ippon 博客 — Bringing SQLite to the Browser: A Journey with WebAssembly — https://blog.ippon.tech/bringing-sqlite-to-the-browser-a-journey-with-webassembly</li>
+</ol>
+<blockquote>
+<p>相关：[[2026-08-25-JupyterLab使用方法完全指南-安装快捷键Magic命令与Agent集成]] · [[2026-08-19-LEANN世界最小向量索引-省97存储的图重计算RAG与全场景示例实战]]</p>
+</blockquote>
+</body>
+</html>
