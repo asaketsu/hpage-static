@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepLoop循环Transformer深度扩展-访问对齐系数与残差缩放指数修正</title>
+
+<meta property="og:title" content="DeepLoop循环Transformer深度扩展-访问对齐系数与残差缩放指数修正" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="deeploop-transformer-14-12">DeepLoop 循环 Transformer 深度扩展 — 访问对齐系数与残差缩放指数从 1/4 到 1/2 的修正</h1>
+<p class="tag-line"><span class="tag">#DeepLoop</span> <span class="tag">#LoopedTransformer</span> <span class="tag">#循环Transformer</span> <span class="tag">#DeepNorm</span> <span class="tag">#残差缩放</span> <span class="tag">#参数共享</span> <span class="tag">#ARC-AGI</span> <span class="tag">#HRM</span> <span class="tag">#深度扩展</span> <span class="tag">#arXiv精读</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>信源：X 推文（用户转述）："Heard that some frontier models are basically a 48-layer transformer looped twice (48L × 2). Now we are introducing DeepLoop..."</li>
+<li>论文：arXiv 2607.13491《DeepLoop: Depth Scaling for Looped Transformers》（v2，2026-08-06，25 页，cs.LG）</li>
+<li>作者：Shuzhen Li / Yifan Zhang / Jiacheng Guo（Princeton）、Quanquan Gu（UCLA）、<strong>Mengdi Wang</strong>（Princeton，通讯）</li>
+<li>代码：github.com/lszshu/DeepLoop</li>
+<li>精读方式：arXiv HTML 全文提取 79K 字（摘要+§2.3 机制+§3 方法+§5 实验+§7 结论逐段）</li>
+<li>笔记日期：2026-09-05 | 指令语义：<strong>分析形成详细笔记</strong></li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11-48l-2-transformer">1.1 背景：48L × 2 传闻与循环 Transformer 的复兴</h3>
+<p><strong>传闻钩子</strong>（推文原句）："一些前沿模型基本上是一个 48 层 Transformer <strong>循环两次</strong>（48L × 2）"——这是未证实的产业传闻，但方向明确：<strong>前沿实验室在用参数复用换有效深度</strong>（存储的参数不增、展开的计算深度翻倍）。</p>
+<p><strong>循环 Transformer 定义</strong>：存 K 个物理块，循环 R 轮执行——<strong>展开深度 N = K·R，子层访问数 M = 2N</strong>，参数量只按 K 算。图示（论文 Figure 1）：</p>
+<pre><code>物理存储:  Block1(φ₁) + Block2(φ₂)         ← 只存 2 块
+展开执行:  φ₁→φ₂ → φ₁→φ₂ → φ₁→φ₂          ← R=3 轮
+          ⇒ N = K·R = 6, M = 2N = 12 次子层访问
+</code></pre>
+<h3 id="12-23">1.2 病根：权重共享为什么改变深度缩放（§2.3 照录）</h3>
+<blockquote>
+<p><strong>非共享</strong>深度 N 的 Transformer：每个子层参数每次输入只收<strong>一份</strong>梯度贡献。</p>
+<p><strong>循环</strong> Transformer：同一物理参数每轮被访问一次，<strong>梯度是 R 次访问的求和</strong>。若各次访问的贡献<strong>去相关（decorrelate）</strong>，循环表现得像未绑定深度；若访问<strong>对齐（aligned）</strong>，绑定更新可以<strong>大 R 倍</strong>，且这个放大后的更新又被全部 R 次访问在展开计算中<strong>回读</strong>。</p>
+
+<p class="meta-date">生成日期 2026-09-05</p></blockquote>
+<p>一句话：<strong>同一组权重，梯度被 R 次访问叠加，再被 R 次访问读回——误差一阶项按 R 放大</strong>。</p>
+<h3 id="13-_r-3">1.3 形式化：访问对齐系数 κ_R 与扰动界（§3）</h3>
+<p><strong>关键定义</strong>：visit-alignment coefficient <strong>κ_R</strong>——度量跨轮访问的对齐程度：<br />
+- <strong>κ_R = O(1)</strong>（去相关）：界<strong>退化为 DeepNorm 指数 p = 1/4</strong><br />
+- <strong>κ_R = Θ(R)</strong>（保守对齐区）：指数必须<strong>从 1/4 升到 1/2</strong>（固定物理深度、增轮数时）</p>
+<p><strong>架构（Post-LN 三明治块，公式 7 照录）</strong>：</p>
+<p>$$x_{i+1} = \mathrm{Norm}\bigl(\alpha \, x_i + f_j(\mathrm{Norm}(x_i);\, \phi_j)\bigr)$$</p>
+<ul>
+<li>外层 Norm：每次访问后恢复残差流尺度</li>
+<li>内层 Norm：固定分支输入尺度</li>
+<li>RMSNorm 实现；同一物理参数 φ_j 被所有 r=1..R 轮复用</li>
+</ul>
+<p><strong>DeepLoop 缩放规则（一行）</strong>：</p>
+<p>$$\alpha = (2N)^{1/2}, \qquad \beta = (8N)^{-1/2}$$</p>
+<p><strong>推导骨架</strong>：RMSNorm 以 1/α 因子暴露残差分支 + 参数绑定把一阶更新求和从 M 项变为 M·κ_R 项——两件事相乘决定稳定阈值。</p>
+<h3 id="14-51">1.4 实验一：语言模型验证损失（§5.1 照录）</h3>
+<p><strong>配置</strong>：GPT-MHA-RoPE，FineWeb-Edu 50B token，GPT-2 small（4×H200）/ medium（hidden 1024、层数 12→24，8×H200），R ∈ {1,3,5,7}，基线=标准 pre-LN 循环 Transformer。</p>
+<p><strong>验证交叉熵（步 100K）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>规模</th>
+<th>方法</th>
+<th>R=1</th>
+<th>R=3</th>
+<th>R=5</th>
+<th>R=7</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>small</td>
+<td>baseline</td>
+<td>2.8627</td>
+<td>2.8077</td>
+<td>2.7910</td>
+<td>2.7700</td>
+</tr>
+<tr>
+<td>small</td>
+<td><strong>DeepLoop</strong></td>
+<td>2.8631</td>
+<td><strong>2.7917</strong></td>
+<td><strong>2.7679</strong></td>
+<td><strong>2.7514</strong></td>
+</tr>
+<tr>
+<td>medium</td>
+<td>baseline</td>
+<td>2.6253</td>
+<td>2.5779</td>
+<td>2.5640</td>
+<td>2.5558</td>
+</tr>
+<tr>
+<td>medium</td>
+<td><strong>DeepLoop</strong></td>
+<td>2.6264</td>
+<td><strong>2.5627</strong></td>
+<td><strong>2.5444</strong></td>
+<td><strong>2.5280</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>规律</strong>：<br />
+- <strong>R=1（无复访）时中性</strong>（+0.0004 / +0.0011 nats ≈ 噪声）——不伤单轮<br />
+- R≥3 后持续拉开：small 最大 −0.0231，<strong>medium R=7 达 −0.0278 nats</strong><br />
+- 下游 lm-evaluation-harness：除一个设置外全部平均准确率提升（LAMBADA/HellaSwag/ARC 等 9 项，R=7 平均 55.20 vs base 49.16@R=5——基线 R 大后开始不稳）</p>
+<h3 id="15-arc-agi-53">1.5 实验二：ARC-AGI 层级循环推理器（§5.3 照录，最强结果）</h3>
+<p><strong>对象</strong>：Hierarchical Reasoning Model（HRM, Wang et al. 2025——<strong>Mengdi Wang 正是 HRM 作者</strong>，本实验是自家方法对自家架构的升级）。</p>
+<p><strong>改动</strong>：唯一变化是残差参数化——每个推理块换用 α=(2N_g)^{1/2}, β=(8N_g)^{-1/2}（梯度可见访问 M_g = 2(K_H + C_L·K_L) = 24，N_g = 12）；骨干/自适应停算/优化器(AdamATan2)/100K epoch 计划/数据（hash 验证的 arc-aug-1000）全部不动。</p>
+<p><strong>结果（ARC-AGI-1，N=400 题，count-first 投票）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>HRM 基线</th>
+<th>+DeepLoop</th>
+<th>提升</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>论文协议 K=2</td>
+<td>36.50%</td>
+<td><strong>39.75%</strong></td>
+<td><strong>+3.25pp（≈6σ，四种子标准差≈0.5pp）</strong></td>
+</tr>
+<tr>
+<td>投票阶梯 K∈{1,2,10,100,1000}</td>
+<td>—</td>
+<td><strong>每一列都提升</strong></td>
+<td>全线</td>
+</tr>
+</tbody>
+</table>
+<p><strong>校验锚</strong>：已发布 HRM ARC-2 checkpoint 在该管线复测 5.00%，与官方一致——管线无偏。</p>
+<p><strong>理论-实验闭环</strong>：层级推理器靠<strong>对齐的内循环复访</strong>增长有效深度，恰好落在 κ=Θ(C_L) 的<strong>对齐区</strong>——理论预言 p=1/2 正是绑定阈值，实验证实<strong>同一条缩放规则同时适用于循环语言模型与层级推理器</strong>。</p>
+<h3 id="16-7">1.6 结论（§7 照录要点）</h3>
+<blockquote>
+<p>Looped transformers turn <strong>depth into a controllable compute resource</strong>（把深度变成可控算力资源），但参数复用改变了残差缩放问题。DeepLoop 用<strong>一行缩放规则</strong>实现修正；<strong>无复访时中性、复访激活后增益</strong>。未来工作：直接测量 κ_R、更大规模验证。</p>
+</blockquote>
+<h2 id="_3">二、查询拓展</h2>
+<ul>
+<li>传闻考证：前沿模型 48L×2 的直接证据（config 泄露/权重分析），与 gpt-oss / Sakana recurrent-depth 报告的关系</li>
+<li>Universal Transformer（Dehghani 2018）为什么当时训不稳——缺的正是这类残差缩放</li>
+<li>DeepNorm 原文（Zhou 2023）α=(2N)^{1/4} 的推导口径与本文 p=1/4 的对应</li>
+<li>HRM（Wang et al. 2025）原架构：外循环慢思考 + 内循环快思考的双层级</li>
+<li>κ_R 的实证测量方法（跨轮梯度余弦）与 p-sweep 附录 C 的相变点</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li><strong>深度是算力资源，参数是内存资源</strong>——循环 Transformer 把两者解耦：N=KR 的展开深度只花计算不花存储。传闻"48L×2"若真，说明前沿实验室已在吃这个红利</li>
+<li><strong>病根是"梯度叠加×回读"的自激</strong>：绑定参数的更新被 R 次访问求和放大（对齐时 Θ(R) 倍），再被同 R 次访问读回——<strong>一阶扰动按 κ_R 放大</strong>，旧缩放律低估了它</li>
+<li><strong>κ_R 是一个新概念坐标</strong>：去相关（κ=O(1)）→ 回到 DeepNorm p=1/4；对齐（κ=Θ(R)）→ 必须 p=1/2。<strong>循环模型的稳定性不取决于名义层数，而取决于参数访问模式</strong>——这是论文最反直觉的洞察</li>
+<li><strong>一行规则完成修正</strong>：α=(2N)^{1/2}, β=(8N)^{-1/2}——Post-LN 三明治块保持，实现成本近乎为零（"one-line scaling rule"）</li>
+<li><strong>两域一证</strong>：语言模型（GPT-2 级，val loss 全面改善）与层级推理器（ARC-AGI +3.25pp ≈ 6σ）<strong>共享同一指数 p=1/2</strong>——理论的普适性强于单点调参</li>
+<li><strong>无复访中性是安全垫</strong>：R=1 时 +0.001 nats 噪声级——<strong>开了不伤、关了不亏</strong>，工程采纳摩擦极低</li>
+<li><strong>HRM+DeepLoop 的组合拳信号</strong>：Mengdi Wang 团队把自家 HRM 用自家缩放律升级——<strong>"架构发明者+稳定化理论"的纵向整合</strong>是普林斯顿系（HRM/DeepLoop/QRNN 一脉）的明显打法</li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<ol>
+<li><strong>循环深度从小众走向主流配置</strong>：若 48L×2 类传闻为真，DeepLoop 恰好补上"为什么前沿模型敢这么干"的稳定性理论——<strong>2026-2027 预计出现带循环深度的开源旗舰模型</strong></li>
+<li><strong>"访问感知"的初始化/缩放成为新研究带</strong>：κ_R 概念把"参数被读多少次"变成一阶公民——同类分析会扩展到 MoE 专家复用、LoRA 多适配器共享</li>
+<li><strong>测试时算力（test-time compute）多一条实现路径</strong>：深度循环 = 推理期可控算力旋钮（与 Best-of-N/长思维链并列）——<strong>ARC-AGI +3.25pp 就是纯架构缩放带来的推理增益</strong></li>
+<li><strong>HRM 类层级推理器将快速吸收此规则</strong>：一行改动换 6σ 提升、零架构变更——<strong>迁移成本趋近零的改进传播最快</strong></li>
+<li><strong>理论先行的小模型实验范式</strong>：GPT-2 规模验证理论再等大模型跟进——<strong>缩放律研究仍以 4-8 卡可复现的规模为主战场</strong>（对个人研究者是好消息）</li>
+</ol>
+<h2 id="_6">五、关联分析（对自有体系 + 既有笔记链）</h2>
+<blockquote>
+<p>关联对象：TwoTower 笔记 / KVCache 笔记 / XOR 笔记 / MiniMind / LLM 推理优化链 / RSI</p>
+</blockquote>
+<ol>
+<li><strong>与 TwoTower 构成"存量模型改造"的两种范式</strong>（前日笔记，同周期强对照）：</li>
+<li>TwoTower：<strong>冻结上下文塔 + 新训去噪塔</strong>——加结构换 2.42× 吞吐（横向：宽度/并行）</li>
+<li>DeepLoop：<strong>同一组块循环复用</strong>——不加参数换有效深度（纵向：深度）</li>
+<li>两者共同点：<strong>都不从零训练</strong>，都是对已有 Transformer 范式的"改造件"——存量模型时代的典型研究形态</li>
+<li><strong>与 KVCache 的"复用哲学"对偶</strong>：KVCache 复用<strong>激活</strong>（计算结果缓存），DeepLoop 复用<strong>参数</strong>（存储复用）——一个省读、一个省存，<strong>复用是贯穿推理与训练两端的主线</strong>（关联 [[2026-08-30-为什么KVCache只存K和V从不存Q.md]]）</li>
+<li><strong>与 XOR 笔记的深度观呼应</strong>：XOR 证明"深度+非线性=空间重构能力"；DeepLoop 证明"深度可以被租借（循环）而不必买断（堆参数）"——<strong>深度作为可计算资源的定价机制</strong>正在形成</li>
+<li><strong>对 MiniMind/本地训练的启示</strong>：GPT-2 small 级实验 4×H200 即可复现——<strong>循环深度是本地/小规模训练提升有效深度的性价比路线</strong>（比堆层省显存），与"不在本机跑重型训练"的边界兼容（asa 训练机可用）</li>
+<li><strong>与 RSI/自适应计算家族</strong>：循环深度=<strong>按轮数自适应分配算力</strong>的静态版本——与 HRM 的自适应停算（adaptive halting）天然组合（本文实验正是这个组合）——"算力跟着难度走"的三兄弟：循环深度/自适应停算/Best-of-N</li>
+<li><strong>对传闻的克制判定</strong>：48L×2 无公开证据，<strong>不采信为事实</strong>；但 DeepLoop 的存在反证产业界对该方向的认真程度——笔记记录传闻时标注"未证实"</li>
+</ol>
+<h2 id="_7">六、指南分析</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>快速理解循环 Transformer</td>
+<td>§1.1 图示 + 定义</td>
+</tr>
+<tr>
+<td>为什么需要新缩放律</td>
+<td>§1.2 梯度叠加×回读</td>
+</tr>
+<tr>
+<td>κ_R 与两个指数</td>
+<td>§1.3 形式化</td>
+</tr>
+<tr>
+<td>改动多少/怎么用</td>
+<td>§1.3 一行规则 + §1.6</td>
+</tr>
+<tr>
+<td>实验证据</td>
+<td>§1.4 语言模型表 + §1.5 ARC-AGI</td>
+</tr>
+<tr>
+<td>传闻怎么看</td>
+<td>§1.1 + §五.6（未证实标注）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心口诀</strong>：深度是租来的 / 绑定梯度叠加再回读 / 去相关 p=1/4 对齐 p=1/2 / 一行规则零成本 / 无复访不伤有复访增益。</p>
+<h2 id="_8">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给推理优化笔记链</strong>：循环深度作为"纵向扩展"补入加速/扩容地图（与 TwoTower 横向并行、投机解码无损加速并列）</li>
+<li><strong>给 arc/推理实验</strong>：HRM+DeepLoop 的开源组合是 ARC-AGI 类推理实验的现成基线（+3.25pp/6σ 可直接对比）</li>
+<li><strong>延伸阅读</strong>：DeepNorm（Zhou 2023）/ Universal Transformer（2018，史上第一次循环尝试）/ HRM（Wang 2025）/ Sakana recurrent depth 报告</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-09-05-NVIDIA-TwoTower扩散语言模型-冻结上下文塔与去噪塔的双塔解耦.md]]（存量模型改造的横/纵两路）<br />
+→ 相关：[[2026-08-30-为什么KVCache只存K和V从不存Q.md]]（激活复用 vs 参数复用）<br />
+→ 相关：[[2026-09-04-XOR的数学本质与反向传播的空间重构-AI入门问题的最简完整解.md]]（深度=重构能力的理论源头）<br />
+→ 相关：[[2026-09-02-MiniMind从零训练LLM全链路-3块钱64M模型与AgenticRL.md]]（小规模复现路径）</p>
+</body>
+</html>
