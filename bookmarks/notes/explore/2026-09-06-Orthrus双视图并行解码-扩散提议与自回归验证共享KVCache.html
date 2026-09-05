@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orthrus双视图并行解码-扩散提议与自回归验证共享KVCache</title>
+
+<meta property="og:title" content="Orthrus双视图并行解码-扩散提议与自回归验证共享KVCache" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="orthrus-kv-cache-78">Orthrus 双视图并行解码 — 扩散提议×自回归验证共享 KV Cache 的无损 7.8× 加速</h1>
+<p class="tag-line"><span class="tag">#Orthrus</span> <span class="tag">#并行解码</span> <span class="tag">#扩散语言模型</span> <span class="tag">#投机解码</span> <span class="tag">#KVCache</span> <span class="tag">#LLM推理加速</span> <span class="tag">#EAGLE3</span> <span class="tag">#无损加速</span> <span class="tag">#LLM推理优化</span></p>
+<p class="note-date">生成日期 2026-09-06</p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>底稿：sesen.ai《Parallel LLM Decoding: Speculative and Diffusion》（含 NumPy 从零实现掩码扩散解码器与投机解码器），2026-09</li>
+<li>主论文：arXiv 2605.12825《Orthrus: Memory-Efficient Parallel Token Generation via Dual-View Diffusion》（2026）</li>
+<li>对照路线：EAGLE/EAGLE-3（Li et al.）、Leviathan et al. 2023 / Chen et al. 2023（投机解码原始论文）、D3PM/MDLM/SEDD（离散扩散谱系）</li>
+<li>笔记日期：2026-09-06（夜间自学习）</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 自回归之墙：为什么解码慢不是算力问题</h3>
+<p>标准 LLM 是自回归的——500 token 的回答 = 500 次串行前向，每次等上一次完成。瓶颈<strong>不是算术而是内存带宽</strong>：每个 pass 都要把整个权重矩阵和不断增长的 KV cache 拖过芯片，只为产出 1 个 token。<strong>GPU 大部分时间在等内存，不在计算</strong>——这就是并行解码方法族的立足点。</p>
+<h3 id="12-numpy">1.2 两条路线的原生权衡（NumPy 实验证实的核心事实）</h3>
+<table>
+<thead>
+<tr>
+<th>路线</th>
+<th>并行性</th>
+<th>精确性</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>扩散解码（masked diffusion）</td>
+<td><strong>无条件并行</strong>：固定步数出整块</td>
+<td>近似</td>
+<td>块内独立性假设破坏 token 依赖→质量损失</td>
+</tr>
+<tr>
+<td>投机解码（speculative decoding）</td>
+<td>机会主义并行</td>
+<td><strong>精确</strong>（输出分布不变）</td>
+<td>加速取决于 draft 猜得准；draft 有独立权重+独立 KV cache</td>
+</tr>
+</tbody>
+</table>
+<p><strong>扩散的"速度-质量旋钮"</strong>：K=1（全并行一次出）最差——各位置从边缘分布独立采样，"十个人各写一个词，句子是胡话"；K=L（一次一个）恢复自回归质量。<strong>去噪步数就是速度换质量的刻度盘</strong>，研究问题=最少几步够用。</p>
+<p><strong>投机解码的精确性来自拒绝采样</strong>：接受概率 min(1, p/q)，拒绝时从残差 max(0,p−q) 重采样——<strong>代数上保证输出严格服从目标分布 p，draft 只影响速度不影响正确性</strong>。收益=每次目标 pass 产出的 token 数（接受全块 γ+1 个，早拒就退化为 1）。</p>
+<h3 id="13-draft-cache">1.3 投机解码的隐藏成本：draft 的第二份 cache</h3>
+<p>独立 draft 模型有自己的权重和<strong>自己的 KV cache</strong>，随上下文增长——与目标 cache 争夺你想省的那条内存带宽。短上下文无所谓；<strong>长上下文（代码库摘要/书籍/长对话）时双 cache 双倍带宽开销</strong>，正是 EAGLE-3 这类方法开始失速的地方。</p>
+<h3 id="14-orthrus-cache">1.4 Orthrus 核心：一份 cache，两个视图，输出严格无损</h3>
+<p><strong>结构</strong>：在<strong>冻结的</strong>自回归模型上挂一个轻量可训练的<strong>扩散视图</strong>；两视图读<strong>同一份 KV cache</strong>——扩散视图并行提议一个 token 块，自回归视图验证，无冗余 draft cache。</p>
+<p><strong>三性质</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>性质</th>
+<th>机制</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无损</td>
+<td>与投机解码相同的 exact-consensus（接受-重采样）规则</td>
+<td>并行输出<strong>严格等于</strong>冻结 AR 模型单独会产生的输出</td>
+</tr>
+<tr>
+<td>训练廉价</td>
+<td>只训扩散视图（LoRA 精神的 PEFT）</td>
+<td>约 <strong>16% 参数</strong>，基座冻结</td>
+</tr>
+<tr>
+<td>内存平坦</td>
+<td>共享 cache</td>
+<td>加速 <strong>7.8×</strong> 随上下文增长保持，EAGLE-3 类因自身 cache 失速</td>
+</tr>
+</tbody>
+</table>
+<p><strong>直觉公式</strong>：扩散的"整块并行提议" + 投机解码的"精确验证包装" + 共享一份 cache 的"长上下文廉价"。</p>
+<h3 id="15">1.5 并行解码何时有用何时无用</h3>
+<table>
+<thead>
+<tr>
+<th>有利</th>
+<th>不利</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>内存带宽受限 + 延迟敏感：交互 chat、长生成、batch-of-one 服务</td>
+<td>已 compute-bound（超大 batch 打满 GPU，无空闲带宽可回收）</td>
+</tr>
+<tr>
+<td>—</td>
+<td>生成很短（draft/去噪开销摊不平）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>警告</strong>：没有精确性包装的裸扩散解码是<strong>必须实测的质量交易</strong>，不是免费午餐。</p>
+<h2 id="_3">二、查询拓展</h2>
+<ul>
+<li>Orthrus 扩散视图的提议块长与去噪步数的最优配比（7.8× 是哪个长度区间测的）</li>
+<li>exact-consensus 在扩散提议"块内不一致"时如何回退（逐 token 拒绝还是整块丢弃）</li>
+<li>16% 参数训练的 LoRA rank/位置选择；扩散视图挂在哪些层</li>
+<li>与 NVIDIA TwoTower（昨日笔记）的正面对比：同样是"冻结 AR + 扩散侧塔"，为何一个选无损验证、一个选有损 2.42× 吞吐</li>
+<li>共享 cache 下扩散视图读取的是冻结 AR 的 KV 还是双向注意力重算的 KV</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li><strong>解码慢的物理本质是内存带宽</strong>，不是 FLOPs——一切并行解码方法都是在回收"等内存"的空闲</li>
+<li><strong>两条路线做的是对偶交易</strong>：扩散拿质量换无条件并行，投机拿机会主义并行换精确——<strong>Orthrus 的贡献是把两者的长处拼起来</strong>（扩散提议×精确验证）并把两者共同的软肋（第二份 cache）拆掉</li>
+<li><strong>无损性的来源是拒绝采样代数</strong>，与 draft/denoiser 的好坏完全解耦——这是整个方法族"敢并行"的数学底气</li>
+<li><strong>长上下文是并行解码的真正战场</strong>：draft cache 随上下文线性涨，共享 cache 设计让 7.8× 不随长度衰减——<strong>"内存平坦"是比峰值加速更值钱的工程性质</strong></li>
+<li><strong>"冻结基座+小可训练侧塔"已成为推理改造的通用配方</strong>：EAGLE 用目标隐状态起草、TwoTower 用去噪塔并行、Orthrus 用扩散视图提议——三者都是"不动大脑，加装小脑"</li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<ol>
+<li><strong>"验证式并行"成为主流范式</strong>：从接受自回归之墙到"只要肯验证就能并行"——预计 2026-2027 产出解码与 vLLM/TensorRT-LLM 级工程栈的深度整合</li>
+<li><strong>draft 模型独立权重路线将被共享侧塔路线挤压</strong>：双 cache 带宽税在长上下文场景不可持续，EAGLE 系若不转向特征共享会逐步失速</li>
+<li><strong>无损（Orthrus）与有损换吞吐（TwoTower）将分层占位</strong>：对输出分布敏感的 agentic/结构化任务选无损；吞吐优先的批量生成接受 98.7% 质量</li>
+<li><strong>推理改造的"16% 参数法则"</strong>：只动一小部分参数就能获得数倍推理性质改变——PEFT 从训练省钱工具进化为推理架构改造工具</li>
+<li><strong>batch-of-one/交互场景先受益</strong>：内存带宽受限+延迟敏感的组合恰好是个人 Agent/边侧部署的画像（与本机 Jetson 边缘推理场景直接相关）</li>
+</ol>
+<h2 id="_6">五、关联分析（对自有体系）</h2>
+<ol>
+<li><strong>推理优化笔记链第六篇</strong>：KVCache（读上下文的成本）→ 连续批处理（GPU 填满）→ EAGLE3（无损投机）→ 部署指标（测什么）→ TwoTower（有损换吞吐）→ <strong>Orthrus（无损+内存平坦，路线融合）</strong>——链上"加速技术地图"至此完成谱系覆盖</li>
+<li><strong>与昨日 TwoTower 笔记的正面交锋</strong>（同周两篇对照阅读价值极高）：</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>TwoTower (NVIDIA)</th>
+<th>Orthrus</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>基座</td>
+<td>Nemotron-3-Nano-30B-A3B（MoE）</td>
+<td>冻结 AR 模型</td>
+</tr>
+<tr>
+<td>侧塔</td>
+<td>去噪塔（可训练，层层 cross-attn）</td>
+<td>扩散视图（可训练，16% 参数）</td>
+</tr>
+<tr>
+<td>正确性</td>
+<td>98.7% 质量保留（有损）</td>
+<td><strong>严格无损</strong>（拒绝采样保证）</td>
+</tr>
+<tr>
+<td>收益口径</td>
+<td>2.42× wall-clock 吞吐</td>
+<td>7.8× 加速，长上下文不衰减</td>
+</tr>
+<tr>
+<td>cache 策略</td>
+<td>双塔各自计算（去噪塔 cross-attend 回）</td>
+<td><strong>共享一份 KV cache</strong></td>
+</tr>
+<tr>
+<td>选型逻辑</td>
+<td>吞吐优先、接受微小质量损失</td>
+<td>输出分布零容忍改变</td>
+</tr>
+</tbody>
+</table>
+<ol>
+<li><strong>对 Jetson 边缘部署的直接意义</strong>：边缘设备内存带宽是最稀缺资源（LPDDR 带宽远低于数据中心 HBM）——"内存平坦"性质恰好是边侧长上下文推理的命门解法，Nexa 本地推理线可跟踪 Orthrus 开源实现</li>
+<li><strong>与 GRPO 笔记的训推呼应</strong>：训练侧净化学习信号（SignBalance），推理侧回收带宽空闲（Orthrus）——两端共同点都是"先诊断物理瓶颈（梯度污染/内存等待），再做最小结构干预"</li>
+<li><strong>量化域映射</strong>：无损加速（分布不变）vs 有损量化（INT4）vs 有损并行（TwoTower）——推理优化的"无损/有损光谱"与投资策略的"确定性/概率性收益光谱"同构，选型逻辑都是先问"对偏差的容忍度"</li>
+</ol>
+<h2 id="_7">六、指南分析</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>为什么 LLM 解码慢</td>
+<td>§1.1 内存带宽本质</td>
+</tr>
+<tr>
+<td>扩散 vs 投机怎么选</td>
+<td>§1.2 对偶交易表</td>
+</tr>
+<tr>
+<td>Orthrus 三性质速查</td>
+<td>§1.4 性质表</td>
+</tr>
+<tr>
+<td>长上下文加速选型</td>
+<td>§1.4 内存平坦 + §五.2 对照表</td>
+</tr>
+<tr>
+<td>什么时候不该用并行解码</td>
+<td>§1.5 有利/不利表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心口诀</strong>：慢在带宽不在算 / 扩散并行近似、投机精确机会主义 / 拒绝采样保无损 / 共享 cache 保平坦 / 冻结大脑加装小脑。</p>
+<h2 id="_8">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给 HF 模型选型线</strong>：跟踪 Orthrus 官方实现（github.com/chiennv2000/orthrus）与 checkpoint</li>
+<li><strong>给边缘推理线</strong>（nexa-local-inference / edge-llm-quantization skill）：评估"扩散视图+共享 cache"作为 Jetson 长上下文加速候选，与量化正交可叠加</li>
+<li><strong>延伸阅读</strong>：arXiv 2609.04010《Unlocking Lossless Speedups in LLMs via Discrete Diffusion》（UNO，同周无损扩散加速新作，代码已开源）；Fast-dLLM（ICLR 2026，block-wise 近似 KV cache + 置信度感知并行解码，2-6× training-free）</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-09-05-NVIDIA-TwoTower扩散语言模型-冻结上下文塔与去噪塔的双塔解耦.md]]（同周对照：有损换吞吐 vs 无损+内存平坦）<br />
+→ 相关：[[2026-09-03-图解大语言模型部署指标全景-TTFT-TPOT-吞吐显存与Ling3.0真机实测.md]]（加速技术的度量衡）<br />
+→ 相关：[[2026-08-30-为什么KVCache只存K和V从不存Q.md]]（被共享的那份 cache 的原理）</p>
+</body>
+</html>
