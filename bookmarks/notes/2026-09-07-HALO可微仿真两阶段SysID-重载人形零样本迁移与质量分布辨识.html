@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HALO可微仿真两阶段SysID-重载人形零样本迁移与质量分布辨识</title>
+
+<meta property="og:title" content="HALO可微仿真两阶段SysID-重载人形零样本迁移与质量分布辨识" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="halo-sysid-arxiv-260315084">HALO 可微仿真两阶段 SysID — 重载人形零样本迁移与质量分布辨识（arXiv 2603.15084）</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv:2603.15084v1（HALO: Closing Sim-to-Real Gap for Heavy-loaded Humanoid Agile Motion Skills via Differentiable Simulation）<br />
+<strong>链接</strong>：https://arxiv.org/abs/2603.15084 ｜ 项目页：https://mwondering.github.io/halo-humanoid/<br />
+<strong>记录日期</strong>：2026-09-07<br />
+<strong>系列</strong>：足式机器人 RL 训练系列（与 PACE/DeepLoop/microduck 线同族）</p>
+
+<p class="meta-date">生成日期 2026-09-07</p></blockquote>
+<p><strong>标签</strong>：#sim2real #可微仿真 #系统辨识 #MuJoCoXLA #质量分布失配 #人形机器人 #DUCK-Pi_5</p>
+<hr />
+<h2 id="_1">一句话总纲</h2>
+<blockquote>
+<p><strong>重载/结构化动力学失配不该用 domain randomization 硬扛，而该用"可微仿真解析梯度 + 两阶段解耦辨识"直接吃掉：先校准基座模型（消磨损/标定漂移），再只辨识载荷段 mass+CoM，encoder-only 数据即可让重载步态精度提升 45~73%、原地 90° 跳转提升 73%，真机高难度动作 10/10 成功——且辨识后只需极小 DR 即可零样本上机。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11-gap">1.1 问题定位：结构化 gap ≠ 随机噪声</h3>
+<table>
+<thead>
+<tr>
+<th>失配类型</th>
+<th>性质</th>
+<th>传统对策</th>
+<th>后果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>传感噪声</td>
+<td>随机、小尺度</td>
+<td>观测滤波</td>
+<td>易处理</td>
+</tr>
+<tr>
+<td><strong>载荷/质量分布变化</strong></td>
+<td><strong>系统性、大规模</strong></td>
+<td>Domain Randomization</td>
+<td>DR 把它当扰动对冲 → 策略保守、无法压榨物理极限</td>
+</tr>
+</tbody>
+</table>
+<p>关键因果链：<strong>载荷改变总质量/CoM/惯量分布 → 名义动力学下的策略退化 → DR 加大随机化范围 → 策略更保守 → 敏捷任务（跳跃/踢腿）失败</strong>。HALO 的判断：这类"结构化 sim2real gap"的正解是<strong>先辨识再训练</strong>（explicitly reduce structured model bias prior to policy training），而不是训练时穷举。</p>
+<h3 id="12-halo">1.2 HALO 三步管线</h3>
+<pre><code>① 数据采集（真机）           ② 梯度辨识（可微仿真）        ③ 技能训练
+单脚虎钳固定 + 探索策略    →  MuJoCo XLA 解析梯度       →  mjlab 运动模仿 + PPO
+encoder-only 全身 FK 重建     两阶段：基座校准→载荷辨识     极小 DR → 零样本上机
+</code></pre>
+<p><strong>①单脚固定数据采集（sensor-minimal 的核心 trick）</strong>：<br />
+- 浮动基座机器人拿全身轨迹 normally 需要 MoCap——HALO 用<strong>两只虎钳固定一只脚</strong>，全身状态可由关节编码器经正向运动学直接重建，全局基座漂移的歧义被机械约束消除<br />
+- 仿真中施加同一运动学约束保持一致<br />
+- 传感器噪声导致 FK 重建累积漂移（左右脚高度不一致）→ 每个时间步解一个<strong>受限二次规划（QP）</strong>，对根节点+下肢关节增量做最小调整消除脚高差异<br />
+- <strong>数据量需求极小</strong>："质量或 CoM 的微小变化会很快使仿真轨迹漂移，只需要少量数据即可辨识模型与真机的主要差异"</p>
+<p><strong>②梯度辨识公式族</strong>（全文数学核心，照录）：</p>
+<p>系统辨识 = 轨迹匹配优化。真机 <code>s_{i+1}^r = Φ_real(s_i^r, a_i^r; θ^r)</code>，仿真近似 <code>s_{i+1}^s = Φ_sim(s_i^s, a_i^r; θ)</code>（控制序列固定为录制的真机动作，初态同步）。目标：</p>
+<p><code>min_θ L_total(θ) = L_track(θ) + R(θ)</code>，梯度下降 <code>θ_{k+1} = θ_k − η∇_θ L_total(θ_k)</code></p>
+<p>跟踪损失（笛卡尔空间，全身 + 上身加权）：<br />
+- <code>L_track = L_track^all + α_u · L_track^upper</code><br />
+- <code>L_track^all = (1/B) Σ_b Σ_t Σ_{j∈B} ‖x_{b,t,j}^s(θ) − x_{b,t,j}^r‖²</code>（B 条轨迹片段、N 步 rollout、全体 body 集合 B；上身子集 U 额外加权——载荷影响最大的 links 必须盯紧）</p>
+<p>正则项四件套：<br />
+<code>R_total = λ_com·R_com + λ_mass·R_mass + λ_damp·R_damp + λ_fric·R_fric</code><br />
+- <code>R_com = Σ ‖p_i − p_i^base‖²</code>（link CoM 偏离名义值的惩罚）<br />
+- <code>R_mass = Σ (m_i − m_i^base)²</code><br />
+- <code>R_damp / R_fric = Σ φ(α_k; 0.8, 1.2)</code>，box 约束函数 <code>φ(α;l,u) = max(0,l−α)² + max(0,α−u)²</code>——<strong>只罚区间外的值，区间内自由</strong></p>
+<p><strong>③两阶段解耦（本文最关键的方法论贡献）</strong>：<br />
+- <strong>痛点</strong>：名义模型失配（磨损、标定漂移、微小结构差异——无载荷也存在）与载荷引起的模型变化<strong>纠缠</strong>。直接从载荷数据辨识，优化会把基座模型误差错误地归因到载荷参数上<br />
+- <strong>Stage 1 基座校准</strong>：用无载荷轨迹，从名义值出发优化全套模型参数<br />
+- <strong>Stage 2 载荷辨识</strong>：以校准后模型为初始化，<strong>只优化载荷附着 links（torso/hands）的 mass 与 CoM</strong><br />
+- 实践结论：第二阶段<strong>只辨 mass+CoM、不碰惯量张量</strong>，就足以显著消除重载 gap，还避免了惯量优化的复杂度</p>
+<h3 id="13">1.3 训练配置速查</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平台</td>
+<td>Unitree G1（132cm，名义 35kg）</td>
+</tr>
+<tr>
+<td>训练栈</td>
+<td>mjlab 运动模仿 + PPO，MLP 策略</td>
+</tr>
+<tr>
+<td>参考运动</td>
+<td>预采集轨迹做模仿目标（tracking reward 对齐关节状态+身体姿态）</td>
+</tr>
+<tr>
+<td>DR</td>
+<td><strong>辨识准确后只需极小 DR</strong>（nominal range：CoM 偏移 ±0.03m，torso 质量 ±0.5kg）→ 零样本上机</td>
+</tr>
+</tbody>
+</table>
+<h3 id="14">1.4 实验结果</h3>
+<p><strong>vs CMA-ES（传统采样式 SysID）</strong>：梯度法参数估计更准，<strong>极端载荷下优势最大</strong>（CMA-ES 无梯度采样在高维+强非线性时样本效率崩塌）。</p>
+<p><strong>真机重载任务对比</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>步态精度提升</th>
+<th>原地 90° 跳转</th>
+<th>燕式平衡/侧踢/回旋踢</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WDR（宽域随机化）</td>
+<td>基线</td>
+<td>真机无法产生足够垂直推力</td>
+<td>0/10、0/10、0/10</td>
+</tr>
+<tr>
+<td>CM（朴素校准）</td>
+<td>部分完成但有姿态偏差</td>
+<td>角度误差 41.8°</td>
+<td>5/10、7/10、5/10</td>
+</tr>
+<tr>
+<td><strong>HALO</strong></td>
+<td><strong>+45.45%~73.33%</strong></td>
+<td><strong>角度误差 11.3°（+72.97%）</strong></td>
+<td><strong>10/10、10/10、10/10</strong></td>
+</tr>
+</tbody>
+</table>
+<p>WDR 在爆炸性全身动作上彻底失败的机理：随机化训练出的策略对"垂直冲量生成"留了过大安全裕度——<strong>保守性直接杀死敏捷性</strong>。</p>
+<hr />
+<h2 id="duck-pi_5">二、查询拓展：对 DUCK-Pi_5 的直接适用性</h2>
+<p><strong>背景对照</strong>：我方 XML 按官方 1604.6g 标定，真机 v6 终账 ≈1831g（+226g，+14.1%），失配集中 trunk（+238g）与小腿（+61g×2）。这正是 HALO 定义的教科书级"结构化 sim2real gap"——<strong>系统性、大规模、非随机</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>HALO 方法</th>
+<th>DUCK-Pi_5 可操作映射</th>
+<th>成本/备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>两阶段解耦</td>
+<td>Stage1=官方 XML 基础参数校准；Stage2=只辨识装配增量段（trunk/小腿 mass+CoM）——与 v6"外科手术式只改三个 body"的思路完全同构</td>
+<td>直接可用</td>
+</tr>
+<tr>
+<td>Stage2 只辨 mass+CoM 不碰惯量</td>
+<td>与 v6 分段称重的最低参数集一致；惯量张量误差留给 DR 小范围覆盖</td>
+<td>参数维度骤降</td>
+</tr>
+<tr>
+<td>单脚虎钳固定 + FK 重建</td>
+<td>双足鸭可夹持机身（对应 PACE 的固定基座）或固定一脚；15 舵机全部有位置反馈，encoder-only 成立</td>
+<td>低：夹具+现有驱动代码</td>
+</tr>
+<tr>
+<td>QP 漂移矫正</td>
+<td>关节编码器噪声小可先不做；若步态数据左右脚高不一致再引入</td>
+<td>按需</td>
+</tr>
+<tr>
+<td>载荷段上身加权 α_u</td>
+<td>对应我方 trunk 段加权——电池+Pi5+UBEC 集中在 body，跟踪损失加权到 body links</td>
+<td>直接可用</td>
+</tr>
+<tr>
+<td>MuJoCo XLA 解析梯度</td>
+<td><strong>Jetson 不跑重型任务（用户铁律）</strong>：梯度辨识是分钟级小规模优化，远轻于策略训练，但 MJX 栈（JAX）在 Orin Nano 8GB 上部署成本高——建议与重训同放 AutoDL，辨识脚本随训练栈走</td>
+<td>中：AutoDL 侧集成</td>
+</tr>
+<tr>
+<td>辨识后极小 DR</td>
+<td>若辨识到位，热启动重训的 DR 范围可收窄（质量随机化窗从 ±20% 收到 ±3% 级），收敛更快</td>
+<td>与 3000 iter 热启动档兼容</td>
+</tr>
+</tbody>
+</table>
+<p><strong>边界诚实声明</strong>：HALO 的 payload 是"手持外挂重物"，我方 +226g 是"结构+电子+电池内置分布变化"——物理来源不同但数学结构完全相同（都是附着段 mass/CoM 移位）。另：HALO 在 G1（35kg、带力矩级执行器）上验证，STS3025 总线舵机的黑箱传动仍需 PACE 式端到端处理——<strong>两篇是互补关系而非替代</strong>：HALO 管质量分布，PACE 管执行器动力学。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<ol>
+<li><strong>结构化 gap 与随机噪声要分开治疗</strong>：DR 是"对一切参数鲁棒"的保险策略，对系统性失配（质量/CoM 大移位）既浪费（训练成本）又有害（保守性杀死敏捷动作）——WDR 真机跳跃 0/10 是最响亮的证据。</li>
+<li><strong>纠缠必须解耦</strong>：基座模型误差与载荷效应不做两阶段分离，梯度优化会把前者错误归因到后者——任何"增量辨识"场景（升级硬件/加装模块/换电池）都适用此原则。</li>
+<li><strong>最小参数集哲学</strong>：Stage2 只辨 mass+CoM 就够，惯量张量留给小 DR——与 PACE 的"49 维可解释参数胜过大而全"互为印证。</li>
+<li><strong>可微仿真 vs 进化算法的分水岭在维度与非线性</strong>：CMA-ES 在低维可胜任（PACE 49 维），高维+极端载荷下解析梯度的样本效率优势拉开数量级——工具选择跟着参数维度走。</li>
+<li><strong>机械约束是最便宜的真值发生器</strong>：一只虎钳替代整套 MoCap，"传感器最小化"不是妥协而是设计——低成本平台（百元级舵机鸭）恰恰是最大受益者。</li>
+<li><strong>辨识准确后 DR 可以近乎归零</strong>：zero-shot 的前提不是"策略足够鲁棒"而是"仿真器足够真实"——sim2real 的第一性答案始终是对齐。</li>
+</ol>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<p><strong>SysID 复兴已从单点走向谱系</strong>：2025-2026 不到一年内，PACE（CMA-ES + 固定基座激振，13 台机器人）、HALO（可微梯度 + 单脚固定，重载人形）、Fey 2025（残差动力学网络）三条路线并行成型，共同信号是——<strong>领域正从"随机化艺术"（Rudin/Lee/Miki 一系）转向"辨识工程"</strong>。判据依旧是：论文开始比拼"谁用的真实数据更少、参数更可解释、跨平台更多"。</p>
+<p>可微仿真的疆域扩张路径清晰：fixed-base 机械臂 → 四旋翼 → 四足 → <strong>重载人形</strong>（本文）。下一站大概率是<strong>辨识与策略训练的联合优化</strong>（在 MJX 里对 θ 和 π 同时回传梯度）以及<strong>在线 SysID</strong>（部署中持续微调模型参数）。</p>
+<p>对 DUCK-Pi_5 这类低成本平台的启示：<strong>不必追新栈</strong>。v6 分段称重 + 外科手术式 XML 修正就是"手工版 HALO Stage2"；等重训放 AutoDL 时再把梯度辨识脚本化，性价比最优。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>对象</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="./2026-09-05-PACE系统化Sim2Real-固定基座辨识与四项能量奖励.md">PACE 系统化 Sim2Real（09-05 笔记）</a></td>
+<td><strong>直接姊妹篇</strong>：PACE 辨执行器参数（Ia/d/τf/q̃b/Td），HALO 辨质量分布（mass/CoM）——DUCK-Pi_5 完整方案 = 两者叠加</td>
+</tr>
+<tr>
+<td>真机重量终版 v6</td>
+<td>HALO 两阶段思想与 v6"分段称重+只改 trunk/leg/ankle 三 body"的外科手术思路同构；1831g vs 1604.6g 即 HALO 所述"结构化 gap"</td>
+</tr>
+<tr>
+<td><code>microduck-training</code> / <code>rl-policy-transfer</code> skills</td>
+<td>辨识产物（identified mass/CoM）是"换硬件重训 vs 微调"判据的定量输入</td>
+</tr>
+<tr>
+<td>GPU VelStand 线（AutoDL）</td>
+<td>梯度辨识脚本与训练栈同环境部署，MJX 不进 Jetson</td>
+</tr>
+<tr>
+<td><code>rl-policy-diagnosis</code> skill</td>
+<td>WDR 保守性导致垂直冲量不足 → 与"站桩/reward-hack"诊断同族：策略规避物理极限的失败模式</td>
+</tr>
+<tr>
+<td>DeepLoop（09-05 笔记）</td>
+<td>同为"访问对齐/结构对齐决定稳定性"论点：对齐动力学结构（HALO）与对齐信息访问（DeepLoop）在不同层面的同构</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_6">六、拓展应用推荐</h2>
+<ol>
+<li><strong>装配完成后的两阶段标定方案</strong>（最高优先，与 PACE 推荐的 <code>identify_duck.py</code> 合并设计）：Stage0 用 v6 分段称重硬写 mass/CoM（HALO Stage1 的低成本替代），Stage1 带电后跑一段 STAND/踏步轨迹，梯度微调 trunk/小腿 mass+CoM 残差——产出与 XML 的 diff 报告再定热启动档位。</li>
+<li><strong>跟踪损失加权设计</strong>：若走辨识路线，body 段（电池+Pi5 集中）设 α_u 加权——直接抄 HALO 公式（5）-（7）。</li>
+<li><strong>DR 收窄试验</strong>：v6 修正 XML 后重训时，把质量随机化窗从当前值收窄至 ±5% 级做 A/B——验证"辨识到位则 DR 可减"在同平台的效应，收敛预算省下来加迭代数。</li>
+</ol>
+<hr />
+<h2 id="_7">七、指南分析</h2>
+<p><strong>质量</strong>：★★★★——方法干净（两阶段解耦的动机论证极佳）、公式完备可复现、真机验证覆盖敏捷任务全谱（跳跃/踢腿/平衡 10/10）。单脚固定 + QP 矫正的 sensor-minimal 设计对低成本平台参考价值极高。<br />
+<strong>局限</strong>：①场景是"外挂重物"而非"内置质量分布演化"，与自研平台的失配来源有差异（数学同构但需自己映射）；②MJX/mjlab 栈有部署门槛，非 Python+MuJoCo 用户需额外学习成本；③Stage1 全参数校准需要无载荷状态的基线数据——对已装配整机意味着要拆载荷回退采集，工程上不总是可行（我方可用"官方 XML 当 Stage1 结果"绕开）；④未公开与残差动力学学习（Fey 2025）的直接对比。</p>
+<h2 id="_8">相关笔记</h2>
+<ul>
+<li><a href="./2026-09-05-PACE系统化Sim2Real-固定基座辨识与四项能量奖励.md">PACE 系统化 Sim2Real — 固定基座辨识与四项能量奖励</a> — 执行器辨识姊妹篇，两文合成完整 SysID 方案</li>
+<li><a href="./2026-08-13-Sim2Real动力学辨识-参数辨识与实验设计.md">Sim2Real动力学辨识-参数辨识与实验设计</a> — 方法论前篇</li>
+<li><a href="./2026-08-14-强化学习落地机器人-仿真到现实鸿沟.md">强化学习落地机器人-仿真到现实鸿沟</a> — 鸿沟总论</li>
+</ul>
+</body>
+</html>
