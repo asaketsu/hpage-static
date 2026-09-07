@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机器人走路训练Transformer与MLP等效性深读-2048envs如何追平4096envs的样本效率与在线系统辨识</title>
+
+<meta property="og:title" content="机器人走路训练Transformer与MLP等效性深读-2048envs如何追平4096envs的样本效率与在线系统辨识" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="transformermlp-2048-envs-4096-envs-duck-pi_5">机器人走路训练 Transformer与MLP等效性深读 — 2048-envs 如何追平 4096-envs：样本效率、在线系统辨识与 DUCK-Pi_5 实证校准</h1>
+<p class="tag-line"><span class="tag">#LocomotionRL</span> <span class="tag">#Transformer策略</span> <span class="tag">#MLP</span> <span class="tag">#样本效率</span> <span class="tag">#并行环境数</span> <span class="tag">#POMDP</span> <span class="tag">#在线系统辨识</span> <span class="tag">#InContextLearning</span> <span class="tag">#SimtoReal</span> <span class="tag">#DomainRandomization</span> <span class="tag">#FrameStacking</span> <span class="tag">#PPO</span> <span class="tag">#LocoTransformer</span> <span class="tag">#BodyTransformer</span> <span class="tag">#DUCKPi5</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>底稿：千问分享页《机器人学走路训练：Transformer 与 MLP 的等效原理》（qianwen.my.cn/share/chat/b995ff88b5af46519afba8355035770b，2026-09-07，约 2.3K 字）</li>
+<li>外网交叉：Berkeley Science Robotics 2024 人形 locomotion（Transformer in-context adaptation）/ MIT Rapid Locomotion（在线系统辨识）/ LocoTransformer（ICRA 2023）/ LocoFormer（arXiv 2509.23745）/ Body Transformer（Meta 2023）/ Hwangbo 2019 Science Robotics / RMA / Humanoid Parkour（4096 envs 配置）/ Isaac Lab Spot 官方教程（MLP [512,256,128]）/ Stanford CS224R 4096-envs 实验</li>
+<li>内部实证：DUCK-Pi_5 docs/38 策略架构分析 + skill rl-policy-architecture-selection（同日建立的选型决策框架）+ P3 Transformer 试点（~/uclaw/project/duck-p3-pilot/）</li>
+<li>笔记日期：2026-09-07 | 指令语义：<strong>分析+补充完善形成详细笔记</strong>（千问底稿×外网×自有实证三源校准）</li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11-2048-envs-transformer-4096-envs-mlp">1.1 底稿核心命题：2048-envs Transformer ≈ 4096-envs MLP？</h3>
+<p>千问的回答框架是"<strong>不能简单划等号，但在实用门槛上经常等效</strong>"：</p>
+<blockquote>
+<p><strong>MLP 靠"大力出奇迹"（更多数据覆盖状态空间），Transformer 靠"举一反三"（从历史序列提取动力学规律）。</strong></p>
+
+<p class="meta-date">生成日期 2026-09-07</p></blockquote>
+<p>等效的机制归因于<strong>样本效率（Sample Efficiency）</strong>差异：<br />
+- <strong>MLP 是无记忆函数拟合器</strong>：对高度动态、非马尔可夫（Non-Markovian）的任务，只能靠堆叠观测帧（Frame Stacking）或 RNN/LSTM 隐式记忆，需要海量数据"死记硬背"各种地形和扰动下的状态-动作映射<br />
+- <strong>Transformer 自带 Context Window</strong>：同 step 数下，2048 envs 不仅用当前并行数据，还高效利用过去 N 步历史轨迹——<strong>单位时间提取的"有效训练信号"密度远高于 MLP</strong><br />
+- <strong>结论限定</strong>：达到可用性能/收敛速度上等效；给 MLP 无限数据和时间也能逼近，只是代价更大</p>
+<h3 id="12">1.2 底稿七维对比表（照录+校准）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>MLP (Baseline)</th>
+<th>Transformer (Sequence Modeling)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>输入处理</td>
+<td>固定窗口拼接 $[o_t, o_{t-1}, ..., o_{t-k}]$</td>
+<td>变长/定长序列 Token $o_{1:t}$ + Positional Encoding</td>
+</tr>
+<tr>
+<td>时序建模</td>
+<td>隐式/浅层：全连接非线性拟合时间相关性，易遗忘长程依赖</td>
+<td>显式/深层：Self-Attention 直接计算任意两步关联</td>
+</tr>
+<tr>
+<td>噪声/延迟鲁棒性</td>
+<td>差：输入分布偏移→策略崩溃</td>
+<td>强：Attention 权重自动忽略噪声帧</td>
+</tr>
+<tr>
+<td>泛化机制</td>
+<td>插值泛化：仅训练见过的状态空间</td>
+<td>组合泛化/上下文学习：推断未见地形摩擦/质量变化</td>
+</tr>
+<tr>
+<td>训练稳定性</td>
+<td>高：结构简单梯度流稳</td>
+<td>中/低：对超参敏感，需 Warmup+LayerNorm</td>
+</tr>
+<tr>
+<td>推理开销</td>
+<td>极低：适合 50Hz+ 高频控制</td>
+<td>高：随序列长度线性/平方增长，需 KV Cache</td>
+</tr>
+<tr>
+<td><strong>并行环境数需求</strong></td>
+<td>4096 起步（大力出奇迹）</td>
+<td><strong>2048 通常是底线</strong>（&lt;512 会过拟合历史轨迹）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13">1.3 底稿两大深度机制</h3>
+<p><strong>A. 解决 Non-Markovian 问题</strong>：走路时当前观测 $o_t$ 不足以判断状态（脚是否打滑/电机过热/地面摩擦力）。MLP 必须拼 50 帧输入（维度爆炸且难分主次）；Transformer 通过 Attention Map 自适应"回头看"——检测到打滑时自动赋予前几秒地面接触力反馈更高权重，估计摩擦系数。千问定义为<strong>在线系统辨识（Online System ID）能力</strong>。</p>
+<p><strong>B. In-Context Learning 式泛化</strong>：Domain Randomization 下 MLP 倾向学"平均策略"应对所有随机化参数（极端参数下平庸）；Transformer 表现出 ICL 特性——测试时根据最近几百步交互实时调整策略适应当前环境参数（如突然变重的负载），无需重训。<strong>这就是 2048-envs Transformer 在真机部署时往往比 4096-envs MLP 更稳的原因</strong>。</p>
+<h3 id="14">1.4 底稿避坑指南（四条）</h3>
+<ol>
+<li><strong>不是无脑替换</strong>：平地匀速走 MLP 更快更稳更轻；Transformer 优势在复杂地形/多模态/Sim-to-Real</li>
+<li><strong>Env 数量不能太少</strong>：Transformer 参数量大，2048 是底线；降到 512 可能因批次多样性不足过拟合历史轨迹反不如 MLP</li>
+<li><strong>主流是 Hybrid 架构</strong>：CNN/MLP Encoder + Transformer Core + MLP Head，或 Gated/Linear Attention 降延迟</li>
+<li><strong>等效≠相同</strong>：2048≈4096 指"达到可用性能的门槛"而非"最终上限"——充分训练后 Transformer 上限显著更高</li>
+</ol>
+<h3 id="15-berkeley-icl">1.5 外网增量一：Berkeley 人形实证——ICL 假设的直接证据</h3>
+<p>Science Robotics 2024（Berkeley Hybrid Robotics，DIGGT 人形）是底稿 B 机制的权威背书：</p>
+<blockquote>
+<p>"We hypothesize that the observation-action history contains useful information about the world that a powerful Transformer model can use to adapt its behavior in-context, <strong>without updating its weights</strong>."</p>
+</blockquote>
+<p>要点：观测-动作历史作为唯一输入（无显式状态估计器）→ 大规模 model-free RL 在随机化环境集合上训练 → 真机 zero-shot 部署。还观察到<strong>涌现的类人摆臂行为</strong>（与腿部运动的对侧协调）——序列策略学到的不只是映射还有全身协调结构。</p>
+<h3 id="16">1.6 外网增量二：学术谱系——"历史推断环境参数"三波浪潮</h3>
+<table>
+<thead>
+<tr>
+<th>波次</th>
+<th>工作</th>
+<th>机制</th>
+<th>与底稿关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2019</td>
+<td>Hwangbo et al., Science Robotics</td>
+<td>ANYmal <strong>CNN</strong> 处理 50 帧历史</td>
+<td>历史信息价值最强实证——但注意用 CNN 非 Transformer：<strong>历史有用 ≠ Transformer 唯一解</strong></td>
+</tr>
+<tr>
+<td>2021</td>
+<td>RMA (Kumar et al.)</td>
+<td>两阶段：特判网络估环境参数 → adapter 注入 MLP</td>
+<td>显式 Online System ID；后来序列模型把两阶段压成一阶段</td>
+</tr>
+<tr>
+<td>2022-24</td>
+<td>Berkeley 人形 / LocoTransformer / Humanoid Parkour</td>
+<td>Transformer 端到端隐式辨识</td>
+<td>底稿描述的 ICL 路线的学术主干</td>
+</tr>
+<tr>
+<td>2025</td>
+<td>LocoFormer</td>
+<td>长上下文适应，统一多机器人 locomotion</td>
+<td>zero-shot + 5 秒 few-shot 适应窗口</td>
+</tr>
+<tr>
+<td>2023</td>
+<td>Body Transformer (Meta)</td>
+<td>attention 按肢体拓扑稀疏化</td>
+<td>样本效率↑——2048-envs 等效性的架构级增强手段</td>
+</tr>
+</tbody>
+</table>
+<p><strong>谱系结论</strong>：千问的"在线系统辨识"定义有准确学术对应（RMA 的特判→序列模型的隐式化），但漏了关键一条——<strong>历史价值的最强实证（Hwangbo）恰恰不是 Transformer 做的</strong>。</p>
+<h3 id="17-4096">1.7 外网增量三：4096 这个数字的行业惯例</h3>
+<ul>
+<li>Humanoid Parkour（arXiv 2406.10759）：<strong>num_envs=4096</strong>，24 steps/batch，4 minibatch，PPO——底稿 MLP 侧配置的直接原型</li>
+<li>Isaac Lab 官方 Spot 教程：MLP [512, 256, 128] + PPO + RSL-rl——<strong>业界 baseline 的标准形态</strong>（DUCK-Pi_5 同款 512/256/128）</li>
+<li>Oregon State 论文超参表：4096 envs / 24 steps / episode 1000</li>
+<li>Stanford CS224R：num_envs=4096 做遮挡鲁棒性实验——4096 已是 massively parallel RL 的<strong>默认工作点</strong>（源自 Rudin 2022 "Learning to Walk in Minutes"）</li>
+</ul>
+<h3 id="18-duck-pi_5">1.8 内部实证校准：DUCK-Pi_5 的账本（底稿数字的落地版）</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>DUCK-Pi_5 实测</th>
+<th>底稿说法</th>
+<th>校准结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MLP 基线</td>
+<td>197k 参数 [512,256,128]，0.8 MFLOPs/帧，CPU 微秒级</td>
+<td>"推理极低，适合 50Hz+"</td>
+<td>✅ 一致，Pi5 实测 &lt;1ms</td>
+</tr>
+<tr>
+<td>Transformer 吞吐</td>
+<td>≈MLP 的 1/3~1/5（Flat 5k：25min→~2h）</td>
+<td>"训练成本增加"</td>
+<td>✅ 量化：预算 10 元级→30-40 元级</td>
+</tr>
+<tr>
+<td>部署算力</td>
+<td>4 层×128×50 帧 ≈ 80 MFLOPs/帧 → Pi5 CPU 8-12ms <strong>临界</strong></td>
+<td>"推理开销较高"</td>
+<td>✅ 且更严重：<strong>full recompute 挤占安全层预算</strong>——未增推理板不上序列策略</td>
+</tr>
+<tr>
+<td>PPO 稳定性</td>
+<td>小 batch attention 易碎 → ≤1M 参数 + LayerNorm + lr 减半</td>
+<td>"需 Warmup+LayerNorm"</td>
+<td>✅ 同坑同方</td>
+</tr>
+<tr>
+<td>决策路径</td>
+<td>P1 MLP→P2 LSTM 探针→P3 小型 Transformer</td>
+<td>"不是无脑替换"</td>
+<td>✅ 探针先行是底稿避坑第 1 条的工程化</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键校准</strong>：底稿说"2048-envs Transformer 可能接近 4096-envs MLP"，DUCK-Pi_5 的实测视角是——<strong>等效性成立的前提是任务真有历史信息可挖（POMDP 强）</strong>。弱 POMDP（运动学状态可观测的平地速度跟踪）下，2048 vs 4096 的对比根本不会出现Transformer 优势；<strong>等效性是 POMDP 强度的函数，不是架构的固有属性</strong>。</p>
+<h3 id="19">1.9 综合深化：等效性的三层分解</h3>
+<p>把"2048-envs Transformer ≈ 4096-envs MLP"拆成可验证的三层：</p>
+<p><strong>层 1：并行数×步数 = 总样本账</strong>。Transformer 的历史窗口让每个样本携带 N 步上下文——<strong>梯度信号的信息密度 ×N</strong>。2048 envs × 50 帧窗口 ≈ 4096 envs × 单帧的<strong>有效信息吞吐</strong>（粗略数量级，非严格等式）。</p>
+<p><strong>层 2：在线系统辨识替代 Domain Randomization 覆盖</strong>。MLP 需要 4096 envs 才能覆盖的参数空间（摩擦/质量/延迟组合），Transformer 用 2048 envs 训练 + 部署时 ICL 推断——<strong>训练时少采样，测试时补辨识</strong>。这是等效性的核心机制，也是底稿 B 节的主张。</p>
+<p><strong>层 3：门槛等效 ≠ 上限等效</strong>。底稿第 4 条避坑：达到可用性能的门槛上等效；充分训练后 Transformer 上限更高（复杂地形/扰动场景差距拉开）。</p>
+<p><strong>反例边界</strong>（底稿没说透的）：<br />
+- 平地匀速、观测充分（弱 POMDP）→ 等效性失效，MLP 4096 反而更快更稳<br />
+- num_envs 对比实验里 Transformer &lt;512 envs → 过拟合历史轨迹<br />
+- 部署算力受限（50Hz 主控 CPU）→ 等效性在训练侧成立、部署侧被推理延迟吃掉</p>
+<h2 id="_3">二、查询拓展</h2>
+<ul>
+<li>Berkeley 人形的 context window 长度与 ICL 适应时间的定量关系（多少步交互能锁定摩擦系数估计）</li>
+<li>LocoFormer 的 5 秒 few-shot 适应窗口与 2048-envs 训练配置的耦合</li>
+<li>Body Transformer 的肢体拓扑稀疏 attention 在双足（非四足）上的等效增益数据</li>
+<li>Hybrid 架构（CNN Encoder + Transformer Core）的 encoder 消融——哪些模态值得 token 化</li>
+<li>Gated/Linear Attention 在 locomotion 推理延迟的实测改善倍数</li>
+<li>KV Cache 在定长滑窗策略推理中的实际收益（vs full recompute 的 40 倍理论值）</li>
+<li>2048/4096 之外：Rudin 2022 "Walk in Minutes" 的 4096→8192 scaling 曲线是否饱和</li>
+<li>DUCK-Pi_5 P2 LSTM 探针结果对"层 2 机制"的验证（若 LSTM 无增益→历史无价值→Transformer 也白搭）</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li><strong>等效性的本质是信息密度补偿</strong>：Transformer 的 N 步上下文让单位样本携带 N 倍梯度信息——2048 envs × 历史窗口 ≈ 4096 envs × 单帧的有效信息吞吐</li>
+<li><strong>等效性的核心机制是在线系统辨识</strong>：训练时少采样参数空间（2048），部署时 ICL 推断环境参数补齐——"训练省的钱，测试时赚回来"</li>
+<li><strong>等效性是 POMDP 强度的函数</strong>：弱 POMDP（平地/观测充分）下等效性失效，MLP 4096 反而占优——<strong>先问任务有没有历史信息可挖，再问架构</strong></li>
+<li><strong>4096 envs 是行业默认工作点</strong>：Humanoid Parkour/Isaac Lab/CS224R 全线 4096——底稿 MLP 侧数字不是随便选的，是 Rudin 2022 以来的惯例</li>
+<li><strong>历史价值 ≠ Transformer 唯一解</strong>：最强历史实证 Hwangbo 2019 用 CNN、RMA 用 adapter——LSTM 探针是成本最低的验证手段（DUCK-Pi_5 P2 的设计依据）</li>
+<li><strong>门槛等效 ≠ 上限等效</strong>：达到可用性能的门槛上 2048≈4096；充分训练后 Transformer 上限更高——但代价是吞吐 1/3~1/5、推理 100 倍开销</li>
+<li><strong>训练侧等效可能被部署侧吃掉</strong>：full recompute 80 MFLOPs/帧在 50Hz 主控 CPU 上临界——<strong>没推理板就别上序列策略</strong>（DUCK-Pi_5 P3 闸门）</li>
+<li><strong>PPO 小 batch 下 attention 易碎是工程暗礁</strong>：≤1M 参数起步 + LayerNorm + lr 减半——底稿"Warmup+LayerNorm"的落地版</li>
+<li><strong>Hybrid 架构是主流而非纯 Decoder</strong>：CNN/MLP Encoder + Transformer Core + MLP Head——纯序列模型只在感知融合/多技能场景才有立项理由</li>
+<li><strong>等效性主张的验证 SOP</strong>：同 num_envs 对照 + 同预算 A/B + 位移/成功率等功能指标（非 reward 曲线）——num_envs 不同 = 不可比（DUCK-Pi_5 skill 明文坑）</li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<ol>
+<li><strong>序列策略从"性能件"变"功能件"</strong>：纯本体感知速度跟踪 MLP 继续主流；Transformer 绑定感知输入（heightmap token 化）/多技能统一/VLA latent 融合——立项理由从"更稳"转向"能做"</li>
+<li><strong>2048/4096 的分界会随 sim 吞吐涨价</strong>：Isaac Lab/MJLab GPU 并行使万级 envs 成本趋近于零——"Transformer 省 envs"的论据在弱化，<strong>省算力的方向反转成省的是训练时间而非环境数</strong></li>
+<li><strong>ICL 式适应成为 Sim-to-Real 标配话术</strong>：Berkeley 人形→LocoFormer 一脉相承——"部署时不更新权重，靠上下文适应"会成为 2026-27 论文的标准 claim，需警惕过度归因（ICL 与 DR 的消融经常缺失）</li>
+<li><strong>肢体拓扑稀疏 attention（BoT 路线）在双足扩散</strong>：腿-躯干-头颈分组的机器人天然适配——参数效率与样本效率双收</li>
+<li><strong>验证方法论收敛于"同 envs 同预算 A/B"</strong>：社区正在消化"num_envs 不同=不可比"的方法论教训（DUCK-Pi_5 5k-final-ab 实证）——未来论文的对照表会被要求标注并行数与总步数</li>
+<li><strong>边缘部署推动 Hybrid 分解</strong>：encoder 上板（Hailo）+ 策略主控的两级部署会成为双足标配——纯端到端序列模型在 50Hz 控制环内短期无解</li>
+</ol>
+<h2 id="_6">五、关联分析</h2>
+<blockquote>
+<p>关联对象：DUCK-Pi_5 / Transformer与MLP架构对比笔记 / GigaBrain-WBC / rl-policy-architecture-selection skill / c-xor-nn / KVCache 十二技</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>对照项</th>
+<th>本笔记</th>
+<th>关联方</th>
+<th>关联</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>2048≈4096 等效性</strong></td>
+<td>样本效率+ICL 双机制</td>
+<td>Transformer与MLP架构对比（同日姊妹篇）</td>
+<td>✅ 互补：姊妹篇讲"静态容量与表达力"，本篇讲"动态序列与信息密度"——一个从数学原理，一个从 RL 训练实践，同一问题的两个切面</td>
+</tr>
+<tr>
+<td><strong>POMDP 强弱判定</strong></td>
+<td>等效性的第一前提</td>
+<td>rl-policy-architecture-selection skill</td>
+<td>✅ 本笔记为其提供了"等效性"这个新判据的量化背景；skill 的五步决策框架不变</td>
+</tr>
+<tr>
+<td><strong>历史信息价值</strong></td>
+<td>层 2 机制的验证需求</td>
+<td>DUCK-Pi_5 P2 LSTM 探针（未跑）</td>
+<td>✅ 探针结果直接检验本笔记层 2：若 LSTM 无增益→历史无价值→Transformer 也白搭</td>
+</tr>
+<tr>
+<td><strong>在线系统辨识</strong></td>
+<td>ICL 的学术对应</td>
+<td>GigaBrain-WBC 三头预测</td>
+<td>✅ 世界模型 = 显式动力学预测，序列策略 = 隐式动力学推断——同一枚硬币两面；小鸭近期不吸收 Transformer 的决策与"世界模型显式化"路线一致</td>
+</tr>
+<tr>
+<td><strong>训练吞吐 1/3~1/5</strong></td>
+<td>Transformer 成本账</td>
+<td>DUCK-Pi_5 AutoDL 训练 SOP</td>
+<td>✅ P3 预算估算直接引用：Flat 5k 从 25min→2h，10 元→30-40 元</td>
+</tr>
+<tr>
+<td><strong>50Hz 控制预算</strong></td>
+<td>部署算力闸门</td>
+<td>c-xor-nn 六版演进</td>
+<td>✅ 同构：XOR 六版每版都在"容量 vs 资源"间取舍；序列策略是同一取舍在 RL 侧的放大版</td>
+</tr>
+<tr>
+<td><strong>KV Cache 优化</strong></td>
+<td>推理开销的解药</td>
+<td>KVCache 十二技笔记</td>
+<td>✅ locomotion 定长滑窗的 KV cache 收益（~40 倍）与 LLM 增量解码同构——技术迁移直接可用</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三角闭环</strong>：本笔记 + 姊妹篇（架构数学）+ skill（决策框架）构成完整的"RL 策略架构选型"知识三角——<strong>原理（为什么）、实践（怎么训）、决策（怎么选）</strong>。DUCK-Pi_5 的 P2/P3 试点是这个三角的第一次实战校准。</p>
+<h2 id="_7">六、指南分析</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>快速理解等效性主张</td>
+<td>§1.1 + §1.9 三层分解</td>
+</tr>
+<tr>
+<td>七维对比查表</td>
+<td>§1.2</td>
+</tr>
+<tr>
+<td>ICL/在线辨识机制</td>
+<td>§1.3 + §1.5-1.6 谱系</td>
+</tr>
+<tr>
+<td>落地训练配置参考</td>
+<td>§1.7（4096 惯例）+ §1.8（DUCK-Pi_5 账本）</td>
+</tr>
+<tr>
+<td>避坑</td>
+<td>§1.4 底稿四条 + §1.9 反例边界</td>
+</tr>
+<tr>
+<td>选型决策</td>
+<td>§五 skill 关联（五步框架）</td>
+</tr>
+<tr>
+<td>验证方法论</td>
+<td>归纳第 10 条（同 envs 同预算 A/B SOP）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心口诀</strong>：等效=信息密度补偿 / 核心机制=在线系统辨识 / 前提=POMDP 强 / 4096=行业默认 / 历史有用≠Transformer唯一解 / 门槛等效≠上限等效 / 训练等效可能被部署吃掉 / 小batch attention易碎 / Hybrid是主流 / 验证靠同envs同预算A/B。</p>
+<h2 id="_8">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给 DUCK-Pi_5</strong>：①本笔记层 2 机制列入 P3 立项文档的"预期收益"章节（ICL 式参数适应 vs 现有 DR 覆盖的差距分析）②P2 LSTM 探针结果回填本笔记 §二（验证或证伪层 2）③BoT 肢体拓扑稀疏 attention 列入 P3-a 架构候选清单</li>
+<li><strong>给训练 SOP</strong>：P3 Transformer 训练配置默认对齐 §1.7 行业惯例（24 steps/batch、4 minibatch、lr 减半、LayerNorm）——避免自创超参踩 PPO-attention 坑</li>
+<li><strong>给姊妹篇</strong>：本笔记作为其"RL 实践篇"引用——架构对比笔记的 §演进路径 节补一条"locomotion 侧的等效性证据"</li>
+<li><strong>延伸阅读</strong>：Berkeley Science Robotics 2024（learning-humanoid-locomotion.github.io）/ LocoTransformer（ICRA 2023）/ LocoFormer（arXiv 2509.23745）/ Body Transformer（Meta 2023）/ Hwangbo 2019 / RMA / Rudin 2022 Walk in Minutes / Humanoid Parkour（arXiv 2406.10759）/ Isaac Lab Spot 教程 / DUCK-Pi_5 docs/38</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-09-07-Transformer与MLP架构对比深度研究-数学原理包含关系与从MLPMixer到MoE的演进路径.md]]（姊妹篇：数学原理与架构演进——本篇是其在 RL locomotion 的实践映射）<br />
+→ 相关：[[2026-09-07-GigaBrain行为世界模型精读-三头预测架构地形自标注与DUCKPi5借鉴判定.md]]（隐式动力学推断 vs 显式世界模型——同一枚硬币两面）<br />
+→ 相关：项目 DUCK-Pi_5（docs/38 策略架构分析 + P2 LSTM 探针待跑 + P3 duck-p3-pilot 全链路就绪）<br />
+→ 相关：skill rl-policy-architecture-selection（五步决策框架 + 同 envs 对照 SOP）</p>
+</body>
+</html>
