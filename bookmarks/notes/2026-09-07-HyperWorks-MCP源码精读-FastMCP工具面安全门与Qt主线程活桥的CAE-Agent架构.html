@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HyperWorks-MCP源码精读-FastMCP工具面安全门与Qt主线程活桥的CAE-Agent架构</title>
+
+<meta property="og:title" content="HyperWorks-MCP源码精读-FastMCP工具面安全门与Qt主线程活桥的CAE-Agent架构" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="hyperworks-mcp-fastmcp-qt-cae-agent">HyperWorks MCP 源码精读 — FastMCP 工具面、安全门与 Qt 主线程活桥的 CAE Agent 架构</h1>
+<p class="tag-line"><span class="tag">#MCP</span> <span class="tag">#HyperWorks</span> <span class="tag">#FastMCP</span> <span class="tag">#CAE</span> <span class="tag">#Agent工具</span> <span class="tag">#Tcl安全门</span> <span class="tag">#Qt主线程</span> <span class="tag">#localhost认证桥</span> <span class="tag">#检查点回滚</span> <span class="tag">#方法白名单</span> <span class="tag">#Codex</span> <span class="tag">#CAEAgentHub</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>原文：GitHub 仓库 Cai-aa/CAE-Agent-Hub <code>/MCP/HyperWorks</code> 目录（v0.10.0，2026 年）</li>
+<li>定位：面向 Altair HyperWorks 的<strong>本地 FastMCP 服务</strong>——以独立工作区为安全边界，提供可审计的建模/网格/求解/后处理能力</li>
+<li>研究方式：git clone 全仓 + 源码精读（server 1462 行 + extension 2962 行 + 各服务模块共约 7K 行 Python）</li>
+<li>笔记日期：2026-09-07 | 指令语义：<strong>研究 MCP 是如何写和发挥作用的，详细记入笔记</strong></li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11-mcp-hyperworks-extension">1.1 总体架构：外部 MCP 服务 + HyperWorks 内嵌 Extension 的混合模式</h3>
+<pre><code class="language-text">Codex / MCP client
+        |
+        v
+FastMCP typed tools (65 个工具)
+        |
+        +-- live bridge client     -&gt; authenticated 127.0.0.1 JSON requests
+        |                                  |
+        |                                  v
+        |                          HyperWorks Extension（内嵌进程）
+        |                                  |
+        |                    Qt main-thread hm / hw / hw.hv API
+        +-- installation discovery -&gt; HyperMesh / HyperStudy / solver capability matrix
+        +-- project service        -&gt; workspace-bounded input, scripts, output, runs
+        +-- Tcl safety gate        -&gt; rejects OS/process escape and runner-owned quit
+        +-- HyperMesh Batch        -&gt; isolated asynchronous hmbatch jobs
+        +-- HyperStudy API         -&gt; typed MCP-generated study setup via hstpy
+        +-- solver adapter         -&gt; staged OptiStruct / Radioss jobs
+        +-- process registry       -&gt; status, bounded logs, cancellation, artifacts
+        +-- GUI launcher           -&gt; HyperMesh / HyperView launch only
+</code></pre>
+<p><strong>关键设计决策</strong>：<strong>不开放任意 Python、Tcl、Shell、PowerShell 或 <code>eval</code></strong>——所有能力都是类型化工具。</p>
+<h3 id="12-mcp-fastmcp">1.2 MCP 服务端怎么写：FastMCP 最小骨架</h3>
+<p>入口只有 17 行（<code>server.py</code>）——把 <code>src</code> 加进 <code>sys.path</code> 后转发：</p>
+<pre><code class="language-python">SRC = Path(__file__).resolve().parent / &quot;src&quot;
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+from hyperworks_mcp.server import main, mcp
+
+if __name__ == &quot;__main__&quot;:
+    main()
+</code></pre>
+<p>核心在 <code>src/hyperworks_mcp/server.py</code>：</p>
+<pre><code class="language-python">mcp = FastMCP(&quot;hyperworks&quot;, instructions=INSTRUCTIONS)
+</code></pre>
+<p><strong>INSTRUCTIONS 是给 LLM 的系统级使用说明</strong>（这是 MCP server 写作的最佳实践之一）——摘录关键规则：</p>
+<blockquote>
+<p>Use get_environment before launching anything. Prefer HyperMesh batch Tcl for repeatable pre-processing... Solver and GUI launches are side effects. Ask for approval before launching a GUI, starting a solver, or cancelling a job. <strong>Never infer mesh quality, convergence, solver availability, or successful completion; read the actual job status and logs.</strong> ... The live bridge never exposes arbitrary Python or Tcl execution.</p>
+
+<p class="meta-date">生成日期 2026-09-07</p></blockquote>
+<p>工具注册是纯装饰器模式，类型签名即 schema：</p>
+<pre><code class="language-python">@mcp.tool()
+def get_environment() -&gt; dict:
+    &quot;&quot;&quot;Detect HyperMesh GUI/batch, HyperStudy, OptiStruct, Radioss, and capabilities.&quot;&quot;&quot;
+
+@mcp.tool()
+def create_project(name: str) -&gt; dict:
+    &quot;&quot;&quot;Create an isolated HyperWorks project with input, scripts, output, and runs folders.&quot;&quot;&quot;
+</code></pre>
+<p>还注册了 MCP resource（<code>@mcp.resource("hyperworks://environment")</code>）——环境信息可作为资源被客户端拉取。</p>
+<h3 id="13-65">1.3 工具面全景：65 个工具分七类</h3>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>工具（代表）</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>环境/项目</strong></td>
+<td>get_environment / configure_installation / create_project / get_project_summary / import_project_file</td>
+<td>安装探测（hmbatch/hstbatch/optistruct/radioss 四件套路径）+ 工作区隔离</td>
+</tr>
+<tr>
+<td><strong>Tcl 批处理</strong></td>
+<td>write_tcl_script / run_hmbatch / launch_hypermesh</td>
+<td>可重复前处理走 batch Tcl；GUI 只显式启动</td>
+</tr>
+<tr>
+<td><strong>分析模板</strong></td>
+<td>prepare_optistruct_cantilever_analysis / prepare_radioss_block_impact_analysis / list_analysis_templates / prepare_analysis_template</td>
+<td>悬臂梁线静力/块体冲击显式两验证模板 + 注册库模板复用</td>
+</tr>
+<tr>
+<td><strong>求解作业</strong></td>
+<td>submit_solver_job / get_job_status / tail_job_log / cancel_job / list_jobs / list_job_artifacts</td>
+<td>异步求解+状态+有界日志+取消+产物管理</td>
+</tr>
+<tr>
+<td><strong>后处理</strong></td>
+<td>get_solver_result_artifacts / audit_radioss_explicit_job / postprocess_solver_result_in_hyperview / extract_solver_time_history_in_hypergraph / generate_solver_job_report</td>
+<td>结果读取+Radioss 审计（终止/能量/添加质量/时间步/负体积/穿透六信号）+云图 PNG+时程 CSV+HTML/JSON 报告</td>
+</tr>
+<tr>
+<td><strong>活桥查询</strong></td>
+<td>get_live_bridge_status / get_live_capabilities / get_live_session_info / get_live_model_summary / list_live_entities / get_live_entity</td>
+<td>活会话内实体级查询</td>
+</tr>
+<tr>
+<td><strong>活桥操作</strong></td>
+<td>30+ 个 create_live_* / set_live_entity_attributes / select_live_entities_interactively / import_live_cad / automesh_live_surfaces / solid_map_live_solids / tetra_mesh_live_solids / repair_live_mesh_quality / create_live_cylindrical_ogrid / get_live_mesh_quality / create_live_checkpoint / rollback_live_checkpoint / load_live_model / refresh_live_view / save_live_model</td>
+<td>活 HyperMesh 会话内的建模/网格/连接/求解卡/载荷/几何全操作</td>
+</tr>
+</tbody>
+</table>
+<p><strong>工具命名纪律</strong>：batch 路径与 live 路径严格分离（<code>run_hmbatch</code> vs <code>create_live_nodes</code>）——LLM 不会混淆两条执行通道。</p>
+<h3 id="14-mcp">1.4 安全设计：五层防御（本 MCP 最值得学的部分）</h3>
+<p><strong>第一层：Tcl 安全门（security.py）</strong></p>
+<p>正则黑名单拦截 OS/进程逃逸命令：</p>
+<pre><code class="language-python">_BLOCKED_TCL = (
+    (re.compile(r&quot;(^|[;\n\[])\s*exec\b&quot;, re.IGNORECASE), &quot;exec&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*socket\b&quot;, re.IGNORECASE), &quot;socket&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*load\b&quot;, re.IGNORECASE), &quot;load&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*open\b&quot;, re.IGNORECASE), &quot;open&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*file\b&quot;, re.IGNORECASE), &quot;file&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*(cd|pwd|glob)\b&quot;, re.IGNORECASE), &quot;filesystem navigation&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*(package|interp)\b&quot;, re.IGNORECASE), &quot;dynamic Tcl runtime&quot;),
+    (re.compile(r&quot;(^|[;\n\[])\s*exit\b&quot;, re.IGNORECASE), &quot;exit&quot;),
+    (re.compile(r&quot;(^|[;\n])\s*source\b&quot;, re.IGNORECASE), &quot;source&quot;),
+    (re.compile(r&quot;(^|[;\n])\s*\*quit\b&quot;, re.IGNORECASE), &quot;*quit&quot;),
+    (re.compile(r&quot;(?i)(?:^|[^A-Za-z0-9_])[A-Za-z]:[\\/]&quot;), &quot;absolute Windows path&quot;),
+    (re.compile(r&quot;(?:^|[\s\&quot;'{])\\\\&quot;), &quot;UNC path&quot;),
+    (re.compile(r&quot;(?:^|[\\/])\.\.(?:[\\/]|$)&quot;), &quot;parent path traversal&quot;),
+    (re.compile(r&quot;(?i)(?:\$|::)env(?:\(|\b)&quot;), &quot;environment access&quot;),
+)
+</code></pre>
+<p><strong>防御细节</strong>：<br />
+- <code>(^|[;\n\[])</code> 前缀——只匹配<strong>语句开头</strong>（不误伤变量名包含 exec 的正常代码）<br />
+- 拦绝对 Windows 路径/UNC 路径/<code>..</code> 穿越/环境变量访问——<strong>Tcl 只能在项目文件夹内活动</strong><br />
+- NUL 字节拒绝 + 2MB 大小上限——防解析器歧义与资源滥用<br />
+- README 诚实声明："The Tcl filter is defense in depth, <strong>not an operating-system sandbox</strong>"——正则过滤是纵深防御的一层，不是沙箱</p>
+<p><strong>第二层：工作区边界（projects.py）</strong><br />
+- 所有文件/作业/脚本限制在 <code>HYPERWORKS_MCP_WORKSPACE</code><br />
+- 外部输入文件必须<strong>显式点名</strong>后才拷入项目<br />
+- CAD 导入只接受项目内 STEP/IGES/Parasolid</p>
+<p><strong>第三层：活桥协议安全（live_bridge.py ↔ bridge.py）</strong><br />
+- <strong>只绑 127.0.0.1</strong>——不暴露网络面<br />
+- 每请求随机 token（≥32 字符）认证——<code>hmac.compare_digest</code> 防时序攻击<br />
+- 请求 1MB / 响应 4MB 上限<br />
+- 请求-响应 ID 配对校验<br />
+- <strong>方法白名单 dispatch</strong>：<code>self.methods.get(method)</code> 不存在直接 <code>ValueError("Method is not allowlisted")</code>——没有 eval 类通道</p>
+<p><strong>第四层：Qt 主线程纪律（bridge.py 最精妙的 30 行）</strong></p>
+<blockquote>
+<p>The socket thread never invokes the HyperWorks API. A Qt timer drains requests and invokes <code>hm</code>, <code>hw</code>, and <code>hw.hv</code> from the application's main thread.</p>
+</blockquote>
+<p>实现：</p>
+<pre><code class="language-python">self.requests = queue.Queue(maxsize=100)   # socket线程只入队
+self.timer = QTimer()
+self.timer.setInterval(25)                  # 25ms 轮询
+self.timer.timeout.connect(self._drain_requests)
+
+def _drain_requests(self):
+    for _ in range(8):                      # 每tick最多8个，防饿死GUI
+        pending = self.requests.get_nowait()
+        result = self.registry.dispatch(pending.method, pending.params)
+        pending.completed.set()             # 事件通知socket线程取结果
+</code></pre>
+<p><strong>为什么必须这样</strong>：HyperWorks 的 hm/hw API 只能从 <strong>Qt 主线程</strong>调用——socket 线程直接调会崩 GUI。请求队列 + QTimer 排水 + <code>threading.Event</code> 应答，三件套把网络并发转成主线程串行。</p>
+<p><strong>第五层：副作用审批 + 检查点回滚</strong><br />
+- INSTRUCTIONS 明确规定 GUI 启动/求解器启动/取消作业前<strong>必须先请求批准</strong><br />
+- 所有模型修改/网格操作<strong>先写 <code>.hm</code> 检查点</strong>，失败自动回滚<br />
+- <code>load_model</code> 必须 <code>replace_current=true</code> 显式确认<br />
+- <code>overwrite</code> 必须 <code>overwrite=True</code> 显式确认</p>
+<h3 id="15-save_live_model">1.5 活桥请求全链路（一次 save_live_model 的旅程）</h3>
+<pre><code class="language-python"># MCP 工具层（src/server.py L1408）
+@mcp.tool()
+def save_live_model(project_id, output_name, model_name=None, overwrite=False, ...) -&gt; dict:
+    output = projects.root(project_id) / &quot;output&quot; / Path(output_name).name  # 路径限制在项目内
+    if output.suffix.lower() != &quot;.hm&quot;:
+        output = output.with_suffix(&quot;.hm&quot;)                                   # 强制.hm后缀
+    return live.call(&quot;save_model&quot;, {...}, timeout=300)
+</code></pre>
+<pre><code class="language-python"># MCP 客户端（live_bridge.py）
+config = self._config()                       # 读bridge.json，校验host=127.0.0.1+token≥32
+request = {&quot;id&quot;: uuid4().hex, &quot;token&quot;: ..., &quot;method&quot;: &quot;save_model&quot;, &quot;params&quot;: {...}}
+socket.create_connection((host, port))        # TCP连接→发送JSON行
+# 等待\n结尾的响应→ID配对→ok字段校验
+</code></pre>
+<pre><code class="language-python"># Extension 端（bridge.py）
+_BridgeRequestHandler.handle():
+    token校验(hmac.compare_digest) → method/params类型校验
+    → queue.put(PendingCall)       # 入队(maxsize=100，满则QUEUE_FULL)
+    → pending.completed.wait(timeout)  # 阻塞等主线程结果
+
+# QTimer 25ms tick（Qt主线程）
+_drain_requests() → registry.dispatch(&quot;save_model&quot;, params) → hm API 实际保存
+→ pending.completed.set() → socket线程写回响应
+</code></pre>
+<h3 id="16-mcp-llm">1.6 "MCP 如何发挥作用"：LLM 视角的完整工作流</h3>
+<p>以 README 能力清单串起来，一个 CAE Agent 的典型任务流：</p>
+<ol>
+<li><strong>探测</strong>：<code>get_environment</code> → 知道本机有哪些求解器/活桥是否在线（LLM 被指示<strong>任何启动前必查</strong>）</li>
+<li><strong>立项</strong>：<code>create_project</code> → 独立工作区（input/scripts/output/runs 四目录）</li>
+<li><strong>建模</strong>（二选一或混合）：</li>
+<li>batch 路：<code>write_tcl_script</code>（过安全门）→ <code>run_hmbatch</code>（隔离异步）</li>
+<li>live 路：<code>create_live_solid_block</code> → <code>import_live_cad</code>（STEP）→ <code>automesh_live_surfaces</code> → <code>solid_map_live_solids</code>——每步自动 <code>.hm</code> 检查点</li>
+<li><strong>求解卡与载荷</strong>：<code>create_live_solver_card_entity</code>（Property/Loadcol/Loadstep/Set）→ <code>create_live_nodal_load</code> / <code>create_live_pressure_load</code></li>
+<li><strong>连接</strong>：<code>create_live_rigid_link</code> / <code>create_live_rbe</code> / <code>create_live_weld</code> / <code>create_live_spot_weld</code>（RBE3 spider/点焊带 Property）</li>
+<li><strong>提交</strong>：<code>submit_solver_job</code>（staged OptiStruct/Radioss，CPU 数有界）→ <code>get_job_status</code> 轮询（INSTRUCTIONS 禁止 LLM 凭感觉推断成功——必须读实际状态与日志）</li>
+<li><strong>审计</strong>：<code>audit_radioss_explicit_job</code> → 六信号检查（终止/能量/添加质量/时间步/负体积/穿透）</li>
+<li><strong>后处理</strong>：<code>postprocess_solver_result_in_hyperview</code>（云图+PNG）→ <code>extract_solver_time_history_in_hypergraph</code>（时程 CSV+PNG）</li>
+<li><strong>报告</strong>：<code>generate_solver_job_report</code> → HTML/JSON 含真实任务状态+产物+质量审计</li>
+</ol>
+<p><strong>发挥作用的核心机制</strong>：MCP 把"CAE 工程师的手"拆成 65 个<strong>类型化动词</strong>，LLM 通过组合动词完成任务；每一步都有审计痕迹（检查点/日志/状态机），错误有回滚，危险操作有审批门——<strong>LLM 获得了能力但被剥夺了越权通道</strong>。</p>
+<h3 id="17">1.7 工程质量细节（值得照抄的做法）</h3>
+<ul>
+<li><strong>能力探测矩阵</strong>：<code>get_environment</code> 返回 capabilities dict——LLM 可根据能力决定走 batch 还是 live 路（降级思维内置）</li>
+<li><strong><code>SUCCESS_MARKER</code></strong>：jobs.py 用显式成功标记判定作业完成——<strong>不靠退出码猜测</strong>（求解器退出码语义混乱是 CAE 老坑）</li>
+<li><strong>有界日志</strong>：<code>tail_job_log</code> 只取尾部——防止 LLM 上下文被 10 万行求解日志撑爆</li>
+<li><strong>错误日志分离</strong>：<code>bridge-errors.log</code> 独立于状态文件——排障路径清晰</li>
+<li><strong>pyproject + uv.lock</strong>：可复现环境；<code>probe_environment.py</code>/<code>stdio_smoke.py</code>/四类 e2e smoke——分级自测（真实求解的 e2e 标注"消耗许可证，获得许可后才运行"）</li>
+<li><strong>PowerShell 注册脚本</strong>：<code>register_codex_mcp.ps1</code> 一键注册到 Codex MCP 配置——降低使用者门槛</li>
+<li><strong>README 双语</strong>：README.md + README.zh-CN.md 并行维护</li>
+</ul>
+<h2 id="_3">二、查询拓展</h2>
+<ul>
+<li>FastMCP 与官方 anthropic MCP SDK 的差异（装饰器 API 的演进）</li>
+<li>HyperWorks Extension 的 extension.xml 加载机制（load.py/unload.py 生命周期）</li>
+<li>hstpy（HyperStudy Python API）的 typed study 生成细节</li>
+<li>Codex MCP 配置格式（examples/codex_config.example.toml）</li>
+<li>Qt QTimer 单线程排水的延迟上限（25ms×队列深度 100 的最坏等待）</li>
+<li>CAE-Agent-Hub 仓库其他 MCP（仓内 MCP/ 目录是否还有 Abaqus/ANSYS 等）</li>
+<li>hm.entities 的 ENTITY_CLASS_NAMES 映射表全貌</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li><strong>MCP 的本质是"把应用的手拆成类型化动词"</strong>：65 个工具=65 个动词，LLM 组合动词完成任务——能力通过窄接口授予，越权通道（shell/eval/任意脚本）在设计层面就不存在</li>
+<li><strong>INSTRUCTIONS 是 LLM 行为的第一道防线</strong>：把"启动前必查环境/危险操作先请示/禁止凭感觉推断成功"写进 server instructions——<strong>MCP 的安全不只在代码层，还在提示层</strong></li>
+<li><strong>五层防御纵深</strong>：Tcl 正则门→工作区边界→桥协议安全（localhost+token+白名单）→Qt 主线程纪律→审批+检查点回滚——<strong>每层都自知不完美（"defense in depth, not a sandbox"）但叠加成可信整体</strong></li>
+<li><strong>Qt 主线程桥是 GUI 应用 MCP 化的通用解</strong>：socket 线程只入队+QTimer 25ms 排水+Event 应答——<strong>网络并发转主线程串行</strong>的三件套可移植到任何 Qt 系工业软件</li>
+<li><strong>batch 路与 live 路分离是 CAE 场景的正解</strong>：可重复前处理走 batch Tcl（便宜/可审计），交互式修改走 live 桥（即时反馈）——<strong>INSTRUCTIONS 教 LLM 按场景选路</strong></li>
+<li><strong>"禁止推断，必须读状态"是最重要的 LLM 纪律</strong>：Never infer mesh quality, convergence... read the actual job status and logs——<strong>CAE 没有幻觉的余地，一切结论必须有产物背书</strong></li>
+<li><strong>检查点-回滚让破坏性操作可逆</strong>：每个模型修改先写 .hm 检查点，失败自动回滚——<strong>Agent 安全的经典模式（先备份再动手）落到文件粒度</strong></li>
+<li><strong>异步作业管理是长任务 MCP 的标配</strong>：submit/status/tail/cancel/artifacts 五件套——LLM 轮询而非阻塞，有界日志防上下文爆炸</li>
+<li><strong>能力探测矩阵实现优雅降级</strong>：get_environment 返回四求解器+活桥在线状态——LLM 据此降级（无 Radioss 就只跑 OptiStruct 模板）</li>
+<li><strong>双语 README+分级 smoke 测试+uv 锁定</strong>：工程完成度标杆——真实求解 e2e 显式标注许可证成本，诚实边界</li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<ol>
+<li><strong>2026 下半年会出现"工业软件 MCP 化"浪潮</strong>：HyperWorks/ABAQUS/ANSYS/STAR-CCM+ 各家都会出官方或社区 MCP——<strong>本仓库的"外部服务+内嵌 Extension+localhost 桥"三段式会成为事实模板</strong></li>
+<li><strong>Qt 主线程桥模式会被提炼成通用库</strong>：QTimer 排水+Event 应答+方法白名单的组合有极强的可移植性——预计出现 <code>qt-mcp-bridge</code> 类通用包</li>
+<li><strong>"类型化动词+审批门+检查点"会成 Agent 工具设计三原则</strong>：越权通道设计层消除/危险操作提示层拦截/破坏性操作文件层回滚——三层结构会被 Agent 工程规范吸收</li>
+<li><strong>CAE Agent 的竞争焦点从"能不能调 API"转向"审计与回滚"</strong>：求解一次数小时数天的场景里，可审计性（日志/状态/报告）比速度更重要——本仓库的六信号审计+HTML 报告是正确方向</li>
+<li><strong>MCP instructions 会从"使用说明"演进为"行为契约"</strong>：禁止推断/必须请示/先查环境这类规则本质是 LLM 的行为契约——预计出现标准化的 side-effect 声明语法</li>
+<li><strong>许可证经济成为 CAE Agent 的隐藏约束</strong>：e2e smoke 标注"消耗许可证"——Agent 大规模调度 CAE 软件时许可证池管理会成为新问题</li>
+</ol>
+<h2 id="_6">五、关联分析</h2>
+<blockquote>
+<p>关联对象：自有 Hermes MCP 生态 / mcp-server-development 技能 / agent-security-governance / ths-auto-trader（同花顺 UI 自动化）/ DUCK-Pi_5 vla-bridge</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>对照项</th>
+<th>HyperWorks MCP 做法</th>
+<th>自有体系现状</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>工具面设计</strong></td>
+<td>65 个类型化动词+能力矩阵+降级</td>
+<td>mcporter/native-mcp 生态</td>
+<td>✅ 借鉴：工具按"探测/立项/执行/审计"分层命名，而非按软件菜单平铺</td>
+</tr>
+<tr>
+<td><strong>安全门</strong></td>
+<td>Tcl 正则黑名单+白名单 dispatch+localhost 桥</td>
+<td>agent-security-governance 零信任框架</td>
+<td>✅ 借鉴：方法白名单+compare_digest 认证可直接抄进自有 MCP server</td>
+</tr>
+<tr>
+<td><strong>Qt 主线程桥</strong></td>
+<td>QTimer 25ms 排水+Event 应答</td>
+<td>无 GUI 软件桥接场景</td>
+<td>⏸️ 备用：若未来接 CATIA/同花顺客户端这类 Qt/COM 系软件，此模式直接可用</td>
+</tr>
+<tr>
+<td><strong>审批+检查点</strong></td>
+<td>INSTRUCTIONS 审批门+.hm 检查点回滚</td>
+<td>Hermes 权限分级（生产部署二次确认）</td>
+<td>✅ 对齐：自有"Strict Authorization"与审批门同构；检查点模式可加给破坏性 terminal 操作</td>
+</tr>
+<tr>
+<td><strong>审计报告</strong></td>
+<td>六信号审计+HTML/JSON 报告</td>
+<td>observability-dashboard 事件日志</td>
+<td>✅ 借鉴："作业级产物报告"比"流式日志"更适合 LLM 消费</td>
+</tr>
+<tr>
+<td><strong>ths-auto-trader</strong></td>
+<td>—</td>
+<td>UI 自动化驱动交易软件</td>
+<td>✅ 亲缘：同花顺客户端本质也是"外部 Agent 操作 GUI 软件"——HyperWorks 的桥接思路（内嵌 Extension &gt; 外部模拟点击）是<strong>更稳的路线</strong></td>
+</tr>
+<tr>
+<td><strong>vla-bridge（DUCK-Pi_5）</strong></td>
+<td>localhost 桥+token+方法白名单</td>
+<td>vla_rpcd RPC 守护</td>
+<td>✅ 对齐：小鸭的 RPC 层与活桥同构——可补 token 认证与请求 ID 配对</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最大启示</strong>：HyperWorks MCP 证明了<strong>"内嵌 Extension &gt; 外部 UI 模拟"</strong>——与其让 Agent 模拟人类点菜单（脆弱/慢/难审计），不如在应用内开一个受控 API 面（稳定/快/可审计）。这对自有 ths-auto-trader（模拟点击路线）是路线级启发：<strong>同花顺若开放类似扩展接口，应优先走内嵌路线</strong>。</p>
+<h2 id="_7">六、指南分析</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MCP server 怎么起步</td>
+<td>§1.2 最小骨架+装饰器工具</td>
+</tr>
+<tr>
+<td>工具面怎么规划</td>
+<td>§1.3 七类 65 工具的分层</td>
+</tr>
+<tr>
+<td>安全怎么设计</td>
+<td>§1.4 五层防御</td>
+</tr>
+<tr>
+<td>GUI 软件怎么桥接</td>
+<td>§1.4 第四层+§1.5 全链路</td>
+</tr>
+<tr>
+<td>LLM 行为怎么约束</td>
+<td>§1.2 INSTRUCTIONS+§1.6 工作流</td>
+</tr>
+<tr>
+<td>什么样的工程质量算好</td>
+<td>§1.7 八个细节</td>
+</tr>
+<tr>
+<td>给自有体系的借鉴</td>
+<td>§五 对照表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心口诀</strong>：应用的手拆成类型化动词 / INSTRUCTIONS 是行为契约 / 五层防御叠加成可信 / socket 入队 Qt 排水 / 白名单 dispatch 无 eval / 先检查点后动手 / 禁止推断必读状态 / batch 与 live 分路 / 探测矩阵支持降级 / 报告为 LLM 而生。</p>
+<h2 id="_8">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给 mcp-server-development 技能</strong>：并入"五层防御"检查清单（正则门/工作区/桥协议/主线程纪律/审批回滚）与"类型化动词分层命名"规范</li>
+<li><strong>给 agent-security-governance 技能</strong>：补"方法白名单 dispatch + hmac.compare_digest 认证 + 请求 ID 配对"三件套为 MCP server 标配</li>
+<li><strong>给 ths-auto-trader 技能</strong>：吸收"内嵌 Extension &gt; 外部 UI 模拟"路线判断——长期看客户端扩展接口优先于模拟点击</li>
+<li><strong>给 DUCK-Pi_5 vla_rpcd</strong>：补 token 认证与请求 ID 配对（当前 RPC 无认证，本机场景风险低但习惯值得养成）</li>
+<li><strong>延伸阅读</strong>：FastMCP 文档 / Model Context Protocol 规范 / CAE-Agent-Hub 仓库其他模块 / Altair HyperWorks Extension 开发文档 / hstpy API</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-09-06-GrokBot智能体操作系统三层控制架构-从Harness-Loop-Graph到审批边界的完整设计.md]]（审批边界设计对照——本仓库的审批门+检查点是同类思想在 CAE 域的落地）<br />
+→ 相关：[[2026-09-06-Karpathy五级阶梯与Graph工程全景-从LLM到Graph的系统化进路.md]]（MCP 工具面=Graph 工程的边集——类型化动词是 Graph 节点间契约）<br />
+→ 相关：[[2026-09-07-国产开源VLA三路分化-XR1数据账LingBot本体账与TurboVLA实时账.md]]（vla-bridge 命令入口的 OOD 过滤升级——白名单 dispatch 同构）<br />
+→ 相关技能：mcp-server-development / agent-security-governance / ths-auto-trader / mcporter</p>
+</body>
+</html>
