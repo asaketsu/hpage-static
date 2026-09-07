@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer与MLP架构对比深度研究-数学原理包含关系与从MLPMixer到MoE的演进路径</title>
+
+<meta property="og:title" content="Transformer与MLP架构对比深度研究-数学原理包含关系与从MLPMixer到MoE的演进路径" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="transformer-mlp-mlp-mixer-moe">Transformer 与 MLP 架构对比深度研究 — 数学原理、包含关系与从 MLP-Mixer 到 MoE 的演进路径</h1>
+<p class="tag-line"><span class="tag">#Transformer</span> <span class="tag">#MLP</span> <span class="tag">#自注意力</span> <span class="tag">#UniversalApproximation</span> <span class="tag">#MLPMixer</span> <span class="tag">#gMLP</span> <span class="tag">#ResMLP</span> <span class="tag">#SwiGLU</span> <span class="tag">#MoE</span> <span class="tag">#KVCache</span> <span class="tag">#Mamba</span> <span class="tag">#RWKV</span> <span class="tag">#架构演进</span> <span class="tag">#数学原理</span></p>
+
+<h2 id="_1">出处</h2>
+<ul>
+<li>底稿：千问分享对话《Transformer 与 MLP 架构对比》（2026-09-07，qianwen.my.cn/share/chat/07f3d6b6...，约 2.1K 字四节结构）</li>
+<li>外网增量（五路检索交叉）：MLP-Mixer/gMLP/ResMLP/DynaMixer 视觉 MLP 谱系（PMLR/NeurIPS 原文）+ 通用逼近定理（Cybenko 1989/Hornik 1989/深度分离）+ MoE/SwiGLU FFN 演进（LLaMA/DeepSeek-V3/Mixtral）+ Mamba/RWKV 线性注意力学派 + 复杂度分析</li>
+<li>提取：r.jina.ai 千问分享页（本次有效，2.1K 字全文）+ web_search 五路</li>
+<li>笔记日期：2026-09-07 | 指令语义：<strong>结合底稿输出深度研究笔记</strong></li>
+</ul>
+<h2 id="_2">一、内容详细整理</h2>
+<h3 id="11">1.1 底稿命题：积木与大厦的正确关系</h3>
+<p>千问底稿给出四节框架：MLP 分析 / Transformer 分析 / 核心区别与联系 / 应用场景对比。最有价值的一句判断：</p>
+<blockquote>
+<p><strong>MLP 是构建复杂神经网络的"基础积木"，擅长静态特征的非线性映射；而 Transformer 则是专为序列数据设计的"高级架构"，通过自注意力机制和内置的 MLP 组件，实现了对复杂上下文和长距离依赖的高效建模。</strong></p>
+
+<p class="meta-date">生成日期 2026-09-07</p></blockquote>
+<p>本笔记以底稿四节为骨架，向下挖数学原理，向上补演进路径。</p>
+<h3 id="12-mlp">1.2 MLP 数学原理：从线性不可分到通用逼近</h3>
+<p><strong>基本运算</strong>（单隐藏层）：</p>
+<p>$$h = \sigma(W_1 x + b_1), \quad y = W_2 h + b_2$$</p>
+<ul>
+<li>$x \in \mathbb{R}^d$，$W_1 \in \mathbb{R}^{m \times d}$，$\sigma$ 逐元素非线性</li>
+<li>若无 $\sigma$：$y = W_2 W_1 x + (W_2 b_1 + b_2) = W'x + b'$——<strong>任意深度坍缩为单层线性变换</strong>，非线性是深度的意义所在</li>
+</ul>
+<p><strong>通用逼近定理（UAT）三阶段</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>定理</th>
+<th>年份</th>
+<th>内容</th>
+<th>证明工具</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cybenko</td>
+<td>1989</td>
+<td>单隐层 + sigmoid 型激活可逼近紧集上任意连续函数</td>
+<td>泛函分析（Hahn-Banach）</td>
+</tr>
+<tr>
+<td>Hornik</td>
+<td>1989</td>
+<td>多层前馈网络可逼近任意 Borel 可测函数</td>
+<td>Stone-Weierstrass 定理</td>
+</tr>
+<tr>
+<td>Leshno et al.</td>
+<td>1993</td>
+<td>激活函数条件放宽为<strong>非多项式</strong>即可</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>深度分离（Depth Separation）——UAT 没说的部分</strong>：<br />
+- UAT 说"宽度足够就能逼近"——但没说效率<br />
+- 深度 $L$ 层、每层 $n$ 神经元的 ReLU 网络可表示<strong>分段线性函数的线性区域数</strong>最多 $O\left(\binom{n}{d}^L\right)$——<strong>指数级于深度</strong><br />
+- 单层只有 $O(n)$ 个区域<br />
+- <strong>结论：深度对某些函数类是指数级参数高效的</strong>——UAT 保证"能"，深度分离解释"省"<br />
+- 局限性（教材诚实条款）：UAT <strong>不保证泛化</strong>、不保证训练能找到好的解——存在性定理 ≠ 可达性定理</p>
+<p><strong>MLP 的两个结构性缺陷</strong>（底稿+扩展）：<br />
+1. <strong>无序列归纳偏置</strong>：把序列当固定长度向量，元素顺序被打乱后 $W_1$ 的每一列无法区分——<strong>置换等变但非顺序感知</strong><br />
+2. <strong>参数量随输入维度膨胀</strong>：图像直接展平 → $d = H \times W \times C$，第一层参数爆炸——CNN 用局部权值共享、Transformer 用 token 化绕开，纯 MLP 直接硬吃</p>
+<h3 id="13-transformer">1.3 Transformer 数学原理：注意力作为可微检索</h3>
+<p><strong>缩放点积注意力</strong>：</p>
+<p>$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^\top}{\sqrt{d_k}}\right)V$$</p>
+<ul>
+<li>$Q = XW^Q$，$K = XW^K$，$V = XW^V$——同一输入三份投影</li>
+<li>$\frac{1}{\sqrt{d_k}}$ 的作用：$d_k$ 维点积的方差随维度线性增长，不缩放则 softmax 进入饱和区、梯度消失</li>
+<li><strong>本质</strong>：可微的软性键值检索——$QK^\top$ 算相关度，softmax 归一化成权重，对 $V$ 加权求和</li>
+</ul>
+<p><strong>多头注意力</strong>：</p>
+<p>$$\text{MultiHead}(X) = \text{Concat}(\text{head}_1, ..., \text{head}_h)W^O, \quad \text{head}_i = \text{Attention}(XW_i^Q, XW_i^K, XW_i^V)$$</p>
+<ul>
+<li>$h$ 组独立子空间投影——不同头看不同关系（句法/共指/位置）</li>
+<li>总计算量与单头 $d_{model}$ 相当（每头 $d_k = d_{model}/h$）</li>
+</ul>
+<p><strong>Transformer 层 = 注意力 + MLP 的交替</strong>（底稿"包含关系"的数学形态）：</p>
+<p>$$X' = X + \text{MHA}(\text{LN}(X)); \quad X'' = X' + \text{FFN}(\text{LN}(X'))$$</p>
+<p>$$\text{FFN}(x) = \max(0, xW_1 + b_1)W_2 + b_2 \quad \text{（原版，两层 MLP）}$$</p>
+<p><strong>分工</strong>（底稿原话+深化）：<br />
+- <strong>自注意力负责"收集/融合"上下文</strong>——token 间的信息搬运（通信算子）<br />
+- <strong>FFN/MLP 负责"非线性变换/特征提取"</strong>——每个 token 独立加工（计算算子）<br />
+- 这就是"MLP 是 Transformer 核心组件"的精确含义：<strong>Transformer = 通信（attention）与计算（MLP）的交替堆叠</strong></p>
+<p><strong>复杂度对照</strong>（序列长 $n$、维度 $d$）：</p>
+<table>
+<thead>
+<tr>
+<th>架构</th>
+<th>计算复杂度</th>
+<th>参数量</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MLP（逐 token）</td>
+<td>$O(d^2)$ 每 token</td>
+<td>$O(d^2)$</td>
+<td>与序列长度无关</td>
+</tr>
+<tr>
+<td>自注意力</td>
+<td>$O(n^2 d)$</td>
+<td>$O(d^2)$</td>
+<td>序列平方项</td>
+</tr>
+<tr>
+<td>MLP-Mixer token-mixing</td>
+<td>$O(n^2)$（隐层 $O(n)$ 时）</td>
+<td>$O(n^2)$ <strong>固定</strong></td>
+<td>权重不随输入变</td>
+</tr>
+<tr>
+<td>卷积（核 $k$）</td>
+<td>$O(k \cdot n \cdot d^2)$</td>
+<td>$O(k d^2)$</td>
+<td>局部性</td>
+</tr>
+</tbody>
+</table>
+<h3 id="14-vs">1.4 核心区别：固定权重 vs 数据依赖权重（比底稿更深一层）</h3>
+<p>底稿列了四条区别（序列处理/并行效率/参数共享/包含关系），全部成立，但可以统一到一个更深的轴上：</p>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>MLP</th>
+<th>自注意力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>token 间权重</td>
+<td><strong>固定</strong>（训练后冻结）</td>
+<td><strong>动态</strong>（每个输入现算 $QK^\top$）</td>
+</tr>
+<tr>
+<td>权重生成</td>
+<td>$W \in \mathbb{R}^{n \times n}$ 学习参数</td>
+<td>$A = \text{softmax}(QK^\top/\sqrt{d_k})$ 数据函数</td>
+</tr>
+<tr>
+<td>感受野</td>
+<td>固定（全连接=一跳）</td>
+<td>动态任意（O(1) 路径长度）</td>
+</tr>
+<tr>
+<td>插值能力</td>
+<td>不能外推到新长度（$W$ 尺寸锁死）</td>
+<td>天然可变长</td>
+</tr>
+<tr>
+<td>等变性</td>
+<td>对输入维置换<strong>不等变</strong></td>
+<td><strong>置换等变</strong>（需位置编码打破对称）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话</strong>：<strong>MLP 的混合矩阵是学的，注意力的混合矩阵是算的</strong>。MLP-Mixer 把"学的混合"推到视觉 SOTA 附近，证明了静态混合的上限；注意力的胜利在于混合规则可以逐样本适配——这正是检索/上下文学习需要的性质。</p>
+<p><strong>参数共享的精确表述</strong>：自注意力对序列中所有 token 应用<strong>同一组</strong> $W^Q, W^K, W^V$——跨位置共享；MLP 若逐 token 应用（如 FFN），同样跨位置共享；差别在 token 维度的混合上：FFN <strong>不做</strong> token 间混合，token-mixing MLP 做但权重固定，attention 做且权重动态。</p>
+<h3 id="15-mlp-2021">1.5 演进路径一：视觉 MLP 复兴（2021，"注意力必要吗"之问）</h3>
+<p><strong>MLP-Mixer</strong>（Tolstikhin et al., NeurIPS 2021，Google）：<br />
+- 两类层交替：<strong>token-mixing MLP</strong>（沿 patch 维全连接+转置）+ <strong>channel-mixing MLP</strong>（沿通道维）<br />
+- 每层 $\text{LN} \to \text{MLP}_1(\text{token 维}) \to \text{LN} \to \text{MLP}_2(\text{channel 维})$ + 残差<br />
+- 论文命题：卷积和注意力都<strong>充分</strong>但都<strong>不必要</strong>——纯 MLP 达到 76.4%（Mixer-B/16，ImageNet Top-1，59M 参数）<br />
+- 关键结论：<strong>在大数据（JFT-300M 预训练）下 Mixer 逼近 ViT；小数据下差</strong>——静态权重的代价是数据饥渴</p>
+<p><strong>gMLP</strong>（Liu et al. 2021，"Pay Attention to MLPs"）：<br />
+- 门控机制 + Spatial Gating Unit（SGU）：$\text{SGU}(X) = f(X) \odot g(W X + b)$（$\odot$ 逐元素乘）<br />
+- 79.6%（gMLP-S，20M）——在翻译任务上接近 Transformer，但作者自己指出<strong>长距离依赖上仍逊于注意力</strong></p>
+<p><strong>ResMLP</strong>（Touvron et al. 2021，Meta）：<br />
+- 残差设计 + <strong>交叉残差连接</strong>（每 token 的输出加回<strong>所有</strong> token 输入的线性组合）<br />
+- ResMLP-B24 达 81.0%（116M）——纯 MLP 的视觉最好成绩档</p>
+<p><strong>后续分叉</strong>：ViP/Vision Permutator（轴向置换混合）/ S2-MLP（空间位移）/ As-MLP（轴向位移）/ CycleMLP（稠密预测）/ DynaMixer（<strong>动态</strong>生成混合矩阵——向注意力靠拢）/ FNet（傅里叶变换混合 token，完全无参数混合）</p>
+<p><strong>谱系总结表</strong>（含参数与 ImageNet 成绩）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>年份</th>
+<th>参数</th>
+<th>FLOPs</th>
+<th>Top-1</th>
+<th>token-mixing 机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mixer-B/16</td>
+<td>2021.5</td>
+<td>59M</td>
+<td>12.7G</td>
+<td>76.4</td>
+<td>固定 MLP（转置全连接）</td>
+</tr>
+<tr>
+<td>ResMLP-S24</td>
+<td>2021.5</td>
+<td>30M</td>
+<td>6.0G</td>
+<td>79.4</td>
+<td>固定 MLP+交叉残差</td>
+</tr>
+<tr>
+<td>ResMLP-B24</td>
+<td>2021</td>
+<td>116M</td>
+<td>23.0G</td>
+<td>81.0</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>gMLP-S</td>
+<td>2021.5</td>
+<td>20M</td>
+<td>4.5G</td>
+<td>79.6</td>
+<td>空间门控（SGU）</td>
+</tr>
+<tr>
+<td>gMLP-B</td>
+<td>2021</td>
+<td>73M</td>
+<td>15.8G</td>
+<td>81.6</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>ViP-Small/14</td>
+<td>2021</td>
+<td>30M</td>
+<td>6.9G</td>
+<td>80.7</td>
+<td>轴向线性投影</td>
+</tr>
+<tr>
+<td>ViT-B/16（对照）</td>
+<td>2020</td>
+<td>86M</td>
+<td>17.5G</td>
+<td>77.9→84+</td>
+<td>动态注意力</td>
+</tr>
+</tbody>
+</table>
+<p><strong>视觉 MLP 复兴的启示与局限</strong>：<br />
+- <strong>启示</strong>：归纳偏置越少 + 数据越多 = 上限越高（与 ViT 同一逻辑）；架构简化有工程价值（无 attention 的二次开销）<br />
+- <strong>局限</strong>：<strong>静态权重在变长/动态任务（语言）上始终差一口气</strong>——gMLP 论文自己承认；2022 后视觉 MLP 谱系热度回落，主力遗产被吸收进"去注意力化"研究线</p>
+<h3 id="16-ffn-mlp">1.6 演进路径二：FFN 内部演进（MLP 作为组件的自我升级）</h3>
+<p>底稿说"FFN 本质上就是 MLP"——但 2017→2026 这九年间 FFN 自身经历了三级跳：</p>
+<p><strong>第一跳：ReLU → GLU 家族（SwiGLU）</strong><br />
+- 原版：$\text{FFN}(x) = \max(0, xW_1)W_2$<br />
+- SwiGLU（Shazeer 2020）：$\text{FFN}(x) = (\text{Swish}(xW_1) \odot xW_3)W_2$——门控线性单元，三矩阵<br />
+- LLaMA/PaLM/Qwen/Mistral/DeepSeek <strong>全部采用</strong>——"2017 年到现在 Transformer 主结构上变化最大的一处"<br />
+- 诚实注脚：Shazeer 原文承认<strong>没有清晰理论解释为什么更好</strong>（"divine benevolence"）——工程上稳定有效，理论上未解</p>
+<p><strong>第二跳：FFN 是键值记忆（理论视角）</strong><br />
+- Geva et al. 2021：FFN 的 $W_1$ 行向量 = key，$W_2$ 列向量 = value——<strong>每个中间神经元是一个 (key, value) 记忆槽</strong><br />
+- 这一视角解释三件事：①为什么 SwiGLU（门控=更好的检索匹配）②为什么 MoE 有效（多个小字典比一个大字典检索省）③为什么 FFN 量化难（key 有明星神经元长尾分布，INT8 覆盖不住）</p>
+<p><strong>第三跳：MoE——把 FFN 切成专家（参数与算力解耦）</strong></p>
+<p>$$y = \sum_{i \in \text{TopK}} g_i \cdot \text{Expert}_i(x)$$</p>
+<ul>
+<li>路由器（线性层+softmax）每 token 只激活 K 个专家（K=1~2 常见）</li>
+<li><strong>核心价值：容量（总参数）与成本（激活参数）解耦</strong>——Mixtral 8x7B 总参 47B/激活 13B，性能超 Llama2-70B（激活参数是其 5 倍+）</li>
+<li>DeepSeek-V3：细粒度专家+共享专家+极致工程（671B 总参/37B 激活）</li>
+<li>MoEfication 路线：训好的稠密 FFN 可<strong>事后切分</strong>成 MoE（激活稀疏性发现——FFN 本来就只强烈激活少数神经元，与人脑稀疏激活同构）</li>
+</ul>
+<p><strong>演进逻辑链</strong>：ReLU FFN → SwiGLU（更好）→ 键值记忆理论（解释）→ MoE（扩展）——<strong>"MLP 组件"不是静止的积木，是持续进化的器官</strong>。</p>
+<h3 id="17-mlp">1.7 演进路径三：注意力自身的 MLP 化/线性化（两个学派的合流）</h3>
+<p><strong>痛点</strong>：$O(n^2)$ 的注意力在长上下文（&gt;128K）不可持续——KV Cache 随上下文线性膨胀。</p>
+<p><strong>线性注意力学派</strong>（把 softmax 去掉换可分解核）：<br />
+- Performer/cosFormer/FLASH：$\text{softmax}(QK^\top)V \approx \phi(Q)(\phi(K)^\top V)$——右结合先算 $K^\top V$（$d \times d$），复杂度 $O(nd^2)$<br />
+- RWKV（2023→RWKV-7 2025）：WKV 机制=线性注意力近似，<strong>并行训练（类 Transformer）+ 常数状态推理（类 RNN）</strong>；社区小但在嵌入式（手机/Pi）部署领先<br />
+- RetNet（2023）：retention 机制，微软提出的"Transformer 继任者"</p>
+<p><strong>SSM 学派</strong>（状态空间模型）：<br />
+- Mamba（Gu &amp; Dao 2023.12）：<strong>选择性</strong>状态空间——参数随输入变化（把 LTI 打破），线性复杂度 $O(n)$，百万 token 序列（基因/音频）优势<br />
+- Mamba-2（2024）：State Space Duality 理论——<strong>选择性 SSM 与注意力是对偶表示</strong>；rank-1 状态矩阵的 Mamba 层等价于线性注意力<br />
+- 混合架构成主流：Jamba（AI21）/Zamba——<strong>Mamba 块 + 少量注意力层 + MLP</strong>，两头兼顾</p>
+<p><strong>合流的数学表述</strong>：注意力 $A = \text{softmax}(QK^\top)$ 与 SSM 的状态递推 $h_t = \bar{A}h_{t-1} + \bar{B}x_t$ 在 SSD 框架下是<strong>同一算子的两种分解</strong>（序列形式 vs 递归形式）——Transformer 与"后 Transformer"不是替代而是<strong>同一连续谱的两个端点</strong>（完全数据依赖 ↔ 完全固定递推）。</p>
+<p><strong>关键数据锚点</strong>（Mamba-360 综述的 PPL 对照）：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>模型</th>
+<th>PPL(val)↓</th>
+<th>参数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>注意力</td>
+<td>Transformer</td>
+<td>24.40</td>
+<td>44.65M</td>
+</tr>
+<tr>
+<td>注意力</td>
+<td>cosFormer</td>
+<td>26.53</td>
+<td>44.65M</td>
+</tr>
+<tr>
+<td>MLP</td>
+<td>gMLP</td>
+<td>28.08</td>
+<td>47.83M</td>
+</tr>
+<tr>
+<td>MLP</td>
+<td>Syn(D)</td>
+<td>31.31</td>
+<td>46.75M</td>
+</tr>
+</tbody>
+</table>
+<p>语言建模上注意力 &gt; 线性注意力 &gt; 纯 MLP 的梯度依然清晰（小模型时代数据；大模型+大数据下差距缩小但次序未反转）。</p>
+<h3 id="18">1.8 应用场景全景（底稿第四节扩展）</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>更优选择</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>表格数据/分类回归</td>
+<td>MLP</td>
+<td>静态特征非线性映射，无序列结构</td>
+</tr>
+<tr>
+<td>CNN 分类头</td>
+<td>MLP</td>
+<td>全局特征聚合</td>
+</tr>
+<tr>
+<td>RL 策略网络（小 obs/动作空间）</td>
+<td>MLP</td>
+<td>低延迟推理，算力约束</td>
+</tr>
+<tr>
+<td>边缘控制（如机器人步态）</td>
+<td>MLP</td>
+<td>ONNX 部署轻量，延迟确定</td>
+</tr>
+<tr>
+<td>大语言模型/长上下文</td>
+<td>Transformer（+线性注意力混合）</td>
+<td>上下文学习/检索需要动态权重</td>
+</tr>
+<tr>
+<td>视觉基础模型</td>
+<td>ViT 系</td>
+<td>大数据下动态混合上限高</td>
+</tr>
+<tr>
+<td>超长序列（基因/音频/Agent 记忆）</td>
+<td>Mamba/RWKV</td>
+<td>$O(n)$ 与常数状态</td>
+</tr>
+<tr>
+<td>巨容量知识存储</td>
+<td>MoE Transformer</td>
+<td>参数算力解耦</td>
+</tr>
+</tbody>
+</table>
+<p><strong>选型判断式</strong>：任务需要<strong>逐样本变化的关系结构</strong>（检索/组合泛化/上下文学习）→ 动态混合（注意力）；任务的关系结构<strong>固定且可预学习</strong>（图像局部性/表格独立性）→ 静态混合（MLP/卷积）足够且更省。</p>
+<h2 id="_3">二、查询拓展</h2>
+<ul>
+<li>SSD（State Space Duality）对偶性的完整数学推导（Mamba-2 论文 §3）</li>
+<li>Geva et al. 2021 键值记忆说的实验证据链（prompt-tuning 改写 key 的知识编辑）</li>
+<li>DynaMixer 动态混合矩阵与注意力的等价条件</li>
+<li>FNet 傅里叶混合的理论性质（无参数全局混合的正交基视角）</li>
+<li>RWKV-7 的 Goose 头机制与表达能力证明</li>
+<li>MoE 路由的负载均衡损失（auxiliary loss）设计谱系</li>
+<li>线性注意力在推理期的 KV Cache 等价物（常数状态的实际容量测度）</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li><strong>"积木与大厦"是底稿最准确的判断</strong>：MLP 是静态非线性映射的通用积木；Transformer 用注意力（通信）+ MLP（计算）交替堆叠出序列智能——<strong>包含关系不是装饰性的，是架构分工的本体</strong></li>
+<li><strong>UAT 三定理保证"能"，深度分离解释"省"，泛化理论管"学得到"</strong>：单隐层够宽即可逼近（Cybenko/Hornik），但深度指数级省参数（$O(\binom{n}{d}^L)$ 线性区域），而训练可达性是另一回事——三个层次不可混淆</li>
+<li><strong>固定权重 vs 数据依赖权重是 MLP 与注意力的本质分界</strong>：MLP 的混合矩阵是学的（训练后冻结），注意力的混合矩阵是算的（逐样本生成）——<strong>置换等变性/变长外推/感受野动态性全部由此派生</strong></li>
+<li><strong>视觉 MLP 复兴证明了静态混合的上限，也暴露了天花板</strong>：MLP-Mixer/ResMLP/gMLP 在大数据下逼近 ViT，但语言建模 PPL 梯度（Transformer 24.4 &lt; gMLP 28.1）说明<strong>逐样本自适应的关系结构在语言里不可省</strong></li>
+<li><strong>FFN 九年三级跳说明"MLP 组件"在进化</strong>：ReLU→SwiGLU（工程胜利但理论未解）→键值记忆理论（解释三件事）→MoE（参数算力解耦，Mixtral/DeepSeek-V3 成主流范式）——<strong>看 Transformer 演进史，一半在看 MLP 演进史</strong></li>
+<li><strong>Mamba-2 的 SSD 对偶把"学派之争"变成"同一算子的两种分解"</strong>：注意力（序列形式）与 SSM（递归形式）对偶；rank-1 Mamba ≡ 线性注意力——<strong>后 Transformer 时代不是替代而是谱系展开</strong></li>
+<li><strong>混合架构是当前收敛点</strong>：Jamba/Zamba = Mamba 块+注意力层+MLP——三种混合算子（动态线性递推/动态全局/静态非线性）按任务比例配比</li>
+<li><strong>选型判断式一句话</strong>：需要逐样本变化的关系结构→注意力；结构固定可预学→MLP/卷积；超长序列→线性递推；巨知识容量→MoE</li>
+<li><strong>MLP 的持久优势在边缘与控制</strong>：低延迟/确定性/ONNX 友好——DUCK-Pi_5 策略网络用 MLP 不用 Transformer 正是复杂度与任务的匹配</li>
+<li><strong>底稿的一句话在 2026 年依然成立且更深刻</strong>：MLP 擅长静态特征的非线性映射，Transformer 通过内置 MLP+自注意力实现对复杂上下文的高效建模——<strong>九年了，两个构件谁也没淘汰谁，分工反而更清晰</strong></li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<ol>
+<li><strong>"注意力 vs MLP"的二元叙事正在被"混合算子配比"取代</strong>：2026 前沿模型（DeepSeek-V3/Jamba2 等）全是 Mamba+Attention+MoE-MLP 的组合——<strong>架构设计从选边站变成配比优化</strong></li>
+<li><strong>MoE 成为容量扩展的默认路径</strong>：稠密模型在前沿榜单上绝迹——"参数算力解耦"从技巧变成范式；<strong>MoEfication（稠密切 MoE）会成为存量模型升级的标准手术</strong></li>
+<li><strong>线性注意力的实用化临界点在 Agent 长记忆</strong>：Agent 需要 100 万+ token 的对话/工具历史——KV Cache 线性膨胀不可承受，常数状态模型（Mamba/RWKV）成为 Agent 基础设施的候选底座</li>
+<li><strong>SwiGLU 之谜会被理论补上</strong>："不知道为什么但有效"的状态不会持续——键值记忆视角+检索理论的结合可能在 2027 年给出解释</li>
+<li><strong>视觉 MLP 谱系沉寂但遗产长存</strong>：token-mixing 思想活在 HyperMixing（线性注意力里的 TM-MLP）等混合设计中——<strong>失败路线的组件被胜利路线吸收</strong></li>
+<li><strong>MLP 在端侧复兴</strong>：RWKV.cpp/手机 Pi 部署——当推理成本压到极致，常数状态+纯 MLP 块的模型是电池友好解</li>
+<li><strong>"架构研究"的重心从 token 混合移向系统级</strong>：单层算子的边际创新递减，组合创新（并行策略/KV 管理/专家路由）成为主战场——与 KVCache 十二技笔记的系统工程视角合流</li>
+</ol>
+<h2 id="_6">五、关联分析</h2>
+<blockquote>
+<p>关联对象：KVCache 优化十二技 / DeepLoop 循环 Transformer / TurboVLA 实时账 / DUCK-Pi_5 策略网络 / c-xor-nn 六版演进项目</p>
+</blockquote>
+<ol>
+<li><strong>与 KVCache 十二技笔记（姊妹篇）</strong>：本笔记讲"架构为什么长这样"，十二技讲"架构的账怎么省"——公式归因三分法（架构类/引擎类/只省读不省存）中的<strong>架构类</strong>正是本笔记演进路径三的展开（MQA/GQA/线性注意力都是注意力的变体）；两篇构成"原理→优化"完整链</li>
+<li><strong>与 DeepLoop 循环 Transformer 对照</strong>：DeepLoop 把"生成新 token"换成"循环重访已有 token"——与 RWKV/Mamba 的"常数状态递推"是同一焦虑（上下文二次成本）的两个解（改用法 vs 改架构）；<strong>访问对齐系数是循环侧的理论工具，SSD 对偶是架构侧的理论工具</strong></li>
+<li><strong>与 TurboVLA 的架构选型互证</strong>：TurboVLA 0.2B 轻策略 32Hz 高频出动作——正是"MLP 持久优势在边缘与控制"的 VLA 版落地；语言理解（动态权重需求）前移到特征融合层，控制回路只留轻 MLP——<strong>§1.8 选型判断式的机器人实例</strong></li>
+<li><strong>与 DUCK-Pi_5 策略网络</strong>：小鸭用 MLP 策略（非 Transformer）——obs/动作空间小、关系结构固定（步态动力学可预学）、Pi5 边缘延迟约束——三条全中 §1.8 的 MLP 判据；GigaBrain 借鉴判定中"不吸收 Transformer 架构"的决策在本文找到理论根据：<strong>任务复杂度与架构复杂度匹配</strong></li>
+<li><strong>与 c-xor-nn 六版演进对照</strong>：XOR 项目是"MLP 数学原理"的 C 语言手搓版——sigmoid 收敛慢→换激活、MSE→交叉熵雅可比消解、Softmax 多分类——与本笔记 §1.2 的数学层完全对应；<strong>六版演进=个人尺度重演了 §1.6 的 FFN 演进逻辑</strong></li>
+<li><strong>与 Karpathy 五级阶梯</strong>：五级阶梯从 LLM 到 Graph 的工程化进路中，每一级的基础算子仍是 Transformer+MLP——架构演进（本笔记）是纵向时间轴，五级阶梯是纵向之上的横向系统化</li>
+<li><strong>对自有量化体系的映射</strong>：因子挖掘用 MLP（表格数据判据）/ 大模型 API 调用用 Transformer 服务（长文本判据）——选型判断式直接适用</li>
+</ol>
+<h2 id="_7">六、指南分析</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>查哪节</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>快速理解两者关系</td>
+<td>§1.1 底稿命题 + §1.4 本质分界表</td>
+</tr>
+<tr>
+<td>数学原理速查</td>
+<td>§1.2 UAT 三定理 + §1.3 注意力公式</td>
+</tr>
+<tr>
+<td>为什么 MLP 不能处理序列</td>
+<td>§1.2 结构性缺陷 + §1.4 置换等变</td>
+</tr>
+<tr>
+<td>视觉 MLP 谱系</td>
+<td>§1.5 七模型对照表</td>
+</tr>
+<tr>
+<td>FFN/MoE 演进</td>
+<td>§1.6 三级跳 + MoE 公式</td>
+</tr>
+<tr>
+<td>长上下文怎么办</td>
+<td>§1.7 线性注意力/SSM/SSD 对偶</td>
+</tr>
+<tr>
+<td>选型决策</td>
+<td>§1.8 判断式 + 对照表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核心口诀</strong>：MLP 积木 Transformer 大厦 / 混合矩阵学的 vs 算的 / UAT 管能深度管省 / 视觉 MLP 大数据逼近小数据露馅 / FFN 三级跳 SwiGLU 记忆 MoE 解耦 / SSD 对偶学派合流 / 混合架构是收敛点 / 静态任务 MLP 动态关系注意力 / 超长序列线性递推 / 端侧控制 MLP 不死。</p>
+<h2 id="_8">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给 DUCK-Pi_5</strong>：架构选型的理论背书已入 docs/18——未来若上 VLA 命令链路（GigaBrain 暂缓项解冻），控制层仍保持轻 MLP，语言层才上 Transformer，配比参照 TurboVLA</li>
+<li><strong>给量化体系</strong>：因子模型保持 MLP（表格判据）；研报/公告解析走 LLM API（序列判据）——两轴分工写进 short_term_screener 的架构注释</li>
+<li><strong>给 c-xor-nn 项目</strong>：README 版本演进表可补"与工业级演进的对应关系"一列（v6 的 SwiGLU 化是自然的下一步实验）</li>
+<li><strong>延伸阅读</strong>：Attention Is All You Need（1706.03762）/ MLP-Mixer（2105.01601）/ Pay Attention to MLPs（gMLP）/ Geva et al. FFN 键值记忆（2102.11172）/ Mamba（2312.00752）/ Transformers are SSMs（Mamba-2, 2405.21060）/ RWKV（2305.13048）/ A Survey on Universal Approximation Theorems（2407.12895）/ Mamba-360 综述（2404.16112）</li>
+</ul>
+<hr />
+<p>→ 相关：[[2026-09-06-KVCache优化十二技全景-按公式归因的分类地图与组合拳算术.md]]（姊妹篇：本篇讲原理与演进，十二技讲优化账本——公式归因的架构类分支在此展开）<br />
+→ 相关：[[2026-09-05-DeepLoop循环Transformer深度扩展-访问对齐系数与残差缩放指数修正.md]]（上下文二次成本的"改用法"解 vs 本篇"改架构"解）<br />
+→ 相关：[[2026-09-07-国产开源VLA三路分化-XR1数据账LingBot本体账与TurboVLA实时账.md]]（TurboVLA=§1.8 选型判断式的机器人实例）<br />
+→ 相关：[[2026-09-07-CLangXOR神经网络六版演进-从74行入门代码到教学级深度学习框架底座.md]]（MLP 数学原理的 C 手搓版——六版演进与 FFN 演进同构）<br />
+→ 相关：项目 DUCK-Pi_5（MLP 策略网络的架构判据）/ c-xor-nn</p>
+</body>
+</html>
