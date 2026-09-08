@@ -859,4 +859,96 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 
 </body>
 
+</html>   DATA.topics.forEach(i => i._type = 'topic');
+                        (DATA.ubot_topics || []).forEach(i => i._type = 'ubot');
+                        filter();
+                    }
+                })
+                .catch(() => {});
+        }, 30000);
+
+        // 搜索相关 — 全局函数，不依赖闭包变量
+        function _debounce() { clearTimeout(window._searchTimer); window._searchTimer = setTimeout(filter, 150); }
+        function toggleClear() {
+            var el = document.getElementById('searchInput');
+            var btn = document.getElementById('searchClear');
+            if (el.value.length > 0) btn.classList.add('show');
+            else btn.classList.remove('show');
+        }
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            toggleClear();
+            filter();
+            document.getElementById('searchInput').focus();
+        }
+        function onSearchInput() {
+            toggleClear();
+            _debounce();
+        }
+        document.addEventListener('keydown', function(e) { if (e.key === 'Escape') clearSearch(); });
+        toggleClear();
+
+        // Share note: share URL only (WeChat auto-fetches preview with title)
+        function shareNote(rawHref, title) {
+            const a = document.createElement('a');
+            a.href = rawHref;
+            const fullUrl = a.href;
+            // URL-encode the pathname for WeChat compatibility
+            const urlObj = new URL(fullUrl);
+            urlObj.pathname = urlObj.pathname.split('/').map(s => encodeURIComponent(decodeURIComponent(s))).join('/');
+            const encodedUrl = urlObj.toString();
+            if (navigator.share) {
+                // Share URL only — WeChat fetches link preview (title/desc/image) automatically
+                // title param is for OS share sheet only, not sent to WeChat
+                navigator.share({ title: title, url: encodedUrl }).catch(() => {});
+            } else {
+                // Fallback: copy "title + URL" so user knows what it is
+                copyToClipboard(title + '\n' + encodedUrl, '✅ 已复制: ' + title);
+            }
+        }
+        // Copy clean (decoded) URL to clipboard
+        function copyUrl(relativeHref) {
+            const a = document.createElement('a');
+            // Normalize: deployed site serves .html only; .md links 404/400
+            if (/\.md(\?|#|$)/.test(relativeHref)) {
+                relativeHref = relativeHref.replace(/\.md(\?|#|$)/, '.html$1');
+            }
+            a.href = relativeHref;
+            const fullUrl = a.href;
+            // 2026-08-15 用户要求：复制出来必须是可读汉字URL。
+            // 注意：URL API 的 pathname setter 会自动 re-encode（URL标准行为），
+            // 所以必须绕过 URL API 直接字符串拼接。
+            // 浏览器/飞书/微信粘贴裸汉字URL时会自动percent-encode再发请求，实测可正常打开。
+            let cleanUrl;
+            try {
+                const u = new URL(fullUrl);
+                cleanUrl = u.origin + decodeURIComponent(u.pathname) + u.search;
+            } catch (e) { cleanUrl = fullUrl; }
+            copyToClipboard(cleanUrl, '✅ 已复制: ' + decodeURIComponent(cleanUrl.split('/').pop()));
+        }
+        function copyToClipboard(text, toastMsg) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(toastMsg);
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast(toastMsg);
+            });
+        }
+        function showToast(msg) {
+            let t = document.getElementById('copy-toast');
+            if (!t) { t = document.createElement('div'); t.id = 'copy-toast'; t.className = 'toast'; document.body.appendChild(t); }
+            t.textContent = msg;
+            t.classList.add('show');
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => t.classList.remove('show'), 2000);
+        }
+    </script>
+
+</body>
+
 </html>
