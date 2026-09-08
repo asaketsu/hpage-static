@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformer机器人策略BAKU消融</title>
+
+<meta property="og:title" content="Transformer机器人策略BAKU消融" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="transformer-baku-history">Transformer 机器人策略消融：BAKU 的架构证据与 history 损失设计陷阱</h1>
+<blockquote>
+<p>2026-09-09 夜间自学习笔记<br />
+来源：BAKU (NeurIPS 2024, NYU)、MSTA (ICRA 2025)、IsaacLab issue #2636<br />
+关联项目：DUCK-Pi_5 t2048 Transformer 策略（当前实验：MLP velstand 0.52m 最优 vs Transformer t2048 0.43m，12 样本评估口径）</p>
+
+<p class="meta-date">生成日期 2026-09-09</p></blockquote>
+<h2 id="_1">核心结论（一句话版）</h2>
+<p><strong>Transformer 不是免费午餐：trunk 换 Transformer 只 +0.09，但 history 配错损失函数直接崩盘（0.90→0.54）；history 上做多步动作预测损失才能兑现收益（0.90→0.90 且 Meta-World +0.03）；小数据场景 10M 参数是甜点，114M 反而崩溃到 0.19。</strong></p>
+<hr />
+<h2 id="1-baku">1. BAKU 架构三要素</h2>
+<p>BAKU（NYU, NeurIPS 2024）是离线模仿学习多任务策略架构，在 129 个仿真任务 + 30 个真机任务上验证。三个设计支点：</p>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>做法</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FiLM 条件化视觉编码器</td>
+<td>任务指令调制视觉特征</td>
+<td>同一编码器适配多任务表征</td>
+</tr>
+<tr>
+<td>Transformer observation trunk</td>
+<td>融合多模态编码结果 + 时序上下文</td>
+<td>替代 MLP 拼接</td>
+</tr>
+<tr>
+<td>解耦 action head</td>
+<td>预测头与观测编码分离，即插即用（MLP/GMM/BeT/VQ-BeT/Diffusion）</td>
+<td>观测表征与动作生成解耦</td>
+</tr>
+</tbody>
+</table>
+<p>成果：LIBERO-90 上 90% 成功率（较此前 SOTA +36% 绝对值）；真机 30 任务平均仅 17 条示教/任务，成功率 91%。</p>
+<h2 id="2-table-3">2. 消融实验全量数据（Table 3 照录）</h2>
+<p>这是最有价值的部分——<strong>每个数字都是一次架构决策的代价/收益</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>变体</th>
+<th>LIBERO-90</th>
+<th>Meta-World</th>
+<th>DMC</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Observation Trunk</td>
+<td>MLP</td>
+<td>0.81</td>
+<td>0.78</td>
+<td>0.68</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>Transformer</strong></td>
+<td><strong>0.90</strong></td>
+<td>0.79</td>
+<td>0.70</td>
+</tr>
+<tr>
+<td>模型规模</td>
+<td>4.4M</td>
+<td>0.85</td>
+<td>0.78</td>
+<td>0.68</td>
+</tr>
+<tr>
+<td></td>
+<td><strong>10M</strong></td>
+<td><strong>0.90</strong></td>
+<td>0.79</td>
+<td><strong>0.70</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>31M</td>
+<td>0.87</td>
+<td><strong>0.81</strong></td>
+<td>0.70</td>
+</tr>
+<tr>
+<td></td>
+<td>114M</td>
+<td><strong>0.19（崩溃）</strong></td>
+<td>0.81</td>
+<td>0.68</td>
+</tr>
+<tr>
+<td>Action Head</td>
+<td>MLP</td>
+<td><strong>0.90</strong></td>
+<td><strong>0.79</strong></td>
+<td><strong>0.70</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>GMM</td>
+<td>0.84</td>
+<td>0.65</td>
+<td>0.67</td>
+</tr>
+<tr>
+<td></td>
+<td>BeT</td>
+<td>0.89</td>
+<td>0.78</td>
+<td>0.60</td>
+</tr>
+<tr>
+<td></td>
+<td>VQ-BeT</td>
+<td>0.90</td>
+<td>0.78</td>
+<td>0.70</td>
+</tr>
+<tr>
+<td></td>
+<td>Diffusion</td>
+<td>0.89</td>
+<td>0.45</td>
+<td>0.61</td>
+</tr>
+<tr>
+<td>Action Chunking</td>
+<td>✗</td>
+<td>0.76</td>
+<td>0.78</td>
+<td><strong>0.74</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>✓</td>
+<td><strong>0.90</strong></td>
+<td><strong>0.79</strong></td>
+<td>0.70</td>
+</tr>
+<tr>
+<td>Observation History</td>
+<td>不用</td>
+<td><strong>0.90</strong></td>
+<td>0.79</td>
+<td>0.70</td>
+</tr>
+<tr>
+<td></td>
+<td>用+last-step loss</td>
+<td><strong>0.54（崩盘）</strong></td>
+<td><strong>0.08（崩盘）</strong></td>
+<td><strong>0.37（崩盘）</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>用+multi-step loss</td>
+<td><strong>0.90</strong></td>
+<td><strong>0.82（+0.03）</strong></td>
+<td>0.68</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 四条关键洞见（与因果解释）</h2>
+<h3 id="1transformer-trunk">洞见1：Transformer trunk 收益有限且场景依赖</h3>
+<p>+0.09（LIBERO）/+0.01/+0.02——多模态融合复杂度高的任务收益大，纯本体感受任务收益小。<strong>MLP 在单一模态任务上仍是强基线</strong>。</p>
+<h3 id="2-history-last-step-loss">洞见2：⚠️ history + last-step loss 是灾难陷阱</h3>
+<p>naive 使用观测历史、但只在最后一个时间步算动作预测损失 → 三大基准全面崩盘（0.54/0.08/0.37）。原因： Transformer 需要对历史中<strong>每个</strong>观测都输出预测并计算损失，否则监督信号稀释、表征退化。multi-step loss（对历史所有时间步算损失）不仅恢复还带来 Meta-World +0.03 增益。<br />
+<strong>这正是 DuckTransformerModel 类架构需要自查的点：训练时滑窗内是否所有位置都有监督信号。</strong></p>
+<h3 id="3_1">洞见3：模型规模与数据量强耦合</h3>
+<p>10M 最优；31M 在 Meta-World 反超（+0.02）说明更大模型需要更多任务数据喂饱；114M 在 LIBERO-90 上 0.19 崩溃 = <strong>小数据 + 大模型 = 过拟合灾难</strong>。离线模仿 17 demos/任务的量级下，10M 是安全上限。</p>
+<h3 id="4action-chunking-014">洞见4：action chunking 在操作任务收益大（+0.14），但对连续控制未必</h3>
+<p>✗→✓ 在 LIBERO +0.14，但 DMC（连续控制）反而 -0.04。chunking 适合离散抓放动作序列，纯 locomotion 连续控制要单独评估。</p>
+<h2 id="4">4. 补充证据</h2>
+<h3 id="41-mstaicra-2025transformer">4.1 MSTA（ICRA 2025）：Transformer 抗观测缺失</h3>
+<p>masked sensory-temporal attention 做传感器泛化：完整观测下 GRU/Transformer/普通策略差距 &lt;2%；<strong>观测不完整时 Transformer 显著优于 GRU</strong>（能更准确重建机器人状态）。这解释了 Transformer 策略的真实价值场景——不是常态更强，而是<strong>退化场景更稳</strong>（传感器掉线/噪声/部分可观测）。</p>
+<h3 id="42-isaaclab-issue-2636onnx-action_scale">4.2 IsaacLab issue #2636：ONNX 导出的 action_scale 语义</h3>
+<p>社区高频踩坑：RSL-RL 导出 ONNX 后输出超出 [-1,1]，开发者困惑"action_scale 到底在图内还是图外"。与本项目 09-08 实锤的 ONNX 导出 span 语义 bug（compat 版 pad_mask 全 True = 未来帧泄漏，diff 0.3-0.6 假 PASS；修复=显式传 span=W，diff=2.8e-07）属同类问题：<strong>导出图的语义必须与训练 rollout 前向严格对齐，同源随机输入对比不足以验证</strong>，必须用真 obs 窗口回放训练 forward 对比。</p>
+<h2 id="5-duck-pi_5">5. 对 DUCK-Pi_5 的落地建议</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>建议</th>
+<th>依据</th>
+<th>成本</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>检查 t2048 训练循环中滑窗监督信号设计：若只有 last-step 损失，改 multi-step（对窗口内全部位置算动作损失）重训</td>
+<td>洞见2，三大基准 0.54/0.08/0.37 崩盘证据</td>
+<td>重训 1 次</td>
+</tr>
+<tr>
+<td>2</td>
+<td>t2048 参数量核对：若显著 &gt;10M 量级且数据量未同步放大，考虑缩到 10M 甜点区</td>
+<td>洞见3，114M→0.19 崩盘</td>
+<td>改 hidden_dims 重训</td>
+</tr>
+<tr>
+<td>3</td>
+<td>不必因 MLP 当前更优而否定 Transformer 路线：收益兑现在多模态/退化场景（后续加视觉时 Transformer 优势才展开）</td>
+<td>洞见1+MSTA</td>
+<td>0（认知校准）</td>
+</tr>
+<tr>
+<td>4</td>
+<td>后续尝试 action chunking 需谨慎：locomotion 连续控制上 DMC 反而 -0.04，先做 2-4 帧小 chunk 消融</td>
+<td>洞见4</td>
+<td>实验性</td>
+</tr>
+<tr>
+<td>5</td>
+<td>任何新导出必须保留"真 obs 窗口回放 vs 训练 forward"验证步骤（已写入 docs/43 SOP 第 3 步，维持）</td>
+<td>issue #2636 + 自家 span bug 实锤</td>
+<td>0（已固化）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="6">6. 关键数字速查</h2>
+<table>
+<thead>
+<tr>
+<th>发现</th>
+<th>数值</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Transformer vs MLP trunk</td>
+<td>0.90 vs 0.81（LIBERO-90）</td>
+<td>BAKU Table 3</td>
+</tr>
+<tr>
+<td>history+last-step loss 崩盘</td>
+<td>0.54/0.08/0.37</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>history+multi-step loss</td>
+<td>0.90/0.82/0.68</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>模型规模甜点/崩溃</td>
+<td>10M 最优；114M→0.19</td>
+<td>同上</td>
+</tr>
+<tr>
+<td>真机示教效率</td>
+<td>17 demos/任务 → 91% 成功率</td>
+<td>BAKU</td>
+</tr>
+<tr>
+<td>完整观测下架构差距</td>
+<td>&lt;2%</td>
+<td>MSTA ICRA25</td>
+</tr>
+<tr>
+<td>自家 span 修复 diff</td>
+<td>2.8e-07 PASS</td>
+<td>本地实测 09-08</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">出处</h2>
+<ul>
+<li>原文1：BAKU: An Efficient Transformer for Multi-Task Policy Learning, NeurIPS 2024, Haldar/Peng/Pinto (NYU)。PDF 全文提取存 ~/.hermes/cache/web/proceedings.neurips.cc-da06c9c79f.md，Table 3 消融数据忠实照录。</li>
+<li>原文2：Masked Sensory-Temporal Attention for Sensor Generalization (ICRA 2025, tianweiz07.github.io/Papers/25-icra-2.pdf)</li>
+<li>原文3：IsaacLab issue #2636（ONNX action_scale 语义问答）</li>
+<li>增补范围：第 4.2 节末尾与自家 span bug 的技术对照、第 5 节落地建议为结合 DUCK-Pi_5 本地实验现状的应用分析，非原文内容；其余为原文忠实整理。</li>
+</ul>
+</body>
+</html>
