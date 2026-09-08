@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent记忆迁移性-模型升级后记忆会悄悄丢失吗</title>
+
+<meta property="og:title" content="Agent记忆迁移性-模型升级后记忆会悄悄丢失吗" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="agent">Agent 记忆迁移性 — 模型升级后记忆会"悄悄丢失"吗？</h1>
+<p class="note-date">生成日期 2026-09-08</p>
+<!-- 标签: arXiv, 论文精读, Agent记忆, 迁移性, 知识图谱, RAG, Hermes借鉴 -->
+<h1 id="agent-hermes">Agent记忆 #论文精读 #迁移性 #Hermes借鉴</h1>
+<h2 id="_1">内容整理</h2>
+<h3 id="_2">元数据</h3>
+<ul>
+<li><strong>标题</strong>: Does Your Agent's Memory Survive a Model Upgrade? A Controlled Study of Memory Portability</li>
+<li><strong>作者</strong>: Ankit Goyal, Jaideep Ray</li>
+<li><strong>arXiv ID</strong>: 2609.05339</li>
+<li><strong>日期</strong>: 2026-09-04</li>
+<li><strong>领域</strong>: cs.AI / cs.CL / cs.IR</li>
+<li><strong>出处/来源</strong>: https://arxiv.org/abs/2609.05339</li>
+</ul>
+<h3 id="_3">核心问题</h3>
+<p>Agent 系统有持久记忆（笔记、知识图谱、向量索引），但模型会升级。新模型读旧模型写的记忆时，会发生什么？论文设计了严格的对照实验，用 48 个合成历史、两个开源模型（Llama-3.1-8B / Qwen2.5-7B-1M）、四种记忆格式（LC-RAW / RAG / NOTES / KG-fixed），系统性地测量"记忆迁移损失"。</p>
+<h3 id="_4">四种记忆格式对比</h3>
+<p><strong>LC-RAW（原始历史直读）</strong>：完整对话历史作为上下文。最保真，但 token 成本高。</p>
+<p><strong>RAG（检索增强生成）</strong>：切块+向量检索。成本低，但检索召回率决定上限。</p>
+<p><strong>NOTES（模型压缩笔记）</strong>：LLM 将历史压缩为自然语言摘要。紧凑，但信息在写作阶段就可能丢失。</p>
+<p><strong>KG-fixed（固定 schema 知识图谱）</strong>：三元组（subject-predicate-object）存储，schema 固定。模型只填值，结构不可变。</p>
+<h3 id="_5">关键实验结果</h3>
+<h4 id="1kg-fixed-notes">结果 1：KG-fixed 几乎无损迁移，NOTES 严重不对称</h4>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>读者</th>
+<th>自有准确率</th>
+<th>继承准确率</th>
+<th>迁移 Δ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KG-fixed</td>
+<td>Llama</td>
+<td>0.846</td>
+<td>0.845</td>
+<td>-0.11 pp</td>
+</tr>
+<tr>
+<td>KG-fixed</td>
+<td>Qwen</td>
+<td>0.988</td>
+<td>0.988</td>
+<td>+0.02 pp</td>
+</tr>
+<tr>
+<td>NOTES</td>
+<td>Llama</td>
+<td>0.376</td>
+<td>0.475</td>
+<td>+9.91 pp</td>
+</tr>
+<tr>
+<td>NOTES</td>
+<td>Qwen</td>
+<td>0.472</td>
+<td>0.339</td>
+<td>-13.28 pp</td>
+</tr>
+</tbody>
+</table>
+<p>KG-fixed 的 swap Δ 仅 +0.0004±0.0020，几乎为零。NOTES 则出现巨大不对称：Llama→Qwen 方向提升 9.91pp，Qwen→Llama 方向下降 13.28pp。<strong>平均效应接近零是假象</strong>——两个大效应互相抵消。</p>
+<h4 id="2">结果 2：嵌入模型迁移，半迁移不如全迁移</h4>
+<table>
+<thead>
+<tr>
+<th>索引方式</th>
+<th>准确率</th>
+<th>相对旧索引增益</th>
+<th>recall@k</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>旧索引（bge-large-v1.0）</td>
+<td>0.426</td>
+<td>—</td>
+<td>0.485</td>
+</tr>
+<tr>
+<td>全量重嵌入（v1.5）</td>
+<td>0.545</td>
+<td>+11.90 pp</td>
+<td>0.600</td>
+</tr>
+<tr>
+<td>50/50 混合索引</td>
+<td>0.475</td>
+<td>+4.96 pp</td>
+<td>0.521</td>
+</tr>
+<tr>
+<td>理想路由上界</td>
+<td>0.596</td>
+<td>+17.03 pp</td>
+<td>0.651</td>
+</tr>
+</tbody>
+</table>
+<p>半迁移（50/50 混合）只捕获了全量迁移 42% 的增益，浪费了近 60% 的改进空间。即使维度相同（都是 1024d），不同版本的 embedding 向量空间也不兼容。</p>
+<h4 id="3">结果 3：信息损失发生在不同阶段</h4>
+<p><strong>NOTES 格式</strong>：80% 的损失（0.467±0.014 / 总损失 0.584）发生在<strong>写作阶段</strong>——模型在压缩笔记时就丢弃了关键信息。检索阶段只贡献 6%，读者阶段 14%。</p>
+<p><strong>RAG 格式</strong>：81% 的损失（0.364±0.012 / 总损失 0.450）发生在<strong>检索阶段</strong>——存的内容没问题，但搜索没找到。构建阶段只贡献 1%，读者阶段 18%。</p>
+<p>这意味着：NOTES 的修复应该针对摘要/写作环节；RAG 的修复应该针对分块/索引/排序环节。不要先怪新模型"读不懂"。</p>
+<h4 id="4store-only">结果 4：Store-only 修复全部失败，保留原始历史才能修复</h4>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>修复方式</th>
+<th>Llama→Qwen 成功数</th>
+<th>Qwen→Llama 成功数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>90% 准确率恢复</td>
+<td>NOTES raw-retained</td>
+<td>34/48</td>
+<td>0/48</td>
+</tr>
+<tr>
+<td>90% 准确率恢复</td>
+<td>NOTES store-only</td>
+<td>0/48</td>
+<td>0/48</td>
+</tr>
+<tr>
+<td>90% 准确率恢复</td>
+<td>RAG re-embed</td>
+<td>48/48</td>
+<td>48/48</td>
+</tr>
+<tr>
+<td>90% 准确率恢复</td>
+<td>KG-fixed schema rebuild</td>
+<td>48/48</td>
+<td>48/48</td>
+</tr>
+</tbody>
+</table>
+<p>Store-only（只用损坏的笔记库修复）在全部 48 个测试用例中均无法达到 90% 恢复目标。保留原始历史（raw-retained）在 Llama→Qwen 方向恢复了 34/48，但在 Qwen→Llama 方向仍然 0/48。RAG 和 KG-fixed 可通过 re-embed / schema rebuild 完美恢复。</p>
+<h3 id="_6">实验方法论亮点</h3>
+<ol>
+<li><strong>随机化答案码</strong>：48 个合成历史使用随机实体/值编码，防止模型从预训练知识中"猜"答案</li>
+<li><strong>预注册假设锁</strong>：在收集主结果前，用签名 Git tag（hypothesis-lock-v1）固定 4 个假设和 5pp 决策阈值</li>
+<li><strong>方向性测量</strong>：分别测试 Llama→Qwen 和 Qwen→Llama，不做方向平均</li>
+<li><strong>诊断分解</strong>：将总损失分解为 retrieval / construction / reader 三部分，精确定位损失源头</li>
+<li><strong>样本量确定</strong>：12 个校准历史确定 N=48 可检测 5pp 差异</li>
+</ol>
+<h3 id="8">作者总结的 8 条设计原则</h3>
+<ol>
+<li>明确定义需要持久化的信息类别（事实/偏好/决策/未完成任务）</li>
+<li>不同记忆格式失败方式不同——压缩格式可能丢失不可重建的信息</li>
+<li>可恢复性取决于系统保留了什么证据</li>
+<li>记录记忆的来源上下文（模型/prompt/schema/embedding/chunking）</li>
+<li>兼容性是方向性的——不要做方向平均</li>
+<li>Embedding 变更独立于读者质量影响检索</li>
+<li>迁移失败发生在多个阶段——需要区分</li>
+<li>升级后运行小评估检查兼容性</li>
+</ol>
+<h2 id="_7">查询拓展</h2>
+<h3 id="_8">相关论文</h3>
+<ul>
+<li><strong>MemCollab</strong> (2603.23234)：跨 Agent 记忆协作，发现朴素迁移会降级，蒸馏 agent-agnostic 记忆</li>
+<li><strong>Mem0</strong> (2504.19413)：生产级可扩展长期记忆系统</li>
+<li><strong>Zep</strong> (2501.13956)：时序知识图谱架构，Agent 记忆</li>
+<li><strong>MemGPT</strong> (2310.08560)：LLM as OS，记忆管理分层</li>
+<li><strong>Trans-LoRA</strong> (2405.17258)：无数据可迁移的 PEFT</li>
+<li><strong>Belikova et al.</strong> (2606.23127)：LLM Agent 过程记忆管理</li>
+</ul>
+<h3 id="_9">相关工业实践</h3>
+<ul>
+<li>Pinecone 文档：Vector migration、index import/export</li>
+<li>Weaviate 文档：Vectorizer migration</li>
+<li>Anthropic Claude：Memory import/export 功能</li>
+</ul>
+<h3 id="hermes-agent">与 Hermes Agent 的关联</h3>
+<ul>
+<li>Hermes 的 memorygraph 系统使用自然语言笔记存储 → 对应论文中的 NOTES 格式</li>
+<li>Hermes 的 RAG 索引使用 embedding → 对应论文中的 RAG 格式</li>
+<li>Hermes 的 Skill 系统使用结构化定义 → 部分接近 KG-fixed</li>
+</ul>
+<h2 id="_10">归纳总结</h2>
+<h3 id="_11">论文核心发现（按重要性排序）</h3>
+<p><strong>发现 1（最重要）</strong>：模型升级对 Agent 记忆的影响不是均匀的。固定 schema 的 KG-fixed 格式几乎无损迁移（Δ ≈ 0），而模型压缩的自然语言笔记（NOTES）出现 ±13pp 的不对称迁移损失。<strong>记忆格式的选择不是一次性的——它决定了未来模型迁移的代价</strong>。</p>
+<p><strong>发现 2</strong>：平均效应会掩盖方向性失败。Llama→Qwen 和 Qwen→Llama 的平均 NOTES 迁移损失接近零，但这是两个大效应（+9.91 和 -13.28pp）互相抵消的结果。必须逐方向测试。</p>
+<p><strong>发现 3</strong>：信息损失主要集中在上游。NOTES 的 80% 损失发生在写作阶段（模型压缩时丢弃信息），RAG 的 81% 损失发生在检索阶段（搜索没找到）。<strong>不要先怪新模型——先验证记忆是否被正确存储和检索</strong>。</p>
+<p><strong>发现 4</strong>：嵌入模型迁移必须全量重嵌入。50/50 混合索引只捕获了全量迁移 42% 的增益。即使维度相同（1024d），不同版本 embedding 的向量空间也不兼容。</p>
+<p><strong>发现 5</strong>：保留原始历史是修复的前提。Store-only 修复（只用损坏的笔记库）在全部 48 个用例中均失败。保留原始源数据后，修复在 Llama→Qwen 方向恢复 34/48，但在 Qwen→Llama 方向仍然全部失败——方向性失败是系统性的。</p>
+<h3 id="hermes-agent_1">对 Hermes Agent 的直接启示</h3>
+<p><strong>当前 Hermes 的记忆架构面临的风险</strong>：<br />
+- Hermes 使用 memorygraph（自然语言笔记）+ RAG（向量索引）→ 对应论文中的 NOTES + RAG<br />
+- Hermes 的 Skill 文件（SKILL.md）是结构化的 YAML + Markdown → 部分接近 KG-fixed<br />
+- Hermes 的会话历史存储在磁盘 → 接近 LC-RAW</p>
+<p><strong>论文给出的改进方向</strong>：<br />
+1. <strong>Skill 的 YAML frontmatter 已经是固定 schema</strong> → 这是 KG-fixed 的优势，应该保持<br />
+2. <strong>自然语言笔记的模型耦合风险</strong> → memorygraph 中用 Llama 写的笔记，换 Qwen 后可能丢失 13% 信息<br />
+3. <strong>RAG 索引的 embedding 版本管理</strong> → 如果更换 embedding 模型，必须全量重嵌入<br />
+4. <strong>原始历史保留策略</strong> → Hermes 当前有原始会话记录，这是修复的"保护伞"</p>
+<h2 id="_12">趋势判断</h2>
+<h3 id="1schema">趋势 1：记忆架构从"模型生成"走向"schema 固定"</h3>
+<p>论文的核心启示是：模型压缩的笔记（NOTES）对创建它的模型有强耦合，而固定 schema 的知识图谱（KG-fixed）几乎与模型无关。这预示了 Agent 记忆架构的一个重要演进方向——从"让模型自由写笔记"转向"用固定 schema 约束记忆结构"。Hermes 的 Skill 系统（YAML frontmatter + Markdown body）已经在朝这个方向走。</p>
+<h3 id="2-agent">趋势 2：方向性测试将成为 Agent 记忆系统的标准实践</h3>
+<p>"不要平均方向效应"——这条建议将成为 Agent 记忆系统评估的标准。未来 Agent 框架在支持记忆迁移时，应该提供方向性测试工具，而不是简单的"准确率"指标。</p>
+<h3 id="3_1">趋势 3：原始历史保留将成为隐私合规与可靠性之间的关键权衡</h3>
+<p>论文证明保留原始历史是修复的前提，但也承认这带来隐私/安全/合规问题。这个权衡将是 Agent 记忆系统设计中的长期挑战。可能的解决方案：分层存储（热层：压缩笔记；冷层：加密原始历史）。</p>
+<h2 id="_13">拓展应用推荐</h2>
+<h3 id="1hermes-agent">场景 1：Hermes Agent 记忆迁移评估</h3>
+<p><strong>推荐</strong>：为 Hermes 的 memorygraph 系统增加"模型迁移测试"能力。当前 Hermes 升级模型（如从 sensenova 到 GPT-5）后，旧笔记对新模型的兼容性未知。论文的实验框架（48 个合成历史 + 方向性测试 + 损失分解）可以改造为 Hermes 内部的迁移评估工具。</p>
+<h3 id="2skill-schema">场景 2：Skill 文件作为"固定 schema 记忆"</h3>
+<p><strong>推荐</strong>：将 Hermes 的 SKILL.md 视为 KG-fixed 格式的记忆载体。当前 Skill 的 YAML frontmatter（name/version/tags/provenance）已经是固定 schema。可以进一步结构化 Skill 的"经验教训"部分，使其更接近 KG-fixed 的三元组格式，减少模型耦合。</p>
+<h3 id="3rag-embedding">场景 3：RAG 索引 embedding 版本管理</h3>
+<p><strong>推荐</strong>：在 Hermes 的 RAG 索引中记录 embedding 模型版本和维度。当需要更换 embedding 模型时，执行全量重嵌入而非混合索引。论文证明混合索引浪费 60% 的改进空间。</p>
+<h3 id="4">场景 4：记忆来源溯源</h3>
+<p><strong>推荐</strong>：在 Hermes 的 memorygraph 中为每条记忆记录"来源上下文"——创建模型、prompt、embedding 版本、chunking 策略。论文证明这有助于故障分析。</p>
+<h2 id="_14">指南分析</h2>
+<h3 id="hermes-agent_2">Hermes Agent 记忆系统改进指南</h3>
+<p><strong>P0 — Skill 结构化经验教训</strong><br />
+- <strong>现状</strong>：Skill 的"经验教训"部分为自由文本<br />
+- <strong>改进</strong>：增加 YAML frontmatter 中的结构化字段（<code>pitfall_type</code>, <code>root_cause</code>, <code>fix_pattern</code>），接近 KG-fixed 的三元组格式<br />
+- <strong>预期收益</strong>：减少模型耦合，迁移时 Skill 经验教训的损失降至 &lt;1pp（论文中 KG-fixed 的 swap Δ ≈ 0）<br />
+- <strong>工作量</strong>：中等（修改 Skill 模板 + 迁移现有 Skill）</p>
+<p><strong>P1 — memorygraph 方向性迁移测试</strong><br />
+- <strong>现状</strong>：无模型迁移测试能力<br />
+- <strong>改进</strong>：实现论文的 RPAS（Retained Performance After Swap）指标，在小规模合成历史上测试模型迁移后的记忆兼容性<br />
+- <strong>预期收益</strong>：升级模型前可预评估记忆损失，避免"悄悄遗忘"<br />
+- <strong>工作量</strong>：中等（参考论文代码 + 合成历史生成）</p>
+<p><strong>P1 — RAG embedding 版本追踪</strong><br />
+- <strong>现状</strong>：RAG 索引未记录 embedding 模型版本<br />
+- <strong>改进</strong>：在索引元数据中记录 embedding 模型名 + 版本 + 维度，迁移时强制全量重嵌入<br />
+- <strong>预期收益</strong>：避免混合索引的 60% 增益浪费<br />
+- <strong>工作量</strong>：小（元数据字段增加 + 迁移脚本）</p>
+<p><strong>P2 — 记忆来源溯源</strong><br />
+- <strong>现状</strong>：memorygraph 不记录创建模型/prompt<br />
+- <strong>改进</strong>：每条记忆增加 <code>created_by_model</code>, <code>created_at</code>, <code>prompt_version</code> 字段<br />
+- <strong>预期收益</strong>：故障分析时可区分"信息丢失"和"读者不兼容"<br />
+- <strong>工作量</strong>：小（schema 扩展 + 写入时填充）</p>
+<p><strong>P2 — 原始历史保留策略</strong><br />
+- <strong>现状</strong>：会话历史存储在磁盘，但无分层策略<br />
+- <strong>改进</strong>：实现热/冷分层——热层为压缩笔记，冷层为加密原始历史，仅在修复时解密读取<br />
+- <strong>预期收益</strong>：保留修复能力，同时控制隐私风险<br />
+- <strong>工作量</strong>：中等（存储分层 + 加密）</p>
+<p><strong>P3 — 诊断分解工具</strong><br />
+- <strong>现状</strong>：无损失分解工具<br />
+- <strong>改进</strong>：实现论文的三段分解（retrieval / construction / reader），在记忆系统出问题时定位损失源头<br />
+- <strong>预期收益</strong>：减少"换模型试试看"的盲目排查<br />
+- <strong>工作量</strong>：中等（参考论文 Appendix D 的算术）</p>
+<h3 id="_15">实施优先级建议</h3>
+<table>
+<thead>
+<tr>
+<th>优先级</th>
+<th>改进项</th>
+<th>收益</th>
+<th>工作量</th>
+<th>关键障碍</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P0</td>
+<td>Skill 结构化经验教训</td>
+<td>高</td>
+<td>中</td>
+<td>Skill 模板修改</td>
+</tr>
+<tr>
+<td>P1</td>
+<td>memorygraph 方向性迁移测试</td>
+<td>高</td>
+<td>中</td>
+<td>合成历史生成</td>
+</tr>
+<tr>
+<td>P1</td>
+<td>RAG embedding 版本追踪</td>
+<td>高</td>
+<td>小</td>
+<td>无</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>记忆来源溯源</td>
+<td>中</td>
+<td>小</td>
+<td>schema 扩展</td>
+</tr>
+<tr>
+<td>P2</td>
+<td>原始历史保留策略</td>
+<td>中</td>
+<td>中</td>
+<td>隐私合规</td>
+</tr>
+<tr>
+<td>P3</td>
+<td>诊断分解工具</td>
+<td>中</td>
+<td>中</td>
+<td>复杂度</td>
+</tr>
+</tbody>
+</table>
+<h3 id="skill">与已有 Skill 的交叉参考</h3>
+<ul>
+<li><strong>memory-consolidation</strong>：已有记忆整理机制，但未涉及模型迁移场景</li>
+<li><strong>context-engineering-patterns</strong>：上下文中动态/静态分离与本文的 writer/reader 分离理念相通</li>
+<li><strong>harness-architecture</strong>：六层 Harness 可容纳迁移测试层</li>
+<li><strong>evolver</strong>：可集成方向性迁移测试作为经验沉淀的评估环节</li>
+</ul>
+<h2 id="_16">关联</h2>
+<ul>
+<li>关联论文：MemCollab (2603.23234) / Mem0 (2504.19413) / Zep (2501.13956) / MemGPT (2310.08560)</li>
+<li>关联 Skill：memory-consolidation / context-engineering-patterns / harness-architecture / evolver</li>
+<li>关联项目：Hermes Agent memorygraph / RAG 索引 / Skill 系统</li>
+<li>关联概念：记忆迁移性 / 模型耦合 / schema 固定 / 方向性测试 / 损失分解</li>
+</ul>
+<hr />
+<p><em>笔记生成时间: 2026-09-08</em><br />
+<em>精读策略: B (arXiv API 结构化查询 — cs.AI/cs.CL/cs.LG, 2026-09-04 ~ 2026-09-08)</em><br />
+<em>选文理由: Agent 记忆迁移性是 Hermes Agent 的核心架构风险点，本文提供了系统性的量化证据和改进方向。KG-fixed ≈ 0 损失 vs NOTES ±13pp 损失的对比对 Hermes Skill 系统有直接指导意义。</em></p>
+</body>
+</html>
