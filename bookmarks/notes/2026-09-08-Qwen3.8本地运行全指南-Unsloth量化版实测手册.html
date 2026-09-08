@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3.8本地运行全指南-Unsloth量化版实测手册</title>
+
+<meta property="og:title" content="Qwen3.8本地运行全指南-Unsloth量化版实测手册" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="qwen38-unsloth-27b24tnvfp4">Qwen3.8 本地运行全指南：Unsloth 量化版实测手册（27B/2.4T/NVFP4）</h1>
+<blockquote>
+<p><strong>来源</strong>：Unsloth 官方文档（unsloth.ai/docs/models/qwen3.8）<br />
+<strong>原文链接</strong>：https://unsloth.ai/docs/models/qwen3.8<br />
+<strong>发布背景</strong>：Qwen3.8 系列（27B / 2.4T-A95B / Max），Unsloth day-zero 支持<br />
+<strong>记录日期</strong>：2026-09-08<br />
+<strong>⚠️ 标注约定</strong>：〔官方文档〕= Unsloth 文档原文；〔本地对照〕= Jetson/前序笔记对照</p>
+
+<p class="meta-date">生成日期 2026-09-08</p></blockquote>
+<p><strong>标签</strong>：#Qwen3.8 #Unsloth #GGUF #NVFP4 #1-bit量化 #Dynamic3.0 #llama-cpp #本地部署 #MTP</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-qwen38">1.1 Qwen3.8 家族与定位〔官方文档〕</h3>
+<pre><code>模型                 参数量          特点
+Qwen3.8-27B          27B            视觉+推理, 256K上下文,
+                                    17GB RAM/VRAM 可本地跑
+Qwen3.8-2.4T-A95B    2.4T(A95B)     MoE, 对标 GPT-5.6 Sol,
+                                    1M 上下文
+Qwen3.8-Max          (闭源API)      hybrid thinking
+</code></pre>
+<ul>
+<li>Qwen3.8 擅长 agentic coding、vision、chat</li>
+<li>27B 4-bit 量化跑在 16-19GB VRAM（RTX 5080/4090/24GB Mac）</li>
+<li>2.4T 完整精度需 <strong>4.9TB</strong> 存储；1-bit Unsloth Dynamic GGUF 压到 <strong>397GB（-91%）</strong></li>
+<li>Aug 19 更新：27B GGUF 升级 <strong>Unsloth Dynamic V3.0</strong>——同尺寸精度 +10%</li>
+<li>Unsloth quants 附加：Developer Role 支持（Codex 类 agentic 工具）、MTP 快速推理、嵌套对象 tool calling 解析改进</li>
+</ul>
+<h3 id="12">1.2 硬件需求表〔官方文档〕</h3>
+<pre><code>27B 4-bit 档位        总内存需求(RAM+VRAM)
+──────────────────────────────────────
+7-8 GB               (极限压缩档)
+9-11 GB
+12-14 GB
+16-19 GB             ← RTX 5080/4090/24GB Mac 主力档
+23-26 GB
+31 GB
+56 GB
+MTP 加速需额外 1-2GB 余量
+</code></pre>
+<p>2.4T-A95B 档位：Dynamic 1-bit XXXS 397GB / 1-bit Standard 508GB / Dynamic 2-bit 657GB / Q8_0 2.6TB / BF16 无损 4.9TB。</p>
+<h3 id="13">1.3 推荐采样参数〔官方文档〕</h3>
+<pre><code>参数                 Thinking模式    Instruct(非思考)模式
+temperature          1.0             0.7
+top_p                0.95            0.80
+top_k                20              20
+min_p                0.0             0.0
+presence_penalty     0.0             1.5    ← 注意非思考模式用1.5
+repetition_penalty   1.0             1.0
+</code></pre>
+<ul>
+<li>27B：最大上下文 <strong>262,144</strong>（YaRN 可扩到 1M）</li>
+<li>2.4T：上下文 <strong>1,010,000</strong>；thinking-only（Max 才是 hybrid）</li>
+<li>B200 上 ~20 tokens/s 生成、&gt;120 tokens/s 吞吐；经验法则：<strong>RAM+VRAM ≈ 量化体积</strong>，不够则磁盘卸载（仍能跑但慢）</li>
+</ul>
+<h3 id="14-thinking-reasoning_effort">1.4 Thinking 控制：reasoning_effort 分级〔官方文档〕</h3>
+<ul>
+<li>27B 是 <strong>hybrid thinking</strong> 模型，默认 extra high</li>
+<li><code>reasoning_effort</code> 四档：<code>xhigh</code>（默认，复杂任务）/ <code>medium</code>（平衡）/ <code>low</code>（速度优先）/ <code>none</code></li>
+<li>切换命令：<code>--chat-template-kwargs '{"reasoning_effort":"medium"}'</code>（Windows PowerShell 需转义双引号）</li>
+<li><strong>Preserve Thinking</strong>：保留上轮对话的思考痕迹——多耗 token 但连续对话可能更准</li>
+</ul>
+<h3 id="15-1-bit-24t">1.5 新 1-bit 数据类型（2.4T 专用）〔官方文档〕</h3>
+<p>Unsloth 扩展 llama.cpp 的 IQ1_S（1.5625 bpw）到更低码率：</p>
+<pre><code>Dtype          命名      BPW      码本条目   索引位   块
+IQ1_S          IQ1_S     1.5625   2048       11      50B
+UD-IQ1_XS      TQ2_0     1.4375   1024       10      46B
+UD-IQ1_XXS     TQ1_0     1.3125   512        9       42B
+UD-IQ1_XXXS    Q1_0      1.1875   256        8       38B   ← 397GB 那版
+</code></pre>
+<ul>
+<li>关键发现：这些新数据类型<strong>无需 QAT/QAD</strong>（量化感知训练/蒸馏），纯 PTQ（训练后量化）即可保精度</li>
+<li>命名妥协说明：因 HF 命名问题用 TQ2_0/TQ1_0/Q1_0，否则仓库不显示</li>
+<li>运行 UD-IQ1_XXXS 需 unslothai/llama.cpp 的 <code>iq1-narrow</code> 分支</li>
+</ul>
+<p><strong>量化损失数据</strong>（大模型参考）：</p>
+<pre><code>Dtype          GiB      PPL      KLD       top-p
+IQ1_S          553.2    2.579    0.565     78.88%
+UD-IQ1_XS      513.6    2.931    0.690     75.73%
+UD-IQ1_XXS     474.0    3.540    0.876     71.28%
+UD-IQ1_XXXS    434.3    4.489    1.110     66.26%
+</code></pre>
+<h3 id="16-nvfp4-blackwell">1.6 NVFP4 量化（Blackwell 专属）〔官方文档〕</h3>
+<ul>
+<li>比 BF16 <strong>快 1.5×</strong> 且精度更好，24GB VRAM 可跑 27B</li>
+<li>附加 <strong>FP8 KV cache 校准</strong>——上下文长度翻倍</li>
+<li>硬件限制：仅 Blackwell（RTX 50X / DGX Spark / B200 / B300）；老卡用 GGUF</li>
+<li>只支持 vLLM（SGLang 不支持——lm_head 量化为 FP8，SGLang 无法加载）</li>
+<li>MTP 推测解码加速：<code>--speculative-config '{"method":"mtp","num_speculative_tokens":2}'</code></li>
+</ul>
+<p><strong>吞吐实测</strong>（B200）：</p>
+<pre><code>batch   BF16 tok/s    NVFP4 tok/s   加速比
+1       89.8          133.7         1.49x
+8       649.4         938.8         1.45x
+32      1983.0        2787.0        1.41x
+64      3048.5        4407.2        1.45x
+</code></pre>
+<p><strong>精度恢复</strong>（vs BF16）：中文 KLD 0.0163 / top-1 93.55%；代码 96.68%；chat 92.15%；多语种 94-95%——<strong>整体 92-97% 精度恢复</strong>。</p>
+<h3 id="17">1.7 运行方式三选一〔官方文档〕</h3>
+<ol>
+<li><strong>Unsloth Desktop</strong>（最简）：搜索下载 GGUF/MLX/safetensors，自动内存卸载+多 GPU 检测，self-healing tool calling、代码执行、自动调参；2x 训练加速 + 70% VRAM 节省</li>
+<li><strong>llama.cpp</strong>：标准编译（27B）或 iq1-narrow 分支（2.4T 的 1-bit）；<code>hf download unsloth/Qwen3.8-27B-GGUF --include "*UD-Q4_K_XL*"</code> 后 llama-cli 运行</li>
+<li><strong>vLLM</strong>（NVFP4）：uv venv + vllm&gt;=0.25.0 + flashinfer + cutlass-dsl</li>
+</ol>
+<h3 id="18-27b">1.8 性能基准（27B）〔官方文档〕</h3>
+<pre><code>Benchmark                    Qwen3.8-27B   Qwen3.6-27B   Opus4.6 Max
+Agentic terminal coding
+ (Terminal Bench 2.1)         73.0          63.4          78.2
+SWE-bench Pro                 61.7★         53.5          53.4
+NL2Repo-Bench                 42.3          36.2          47.6
+DeepSWE 1.1                   42.2★         13.3          —
+QwenSWEBench                  79.0★         49.3          63.8
+CoWorkBench(长程办公)          70.7★         61.0          —
+LiveCodeBench v6              90.3★         —             —
+Agents' Last Exam             Pass@1 20.4 / Score 42.9
+</code></pre>
+<p>相对上代 Qwen3.6-27B 全面提升（SWE-bench Pro +8.2pp、DeepSWE 3.2×）。</p>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-dynamic-30-gguf-10">2.1 Dynamic 3.0 GGUF："同尺寸多 10% 精度"的来路</h3>
+<p>Unsloth Dynamic 系列的核心思想：<strong>逐层动态选择量化精度</strong>——对模型每一层测量量化敏感度，敏感层（如 attention 的 Q/K）用高精度档，不敏感层（部分 FFN）用低档，而不是全模型统一 Q4。V3.0 进一步引入校准数据驱动的分配。效果就是文档说的"同尺寸精度 +10%，大幅超越其他量化版"。这本质是把"量化"从静态配置变成了<strong>每模型一次性优化问题</strong>——思路与 AWQ 的 activation-aware 同族，但落在 GGUF 容器里服务 llama.cpp 生态。</p>
+<h3 id="22-mtpmulti-token-prediction">2.2 MTP（Multi-Token Prediction）：推测解码的模型内生版</h3>
+<p>MTP = 模型训练时就带"一次预测多个未来 token"的辅助头。推理时用作 speculative decoding 的 draft：一次前向生成 2+ 候选 token，主模型并行验证——decode 加速但吞吐略降（文档原话"faster decode but somewhat less throughput"）。与外挂 draft model 的传统推测解码相比，MTP 无需第二个模型。代价是 1-2GB 额外显存（KV/缓存）。vLLM 的 <code>--speculative-config method=mtp</code> 已原生支持。</p>
+<h3 id="23-nvfp4-vs-gguf">2.3 NVFP4 vs GGUF：两代量化路线的分野〔本地对照〕</h3>
+<pre><code>维度            NVFP4                    GGUF (K-quant/UD)
+────────────────────────────────────────────────────────────
+硬件            仅 Blackwell(50X/B200)    CPU/ARM/Metal/CUDA 全平台
+推理引擎        vLLM only                llama.cpp/Ollama/全家
+速度            1.5x vs BF16             平台依赖
+精度恢复        92-97% (KLD&lt;0.06)        UD-Q4档 ~98%+ (K-quant成熟)
+KV cache        FP8校准, 上下文翻倍      常规
+定位            新GPU极致吞吐             通用分发/边缘部署
+</code></pre>
+<p>对本机 Jetson（Ampere 前代架构）：NVFP4 不可用，<strong>GGUF 是唯一路线</strong>——这再次印证昨日"推理生态"笔记的选型判据：硬件代次决定量化路线。</p>
+<h3 id="24-1-bit">2.4 1-bit 量化的"大模型才成立"现象</h3>
+<p>文档的 PPL/KLD 表揭示规律：UD-IQ1_XXXS（1.19 bpw）的 PPL 4.49 vs IQ1_S（1.56 bpw）的 2.58——1-bit 量化损失显著。但 Unsloth 声明"对大模型效果好，无需 QAT/QAD"。机理：模型越大，参数冗余越高，单权重信息密度越低——2.4T 模型的权重分布更接近"大量微小扰动"，极端量化后检索式码本（codebook）仍能保住主要方向。<strong>小模型恰好相反</strong>：26M MiniMind 做 Q4 可能就明显掉点（昨日笔记的实验建议正是验证这个）。1-bit 是大模型的特权。</p>
+<h3 id="25-hybrid-thinking-reasoning_effort">2.5 Hybrid Thinking 与 reasoning_effort 的工程意义</h3>
+<p>27B 默认 extra-high thinking = 每个回答都带长推理链。对交互场景这是成本（token/延迟），reasoning_effort 四档给了<strong>运行时旋钮</strong>而非模型切换。这延续了 Qwen3 系"一个模型两种模式"（thinking/instruct 各一套采样参数）的设计。注意非思考模式的 presence_penalty=1.5 是反常规配置（多数模型 0-0.5）——Qwen 系在非思考模式用高 presence penalty 抑制复读，抄参数时别漏。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-qwen38">3.1 Qwen3.8 全家族部署决策树</h3>
+<pre><code>要用 Qwen3.8
+  ├─ 有 Blackwell 卡(50X/B200)
+  │    └─ NVFP4 + vLLM (+MTP推测解码)  ← 1.5x速度+双倍上下文
+  ├─ 16-19GB VRAM/GPU(4090/5080/Mac24G)
+  │    └─ UD-Q4_K_XL GGUF + llama.cpp/Ollama
+  ├─ 内存受限(7-14GB)
+  │    └─ 更低档 UD-Q3/Q2 GGUF, 或磁盘卸载
+  ├─ 要跑 2.4T-A95B
+  │    ├─ 450GB+ RAM → UD-Q1_0(397GB, iq1-narrow分支)
+  │    └─ 550GB+ RAM → IQ1_S(553GB, 标准llama.cpp)
+  └─ 零命令行意愿
+       └─ Unsloth Desktop(搜索下载一键跑)
+</code></pre>
+<h3 id="32-27b">3.2 量化档位速查（27B 级参考）</h3>
+<pre><code>档位             体积级别      适用
+BF16             4.9TB(2.4T)   无损基准
+Q8_0             2.6TB(2.4T)   近无损
+UD-Q4_K_XL       ~16GB(27B)    ★主力推荐: 4090/24G Mac
+UD-Q3_K_XL       ~12GB(27B)    12-14GB 显存
+UD-Q1_0(1.19bpw) 397GB(2.4T)   ★2.4T穷人版: 450GB RAM
+NVFP4            24GB(27B)     Blackwell专属, 1.5x速度
+</code></pre>
+<h3 id="33">3.3 与前序量化笔记的参数谱系合流</h3>
+<p>本笔记补全了量化档位谱系的最后两端：<strong>上端 1-bit</strong>（UD-IQ1_XXXS 1.19bpw，2.4T 专用，PPL 4.49）与 <strong>NVFP4</strong>（Blackwell FP4 硬件量化）。与昨日笔记的 Q4_K_M（中端甜点）、F16/Q8_0（近无损端）合成完整光谱：1.19 → 1.56 → 3 → 4 → 5 → 6 → 8 → 16 bit，每一档都有明确的目标硬件与精度承诺。</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="11-bit">趋势1：1-bit 量化正在把"跑旗舰模型"的门槛降到内存条层面</h3>
+<p>依据：2.4T 模型 397GB 版可在 450GB RAM 的工作站/服务器跑——不用 GPU 集群。Unsloth 的方向很明确：<strong>让最大模型跑进最大众的硬件（大内存）而非最强硬件（大显存）</strong>。配合"无需 QAT"的发现，1-bit 大模型本地化会成为开源社区的下一个炫耀性用例。</p>
+<h3 id="2">趋势2：量化正在从"事后压缩"变成"发布时一等问题"</h3>
+<p>依据：Qwen 给 Unsloth day-zero 访问；发布即含 GGUF/NVFP4/1-bit 全谱系 + MTP + Developer Role 支持。模型发布的"第三资产"（量化版）已升级为"第 N 资产"——量化档位选择现在是发布工程的一部分，不是社区自发后处理。</p>
+<h3 id="3-kv-cache">趋势3：推理加速的竞争焦点转向推测解码与 KV cache 管理</h3>
+<p>依据：MTP（模型内生 draft）+ FP8 KV cache 校准（上下文翻倍）+ NVFP4（1.5x）三件套都在攻击推理瓶颈的不同侧面。单纯权重压缩的边际收益递减，<strong>decode 阶段加速（MTP）与长上下文成本（KV 量化）是新的主战场</strong>。</p>
+<h3 id="4qwen38-27b-27b">趋势4：Qwen3.8-27B 确立"27B = 新本地旗舰"档位</h3>
+<p>依据：17GB 跑 27B+视觉+256K 上下文；SWE-bench Pro 61.7 超 Qwen3.6 达 8.2pp；LiveCodeBench 90.3。本地可跑模型的"性价比边界"从 7-8B（昨笔记的甜点）上移到 27B——但 8B 仍是<strong>微调</strong>甜点（训练侧），27B 是<strong>推理</strong>甜点（部署侧），两个甜点不冲突。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-1g">5.1 与「1G垂域微调」笔记的上下游</h3>
+<p>昨笔记选定 Qwen3-8B 为微调基座（训练甜点）；本篇是推理侧的最新选项（Qwen3.8-27B 本地部署）。<strong>AirCraft 全链路组合</strong>：Qwen3-8B 微调（训练）→ merged 模型 → GGUF 量化（部署）——若未来 Jetson 换代或上 Blackwell，NVFP4 路线可再提速 1.5×。</p>
+<h3 id="52">5.2 与「推理生态架构差异」笔记的量化谱系补全</h3>
+<p>昨笔记建立"HF 生态 vs llama.cpp 生态"两分法 + Q4_K_M 甜点；本篇补上 Unsloth 作为两生态之间的"第三力量"——它既做训练加速（NVIDIA/AMD）又做 GGUF 量化分发（Dynamic 3.0）还做桌面端（Unsloth Desktop）。<strong>Unsloth 正在变成横跨训练-量化工链-部署的全栈工具商</strong>。</p>
+<h3 id="53-ollamagguf">5.3 与「Ollama/GGUF 部署实录」笔记的参数互补</h3>
+<p>Ollama 笔记的 Modelfile PARAMETER 当时只写了 temperature 0.7；本篇给出 Qwen3.8 系的<strong>完整官方采样表</strong>（thinking/instruct 双模式六参数），尤其非思考模式 presence_penalty=1.5 这个反常规值——是 Modelfile 调参的直接权威依据。</p>
+<h3 id="54-barunlm">5.4 与 BarunLM 小模型笔记的反向印证</h3>
+<p>BarunLM 笔记提出"26M 模型量化敏感度实验"假设；本篇 1-bit 表给出大模型端数据（2.4T @1.19bpw PPL 4.49 仍可用）。两端合起来正是量化理论的完整叙事：<strong>模型越大越耐压，模型越小越脆弱</strong>——AirCraft 的 MiniMind 26M 应该用 Q8_0/F16 而非 Q4。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Best rule of thumb: RAM+VRAM ≈ the quant size; otherwise it'll still work, just much slower due to disk offloading.」〔官方文档〕— 内存法则一句话：内存等于量化体积就舒服，不够也能跑（磁盘卸载），只是慢。</p>
+<p>「Full-precision Qwen3.8-2.4T-A95B requires 4.9TB of storage and 1-bit Unsloth Dynamic GGUFs takes 397GB (91% smaller).」〔官方文档〕— 1-bit 路线的存在意义：把旗舰模型从"集群特权"变成"大内存工作站可及"。</p>
+<p>「we found these new data-types to be fine for post training quantization (PTQ) without the need for QAT or QAD.」〔官方文档〕— 1-bit 免 QAT 的关键发现，量化工程的重要里程碑。</p>
+<p>「NVFP4 quants are 1.5x faster than BF16 and retains 92 to 97% top-1% accuracy.」〔官方文档〕— Blackwell 时代的量化承诺：更快且几乎不掉点。</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<pre><code>启示                              行动
+────────────────────────────────────────────────────────────────
+Jetson 上 Qwen3.8 只能走 GGUF     本机(Ampere前代)跳过NVFP4;
+(NVFP4需Blackwell)                大模型部署用 UD-Q4_K_XL 档
+27B是推理甜点,8B是微调甜点        AirCraft P2 训练用8B;
+                                  未来Jetson演示可上27B-Q4
+                                  (需~17GB,本机7.4G不够,asa或新机)
+非思考模式 presence_penalty=1.5   Qwen系 Modelfile 调参时勿漏
+是Qwen系反常规配置                 此参数,防复读
+UD-Q4_K_XL 优于普通 Q4_K_M        下载量化版优先选
+(Dynamic 3.0 同尺寸+10%精度)      unsloth 官方 UD- 前缀版
+1-bit仅大模型可用                 MiniMind 26M量化实验预期:
+                                  Q4会掉点,用Q8_0/F16对照
+</code></pre>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>立即可用</strong>：<code>hf download unsloth/Qwen3.8-27B-GGUF --include "*UD-Q4_K_XL*"</code> + llama.cpp 编译三命令（文档原文可复制）；ModelScope 同步有国内源。</li>
+<li><strong>Unsloth Desktop</strong>：unsloth.ai/download——零命令行跑模型 + self-healing tool calling + 代码执行，适合快速体验 Qwen3.8。</li>
+<li><strong>延伸阅读</strong>：Dynamic 3.0 GGUF 文档（unsloth.ai/docs/basics/dynamic-3.0-ggufs，逐层动态量化原理）；NVFP4 博客（unsloth.ai/docs/basics/nvfp4）；MTP 文档（unsloth.ai/docs/models/mtp）；Fine-tune Qwen3.8 页（/docs/models/qwen3.8/train，微调侧姊妹篇）。</li>
+<li><strong>asa 机器实验候选</strong>：asa（Linux 测试机）若有 16GB+ 内存，可跑 UD-Q3_K_XL 档做 Qwen3.8-27B 的 agentic coding 体验，验证 Terminal Bench 级能力在本地硬件的真实表现。</li>
+</ul>
+<hr />
+<h2 id="_9">九、指南分析</h2>
+<p><strong>阅读与使用指南：</strong></p>
+<ol>
+<li><strong>文体定性</strong>：Unsloth 官方模型支持文档——工程导向，命令可复制执行，数据详实（量化表/吞吐表/精度恢复表全给）。同时它也是 Unsloth 的产品宣传（Desktop/MTP/Dynamic 都是自家特性），读时注意区分"Qwen3.8 的事实"与"Unsloth 的卖点"。</li>
+<li><strong>数据可信度</strong>：量化 PPL/KLD 表、NVFP4 吞吐表、精度恢复表均为实测数据且方法透明（KLD/top-1% agreement 说明量化质量评估方法论成熟）。SWE-bench 等 AI 评测分数是 Qwen 官方口径，参考即可。</li>
+<li><strong>本笔记增量</strong>：①建立 Qwen3.8 全家族部署决策树（Blackwell→NVFP4 / 16GB→UD-Q4 / 450GB RAM→1-bit / 零CLI→Desktop）；②与昨日两篇笔记（垂域微调、推理生态）串联成"训练选 8B → 部署选 27B → 量化按硬件代次"的完整选型链；③提炼"模型越大越耐压"的量化规律及其对 AirCraft 26M 模型的反向含义（用 Q8 不用 Q4）。</li>
+<li><strong>对本机的直接结论</strong>：Jetson（Ampere 前代 + 7.4GB）跑不动 27B 任何档位——Qwen3.8 体验需 asa 或未来新硬件；但文档的采样参数表、量化选型知识、MTP/NVFP4 趋势判断对所有后续部署工作有效。</li>
+<li><strong>一句话总结</strong>：Qwen3.8 本地化的官方答案是——27B 用 UD-Q4_K_XL（17GB）、2.4T 用 1-bit（450GB RAM）、Blackwell 用户上 NVFP4（1.5×速度）、不想碰命令行用 Unsloth Desktop；采样参数照抄双模式表，别漏 presence_penalty=1.5。</li>
+</ol>
+</body>
+</html>
