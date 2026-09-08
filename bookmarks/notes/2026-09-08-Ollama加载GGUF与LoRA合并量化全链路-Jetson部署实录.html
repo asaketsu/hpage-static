@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ollama加载GGUF与LoRA合并量化全链路-Jetson部署实录</title>
+
+<meta property="og:title" content="Ollama加载GGUF与LoRA合并量化全链路-Jetson部署实录" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="ollama-gguf-lora-jetson">Ollama 加载 GGUF 与 LoRA 合并量化全链路解析（Jetson 部署实录）</h1>
+<blockquote>
+<p><strong>来源</strong>：通义千问分享对话「助理千问自我介绍及服务场景」（qianwen.my.cn 分享链，实际内容为 GGUF/LoRA 技术问答）<br />
+<strong>原文链接</strong>：https://qianwen.my.cn/share/chat/b81a8d9b2732491e91a14ecaeee97873<br />
+<strong>本地对照源</strong>：AirCraft 项目 merge.py 实况、Jetson Orin 实测内存<br />
+<strong>记录日期</strong>：2026-09-08<br />
+<strong>⚠️ 标注约定</strong>：〔千问原文〕= 分享对话内容；〔本地对照〕= 本机实测/AirCraft 项目实况；〔增量分析〕= 本笔记补充</p>
+
+<p class="meta-date">生成日期 2026-09-08</p></blockquote>
+<p><strong>标签</strong>：#GGUF #Ollama #LoRA合并 #量化 #llama-cpp #Jetson部署 #AutoDL #边缘推理</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 对话场景与结论〔千问原文〕</h3>
+<p>对话起于一个 Jetson 部署容量评估：<strong>可行但紧张</strong>——Q4_K_M 约 1.5GB + KV cache ~0.3GB ≈ 1.8GB，挤在 2.2GB 可用内存内。用 ollama 加载后关闭即可。</p>
+<p>操作链路：启动 AutoDL → merge LoRA + 量化 GGUF（~1.5GB Q4_K_M）→ 下载 GGUF 到 Jetson → 启动 ollama → 加载模型。</p>
+<p>随后展开两个核心问题的详细解析：①Ollama 为什么只认 GGUF；②merge LoRA + 量化 GGUF 是什么过程。</p>
+<h3 id="12-ollama-gguf">1.2 为什么 Ollama 加载量化模型必须是 GGUF〔千问原文〕</h3>
+<p><strong>核心比喻</strong>：Ollama 本质是一个"播放器"，GGUF 是它唯一能读懂的"磁带"格式。</p>
+<ol>
+<li><strong>底层架构决定</strong>：Ollama 底层推理引擎基于 llama.cpp 构建；llama.cpp 定义了 GGUF（GPT-Generated Unified Format）标准，任何模型转成 GGUF 就能被识别运行。</li>
+<li><strong>专为本地推理设计</strong>：与 HF 训练用的 PyTorch 格式（.safetensors）不同，GGUF 是为 CPU/边缘设备本地推理设计的二进制格式——把权重、架构配置（层数/注意力头数）、分词器（Tokenizer）打包进单一文件。</li>
+<li><strong>极致的加载与运行效率</strong>：支持 mmap 内存映射——操作系统按需把文件内容分页映射进内存，而非一次性全量加载。大幅提升加载速度、降低内存开销。</li>
+<li><strong>灵活的量化支持</strong>：原生支持多种量化方案（Q4_K_M/Q8_0 等），7B 模型可从 14GB 压到约 3.5GB，适配显存受限设备。</li>
+</ol>
+<h3 id="13-merge-lora">1.3 Merge LoRA 的数学原理与过程〔千问原文〕</h3>
+<ul>
+<li>LoRA 训练时不修改原始大模型参数，只训练低秩适配器（Adapter）。</li>
+<li>推理时输出 = 原始权重 W₀ + LoRA 路径（缩放后的 BA）。</li>
+<li><strong>Merge 操作</strong>：计算权重更新量 ΔW = (α/r)·BA，直接加到原始权重矩阵上：<br />
+<strong>W_merged = W₀ + ΔW</strong></li>
+<li><strong>目的</strong>：合并后适配器不再单独加载，模型成为包含新知识的独立完整模型——简化部署、提高推理速度、兼容不支持动态加载适配器的系统。</li>
+</ul>
+<h3 id="14-gguf">1.4 量化 GGUF 的转换与压缩〔千问原文〕</h3>
+<ul>
+<li>合并后模型通常是 FP16/BF16，体积庞大，无法直接在边缘设备运行。</li>
+<li>用 llama.cpp 脚本或 Unsloth 框架将合并模型序列化导出 GGUF：16 位（2 字节）浮点参数压缩为 4 位整数（Q4_K_M）。</li>
+<li>以极小精度损失换巨大体积缩减和推理加速。</li>
+</ul>
+<p><strong>一句话总结</strong>（原文）：merge LoRA + 量化 GGUF = 把"微调知识"永久注入底座，并打包压缩成 Ollama 能在 Jetson 上高效运行的"磁带"。</p>
+<h3 id="15-autodl-llama-factory">1.5 AutoDL 完整命令流程（LLaMA-Factory 版）〔千问原文〕</h3>
+<p><strong>第一步：Merge LoRA</strong></p>
+<pre><code class="language-yaml"># merge_lora.yaml
+model_name_or_path: /路径/Qwen1.5-1.8B-Chat     # 必须是未量化的完整基座
+adapter_name_or_path: /路径/lora/train_2024-xx-xx
+template: qwen                                    # 必须与训练时一致
+finetuning_type: lora
+export_dir: /路径/Qwen1.5-1.8B-Chat-merged
+export_size: 4
+export_device: cuda
+export_legacy_format: false
+</code></pre>
+<pre><code class="language-bash">llamafactory-cli export merge_lora.yaml
+</code></pre>
+<p><strong>第二步：准备工具</strong></p>
+<pre><code class="language-bash">git clone https://github.com/ggml-org/llama.cpp &amp;&amp; cd llama.cpp
+python -m venv llama-venv &amp;&amp; source llama-venv/bin/activate
+pip install -r requirements/requirements-convert_hf_to_gguf.txt
+</code></pre>
+<p><strong>第三步：转换 + 量化</strong></p>
+<pre><code class="language-bash">python convert_hf_to_gguf.py /路径/Qwen1.5-1.8B-Chat-merged \
+  --outfile Qwen1.5-1.8B-Chat-F16.gguf
+./llama-quantize Qwen1.5-1.8B-Chat-F16.gguf Qwen1.5-1.8B-Chat-Q4_K_M.gguf Q4_K_M
+</code></pre>
+<p><strong>第四步：Jetson 部署</strong></p>
+<pre><code class="language-dockerfile"># Modelfile（TEMPLATE 必须与训练 chat_template 一致，否则输出乱码）
+FROM ./Qwen1.5-1.8B-Chat-Q4_K_M.gguf
+TEMPLATE &quot;&quot;&quot;{{ if .System }}system
+{{ .System }}
+{{ end }}{{ if .Prompt }}user
+{{ .Prompt }}
+{{ end }}assistant
+{{ .Response }}&quot;&quot;&quot;
+PARAMETER temperature 0.7
+</code></pre>
+<pre><code class="language-bash">ollama create my-fine-tuned-model -f Modelfile
+ollama run my-fine-tuned-model
+</code></pre>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-q4_k_m-k_m">2.1 Q4_K_M 的 "K_M" 到底是什么</h3>
+<p>Q4_K_M = 4-bit Quantization + K-quant + Medium mix。llama.cpp 的 K-quant 系列不是简单均匀量化：把权重张量按重要性分层——关键层（如 attention 的 wq/wk）保留更高精度（Q6_K），次要层（部分 FFN）用 Q4_K，混合成 Medium 档。相比老的 Q4_0 均匀量化，Q4_K_M 在同体积下困惑度（ppl）显著更低，是社区公认的"质量-体积甜点"（默认推荐档）。档位谱系：Q2_K（极限压缩）→ Q3_K_M → <strong>Q4_K_M（甜点）</strong> → Q5_K_M → Q6_K → Q8_0（近乎无损）→ F16（不量化）。</p>
+<h3 id="22-mmap-gguf">2.2 mmap 内存映射为什么是 GGUF 的杀手锏</h3>
+<p>传统加载：整个模型文件读入内存 → 2GB 模型就要占 2GB RSS。mmap：文件被映射到虚拟地址空间，<strong>操作系统按需分页加载</strong>（_page fault 时才真正读磁盘）——好处有三：①冷启动快（不用等全量读盘）；②多进程共享同一映射（Ollama 并发请求共享权重页）；③未被访问的权重页可被内核回收再分配。这正是千问原文说"大幅提升加载速度并降低内存开销"的机制本质。对 Jetson 这种内存紧张设备（可用 2.2GB），mmap 是"挤得进"的关键技术。</p>
+<h3 id="23-lora-merge">2.3 LoRA 合并的精度陷阱：为什么必须在完整精度基座上 merge</h3>
+<p>千问原文化调"合并必须在完整的、未量化的基础模型上进行"，原因：ΔW = (α/r)·BA 的计算和加法在 FP16/FP32 下进行，若基座已量化（如 Q4），W₀ + ΔW 的加法对象是反量化后的有损值，合并结果会叠加量化误差，且无法再干净地重新量化。<strong>正确顺序铁律：FP 基座 → merge → 再量化</strong>。顺序错了只能从基座重来。AirCraft 项目的 merge.py 正是这么做的（float32 加载 + merge_and_unload + 健康检查 NaN/Inf/max_abs）。</p>
+<h3 id="24-ollama-modelfile">2.4 Ollama 的 Modelfile 三要素</h3>
+<p>Modelfile 是 Ollama 的模型描述文件（类比 Dockerfile）：FROM（GGUF 路径/仓库模型）、TEMPLATE（chat 模板——必须与训练模板一致）、PARAMETER（推理参数）。<strong>TEMPLATE 不一致的后果是输出乱码/复读</strong>——因为模型的 chat 标记（如 <code>&lt;|im_start|&gt;</code>）是训练时固化在 tokenizer 行为里的，推理时换模板等于让模型读一门没学过的语言。这就是千问原文反复强调"必须与训练时的 chat_template 一致"的原因。</p>
+<h3 id="25">2.5 本地部署现状对照〔本地对照〕</h3>
+<p>Jetson Orin 实测（2026-09-08）：</p>
+<pre><code>内存:  total 7.4Gi | used 4.9Gi | available 2.2Gi | swap 11Gi(用3.3Gi)
+ollama: ✅ 已安装(/usr/local/bin/ollama)
+llama.cpp 工具链: 未装(llama-cli/llama-quantize 不在 PATH)
+</code></pre>
+<p>千问对话中"2.2GB 可用"与本次实测<strong>完全一致</strong>（available 2.2Gi）——该对话就是针对本机做的容量评估。Q4_K_M 1.5GB + KV cache 0.3GB ≈ 1.8GB 的方案在当前内存占用下成立，但余量仅 ~0.4GB，若同时跑 LuxTTS/RL 推理会挤爆——需要 swap 兜底或错峰使用。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-lora-jetson">3.1 全链路一张图：从 LoRA 适配器到 Jetson 运行</h3>
+<pre><code>[训练侧 - AutoDL/GPU机]
+LoRA adapter (4.6MB, r=16)
+   +
+FP基座 (103MB FP32 / 3.7GB FP16)
+   │ ① merge: W_merged = W₀ + (α/r)·BA    ← 必须FP精度,顺序铁律
+   ▼
+完整模型 (HF格式, 含微调知识)
+   │ ② convert_hf_to_gguf.py → F16.gguf   ← 序列化+打包权重/config/tokenizer
+   ▼
+F16 GGUF (单文件)
+   │ ③ llama-quantize → Q4_K_M.gguf       ← 16bit→4bit, 体积÷4
+   ▼
+Q4_K_M GGUF (~1.5GB for 2B模型)
+   │ ④ scp → Jetson
+   ▼
+[部署侧 - Jetson]
+Modelfile (FROM + TEMPLATE + PARAMETER)
+   │ ⑤ ollama create / run
+   ▼
+mmap 加载 → 内存占用 ≈ 模型体积 + KV cache
+</code></pre>
+<h3 id="32-merge">3.2 两种 merge 路线对照〔增量分析〕</h3>
+<pre><code>路线                工具                     适用
+────────────────────────────────────────────────────────────
+PEFT 原生路线       merge_and_unload()       AirCraft 在用: 26M小模型,
+                    (AirCraft merge.py)      3行核心代码,自带权重健康检查
+LLaMA-Factory路线   llamafactory-cli export  千问推荐: 生产级,YAML配置,
+                                             支持export_size分卷/export_device加速
+</code></pre>
+<p>AirCraft 的 PEFT 路线已含千问流程的全部要素（FP 加载→merge→健康检查→保存），对 26M 模型足够；若未来升级到 Qwen 级 2B 模型，LLaMA-Factory 的 YAML 化管理更省心。</p>
+<h3 id="33">3.3 方法论提炼</h3>
+<ul>
+<li><strong>格式即生态</strong>：GGUF 之于 llama.cpp = SafeTensors 之于 HF——容器格式决定分发路径，分发路径决定部署生态。</li>
+<li><strong>顺序不可逆</strong>：merge 必须在量化前（FP 精度加法），量化后无法干净 merge。</li>
+<li><strong>模板即语言</strong>：推理 TEMPLATE 与训练 chat_template 不一致 = 让模型读外语，输出必然乱码。</li>
+<li><strong>内存账要算三层</strong>：模型体积 + KV cache（随上下文长度增长）+ 运行时开销——千问对话的 1.5+0.3≈1.8GB 算法是正确范式。</li>
+</ul>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1loragguf">趋势1：LoRA→GGUF 部署链正在工具化收敛，个人微调模型端侧部署成为标准动作</h3>
+<p>依据：LLaMA-Factory 一条 YAML + llama.cpp 两条命令 + Ollama 一个 Modelfile，全链路已无任何需要手写的胶水代码。Unsloth 进一步把 merge+量化+导出合并成单 API。门槛已从"懂原理的工程师"降到"会跑命令的爱好者"。</p>
+<h3 id="2">趋势2：边缘设备内存评估成为端侧部署的第一道关卡</h3>
+<p>依据：千问对话的完整起点就是一个内存容量算术（1.5+0.3 vs 2.2GB）。Jetson/树莓派级设备的 LLM 部署决策 = 量化档位选择（Q2~Q8）× 上下文长度（KV cache）× 并发数的三角权衡。mmap 让"挤得进"成为可能，但推理速度仍受内存带宽硬约束。</p>
+<h3 id="3">趋势3：量化档位将出现"自动选择器"</h3>
+<p>依据：目前 Q4_K_M 是社区默认甜点，但最优档位实际取决于模型规模/任务容差/设备带宽。llama.cpp 的 ppl 回归测试工具已能评估各档位质量损失——"给设备画像→自动推荐档位"的工具化是显然的下一步（类似 NNCF/AutoQ 的普及路径）。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51">5.1 与「推理生态架构差异」笔记的直接续篇关系</h3>
+<p>上一篇（Transformers vs llama.cpp）讲两生态<strong>为什么分野</strong>；本篇讲分野之后<strong>如何跨越</strong>——merge+量化+GGUF 就是从 HF 生态进入 llama.cpp 生态的"移民通道"。两篇构成"理论→实操"上下集。</p>
+<h3 id="52-aircraft">5.2 与 AirCraft 项目的逐条对照〔本地对照〕</h3>
+<table>
+<thead>
+<tr>
+<th>千问流程步骤</th>
+<th>AirCraft 现状</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① merge（FP 基座）</td>
+<td>✅ merge.py 已做（float32 + merge_and_unload + 健康检查）</td>
+<td>无</td>
+</tr>
+<tr>
+<td>② convert GGUF</td>
+<td>❌ 未做</td>
+<td>minimind 需走 llama.cpp 的 convert_hf_to_gguf.py</td>
+</tr>
+<tr>
+<td>③ 量化 Q4_K_M</td>
+<td>❌ 未做</td>
+<td>26M 模型量化收益小，可先 F16/Q8</td>
+</tr>
+<tr>
+<td>④ Modelfile + ollama</td>
+<td>❌ 未做</td>
+<td>本机已装 ollama，只差 Modelfile</td>
+</tr>
+<tr>
+<td>内存评估</td>
+<td>✅ 2.2GB available 实测一致</td>
+<td>26M 模型毫无压力</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：AirCraft 距离"ollama 跑通"只差 ②③④ 三步命令，且因模型只有 26M，量化步骤甚至可跳过（F16 GGUF 仅 ~100MB）。这正是 MiniMind 笔记"路线 A"的最后一段。</p>
+<h3 id="53-minimind">5.3 与 MiniMind 全管线笔记的衔接</h3>
+<p>MiniMind 笔记案例 07 的六条导出路径中，GGUF 路径的操作细节当时只有一行命令；本篇补全了完整四步流程（merge→convert→quantize→Modelfile），两篇合起来 = 领域微调模型端侧部署的完整手册。</p>
+<h3 id="54-sensenova-pool-duck-pi_5">5.4 与 sensenova-pool / DUCK-Pi_5 的资源管理同构</h3>
+<p>千问对话开头的"可行但紧张"内存评估，与 DUCK-Pi_5 训练前的 GPU 显存评估、sensenova-pool 的 key 池容量管理是同一思维：<strong>部署前先算资源账，算完账再动工</strong>。三层账本：模型账（体积/精度）× 上下文账（KV cache）× 并发账（吞吐）。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Ollama 本质上是一个'播放器'，而 GGUF 就是它唯一能读懂的'磁带'格式。」〔千问原文〕— 最易懂的 Ollama×GGUF 绑定关系比喻。</p>
+<p>「merge LoRA + 量化 GGUF，实际上就是把'微调知识'永久注入底座，并打包压缩成 Ollama 能够直接在 Jetson 上高效运行的'磁带'。」〔千问原文〕— 全流程的一句话压缩。</p>
+<p>「TEMPLATE 必须与训练时的 chat_template 一致，否则输出会乱码。」〔千问原文〕— 最容易被忽视的部署坑，模板即语言。</p>
+<p>「合并操作必须在完整的、未量化的基础模型上进行。」〔千问原文〕— merge 顺序铁律，反了就只能从基座重来。</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<pre><code>启示                              行动
+────────────────────────────────────────────────────────────────
+AirCraft 距 ollama 只差三步       ①convert_hf_to_gguf.py 转 minimind
+(且26M模型可跳过量化)             -am-merged → F16.gguf (~100MB)
+                                  ②写 Modelfile(TEMPLATE 用
+                                  MiniMind的### Instruction格式)
+                                  ③ollama create + run 验证
+内存账算法要沉淀                  Q4_K_M体积+KV cache(0.3GB量级)
+                                  +运行时开销 = 三层账本,
+                                  部署任何模型前先算
+merge 顺序铁律进 error-case       已入 AirCraft README;若未来
+                                  在已量化基座上merge翻车,
+                                  记得这条铁律
+TEMPLATE 一致性校验               ollama 部署前 diff 训练模板
+                                  与 Modelfile TEMPLATE
+</code></pre>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>立即可做（AirCraft 路线 A 收尾）</strong>：<code>git clone llama.cpp</code> → <code>pip install -r requirements-convert_hf_to_gguf.txt</code> → <code>convert_hf_to_gguf.py ~/uclaw/project/AirCraft/AM_LoRA_offline/minimind-am-merged --outfile minimind-am-F16.gguf</code> → 写 Modelfile → <code>ollama create aircraft-am -f Modelfile</code>。全程本机可跑，无需 AutoDL（26M 模型 merge 早已完成）。</li>
+<li><strong>量化档位实验</strong>：26M 模型可做 Q8_0 vs F16 vs Q4_K_M 三档 ppl 对比（llama-perplexity 工具），观察超小模型对量化的敏感度——大模型 Q4 几乎无损，26M 可能 Q4 就明显掉点，这个实验本身有价值。</li>
+<li><strong>LLaMA-Factory</strong>：若 AirCraft 升级路线 B（minimind-3 64M）或路线 C（Qwen 级），直接用 LLaMA-Factory 的 merge_lora.yaml 流程，比手写 PEFT 脚本省心。</li>
+<li><strong>延伸阅读</strong>：llama.cpp 量化文档（K-quant 各档位 ppl 对照表）；PEFT merge_and_unload 源码（理解 ΔW 加法细节）；Ollama Modelfile 官方文档（TEMPLATE/PARAMETER 全参数）。</li>
+</ul>
+<hr />
+<h2 id="_9">九、指南分析</h2>
+<p><strong>阅读与使用指南：</strong></p>
+<ol>
+<li><strong>文体定性</strong>：千问 AI 对话实录，标题（"助理千问自我介绍"）与内容（GGUF/LoRA 技术问答）不符——分享页标题取自对话开场白而非主体内容，检索时注意。技术内容本身质量高：数学公式（ΔW=(α/r)BA）正确、流程命令可执行、"播放器/磁带"比喻精准。</li>
+<li><strong>可信度判读</strong>：四个技术要点（GGUF 绑定原因/mmap 机制/merge 数学/量化流程）全部经得起推敲，与本机实况（ollama 已装、2.2GB available、AirCraft merge.py 已做）交叉一致。LLaMA-Factory YAML 和 llama.cpp 命令与两方官方文档一致。</li>
+<li><strong>本笔记增量</strong>：①用 AirCraft merge.py 逐条对照千问流程，量化了"距离 ollama 只差三步"的现状；②补 K-quant 档位谱系（Q4_K_M 的 K/M 含义）、mmap 三好处、merge 精度陷阱的机理；③本机内存实测与对话说法互相印证（2.2GB 完全一致）；④给出 26M 模型可跳过量化的判断（F16 GGUF 仅 100MB）。</li>
+<li><strong>风险提示</strong>：千问对话中的模型是 Qwen1.5-1.8B（示例），AirCraft 是 MiniMind 26M——流程同构但参数要换；MiniMind 的 TEMPLATE 是 <code>### Instruction/### Response</code> 格式而非 Qwen 的 im_start 格式，Modelfile 必须相应改写，直接抄千问的 TEMPLATE 会乱码。</li>
+<li><strong>最佳使用方式</strong>：把本笔记当作 AirCraft 路线 A 的施工图——第五节对照表就是差距清单，第八节第一条就是可直接复制的命令序列。</li>
+</ol>
+</body>
+</html>
