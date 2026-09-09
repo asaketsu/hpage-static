@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM四层缓存机制-KV-Prefix-Prompt-Semantic精读</title>
+
+<meta property="og:title" content="LLM四层缓存机制-KV-Prefix-Prompt-Semantic精读" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="llm-kv-prefix-prompt-semanticavi-chawla-hermes">LLM 四层缓存机制：KV / Prefix / Prompt / Semantic——Avi Chawla 长文精读 + 一手源核实 + Hermes 体系对照</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @_avichawla（Avi Chawla，Daily Dose of Data Science 联合创始人，ex-Mastercard AI Engineer）2026-08-28 长文（X Article）<br />
+<strong>原文链接</strong>：https://x.com/_avichawla/status/2093265776266637739 （文章本体 https://x.com/i/article/2093210840468189184）<br />
+<strong>数据</strong>：浏览 1,274,496 / 收藏 2,377 / 赞 1,285 / 转发 176（病毒级传播的技术深度文）<br />
+<strong>一手源核实</strong>：CacheBlend = arXiv:2405.16444（Yao et al., EuroSys 2025），TTFT 2.2-3.3× / 吞吐 2.8-5× / F1 损失 &lt;0.02 全部确认<br />
+<strong>笔记日期</strong>：2026-09-09<br />
+<strong>关联笔记</strong>：《AI工程化终极路线图》《AI后思考时代的投入决策》</p>
+
+<p class="meta-date">生成日期 2026-09-09</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p>这篇 21.5KB 的长文做了一件业界急需的事：<strong>把四个都被叫做"caching"的东西一次性讲清</strong>——它们存在 LLM 栈的不同位置、存储不同对象、失效条件不同、风险等级完全不同。</p>
+<p><strong>一句话总结四层</strong>：<br />
+| 层 | 存什么 | 匹配方式 | 错了会怎样 |<br />
+|---|--------|---------|-----------|<br />
+| KV cache | 单请求的注意力张量 | ——（请求内机制） | 不适用 |<br />
+| Prefix cache | KV 张量（跨请求，服务端） | token ID 哈希链，<strong>精确前缀</strong> | miss = 花钱+延迟 |<br />
+| Prompt cache | 同上（厂商计费版） | 同上 | 同上 |<br />
+| Semantic cache | <strong>完成的响应字符串</strong> | 嵌入余弦相似度，<strong>模糊</strong> | <strong>200 状态码 + 错误答案</strong> |</p>
+<p><strong>最有价值的洞察</strong>：前三层是 correctness-neutral（只影响成本不影响正确性），第四层 semantic cache 是唯一会<strong>自信地返回错误答案</strong>的层——hit rate 对它根本不是正确指标。这个"四层风险不对称"框架比任何单层教程都值钱。</p>
+<hr />
+<h2 id="_2">一、原文四层机制忠实还原</h2>
+<h3 id="1-kv-cache">1. KV Cache：请求内的注意力状态</h3>
+<ul>
+<li><strong>prefill 阶段</strong>：模型为每个 prompt token 在每层计算 key/value 向量并存储；<strong>decode 阶段</strong>在这些向量上做注意力，每个新 token 只追加一对 KV——避免每步重算整个序列</li>
+<li><strong>为什么只缓存 K/V 不缓存 Q</strong>：因果掩码下，query 向量只在处理该 token 那一步用一次；而 K/V 会被其后每个 token 读取</li>
+<li>效果：decode 从 matrix-matrix 乘法（全序列）降为 matrix-vector 乘法（单 token）</li>
+<li><strong>代价</strong>：每步都要从 HBM 加载整个缓存 → <strong>decode 从 compute-bound 变为 memory-bandwidth-bound</strong>，GPU 大部分时间在等内存</li>
+<li><strong>大小决定并发容量</strong>：70B 模型 BF16 下，单个 128K 上下文的 KV cache ≈ 40GB——相当于整个 4-bit 模型</li>
+<li><strong>压缩手段</strong>：GQA（组内共享 KV 头）/ MLA（DeepSeek 系，压成潜在向量）/ 缓存量化（容量翻倍，短上下文反而更慢）</li>
+<li><strong>关键限制：缓存随请求释放</strong>——20 轮对话的第 20 轮要按全价重新 prefill 前 19 轮。自己持有 <code>past_key_values</code> 传回可跨轮复用，但<strong>只有当第 2 轮的 token 序列与第 1 轮逐 bit 前缀一致时才有效</strong></li>
+</ul>
+<h3 id="2-prefix-caching">2. Prefix Caching：跨请求的服务端复用</h3>
+<ul>
+<li>机制：请求结束后引擎<strong>不释放</strong> KV 块，留在共享池供后续请求查找</li>
+<li><strong>vLLM 的哈希链</strong>：默认 16 token 一块，每块 key = hash(父块哈希 + 块内 token IDs)——块 5 的 key 编码了块 1-5 的全部信息，天然实现前缀查找</li>
+<li>调度器按序匹配，<strong>第一个 miss 即停</strong>（后续块的 key 依赖前面的块，跳过没有意义）；命中块引用计数 +1 防驱逐</li>
+<li><strong>salt 参数</strong>：多租户隔离——per-tenant salt 改变首块哈希，同文本不同租户落不同块（牺牲内存和命中率换隔离）</li>
+<li><strong>四个坑</strong>：</li>
+<li>只省 prefill，decode 时间不变——把整体加速归功于缓存会夸大</li>
+<li>哈希本身有成本，全独特 prompt 流量下实测<strong>吞吐反而回退</strong></li>
+<li>驱逐降低命中率：缓存和运行批次共享同一 GPU 内存池，长共享前缀占用最多块、损失最疼</li>
+<li><strong>RAG 是重灾区</strong>：检索块每次不同且顺序变化，链式哈希下两个检索相同文档但顺序不同的请求<strong>零共享</strong></li>
+<li><strong>CacheBlend 解法</strong>（LMCache 开源实现，已核实 arXiv:2405.16444）：不逐块拼接缓存，而是任意位置复用 + 只重算小部分 token——选"预计算值与全注意力结果偏差最大"的 token 子集重算，恢复跨块注意力并修复位置编码。TTFT 提升 2-3×，重算成本与慢速存储取块流水化</li>
+</ul>
+<h3 id="3-prompt-caching">3. Prompt Caching：厂商计费版</h3>
+<ul>
+<li>对象仍是 KV 张量（不是你的文本），仍要求完全渲染上下文的精确前缀匹配</li>
+<li><strong>渲染上下文包含你从未写过的厂商侧系统内容</strong>——这就是最小长度和失效规则从外面看似任意原因</li>
+<li>Anthropic 代码示例核心：<code>cache_control</code> 标记<strong>位置决定覆盖范围</strong>——写在哪个块，就为从请求开始到该块（含）写一条缓存条目。用户消息（每次变化）必须放在标记<strong>之下</strong></li>
+<li>usage 计数器诊断法：首次调用 <code>cache_creation_input_tokens</code> 非零、读取为零；第二次相反（指令按 0.1× 计费）；<strong>两者都零 = 前缀低于最小可缓存长度，请求根本没走缓存，且不报错</strong></li>
+<li>经济账：Anthropic 写 1.25× / 读 0.1×；<strong>回溯上限 20 块</strong>——两次调用间插入超过 20 块对话，上次写入超出范围，命中停止</li>
+</ul>
+<h3 id="4-semantic-caching">4. Semantic Caching：模糊匹配的响应缓存</h3>
+<ul>
+<li>机制：嵌入入站 prompt → 最近邻搜索 → 相似度超阈值直接返回存储的响应，<strong>跳过模型</strong>——所以省输出 token 也省输入</li>
+<li>代价：<strong>每个请求都要付嵌入往返成本，包括所有 miss</strong></li>
+<li><strong>生产化五个决策点</strong>（原文代码 demo 逐条映射）：向量归一化（否则跨长度不可比）/ lookup 返回嵌入避免重复计算 / 规模化要换 ANN 索引（引入召回率参数）/ <strong>store 只在 miss 路径调用，无任何机制验证存储答案的正确性</strong></li>
+<li><strong>致命实验</strong>（原文最精彩处）：三对 prompt——真改写（该共享答案）/ 差一个否定词（该给相反答案）/ 差一个数值（该给不同答案）——<strong>三者相似度分数挤在一起，改写与否定词差距 &lt;0.01</strong>。这个余量在真实流量下根本守不住</li>
+<li>阈值困境：调高→命中率塌缩但嵌入费照付；调低→命中率与"自信错误率"一起涨。已发表默认值 0.75-0.97 不等——<strong>它是流量属性，不是可抄的常数</strong>。有些失败（嵌入表示本身的缺陷）任何阈值都拦不住</li>
+<li><strong>第五层彩蛋</strong>：精确匹配响应缓存（byte-identical 才返回）——零误报风险，先量重复率再上嵌入</li>
+</ul>
+<hr />
+<h2 id="takeaways">二、生产 Takeaways（原文总结 + 补充）</h2>
+<p>原文给出的五条生产失效点，每条都是真金白银：</p>
+<ol>
+<li><strong>prompt 开头的任何变量（时间戳/请求 ID/用户名）都会使其后所有块失效</strong>。稳定内容在前、变量在后、边界打标</li>
+<li><strong>工具 schema 通常排在系统提示之前</strong>——重排一次 = 整缓存作废</li>
+<li><strong>渲染进 prompt 的设置项</strong>：Anthropic 上切换 web search/citations/thinking config/tool_choice 都会重写 prompt 文本；<strong>A/B 测试两种 reasoning effort = 缓存裂成两半</strong></li>
+<li><strong>总结历史 = 重写前缀 = 下次调用按冷 token 全价</strong>；原地截断工具输出保持前缀 byte-identical 缓存才活着</li>
+<li><strong>缓存条目绑定模型</strong>——路由到便宜模型仍要按冷费率 prefill 全部累积历史</li>
+<li>（补充诊断法）<strong>定位复用断点要比对 token IDs 而非日志文本</strong>——日志里看起来相同的两个 prompt 可能差一个 BOS token/尾换行/重序列化的工具 schema。实测案例：第一轮没写 system message，chat template 填了模型默认值，两个 prompt 在 index 3 就分叉，零复用</li>
+</ol>
+<p><strong>四层统一视角</strong>（原文收尾）：前三层是同一个思想在三个范围的递进——KV cache 保一个请求内，prefix caching 保请求结束后，prompt caching 是厂商在自己硬件上跑 prefix caching 并对复用部分单独计价。Semantic cache 完全不同：存响应文本按嵌入相似度索引，命中跳过模型省双份 token——但命中可能错，且以正常 200 状态码返回。</p>
+<hr />
+<h2 id="_3">三、一手源核实与扩展</h2>
+<table>
+<thead>
+<tr>
+<th>原文关键论断</th>
+<th>核实结果</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CacheBlend TTFT 提升 2-3×</td>
+<td>✅ 精确匹配（论文 2.2-3.3×）</td>
+<td>arXiv:2405.16444</td>
+</tr>
+<tr>
+<td>"重算偏差最大的小部分 token"</td>
+<td>✅ 机制确认：第一层全重算+第二层部分重算得准确 QKV，比较 V 矩阵偏差选 top-k token（HKVD 集合）</td>
+<td>同上 + CacheClip (arXiv:2510.10129) 引述</td>
+</tr>
+<tr>
+<td>"恢复跨块注意力+修复位置编码"</td>
+<td>✅ 确认：质量损失 F1/Rouge-L &lt;0.02，多数场景质量超 full reuse 2×+</td>
+<td>论文实验节</td>
+</tr>
+<tr>
+<td>Anthropic 写 1.25× / 读 0.1×</td>
+<td>与公开价格表一致（未逐字核对，标注为作者转述）</td>
+<td>Anthropic docs</td>
+</tr>
+<tr>
+<td>20 块回溯上限</td>
+<td>作者转述，未独立核实（标注）</td>
+<td>Anthropic docs</td>
+</tr>
+<tr>
+<td>语义缓存相似度悖论</td>
+<td>机制自洽（嵌入对否定不敏感是已知特性），无争议</td>
+<td>——</td>
+</tr>
+</tbody>
+</table>
+<p><strong>领域演进补充</strong>（核实中发现的增量，原文未提）：CacheBlend 之后该方向已形成研究线——CacheClip（arXiv:2510.10129）用小辅助模型近似 token 重要性降低选择成本；Adaptive KV Cache Reuse（arXiv:2605.24022）用频率引导的重要性建模替代 HKVD；Fusion RAG Cache 综述（arXiv:2601.12904）把这条线统称为 chunk-level KVCache reuse。<strong>这个方向 2026 年仍在活跃产出</strong>。</p>
+<hr />
+<h2 id="hermes">四、Hermes 体系对照与落地</h2>
+<table>
+<thead>
+<tr>
+<th>四层</th>
+<th>Hermes 体系现状</th>
+<th>对照结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV cache</td>
+<td>理论层已掌握（llm-inference-optimization skill 有 PagedAttention 章节）</td>
+<td>达标</td>
+</tr>
+<tr>
+<td>Prefix caching</td>
+<td>Jetson 本地 ollama 未显式配置 prefix cache；AutoDL vLLM 部署时未调 block_size/salt</td>
+<td><strong>可优化</strong>：vLLM 部署 checklist 应加 prefix cache 配置项</td>
+</tr>
+<tr>
+<td>Prompt caching</td>
+<td><strong>正在用</strong>（config prompt_cache_ttl 已配，默认 300s/可选 3600s）</td>
+<td>✅ 但原文提醒了两个盲点：①压缩历史=前缀作废，compression 阈值 0.9 与 cache TTL 的交互要留意；②模型路由切换会裂缓存——fallback chain 跳模型时缓存全部作废，成本模型要算进去</td>
+</tr>
+<tr>
+<td>Semantic cache</td>
+<td>无</td>
+<td>暂不需要——我们的流量是笔记生产（每次 prompt 天然唯一），不是 FAQ 型重复流量</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三条可落地动作</strong>：<br />
+1. <strong>系统提示的日期字段检查</strong>：原文第 1 条失效点直指我们的架构——Hermes 系统提示含日期（byte-stable 设计刻意为之，见 system_prompt.py 注释），但任何会话级变量若被渲染进前缀就会裂缓存。值得做一次 token IDs 级前缀审计<br />
+2. <strong>fallback 链的成本模型修正</strong>：模型切换 = 缓存全作废 + 冷费率全量 prefill。现有 model-fallback-chain skill 的决策逻辑应把"缓存作废成本"计入切换阈值<br />
+3. <strong>工具 schema 稳定性审计</strong>：工具集按平台/会话启用（tools enable 后 /reset 生效）正是为了缓存稳定——与原文第 2 条完全同构，说明 Hermes 的设计正确，但值得把这条原理写进 skill 注释</p>
+<hr />
+<h2 id="_4">五、局限性</h2>
+<ol>
+<li><strong>代码 demo 未实测</strong>：原文声称全部代码可在单机 CPU + 360M 模型复现（transformers v5 API），本笔记未跑</li>
+<li><strong>Anthropic 价格与 20 块上限</strong>为作者转述，未逐字核对官方价格页</li>
+<li>vLLM 哈希链细节基于原文引用的源码走读（block_hashes/schedule 方法），未直接读 vLLM 源码核对</li>
+<li>第四章 Hermes 对照基于架构推断，未做实际 token IDs 审计</li>
+</ol>
+<h2 id="_5">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一、二</td>
+<td><strong>原文忠实还原</strong>（X Article 全文 21.5KB，fxtwitter API 提取）</td>
+</tr>
+<tr>
+<td>三</td>
+<td><strong>一手源核实</strong>（arXiv 论文交叉验证 + 领域演进补充）</td>
+</tr>
+<tr>
+<td>四</td>
+<td><strong>Hermes 体系对照</strong>（本笔记扩展）</td>
+</tr>
+<tr>
+<td>五</td>
+<td>局限性</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
