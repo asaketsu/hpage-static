@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>量化LLM激活转向剂量响应与失败不对称</title>
+
+<meta property="og:title" content="量化LLM激活转向剂量响应与失败不对称" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="llm">量化LLM激活转向剂量响应与失败不对称研究精读</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.LG)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.06473<br />
+<strong>作者</strong>：Saurav Bhandari, Benjamin Wade<br />
+<strong>提交日期</strong>：2026-09-06<br />
+<strong>记录日期</strong>：2026-09-09<br />
+<strong>代码</strong>：https://github.com/sauravb777/Steering-Under-Compression.git</p>
+
+<p class="meta-date">生成日期 2026-09-09</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #量化部署 #激活转向 #LLM推理优化 #边缘AI</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题：两条部署技术线的交汇空白</h3>
+<p>推理时激活转向（activation steering）与训练后量化（post-training quantization）是当前 LLM 部署的两大趋势，但两者几乎从未被系统性放在一起研究：</p>
+<ul>
+<li><strong>激活转向</strong>：不改模型参数，在生成过程中向残差流（residual stream）注入精心构造的转向向量，控制情感、拒绝、真实性、推理等行为（ActAdd、RepE、CAA 等方法）</li>
+<li><strong>训练后量化</strong>：LLM.int8()、GPTQ、AWQ、NF4/QLoRA 等方法大幅降低显存与推理成本，如今大量开源模型以量化格式部署</li>
+<li><strong>空白</strong>：转向研究默认全精度推理，量化研究只看下游 benchmark 分数。量化后的模型内部表征是否还保留可靠转向所需的「行为方向」，是纯经验问题——精度保护不等于方向保护</li>
+</ul>
+<p>论文的核心实验设计：4 个开源 7-9B 模型（Qwen2.5-7B、Llama-3.1-8B、Mistral-7B-v0.3、Gemma-2-9B）× 2 个行为目标（判定情感、免裁判推理长度）× 3 种部署精度（FP16 / INT8 / NF4），共 105 个结果单元（45 情感 + 60 长度）。</p>
+<h3 id="12-iso-effect">1.2 iso-effect 框架：对齐行为效果再比能力代价</h3>
+<p>方法论核心创新是不在相同转向系数下比较（那会混淆校准差异与能力差异），而是用 <strong>iso-effect 协议</strong>：</p>
+<ul>
+<li>先对每个（模型，精度）单元扫描转向系数 α，画剂量-响应曲线</li>
+<li>用同 resample 的 FP16 兄弟运行固定 iso-effect 水平（效应阶梯 E*）</li>
+<li>各精度在自己的效应曲线上定位交叉点，在<strong>相同行为效果</strong>处测能力（GSM8K CoT，N=200，贪心解码）</li>
+<li>关键细节：转向向量从<strong>部署模型自身</strong>的前向传播提取（同一对比对，各精度各自算 CAA 向量再各自应用），量化作用于完整转向管线——这正是实践者真实面对的场景</li>
+<li>每 cell 用 5 次数据级 resample，REML τ² + 修正 Knapp-Hartung 做跨模型池化</li>
+<li>预注册三标签判定规则：等价 / 有害 / 无法判定，等价边界 δ=3%</li>
+</ul>
+<h3 id="13">1.3 发现一：情感转向在量化下完好存活</h3>
+<p>修正 GSM8K 解析器伪影（v2.3.1 统一重打分）后：</p>
+<ul>
+<li>INT8 池化对比 <strong>-0.010（90% CI [-0.026, +0.007]）</strong>，区间完全落在 ±0.03 等价边界内，描述性等价（Equivalent）</li>
+<li>NF4 池化 -0.017（[-0.067, +0.033]），无法判定（Inconclusive）</li>
+<li>每模型对比全部 Inconclusive——单模型统计功效不足，正是预注册设计预期的池化场景</li>
+<li>结论：7-9B 规模 + bitsandbytes 权重量化下，<strong>情感转向在 FP16 里花多少能力代价，量化后既不膨胀也不缩减</strong></li>
+<li>剂量校准稳定：α<em>/α</em>_FP16 范围 0.74-1.12×，无一致方向</li>
+</ul>
+<h3 id="14-">1.4 发现二：推理长度的不对称剂量-响应与终止悬崖（核心部署发现）</h3>
+<p>长度目标的剂量-响应曲线严重不对称，<strong>失败结构而非斜率</strong>是从业者最需要知道的：</p>
+<ul>
+<li><strong>加长臂</strong>（正 α）：分级响应——中位 token 数平滑上升（如 Qwen α=0→+40 时 203→258 tokens），随后退化为「撞上限失控」（cap-runaway，幸存生成膨胀逼近 2048 上限），再进入完全终止失败</li>
+<li><strong>缩短臂</strong>（负 α）：没有有意义的分级区——最好情况只能缩短基线的 <strong>12-30%</strong>（Llama ~30% @ α=-6、Mistral ~27% @ -4、Qwen ~15% @ -25、Gemma ~12% @ -160），之后输出<strong>非连续崩塌</strong>为立即终止+空输出。本质是阶跃函数</li>
+<li><strong>干净操作窗口差异近两个数量级</strong>：Qwen ±40 内近零失败（|α|≥60 才出失败）、Gemma ±200，而 Llama 仅约 [-6,+8]、Mistral 仅 [-4,+4]——只有一个网格步的余量</li>
+<li>量化不改变任何结构：FP16/INT8/NF4 的曲线形状、崩塌 α、两种失败模式全部保持，没有方案能救回悬崖，也没有明显加速悬崖</li>
+</ul>
+<h3 id="15-iso-effect">1.5 发现三：iso-effect 阶梯在地板有界目标上失效（方法学贡献）</h3>
+<ul>
+<li>E<em> 阶梯把参考水平锚定在「离基线最远的效应值」。长度效应有硬地板（全部生成失败时幸存者中位数记 0），网格到达崩塌区时</em><em>地板战胜行为峰值</em>*</li>
+<li>4 模型中 3 个（Qwen/Llama/Gemma）阶梯极值解析到崩塌地板，第 4 个（Mistral）解析到失控膨胀峰；全部 60 cell 的 f=0.5 交叉都落在崩塌悬崖上</li>
+<li>污染是系统性的：交叉括号 α 失败率越高，测得的 IECC 越假——括号干净（&lt;5% 失败）时均值 IECC +0.080，污染（≥30%）时 <strong>+0.529</strong>。「在失败悬崖上读出的 iso-effect 估计量测的是悬崖，不是转向」</li>
+<li><strong>修复——删失构造（censored construction）</strong>：只保留失败率 ≤10% 的 α，锚定在最大幸存效应上，把污染区单独报告。FP16 阶梯接受率从 0-2/5 恢复到 3-5/5，交叉离散度崩缩（Qwen α* 标准差 18→8；5% 阈值下 2.1）</li>
+<li>删失后画面清晰分化：Qwen（IECC +0.006）和 Gemma（+0.021）近乎免费，Mistral 便宜（+0.023），<strong>Llama 从不稳定且最贵（FP16 +0.021 但 INT8 +0.231，sd 0.327）</strong>——Llama 的长度转向是内在昂贵且不稳定的</li>
+<li>缩短臂无能力数据可用：12-30% 的平台在任何删失约定下都够不到 30% 的 iso-effect 档位——这是现象本身的后果，不是设计缺陷</li>
+</ul>
+<h3 id="16">1.6 发现四：量化移动了基线本身（最尖锐的部署警告）</h3>
+<ul>
+<li>3/4 模型的未转向（α=0）GSM8K 精度跨精度变化 &lt;4 点：Qwen 0.911/0.906/0.877（FP16/INT8/NF4）、Llama 0.863/0.874/0.842、Gemma 0.817/0.824/0.767</li>
+<li><strong>Mistral 是例外且不微妙：0.545 → 0.480 → 0.365，NF4 在任何转向之前先吃掉 18 个点</strong>。该位移在独立收集的情感矩阵中复现（0.544→0.498→0.351），证明是量化模型的属性而非特定实验条件</li>
+<li>两个含义：实践上，此模型的压缩方案作为能力风险<strong>压倒转向干预本身</strong>；分析上，4.1 节唯一名义显著的对比（Mistral-NF4 iso-effect 代价更低）部分是地板效应——已经丢了 18 点的模型没多少剩余能力可供转向剥夺</li>
+<li>方法论结论：量化模型的 iso-effect 分析必须随每个对比报告<strong>基线向量</strong>；匹配效应处的等价可以与实质性绝对退化共存</li>
+</ul>
+<h3 id="17">1.7 发现五：转向方向本身在量化下存活（机制解释）</h3>
+<ul>
+<li>各精度独立提取的转向向量与 FP16 兄弟几乎共线：<strong>INT8 余弦相似度 0.989-0.998，NF4 0.945-0.990</strong>，排序 cos(FP16,INT8) &gt; cos(FP16,NF4) &gt; cos(INT8,NF4) 在全部 21 组比较中成立</li>
+<li>向量单位归一化存储，这是纯方向测量；剂量（α）承载全部幅度信息</li>
+<li>两个梯度：位宽（INT8 提取本质透明，NF4 可测噪声更大）和模型（Llama 方向对量化最敏感——NF4 余弦 0.945-0.962 全场最低，Gemma 最不敏感 0.988-0.990；与 4.3 节 E* 代价与稳定性排序相同）</li>
+<li><strong>转向内在脆弱的模型，正是转向方向被量化扰动最大的模型</strong></li>
+</ul>
+<h3 id="18">1.8 实验规范亮点：预注册与偏差台账</h3>
+<ul>
+<li>2026-06-24 预注册冻结，10 条带日期的偏差记录（deviation ledger）全部披露：目标调整（refusal 被弃）、K=16→K=12 池重定义、单遍 MMLU 被诊断为「剂量盲」后换生成式 GSM8K、解析器 v2.3→v2.3.1 修正（1,644 个翻转项 100% 复核）</li>
+<li>全部 105 个结果文件、转向向量、冻结预注册、分析代码开源</li>
+<li>转向层位预先固定：Qwen 14/28、Llama 16/32、Mistral 16/32、Gemma 21/42；残差流范数差异巨大（Qwen 267.1、Gemma 403.3 vs Llama 9.4、Mistral 10.4），解释了所需系数网格的数量级差异</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-activation-steering-caa">2.1 激活转向（Activation Steering / CAA）</h3>
+<p>Contrastive Activation Addition：对同一位置的对比提示对（如正/负情感句）做前向传播，取激活差的均值作为转向向量，生成时在指定层最后一个 token 位置注入。相比微调：零参数修改、可即插即拔、可实时调系数。本文用的正是 CAA 风格的均值差方向。相关方法谱系：ActAdd（对比提示激活加法）、RepE（表征工程，群体级读写）、ITI（真理性注意力头干预）、任务算术（权重空间几何视角）。</p>
+<h3 id="22-massive-activations-super-weights">2.2 massive activations 与 super weights</h3>
+<p>Sun et al. 发现的 massive activations：极少数激活通道的值比其余隐藏状态大几个数量级，充当重要计算锚点；Yu et al. 的 super weights：扰动它们会严重破坏模型质量，保护它们可改善低比特量化。Dettmers 的 LLM.int8() 同样识别稀疏大幅离群维度特殊处理。这些构成了「转向与量化都作用于少数高杠杆内部结构」的机制性动机——但精度导向的保护是否覆盖行为控制所需方向，正是本文要回答的经验问题。</p>
+<h3 id="23-weight-only-quantization">2.3 权重专用量化（weight-only quantization）</h3>
+<p>本文刻意限定 W8A16/W4A16（bitsandbytes，激活保持 FP16/BF16），使观测变化可归因于权重量化本身。这排除了 GPTQ/AWQ/SmoothQuant/QuaRot 等离群感知算法和 W8A8/W4A4 激活量化——它们可能表现不同，是明确的局限性。NF4 是 QLoRA 提出的 4 比特数据类型（正态分布最优），Jetson/GGUF 边缘部署生态中最常用的正是这一档位。</p>
+<h3 id="24-iso-effect-e">2.4 iso-effect / E* 阶梯与删失</h3>
+<p>行为控制的剂量学问题：若关心「行为改到 X 程度时代价多少」，需在效应曲线上按行为效应（而非系数）对齐再测能力。E* 阶梯 = 以观察到的最大效应的百分比（f=0.3/0.4/0.5…）定义效应水平。地板有界目标（效应有 0 下界且失败会把效应拉向 0）会让「最大效应」被失败地板冒名顶顶替——与生存分析中的删失（censoring）问题同构：失败数据不是「效应为零」的测量，而是「测量不存在」。删失构造借鉴的正是这一统计学传统。</p>
+<h3 id="25-gsm8k">2.5 GSM8K 解析器伪影</h3>
+<p>论文最初的主能力探针结果被答案解析器 bug 污染：旧解析器读不出部分正确答案格式，导致一个 Llama run 阶梯接受失败。审计修正（v2.3.1）对全部存储 trace 离线重打分，1,644 项翻转。教训：<strong>生成式评测的解析层是第一故障点</strong>，任何「模型变差了」的结论前先排除解析器读不出答案的可能。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 核心结论框架</h3>
+<ul>
+<li><strong>方向存活，代价结构不总存活</strong>：转向向量方向对量化高度鲁棒（余弦 0.945-0.998），但 NF4 可以单独把某模型的基线能力打掉 18 点——压缩对能力基线的移动可以压倒转向干预</li>
+<li><strong>情感 vs 长度的分裂</strong>：情感是「良性」目标——分级响应、量化下代价不变；长度是「病态」目标——不对称剂量响应 + 终止悬崖 + 无优雅退化区</li>
+<li><strong>监控对象是失败率不是均值</strong>：接近崩塌边界时，转向强度调参是非连续的，表面平滑的效应曲线不等于安全</li>
+<li><strong>等价 ≠ 无退化</strong>：匹配效应处的等价判断必须与未转向基线联合解读</li>
+</ul>
+<h3 id="32">3.2 部署决策树（从论文数据提炼）</h3>
+<ul>
+<li>想在量化模型上做情感/风格类转向：INT8 直接上（描述性等价）；NF4 大概率无恙但保留 Inconclusive 余地</li>
+<li>想做推理长度控制：先问模型是谁——Llama-3.1-8B/Mistral-7B 的干净窗口只有个位数系数宽度（约一个网格步），生产上几乎不可用；Qwen2.5-7B/Gemma-2-9B 有 ±40/±200 的宽窗口</li>
+<li>想缩短推理（负向）：放弃激活转向这条路——12-30% 平台后直接崩塌，阶跃函数无渐进调优空间</li>
+<li>任何转向部署：把 per-α 失败率作为一等公民监控信号</li>
+</ul>
+<h3 id="33">3.3 关键数字速查</h3>
+<ul>
+<li>INT8 情感池化对比：-0.010 [-0.026, +0.007]（等价边界 ±0.03 内，描述性 Equivalent）</li>
+<li>NF4 情感池化对比：-0.017 [-0.067, +0.033]（Inconclusive）</li>
+<li>缩短平台：Llama 30% / Mistral 27% / Qwen 15% / Gemma 12%（后非连续崩塌）</li>
+<li>干净窗口：Qwen ±40 / Gemma ±200 / Llama [-6,+8] / Mistral [-4,+4]</li>
+<li>向量共线：INT8 0.989-0.998 / NF4 0.945-0.990</li>
+<li>Mistral-NF4 基线位移：GSM8K 0.545→0.365（-18 点，情感矩阵复现 0.544→0.351）</li>
+<li>删失修复：干净括号 IECC +0.080 vs 污染括号 +0.529；Qwen α* sd 18→8（10% 规则）</li>
+<li>模型基线跨精度稳定性：Qwen/Llama/Gemma &lt;4 点，Mistral 18 点</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：转向 × 量化的交叉审计将成为部署合规标配</h3>
+<p>依据：本文证明「方向存活但基线可崩」的分离现象真实存在（Mistral-NF4 案例），且给出了 iso-effect + 基线向量的标准化审计协议。随着转向被用于安全控制（拒绝/真实性），量化后转向失效=安全控制失效，此类审计需求只会增长。</p>
+<h3 id="2">趋势2：推理长度控制将从「转向系数」转向「失败率预算」范式</h3>
+<p>依据：论文最锐利的部署发现是悬崖结构——均值曲线平滑掩盖失败率非连续跳变。任何生产级长度控制方案（省 token、降延迟）都会被迫先测失败率剖面再定操作点，类似通信系统的 BER 曲线设计。</p>
+<h3 id="3-agent">趋势3：删失构造会外溢到所有 Agent 评测</h3>
+<p>依据：Agent 任务的「全部子任务失败→总分 0」结构与长度目标的幸存者中位数地板同构。floor-bounded 目标上的等效应对齐若不做删失，测到的是崩塌不是能力——这个坑适用于所有多步评测框架（SWE-bench、agent benchmark）。</p>
+<h3 id="44-bit">趋势4：4-bit 部署的能力暗坑将推动「量化前后基线差」成为部署清单必检项</h3>
+<p>依据：Mistral-NF4 的 18 点位移在 benchmark 对比中容易被忽略（对照模型都没事），但独立复现两次说明这是系统性的。边缘部署生态（GGUF/NF4 为主流档位）需要一个「量化体检」标准流程。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-qwen38-27b">5.1 与 Qwen3.8-27B 本地部署四轮量化实测笔记的关联</h3>
+<p>2026-08-23 的四轮量化实测正是本文结论的实践版：不同模型×量化档位的基线漂移差异巨大，必须逐模型实测而非假设「4-bit 都掉 2-3 个点」。本文 Mistral-NF4 的 18 点崩塌为该笔记的「三笔账方法论」补了理论注脚——精度导向的量化保护不承诺保护所有下游能力。Qwen 系在本研究中恰好是基线最稳（&lt;4 点）+ 转向窗口最宽（±40）的模型，与我们选 Qwen 做本地部署主力的决策相互印证。</p>
+<h3 id="52-kvcache-memdecay">5.2 与 KVCache 优化十二技 / MemDecay 笔记的关联</h3>
+<p>MemDecay（区域感知 KV 驱逐）与本文同属「干预内部状态后能力代价几何」的问题族：MemDecay 干预 KV cache、本文干预残差流，共同结论是<strong>干预的安全边界必须按失败率而非均值响应划定</strong>。MemDecay 的 system 半衰期 10x 于 scratchpad 的区域分级，与本文「不同行为目标的可转向性天差地别（情感良性/长度病态）」互为镜像——内部状态干预的效果强烈依赖目标在表征空间的结构。</p>
+<h3 id="53-hermes-agent">5.3 与 Hermes Agent 量化部署实践的关联</h3>
+<p>jbot 的 Jetson Orin 部署链（Ollama+GGUF 量化）直接面对本文的问题域。本文给出可操作判据：(1) INT8 档位下激活转向类行为控制（如安全拒答增强）可以放心叠加；(2) 任何「量化后变笨」的报告先查基线位移再查转向；(3) 若未来对本地模型做输出长度/verbosity 控制，转向路线在 Llama/Mistral 系上不可行，应走 prompt/模板路线。</p>
+<h3 id="54-karakv">5.4 与 Kara（KV 滑动窗口压缩）笔记的关联</h3>
+<p>Kara 笔记的核心是 KV cache 压缩的「保留什么」；本文问的是权重量化后「哪些方向被保留」。两者共同指向表征保真度的分层审计：宏观 benchmark 分数（本文证明可在基线崩 18 点时仍显得「还行」）→ 行为方向余弦（本文的 0.945-0.998）→ 任务级失败率剖面。边缘部署的量化验收应至少做到第二层。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「At 7-9B with bitsandbytes weight-only schemes, steering costs what it costs in FP16, and quantization neither inflates nor rescues that cost at matched effect.」— 全文最干净的一句话结论</p>
+<p>「An iso-effect estimate read off a failure cliff measures the cliff, not the steering.」— 方法学贡献的精髓，适用于一切 floor-bounded 评测</p>
+<p>「The deployment risk is not the mean effect but the cliff.」— 部署哲学：监控失败率，别信均值曲线</p>
+<p>「Equivalence at matched effect can coexist with substantial absolute degradation.」— 对所有等价性声明的警告</p>
+</blockquote>
+<h2 id="_7">七、拓展应用推荐</h2>
+<ul>
+<li><strong>给本地部署加「量化体检」脚本</strong>：对每个 model×quant 档位跑固定 N=200 小样本 GSM8K 式探针，记录未干预基线向量。发现 Mistral 式 &gt;10 点位移的档位直接拉黑。可挂进 nexa-local-inference 或部署前检查清单（估算：半天，收益：避免静默能力崩塌）</li>
+<li><strong>借鉴 iso-effect + 删失构造做 Agent 评测门禁</strong>：Hermes 的 dogfood/skill-stress-test 若引入「匹配行为效果再比能力」+「失败率 ≤10% 删失」，可修复 floor-bounded 指标（如成功率地板）的系统性高估。对应 P1</li>
+<li><strong>转向向量余弦审计作为量化验收第二层</strong>：部署量化模型前后各提取一次行为方向向量（如拒绝方向），余弦 &lt;0.95 报警。工具链论文已开源（105 结果文件+代码），可直接复用其提取管线。对应 P2</li>
+<li><strong>学术写作范本</strong>：10 条带日期的偏差台账 + 预注册三标签规则 + 解析器审计全披露，是中小团队做可信实证研究的低成本模板，值得写研究报告时套用。对应 P3</li>
+</ul>
+<h2 id="_8">八、指南分析</h2>
+<p>本文对「如何在量化模型上安全使用激活转向」给出了一套完整操作指南，按步骤拆解：</p>
+<ul>
+<li><strong>第一步 定目标类型</strong>：先判断行为目标是良性（分级响应，如情感）还是病态（地板有界+悬崖，如长度/成功率）。判据：扫描 α 后看是否存在优雅退化区</li>
+<li><strong>第二步 选精度档</strong>：INT8 已证等价可直上；NF4 必须先测基线位移（步骤三）</li>
+<li><strong>第三步 测基线向量</strong>：未转向 α=0 的能力探针跨精度对比，位移 &gt;5 点即触发警报，&gt;10 点弃用该档位</li>
+<li><strong>第四步 扫失败率剖面</strong>：per-α 失败率全扫描，圈出干净窗口（失败率 ≤10%），只在窗口内定操作点</li>
+<li><strong>第五步 删失对齐比代价</strong>：等效应比较时剔除高失败 α，锚定最大幸存效应</li>
+<li><strong>持续监控</strong>：上线后失败率为一等公民信号，均值响应仅供参考</li>
+</ul>
+<p>指南的适用边界：结论限定 7-9B 权重专用 bitsandbytes 量化（INT8/NF4）、CAA 单方法单层位、英文评测；GPTQ/AWQ/W8A8、激活量化、更大模型、FP16 向量跨用到量化模型（本文只测了各精度自提向量）均未覆盖，引用时不可外推。</p>
+<h2 id="_9">九、总结</h2>
+<p>论文用预注册的严格实证回答了一个部署空白问题：<strong>激活转向的方向在权重量化下高度存活（余弦 0.945-0.998），情感类转向在 INT8 下代价不变（描述性等价），但长度类控制存在不对称剂量响应与终止悬崖，且 NF4 可单独把个别模型的基线打掉 18 点</strong>。方法学贡献（iso-effect 阶梯在地板有界目标上的失效 + 删失修复）外溢价值大，适用于一切 floor-bounded 的 Agent 评测。对边缘量化部署的直接启示：INT8 放心转向、NF4 先测基线、长度控制别走转向、永远监控失败率。</p>
+</body>
+</html>
