@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>应力拓扑优化3D敏感性分析-Deng2021复现笔记</title>
+
+<meta property="og:title" content="应力拓扑优化3D敏感性分析-Deng2021复现笔记" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<!-- KaTeX for LaTeX math rendering -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body, {
+    delimiters: [
+      {left: '$$', right: '$$', display: true},
+      {left: '\\(', right: '\\)', display: false},
+      {left: '\\[', right: '\\]', display: true}
+    ],
+    throwOnError: false
+  });"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="3d-deng-2021-python">基于应力的拓扑优化 3D 敏感性分析：Deng 2021 论文 + Python 复现笔记</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号「Matlab仿真开发者」解读 + Deng/Vulimiri/To 2021 原论文<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/G0f7bM53cnUkvtjnm2UNHg<br />
+<strong>官方代码</strong>：https://github.com/PittAMRL/StressTopOpt<br />
+<strong>论文 DOI</strong>：10.1007/s11081-021-09675-3 | arXiv:2104.01210<br />
+<strong>配套项目</strong>：<code>~/uclaw/project/stress-topopt-py/</code>（Python 复现，验证通过）<br />
+<strong>笔记日期</strong>：2026-09-09<br />
+<strong>主题标签</strong>：academic</p>
+
+<p class="meta-date">生成日期 2026-09-09</p></blockquote>
+<h2 id="_1">一、问题背景：应力拓扑优化的维度灾难</h2>
+<p>结构拓扑优化的经典目标是最小化柔度（compliance），但工程实践中真正的设计约束往往是<strong>应力</strong>——材料不能超过许用应力。应力拓扑优化面临一个根本性困难：</p>
+<table>
+<thead>
+<tr>
+<th>约束类型</th>
+<th>约束数量</th>
+<th>处理难度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>柔度（全局标量）</td>
+<td>1</td>
+<td>低——一次伴随分析得全局梯度</td>
+</tr>
+<tr>
+<td>体积（全局标量）</td>
+<td>1</td>
+<td>低</td>
+</tr>
+<tr>
+<td><strong>局部应力（每单元一个）</strong></td>
+<td><strong>nele（可达百万）</strong></td>
+<td><strong>高——"维度灾难"</strong></td>
+</tr>
+</tbody>
+</table>
+<p>百万级约束的优化问题在数学规划上不可行，且每个应力约束都需要独立的伴随求解——计算量爆炸。</p>
+<h2 id="p-norm">二、核心解法：p-norm 聚合 + 伴随法</h2>
+<h3 id="21-p-norm">2.1 p-norm 聚合函数</h3>
+<p>$$\sigma_{pN} = \left(\sum_{e=1}^{N} \sigma_{vM,e}^{p}\right)^{1/p}$$</p>
+<p>将全结构 N 个单元的 von-Mises 应力聚合为一个全局标量。p→∞ 时 p-norm → max(σ)，即最大应力。</p>
+<table>
+<thead>
+<tr>
+<th>p 值</th>
+<th>行为</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>p 小（2-4）</td>
+<td>偏平均，欠估计最大应力</td>
+<td>约束松，可能局部超应力</td>
+</tr>
+<tr>
+<td>p 大（12+）</td>
+<td>偏最大，接近真实 max</td>
+<td>敏感性高度非线性，收敛难</td>
+</tr>
+<tr>
+<td><strong>论文取 p=8~12</strong></td>
+<td>平衡点</td>
+<td>全局近似 + 可控非线性</td>
+</tr>
+</tbody>
+</table>
+<h3 id="22">2.2 伴随法敏感性（论文核心贡献）</h3>
+<p>目标函数对设计变量的梯度链：</p>
+<p>$$\frac{\partial \sigma_{pN}}{\partial x_e} = \underbrace{\frac{\partial \sigma_{pN}}{\partial \sigma_{vM,e}} \cdot \frac{\partial \sigma_{vM,e}}{\partial x_e}\Big|_{direct}}_{T_1} + \underbrace{\lambda^T \frac{\partial K}{\partial x_e} U}_{T_2}$$</p>
+<ul>
+<li><strong>T1（直接项）</strong>：应力对单元密度的显式依赖（SIMP 应力松弛 x^q 因子）</li>
+<li><strong>T2（伴随项）</strong>：密度变化 → 刚度变化 → 位移场变化 → 应力变化的间接效应，通过伴随场 λ 一次性捕获</li>
+</ul>
+<p><strong>效率对比</strong>：有限差分需 nele+1 次 FE 求解；伴随法只需 <strong>2 次</strong>（正问题 U + 伴随问题 λ）——这就是"效率提升 2 个数量级以上"的来源。</p>
+<h3 id="23">2.3 应力奇异性及松弛</h3>
+<p>理论上 σ ∝ x（应力在低密度区不消失，导致"奇异性"——优化器无法删掉高应力低密度单元）。解法是<strong>应力松弛</strong>：</p>
+<p>$$\sigma_e = x_e^q \cdot (DBU_e), \quad q=0.5$$</p>
+<p>q∈(0,1) 使低密度单元应力趋零，允许优化器干净地删除材料。这是 Holmberg 2004 / Le 2010 等工作的标准做法。</p>
+<h2 id="8">三、代码架构（官方 8 文件）</h2>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>职责</th>
+<th>行数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>run_stress_min.m</code></td>
+<td>主循环：MMA 迭代 + 收敛打印</td>
+<td>66</td>
+</tr>
+<tr>
+<td><code>stress_minimize.m</code></td>
+<td>单次分析：滤波 + FE + p-norm + 敏感性 + 约束梯度</td>
+<td>18</td>
+</tr>
+<tr>
+<td><code>Stress_3D_Sensitivity_Comp.m</code></td>
+<td><strong>核心</strong>：FE 组装 + vM 应力 + 伴随法 T1/T2</td>
+<td>174（含 146 行主体）</td>
+</tr>
+<tr>
+<td><code>prepare_filter.m</code></td>
+<td>密度滤波稀疏矩阵</td>
+<td>25</td>
+</tr>
+<tr>
+<td><code>asymp.m</code> / <code>gcmmasub.m</code> / <code>subsolv.m</code> / <code>kktcheck.m</code></td>
+<td>GCMMMA 优化器族（Svanberg）</td>
+<td>~50</td>
+</tr>
+</tbody>
+</table>
+<h3 id="python">数值实现要点（Python 移植的三个坑）</h3>
+<ol>
+<li><strong>列主序 reshape</strong>：MATLAB <code>reshape</code> 按列填充，NumPy 按行。<code>nodegrd = reshape(1:N, nely+1, nelx+1)</code> 的节点编号矩阵在 Python 中必须先显式转置。踩坑症状：刚度矩阵奇异（<code>Matrix is exactly singular</code>）——节点编号错乱使某些 DOF 从未被任何单元覆盖。</li>
+<li><strong>edofMat 24 元素偏移</strong>：单元自由度向量 <code>edofVec + [0 1 2 3nely+3 ... -3 -2 -1 ...]</code> 描述六面体 8 节点的 24 DOF 布局，偏移向量错一位整个连接性就崩。</li>
+<li><strong>1-based → 0-based</strong>：MATLAB 节点/DOF 从 1 计数，载荷/固定 DOF 公式 <code>3*nid - 1</code>（y 向）需整体平移。</li>
+</ol>
+<h2 id="python_1">四、Python 复现验证结果</h2>
+<h3 id="41-vs">4.1 梯度正确性（伴随法 vs 中心差分）</h3>
+<table>
+<thead>
+<tr>
+<th>测试单元</th>
+<th>伴随法</th>
+<th>中心差分</th>
+<th>相对误差</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>elem 0（固定端高应力）</td>
+<td>-2.610132e+03</td>
+<td>-2.609882e+03</td>
+<td><strong>0.010%</strong></td>
+</tr>
+<tr>
+<td>elem 20（中部）</td>
+<td>-1.053352e+00</td>
+<td>-1.053269e+00</td>
+<td><strong>0.008%</strong></td>
+</tr>
+<tr>
+<td>elem 47（自由端近零）</td>
+<td>+1.284595e-05</td>
+<td>+1.283757e-05</td>
+<td>0.007%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论</strong>：伴随法实现正确。0.01% 级误差来自差分本身，不是伴随法缺陷。</p>
+<h3 id="42">4.2 端到端优化（悬臂梁）</h3>
+<p>60×20×1 网格、体积分数 0.4、50 迭代：</p>
+<ul>
+<li>p-norm：1383.2 → <strong>163.5</strong>（降幅 88.2%）</li>
+<li>形态：上缘受拉层 + 下缘受压层 + 固定端固支区——标准悬臂梁传力路径</li>
+<li>与柔度优化的差异：柔度优化趋向"整体刚度最大"的粗壮形态；应力优化趋向"最大应力最小化"的均匀应力分布形态（上下缘分层明显）</li>
+</ul>
+<h3 id="43-jetson-orin-nano">4.3 计算性能（Jetson Orin Nano）</h3>
+<table>
+<thead>
+<tr>
+<th>网格</th>
+<th>nele</th>
+<th>单次分析耗时</th>
+<th>50 迭代总耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>12×4×1</td>
+<td>48</td>
+<td>&lt;0.1s</td>
+<td>&lt;2s</td>
+</tr>
+<tr>
+<td>40×12×1</td>
+<td>480</td>
+<td>~0.3s</td>
+<td>~18s</td>
+</tr>
+<tr>
+<td>60×20×1</td>
+<td>1200</td>
+<td>~0.7s</td>
+<td>~37s</td>
+</tr>
+</tbody>
+</table>
+<p>论文 MATLAB 版跑 200×60×1（12000 单元）；Jetson 上该规模需 ~6 分钟/迭代，未验证（算力保护策略——代码管线就绪，实际大网格留待其他机器）。</p>
+<h2 id="_2">五、方法论价值（超出论文本身的观察）</h2>
+<ol>
+<li><strong>"146 行代码"的教学哲学</strong>：与 top88（Andreassen 2011 的 88 行 2D 柔度优化）、top3d（Liu &amp; Tovar 2014 的 3D 版）一脉相承——用最少行数展示完整算法骨架，剥离一切工程包装。这种"最小可运行核心"风格是科学代码传播的最优策略。</li>
+<li><strong>伴随法的普适性</strong>：T1+T2 分解适用于任何"标量目标 + 隐式场依赖"的敏感性问题——气动优化（伴随 CFD）、形状优化、甚至神经网络反向传播在数学上同构（λ 相当于 adjoint/backprop 中的中间梯度）。</li>
+<li><strong>p-norm 的工程边界</strong>：p-norm 是 max 的下界（欠估计），工程上需配合修正因子（如 σ_max/σ_pN 比例缩放）才能真正用于约束设计。论文用 p=10 的经验值回避了这个问题，生产级实现需要 continuation 策略（p 从小到大逐步硬化）。</li>
+</ol>
+<h2 id="_3">六、与航空结构设计的关联（领域映射）</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>航空结构对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>应力约束拓扑优化</td>
+<td>加强框/肋/接头耳片的减重设计</td>
+</tr>
+<tr>
+<td>p-norm 全局约束</td>
+<td>适航要求的应力包线（多种工况聚合）</td>
+</tr>
+<tr>
+<td>SIMP 中间密度</td>
+<td>增材制造点阵结构（密度连续可造——AM 时代 SIMP 中间密度反而"可打印"）</td>
+</tr>
+<tr>
+<td>q 松弛</td>
+<td>低密度区材料删除准则（对应工艺最小壁厚/最小成员尺寸约束的反面）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>与前一篇笔记的连接</strong>（2026-09-09 AEVEX×Divergent 增材制造）：DAPS 的"AI 生成式设计 + LPBF"闭环中，生成式设计的数学内核正是应力拓扑优化——AM 让 SIMP 中间密度从"数值缺陷"变成"工艺特征"（点阵填充），这是增材制造与拓扑优化相互成就的数学基础。</p>
+<h2 id="_4">七、局限性</h2>
+<ol>
+<li><strong>p-norm 欠估计</strong>：全局聚合必然低于真实 max stress，约束满足有裕度损失</li>
+<li><strong>单载荷工况</strong>：多工况需扩展为加权 p-norm 或分层聚合</li>
+<li><strong>无制造约束</strong>：无最小成员尺寸/拔模/对称约束（工程化需另加）</li>
+<li><strong>Python 复现的优化器简化</strong>：教学级对偶上升 MMA，收敛质量低于原版 GCMMMA（最终 p-norm 可能高百分之几）</li>
+</ol>
+<h2 id="_5">出处标注</h2>
+<ul>
+<li><strong>原文内容</strong>：第一至三章来自公众号解读 + 官方代码逐行阅读（公式与代码结构忠实还原）</li>
+<li><strong>增补范围</strong>：第四章（Python 复现实测数据）、第五章（方法论观察）、第六章（航空领域映射）为本笔记扩展</li>
+<li><strong>验证数据</strong>：全部来自 <code>~/uclaw/project/stress-topopt-py/</code> 真机运行（Jetson Orin Nano, miniforge3 Python 3.12）</li>
+</ul>
+</body>
+</html>
