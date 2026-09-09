@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM-as-Judge架构-把评审塞进Agent运行时的八模式</title>
+
+<meta property="og:title" content="LLM-as-Judge架构-把评审塞进Agent运行时的八模式" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="llm-as-judge-agent-josh-rosen-evals">LLM-as-Judge 架构：把评审塞进 Agent 运行时——Josh Rosen 八模式精读 + 判官可靠性核实 + Evals 短板补强路线图</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @JoshARosen（Josh Rosen，ThruWire 创始人，研究 agent 基础设施/类型化 artifact；TopCoat 联合创始人（被 Snyk 收购），ex-Oracle）2026-09-09<br />
+<strong>原文链接</strong>：https://x.com/JoshARosen/status/2097324183428444499 （文章 "LLM-as-Judge Architectures: Putting Evals Into Your Agent Runtime"）<br />
+<strong>数据</strong>：浏览 61,776 / <strong>收藏 1,282</strong> / 赞 626（1,308 粉丝小号，收藏 2×赞 + 收藏/粉丝比≈100%——教科书级深度信号）<br />
+<strong>笔记日期</strong>：2026-09-09<br />
+<strong>关联笔记</strong>：《AI工程化终极路线图》（06 Evals 短板）、《AI后思考时代的投入决策》《patent-disclosure-skill精读》</p>
+
+<p class="meta-date">生成日期 2026-09-09</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p>这篇 11.5KB 长文系统化了 <strong>LLM 判官从离线评估工具进入 Agent 运行时</strong>的八种架构模式——判官不再"评估应用"，而是<strong>"参与控制流"</strong>：决定继续/重试/换模型/补证据/升级人工。</p>
+<p><strong>为什么此文重要</strong>：它恰好命中我们体系反复确认的唯一系统性短板——<strong>06 Evals 域</strong>。《AI工程化终极路线图》自检结论："缺 golden set 回归 + token 级 trace"；姜老师文补刀"固化流程必须有业务方验收"；本文给出的是<strong>把判官嵌入运行时的完整模式语言</strong>——三份独立输入收敛到同一命题，这篇是操作性最强的一份。</p>
+<p><strong>八模式一览</strong>（第一章详述）：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>模式</th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>另一个模型当判官</td>
+<td>生成≠评审，窄属性评审可用便宜专用模型（Prometheus/Galileo）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>拆解判断</td>
+<td>一个大模糊决策 → 多个小判断 + 结构化组合（G-Eval/DeepEval DAG）</td>
+</tr>
+<tr>
+<td>3</td>
+<td>比较代替打分</td>
+<td>模型分不清 7 分 8 分，但分得清哪个更好（成对评审+位置偏差随机化）</td>
+</tr>
+<tr>
+<td>4</td>
+<td>评审工作过程而非答案</td>
+<td>20 分钟的 agent 工作，最终结果正常≠过程没走样——在关键决策点散布判官</td>
+</tr>
+<tr>
+<td>5</td>
+<td>多判官</td>
+<td>判官也是 LLM 也会错；<strong>分歧本身是信号</strong>（同意→置信，分歧→重试/升级人工）</td>
+</tr>
+<tr>
+<td>6</td>
+<td>评审判官</td>
+<td>判官有偏差（位置/文风/自恋）；LLMBar/JudgeBench/RewardBench + Anthropic Bloom 模式</td>
+</tr>
+<tr>
+<td>7</td>
+<td>判官外围包确定性</td>
+<td>能确定性检查的绝不用 LLM——LLM 判断证据充分性，确定性代码决定工作流推进</td>
+</tr>
+<tr>
+<td>8</td>
+<td>判官进循环</td>
+<td>判官进关键路径=判官错误变成应用故障——机会与风险同源</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最有价值的洞察</strong>：模式 5 的"分歧检测"——即使不在乎三个判官 2:1 投票结果，<strong>"他们意见不一致"这件事本身就是重试/升级的触发器</strong>。以及模式 7 的边界划分："应用层最大的机会，就是画好确定性/非确定性的边界"。</p>
+<hr />
+<h2 id="_2">一、八模式忠实还原</h2>
+<h3 id="1start-with-another-model">模式 1：Start With Another Model（经典双模型）</h3>
+<ul>
+<li>工作模型生成，判官模型评审（输入=原始请求+结果+rubric+参考材料+期望答案，输出=分数/标签/解释）。LangSmith/Phoenix/DeepEval 已产品化</li>
+<li><strong>选模关键洞察</strong>：判官不必全面更聪明——<strong>判断窄属性比做原创工作容易</strong>。写不出好研究报告的模型，完全可以判断"每个论断是否被证据支持"</li>
+<li>专用判官生态：Prometheus（开源判官模型）、Galileo（生产级廉价评估模型）。运行时高频调用下经济性重要</li>
+</ul>
+<h3 id="2break-the-judgment-apart">模式 2：Break the Judgment Apart（拆解判断）</h3>
+<ul>
+<li>"输出好不好"是一个巨型模糊决策：答案可能对但不完整、写得好但无证据支持、结果对但过程违规</li>
+<li>升级路径：G-Eval（先生成评估步骤再打分）→ DeepEval（<strong>DAG 式评估</strong>：单个 LLM 判断嵌入更大的确定性决策图）</li>
+<li>原则：<strong>与其让一个模型做大模糊决策，不如拆成精心设计的小判断+结构化组合</strong></li>
+</ul>
+<h3 id="3compare-instead-of-score">模式 3：Compare Instead of Score（成对比较）</h3>
+<ul>
+<li>模型不擅长区分 7 分和 8 分，<strong>擅长判断两个东西哪个更好</strong></li>
+<li>LangSmith/DeepEval 原生支持，含位置偏差随机化</li>
+<li>运行时化想象：agent 生成多个计划→判官选优；两个 agent 独立分析→第三者比较；<strong>提议动作与替代方案比较后再提交</strong></li>
+</ul>
+<h3 id="4judge-the-work-instead-of-the-answer">模式 4：Judge the Work Instead of the Answer（评审过程）</h3>
+<ul>
+<li>chatbot 评最终回复即可；<strong>跑 20 分钟的 agent，最终结果正常说明不了什么</strong>——可能检索错文档、调错工具、绕了一大圈最后靠运气</li>
+<li>Phoenix 已有检索相关性/工具选择/工具调用/工具响应/整体性能评估器；LangSmith 可评单次 run 到完整 trace</li>
+<li>通用化：<strong>在重要决策实际发生的地方评审</strong>——研究 agent 在综合前评审信源选择；编码 agent 在实现前评审方案；操作 agent 在行动前评审证据支持。"散布判官形成关键检查点"</li>
+</ul>
+<h3 id="5use-more-than-one-judge">模式 5：Use More Than One Judge（多判官）</h3>
+<ul>
+<li>判官也是 LLM，会犯工作模型犯的一切错。研究界已探索：判官面板/评估者人格/投票/聚合/辩论（MAJ-EVAL：多维度评估 agent 审议）</li>
+<li><strong>生产采用少，但机制在应用层有不同价值</strong>：不在乎 2:1 投票结果，<strong>极在乎他们不一致</strong></li>
+<li>独立判断的一致→增信；分歧→用更强模型重试/收集更多证据/升级人工。<strong>可据此构建重试与升级机制</strong></li>
+</ul>
+<h3 id="6judge-the-judge">模式 6：Judge the Judge（评审判官）</h3>
+<ul>
+<li>判官已知偏差：位置偏差（先出现的答案）、文风偏好、质量接近时失灵、<strong>偏爱像自己写的输出</strong></li>
+<li>评测界基准：LLMBar（困难条件下指令遵循区分）、JudgeBench（客观偏好难题对）、RewardBench（奖励模型/生成式判官）</li>
+<li><strong>Anthropic Bloom 模式</strong>：先用人工标注的 transcript 从候选判官池选判官，评估管线还含跨结果扫描的 meta-judge</li>
+<li>应用层简化版：<strong>定期把判官与人类对比</strong>——判官控制重要决策时，收集决策样本让人独立评，测分歧点，分歧不可接受就改 rubric/模型/上下文/决策边界</li>
+</ul>
+<h3 id="7put-determinism-around-the-judge">模式 7：Put Determinism Around the Judge（确定性包夹）</h3>
+<ul>
+<li>诱惑是把一切决策都变成 LLM 判断、agent 套 agent——<strong>这放弃了应用层最大优势：外围系统是我们可控的</strong></li>
+<li>能确定性检查的（测试/schema/数据库检查/策略引擎）绝不用 LLM</li>
+<li>OpenAI grader 架构范例：模型判官与确定性判官（字符串检查/Python 代码）并存，可组合成更大评估</li>
+<li>应用内同构：<strong>LLM 判断证据是否充分/建议是否有据/任务是否完成；确定性代码决定这些判断+事实的组合何时放行工作流</strong></li>
+<li>原文金句："确定性/非确定性混合逻辑是应用层最大的机会。边界画得越好，在模型之上创造的价值越大。"</li>
+</ul>
+<h3 id="8put-the-judge-in-the-loop">模式 8：Put the Judge in the Loop（判官进循环）</h3>
+<ul>
+<li>前七模式的自然终点：判官进 agent 循环、进关键路径。判断指导控制流——继续/重试/路由到其他模型/收集信息/升级人工</li>
+<li><strong>代价直白</strong>：判官错误变成应用故障。离线 eval 里判官有噪声只是烦；<strong>在每个重要动作前的判官会造成死循环、阻塞好工作、放行坏工作、给每次执行加延迟</strong></li>
+<li>结论："在这些架构上投入、让模式成熟之前，我们还不会舒服地把 LLM 判官放上生产关键路径。但这里有巨大的创新机会。"</li>
+</ul>
+<hr />
+<h2 id="_3">二、判官可靠性核实（关键引用交叉验证）</h2>
+<table>
+<thead>
+<tr>
+<th>原文引用</th>
+<th>核实</th>
+<th>补充</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prometheus 专用判官模型</td>
+<td>✅（Kaist 2024，开放数据集训练，与 GPT-4 判官持平）</td>
+<td>系列已有 2/3 代</td>
+</tr>
+<tr>
+<td>G-Eval（先生成评估步骤）</td>
+<td>✅（Microsoft 2023，arXiv:2303.16634，NLG 评估框架）</td>
+<td></td>
+</tr>
+<tr>
+<td>DeepEval DAG 评估</td>
+<td>✅（开源 LLM 评估框架，支持条件组合）</td>
+<td></td>
+</tr>
+<tr>
+<td>MAJ-EVAL 多 agent 审议</td>
+<td>✅（arXiv:2410.10131，AAAI 2025）</td>
+<td></td>
+</tr>
+<tr>
+<td>LLMBar / JudgeBench / RewardBench</td>
+<td>✅ 三个基准均真实存在（LLMBar: NeurIPS 2024；JudgeBench: 2025；RewardBench: AllenAI 2024）</td>
+<td></td>
+</tr>
+<tr>
+<td>Anthropic Bloom</td>
+<td>✅（Anthropic 的判官评估管线，含 meta-judge 跨结果扫描）</td>
+<td></td>
+</tr>
+<tr>
+<td>判官偏差（位置/文风/自恋偏好）</td>
+<td>✅ 领域共识（"self-preference bias" 已有多篇论文证实）</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>引用链全部真实且新（2023-2025 为主），是一篇做过功课的工程综述。</p>
+<hr />
+<h2 id="evals">三、Evals 短板补强：从本文到可执行路线（本笔记核心增量）</h2>
+<p>《AI工程化终极路线图》把 06 Evals 列为体系唯一系统性短板。本文的模式语言正好可以映射成<strong>分级补强路线</strong>——按投入成本递增排序：</p>
+<h3 id="l0">L0（已有，确认存量）</h3>
+<ul>
+<li>content-judge skill = 模式 1 的离线版</li>
+<li>watchdog/evolver = 模式 7 的进程级确定性包夹（pgrep/mtime/head 三验）</li>
+<li>skill-stress-test = 模式 6 的变体（用 subagent 验证 skill 有效性）</li>
+</ul>
+<h3 id="l1">L1（低成本高回报，立即可做）</h3>
+<ul>
+<li><strong>模式 2 拆解</strong>：把"笔记质量好不好"拆成独立小判断——①URL 抓取完整性（确定性：字节数）②出处标注存在性（确定性：grep）③线上 200 验证（确定性：curl）④内容深度（LLM 判断）。<strong>前三项全确定性=模式 7，只有第四项需要判官</strong></li>
+<li><strong>笔记链 golden set</strong>：10 篇已上线笔记的断言集（字节数区间/章节数/线上状态），cron 周检——这是 roadmap 笔记 P0-1 的具体化</li>
+</ul>
+<h3 id="l2">L2（中成本，季度级）</h3>
+<ul>
+<li><strong>模式 5 分歧检测</strong>：重要决策（如 skill 去留、cron 异常处置）双判官跑，分歧→升级人工而非自动处置</li>
+<li><strong>模式 6 判官体检</strong>：content-judge 的 rubric 定期与用户抽查对比（用户本来就是最高判官）</li>
+</ul>
+<h3 id="l3">L3（高成本，条件触发才做）</h3>
+<ul>
+<li><strong>模式 8 判官进循环</strong>：仅在出现"无人值守+高价值+不可逆操作"三要素的场景（如自动交易执行、生产部署）考虑——当前体系无此场景，<strong>明确不做</strong>，防止过度工程</li>
+</ul>
+<h3 id="7">判断原则（从模式 7 提炼）</h3>
+<blockquote>
+<p>每个想加判官的地方先问：这事能不能用确定性检查？能→确定性；只有"人类本来要做的主观判断"才值得 LLM 判官——<strong>判官处理判断题，代码处理验证题</strong>。</p>
+</blockquote>
+<hr />
+<h2 id="_4">四、金句提取</h2>
+<blockquote>
+<p>"The judge is no longer just evaluating the application. It's participating in its control flow."（判官不再只是评估应用，它在参与控制流。）</p>
+<p>"Even if you don't care whether three judges vote 2–1 that an answer is good, you may care enormously that they disagree."（即使不在乎 2:1 投票结果，你极其在乎他们不一致。）</p>
+<p>"Judging a narrow property can be much easier than doing the original work."（判断窄属性比做原创工作容易。）</p>
+<p>"The better we get at drawing that boundary, the more value we are adding above and beyond the models themselves."（确定性边界画得越好，模型之上创造的价值越大。）</p>
+</blockquote>
+<hr />
+<h2 id="_5">五、局限性</h2>
+<ol>
+<li><strong>模式多为设计建议而非生产实证</strong>：作者自己承认多判官"没有太多生产采用的证据"、模式 8"需要成熟才敢上关键路径"——这是前瞻综述，不是成熟度报告</li>
+<li><strong>无量化数据</strong>：全文没有延迟/成本/误判率数字（判官进运行时的延迟代价只说"add latency"没给量级）</li>
+<li><strong>作者立场</strong>：ThruWire 做 agent 基础设施（类型化 artifact），"判官进运行时"叙事与其产品方向一致——但内容引用扎实，营销浓度低</li>
+<li>L1-L3 路线为本笔记结合自有体系的设计，非原文内容；具体阈值需实测定标</li>
+<li>判官模型的中文场景偏差（本文以英文生态为主）未覆盖——中文判官的位置偏差/文风偏好可能不同，L0 落地时需自测</li>
+</ol>
+<h2 id="_6">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一、四</td>
+<td><strong>原文忠实还原</strong>（X Article 11.5KB，fxtwitter API 提取）</td>
+</tr>
+<tr>
+<td>二</td>
+<td><strong>引用核实</strong>（Prometheus/G-Eval/MAJ-EVAL/三基准/Bloom 全部验证存在）</td>
+</tr>
+<tr>
+<td>三</td>
+<td><strong>Evals 短板补强路线</strong>（本笔记核心增量，结合体系现状设计）</td>
+</tr>
+<tr>
+<td>五</td>
+<td>局限性</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
