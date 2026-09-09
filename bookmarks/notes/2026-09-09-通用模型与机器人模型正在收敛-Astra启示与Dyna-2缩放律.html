@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>通用模型与机器人模型正在收敛-Astra启示与Dyna-2缩放律</title>
+
+<meta property="og:title" content="通用模型与机器人模型正在收敛-Astra启示与Dyna-2缩放律" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="shumo-chu-astra-dyna-2">通用模型与机器人模型正在收敛——Shumo Chu 论 Astra 对机器人学的启示 + Dyna-2 百万小时人类视频缩放律 + 双路径控制论</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @shumochu（Shumo Chu，General Intuition @gi_labs，前 UCSB CS 教授，UW CSE 博士，前 Google 工程师）2026-09-09<br />
+<strong>原文链接</strong>：https://x.com/shumochu/status/2097544333578932316 （文章 "What Astra Reveals About the Future of Robotics"）<br />
+<strong>数据</strong>：浏览 3,264 / 收藏 49 / 赞 26（6,297 粉丝；收藏≈2×赞，深度技术信号）<br />
+<strong>一手源核实</strong>：OpenAI GPT-6 Astra 官方公告（openai.com/index/gpt-6-astra）+ Dyna-2 官方报告（dyna.co/dyna-2）关键数据全部确认<br />
+<strong>笔记日期</strong>：2026-09-09<br />
+<strong>关联笔记</strong>：《具身思维链ECoT》《Meshy RL训练框架》</p>
+
+<p class="meta-date">生成日期 2026-09-09</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p>这是<strong>机器人学教授视角对"通用模型侵蚀专用机器人模型"这一行业级问题的冷静分析</strong>。作者不吹不黑，核心论点三条：</p>
+<ol>
+<li><strong>GPT-6 Astra 在 BenchCAD 上的 95.9%</strong>（vs GPT-5.6 Sol 83.3%，官方数据已核实）表明通用模型的空间推理+代码生成能力已直接冲击机器人学所需的核心智能——<strong>专用机器人模型的空间智能有多少会被通用模型拿走，是个悬而未决的严肃问题</strong></li>
+<li><strong>Dyna-2 的百万小时人类视频预训练</strong>证明人类经验可为机器人提供可迁移的物理基础——<strong>人类视频是几乎无限规模的训练数据轴</strong>（缩放律跨四个数量级单调提升，1k→53% 任务性能）</li>
+<li><strong>双路径控制论</strong>：直接输出动作 vs 生成程序再执行——作者判断<strong>两条路将融合</strong>：推理+代码组织陌生任务，习得动作策略提供快速精确执行</li>
+</ol>
+<p><strong>终极判断</strong>（原文结语）："通用基础模型与机器人模型将会收敛（converge）。推理与动作之间的接口（interface）成为核心研究问题。"</p>
+<p><strong>对用户领域的特殊意义</strong>：BenchCAD（视觉→CAD 代码重建，几何重叠评分）与飞机设计背景（CATIA/构型管理）直接相关——<strong>Astra 类模型正在逼近工程设计的自动化能力面</strong>，这是本笔记第三章展开的重点。</p>
+<hr />
+<h2 id="_2">一、原文核心论证忠实还原</h2>
+<h3 id="11-astra">1.1 Astra 的机器人学意义</h3>
+<ul>
+<li>尽管是通用模型，Astra 在机器人关键能力上显著提升：<strong>理解视觉场景、推理空间关系、把理解变成可执行的东西</strong></li>
+<li>具体证据：<strong>BenchCAD</strong>——模型从多视角渲染图重建 3D 物体（生成 CAD 代码）。Astra+工具 95.9% 几何重叠 vs GPT-5.6 Sol 83.3%（已核实官方公告，另 Claude Fable 5.1 为 84.3%）。作者立即限定：这是视觉推理+编码的有力证明，<strong>但不直接测量机器人控制</strong></li>
+<li>核心追问：<strong>专用机器人模型所需的空间智能，有多少将来自通用模型的进步？</strong> 要确认 Astra 是否真的超过专用模型，需要在相同任务上对比</li>
+</ul>
+<h3 id="12">1.2 两种规模来源假说</h3>
+<p>作者的假说：两种规模在此起作用——<strong>模型容量</strong> 与 <strong>训练数据广度</strong>。仅凭演示无法分离二者贡献。但更大的可能性很吸引人：<strong>为机器人之外的能力训练，可能产生可迁移到物理任务的知识</strong>。</p>
+<p>由此作者反而强化了继续缩放机器人数据的论证：Astra 本身不能确立机器人缩放律，但机器人领域内部已有直接证据——</p>
+<h3 id="13-dyna-2">1.3 Dyna-2：百万小时人类视频（已核实官方报告）</h3>
+<ul>
+<li><strong>超过 100 万小时第一人称人类视频预训练</strong>（≈170 年连续清醒经验）</li>
+<li>双重缩放律（官方报告确认）：</li>
+<li>人类数据上跨四个数量级（1k→1M 小时）存在世界-动作模型缩放律</li>
+<li><strong>人类→机器人迁移缩放律</strong>（首次证明）：预训练人类数据越多，机器人性能单调提升——LinkedIn 转述的具体数字：1k 小时→20% 归一化任务性能 / 10k→28% / 100k→45% / <strong>1M→53%</strong>，且是在两种从未见过的机器人本体上、39 个任务测得</li>
+<li>微调路径：数小时任务特定机器人演示即可完成真机操作迁移</li>
+<li>作者立场：<strong>一百万小时只是开始</strong>——需要更广覆盖（物体/环境/交互/从错误中恢复），关键问题是每增加一小时的有用物理经验贡献多少</li>
+</ul>
+<h3 id="14">1.4 双路径控制与"空间推理×编码的化学反应"</h3>
+<p>两种机器人控制方式：<br />
+1. <strong>直接输出动作</strong>：从观测预测运动或动作序列<br />
+2. <strong>生成程序</strong>：把任务翻译成几何、路径点、控制逻辑、技能调用，再用观测检查修正执行</p>
+<p>第二条有研究史：<strong>Code as Policies</strong>（已核实，Google 2023，Liang et al.）证明语言模型能生成含空间计算/控制原语/反馈环的机器人程序——生成的程序不止执行固定序列，<strong>能对机器人观测做出反应</strong></p>
+<p>作者的判断：<strong>两条路应该一起探索</strong>。预期：推理和代码帮助组织陌生任务；习得的动作策略和控制器提供任务所需的快速精确执行。</p>
+<h3 id="15">1.5 两个实证锚点</h3>
+<p><strong>金门大桥绘画 demo</strong>（创作者账号转述）：给 Astra 一个机器人+画笔+相机，含初始锚点和人类反馈，Astra 被要求规划约一分钟的动作并监控执行——<strong>报告称连续尝试中持续改进</strong>。作者的评价（非常克制）：吸引力在于把通用模型带进陌生物理任务并通过观察/反馈/调整来改进的可能性；<strong>有人引导的演示是早期信号，下一个测试是这种适应性是否跨任务、跨重复试验保持</strong></p>
+<p><strong>Anthropic 机器人实验</strong>（"Claude plays robotics"）：测试了从直接电机命令到生成控制器代码到监督预训练策略的接口谱系——<strong>直接关节控制普遍弱，更高层接口产生更强行为；可靠性仍是挑战</strong>（与 Code as Policies 结论同向）</p>
+<h3 id="16">1.6 收敛论（原文结语）</h3>
+<blockquote>
+<p>"我现在更确信通用基础模型与机器人模型将会收敛。收敛可能意味着这样的系统：通用模型理解任务、编写和修改程序、协调机器人策略——而物理经验使整个系统更强。"</p>
+</blockquote>
+<p>推理与动作之间的<strong>接口</strong>是核心研究问题。</p>
+<hr />
+<h2 id="_3">二、一手源核实结果</h2>
+<table>
+<thead>
+<tr>
+<th>原文论断</th>
+<th>核实</th>
+<th>来源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Astra BenchCAD 95.9% / Sol 83.3%</td>
+<td>✅ 精确匹配（另 Fable 5.1 84.3%；Astra API 成本估低 43%/86%）</td>
+<td>openai.com/index/gpt-6-astra</td>
+</tr>
+<tr>
+<td>BenchCAD = 多视角渲染→CAD 代码重建→几何重叠评分</td>
+<td>✅ 确认（1000 文件 Vision2Code 子集+Python 工具）</td>
+<td>同上 + TheNewStack</td>
+</tr>
+<tr>
+<td>Dyna-2 百万小时第一人称视频预训练</td>
+<td>✅ 确认（≈170 年清醒经验）</td>
+<td>dyna.co/dyna-2</td>
+</tr>
+<tr>
+<td>人类→机器人迁移缩放律（单调、跨 39 任务 2 本体）</td>
+<td>✅ 确认（"first true scaling law in robotics powered entirely by human data"）</td>
+<td>官方报告 + PR</td>
+</tr>
+<tr>
+<td>1k→20% / 100k→45% / 1M→53% 具体数字</td>
+<td>⚠️ 来自 LinkedIn 转述（官方报告有图，趋势确认，精确值未逐字核对）</td>
+<td>LinkedIn Ziegler</td>
+</tr>
+<tr>
+<td>Code as Policies 研究史</td>
+<td>✅（Google 2023，Liang et al.，ICRA 2023）</td>
+<td>通行引证</td>
+</tr>
+<tr>
+<td>Anthropic 接口谱系实验（直接控制弱/高层接口强）</td>
+<td>未独立核实原文，方向与领域共识一致（标注）</td>
+<td>Anthropic 博客</td>
+</tr>
+</tbody>
+</table>
+<p><strong>增量发现</strong>（核实中的额外信息）：Astra 是 OpenAI 最大训练运行（Stargate 德州 10 万+ GPU），首个<strong>由早期 OpenAI 模型监督训练</strong>的发布；AutomationBench 41.4% vs Sol 18.1%——专业自动化任务的差距比 BenchCAD 更大。</p>
+<hr />
+<h2 id="_4">三、领域对照：飞机设计视角（本笔记增量）</h2>
+<p>这篇文对用户领域有三处直接映射：</p>
+<h3 id="31-benchcad">3.1 BenchCAD 就是"逆向工程自动化"的雏形</h3>
+<p>多视角照片→CAD 代码→几何重叠评分，这个范式离航空构型管理的核心痛点（<strong>型号资料数字化/逆向建模/工装重建</strong>）只差工程化封装：<br />
+- 95.9% 几何重叠意味着<strong>非关键件的逆向重建已进入可用区间</strong>（ aviation 对关键件有公差要求，但 95.9% 是"几何正确性"，不是"公差符合性"——后者仍需人工校验）<br />
+- 用户已有的 struct-gen（钢结构 GB 50017 智能选型）与 CATIA CAA 二开经验，正好是"Astra 生成 CAD 代码"与"航空工程验证"之间的<strong>接口层</strong>——通用模型写代码，领域规则做校验，这正是一 b 节双路径论在工程设计领域的镜像</p>
+<h3 id="32">3.2 "接口是核心研究问题"= 适航符合性思维</h3>
+<p>Anthropic 实验（直接控制弱/高层接口强/可靠性挑战）与适航审查哲学同构：<strong>权限分层+验证门禁</strong>。机器人界的"高层接口"对应航空界的"合格审定接口"（模型可以做，但每一步要可验证）。这条对照值得沉淀进 struct-gen-agent 的设计原则。</p>
+<h3 id="33">3.3 人类视频缩放律与"老师傅经验数字化"</h3>
+<p>Dyna-2 用 170 年人类视频教会机器人物理直觉——与航空制造"老师傅手艺数字化"（工艺卡片/装配经验/排故案例）是同一个命题的不同实现。<strong>企业里沉睡的操作视频/工艺录像就是航空版的第一人称数据</strong>，价值重新定价。</p>
+<hr />
+<h2 id="_5">四、金句提取</h2>
+<blockquote>
+<p>"专用机器人模型所需的空间智能，有多少将来自通用模型的进步？"</p>
+<p>"为机器人之外的能力训练，可能产生可迁移到物理任务的知识。"</p>
+<p>"推理和代码将帮助组织陌生任务，而习得的动作策略和控制器提供这些任务所需的快速、精确的执行。"</p>
+<p>"通用基础模型和机器人模型将会收敛。推理与动作之间的接口是核心研究问题。"</p>
+</blockquote>
+<hr />
+<h2 id="_6">五、局限性</h2>
+<ol>
+<li><strong>Astra 的 BenchCAD ≠ 机器人控制</strong>：作者自己反复强调这一区分，读者不应把 95.9% 解读为"会做机器人"</li>
+<li><strong>金门大桥 demo 有人类引导</strong>（锚点+反馈），连续改进的机制归因不明——作者已标注为"早期信号"</li>
+<li>Dyna-2 具体缩放数字来自二手转述（趋势已核实官方确认，精确值未逐字比对）</li>
+<li><strong>作者立场</strong>：General Intuition（gi_labs）在做机器人基础模型，"收敛论"与其业务方向一致，但论证本身引用克制</li>
+<li>第三章领域对照为本笔记扩展，非原文内容</li>
+</ol>
+<h2 id="_7">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一、四</td>
+<td><strong>原文忠实还原</strong>（X Article 4.5KB，fxtwitter API 提取）</td>
+</tr>
+<tr>
+<td>二</td>
+<td><strong>一手源核实</strong>（OpenAI 官方公告 + Dyna-2 官方报告）</td>
+</tr>
+<tr>
+<td>三</td>
+<td><strong>领域对照扩展</strong>（飞机设计视角，本笔记增量）</td>
+</tr>
+<tr>
+<td>五</td>
+<td>局限性</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
