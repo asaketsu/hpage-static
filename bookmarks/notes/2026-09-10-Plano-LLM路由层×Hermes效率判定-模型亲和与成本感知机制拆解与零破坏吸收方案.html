@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plano-LLM路由层×Hermes效率判定-模型亲和与成本感知机制拆解与零破坏吸收方案</title>
+
+<meta property="og:title" content="Plano-LLM路由层×Hermes效率判定-模型亲和与成本感知机制拆解与零破坏吸收方案" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="plano-llm-hermes">Plano LLM 路由层 × Hermes 效率提升判定：模型亲和/成本感知/偏好路由三分机制拆解 + 本机已有设施对照 + 零破坏吸收方案</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @_avichawla（Avi Chawla）Article《I cut my Hermes Agent bill 2x (in just 1 min)》2026-08 末（推文 ID 时间线）<br />
+<strong>原文链接</strong>：https://x.com/_avichawla/status/2074068305380618275<br />
+<strong>工具</strong>：Plano（开源 LLM 路由代理，GitHub planoai）+ Arch-Router-1.5B（HuggingFace，人类偏好训练的路由模型）<br />
+<strong>对照对象</strong>：本机 Hermes 实例（config.yaml 实测：主模型 GLM + 8 条 fallback_providers 链 + auxiliary 七个子系统独立配置）<br />
+<strong>抓取方式</strong>：X Article 直读全文 + 本机 config/skills 只读核对<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《Harness重塑AI性能》（配对即性能单位）《LLM八种精度格式》《自进化Harness与记忆》</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>三分判定：①模型亲和（model affinity）——我们已有等价机制（session 内模型天然钉住），Plano 价值为零；②成本感知选择——我们的成本结构（智谱免费额度+多池分流）与"每 token 计价"前提不符，直接用会倒退；③偏好对齐路由（Arch-Router-1.5B 按任务分类分流）——唯一有真实增量价值的机制，但我们应吸收思想而非引入代理层（在 auxiliary 子系统粒度做静态路由，零新组件）。</strong> Coinbase 5%→60% 缓存命中的核心不是路由模型，是"会话粘性+便宜默认"两条纪律——这两条我们一条已有一条不需要。</p>
+<h2 id="plano">一、Plano 是什么（忠实还原）</h2>
+<h3 id="11">1.1 定位</h3>
+<p>LLM 路由代理：坐在 app 与模型商之间，读每个 prompt、分类任务、自动转发到"能处理它的最便宜模型"。宣称来源：Coinbase 工程组织的做法（Brian Armstrong："人类不该是选模型的人，选模型是 AI 的活"）——Coinbase 实测缓存命中率 5%→60%，花费近减半而用量继续涨。</p>
+<h3 id="12">1.2 三种路由方法</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>机制</th>
+<th>适用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model-based</td>
+<td>客户端每次显式指定模型名</td>
+<td>无路由</td>
+</tr>
+<tr>
+<td>Alias-based</td>
+<td>友好名（fast-model/reasoning-model）映射真实模型</td>
+<td>换模型改一行配置</td>
+</tr>
+<tr>
+<td><strong>Preference-aligned</strong></td>
+<td>客户端不指定；<strong>Arch-Router-1.5B</strong>（人类偏好数据训练）推断 domain/action 匹配偏好</td>
+<td>文章主推</td>
+</tr>
+</tbody>
+</table>
+<h3 id="13">1.3 三个核心机制</h3>
+<p><strong>① 模型亲和（解决路由的头号问题）</strong>：一个 agent 任务=多次 LLM 调用链（规划→工具→读输出→分析）。若每次独立分类：call 1 → sonnet-4.5（代码），call 4 → gpt-4o-mini（分析）——<strong>两个灾难</strong>：call 4 的模型没有 call 1 的决策记忆；每次换模型缓存全失效按全价重算。Plano 解法：会话首调路由定模，<strong>pin 到 session ID（header 传递）</strong>，后续同 ID 一律同模型（默认 10 分钟）；换任务换新 ID；多副本用 Redis 共享 pin。</p>
+<p><strong>② 成本感知选择</strong>：两模型都能干时，读定价目录按总 token 成本重排候选——便宜者答，贵者留作失败 fallback。<code>planoai obs</code> 观测台带每请求 USD 成本列。</p>
+<p><strong>③ YAML 而非代码</strong>：路由决策全在配置——便宜模型换代改一行；更好模型超越时改偏好指向。agent 代码零改动。</p>
+<h3 id="14-hermes">1.4 Hermes 接入方式（文章演示）</h3>
+<p>Hermes 连任意 OpenAI 兼容端点 → 把 base_url 指向 Plano → Plano 分类后经 OpenRouter 转发。"同一 Hermes 会话，简单问题自动 gpt-4o-mini，代码生成自动 claude-sonnet-4.5，零分支逻辑。"</p>
+<h2 id="_2">二、逐机制判定（×本机实测对照）</h2>
+<h3 id="21-plano">2.1 模型亲和：✅ 已有等价物，Plano 价值为零</h3>
+<table>
+<thead>
+<tr>
+<th>Plano 假设的问题</th>
+<th>本机实况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每次调用独立分类→会话中途换模型</td>
+<td><strong>Hermes 会话内模型由 config 钉死</strong>（model: GLM-5.3），无 per-call 路由——问题不存在</td>
+</tr>
+<tr>
+<td>换模型缓存失效全价重算</td>
+<td>我们无跨模型缓存依赖；智谱 coding_plan 按请求计费无缓存折扣结构</td>
+</tr>
+</tbody>
+</table>
+<p><strong>判定</strong>：Plano 的 affinity 是给"无状态 per-call 路由"打的补丁；Hermes 的架构（会话级模型绑定）天然免疫这个问题。<strong>引入 Plano 反而新增一跳代理延迟。</strong></p>
+<h3 id="22">2.2 成本感知选择：❌ 前提不符，直接用会倒退</h3>
+<table>
+<thead>
+<tr>
+<th>Plano 前提</th>
+<th>本机实况</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每 token 计费，gpt-4o-mini 便宜</td>
+<td><strong>主力智谱 GLM=订阅额度（coding_plan），边际成本≈0</strong></td>
+</tr>
+<tr>
+<td>定价目录可比</td>
+<td>池化多号（sensenova×4 池）的成本差异在<strong>限流并发</strong>不在单价（pool@8899 并发≈1 必 429 的教训）</td>
+</tr>
+<tr>
+<td>便宜模型失败→贵模型 fallback</td>
+<td>已有 <strong>8 条 fallback_providers 链</strong>（glm-5.2×4 池 → flash-lite×3 池），按池健康度非价格排序</td>
+</tr>
+</tbody>
+</table>
+<p><strong>判定</strong>：我们的瓶颈是<strong>池的并发与限流</strong>，不是单价。按价格重排会打乱按池健康的 fallback 设计——model-fallback-chain/model-fallback-troubleshooting 两个 skill 记录的整套经验会被绕过。<strong>明确不引入。</strong></p>
+<h3 id="23">2.3 偏好对齐路由（按任务分流）：🟡 唯一有增量价值的机制——但吸收思想而非代理</h3>
+<p>文章演示的真价值：<strong>简单问题→便宜模型，代码/推理→强模型</strong>。本机对照：</p>
+<table>
+<thead>
+<tr>
+<th>我们已有的分流</th>
+<th>层位</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>auxiliary 七子系统独立 provider/model（approval/compression/curator/mcp/session_search 等各自配 sensenova/zai + 独立 timeout）</td>
+<td><strong>正是静态的任务级路由</strong>——curator 用 sensenova 600s，mcp 用 zai 30s</td>
+</tr>
+<tr>
+<td>adaptive-inference-routing skill（推理预算自适应）</td>
+<td>复杂度→token 上限的路由思想已在库</td>
+</tr>
+<tr>
+<td>free-model-apis skill（智谱+HF+GitHub Models 四线免费）</td>
+<td>供给端分流已有</td>
+</tr>
+<tr>
+<td>cron-bulk-management（cron 模型分配）</td>
+<td>定时任务的静态路由</td>
+</tr>
+</tbody>
+</table>
+<p><strong>缺口在哪</strong>：auxiliary 的分流是<strong>手配的</strong>（七个子系统逐个设），没有"新增任务类型时自动选便宜模型"的机制。但——我们的任务类型有限（对话主链+七辅助），<strong>静态手配完全够用且可控</strong>；Arch-Router-1.5B 的动态分类对我们是过度工程（还引入 1.5B 推理开销与分类错误风险——错误分类把代码任务送去弱模型=质量事故）。</p>
+<p><strong>结论</strong>：吸收"任务→模型档位"的思想核对一遍 auxiliary 配置是否有明显错档（如 session_search 用了过强模型），<strong>零新组件</strong>。</p>
+<h2 id="coinbase">三、Coinbase 案例的祛魅（本笔记核心批判）</h2>
+<p>文章把 Coinbase 5%→60% 缓存/花费减半归功于"路由层"。拆开看：</p>
+<ol>
+<li><strong>缓存命中 5%→60% 的真正来源是会话粘性</strong>（同模型同前缀才命中）——Hermes 会话级绑定模型已天然满足，不需要 Plano 的 pin 机制</li>
+<li><strong>"花费近减半"的来源是"默认便宜模型"策略</strong>（routine 任务大量占比）——这与我们"智谱订阅额度内边际≈0"的结构不同；对按 token 付费的用户才是真实节省</li>
+<li><strong>Coinbase 自建路由层配了专职工程师</strong>（"inside custom harnesses with engineers assigned to own it"）——维护成本文章一笔带过；Plano 开源版 ≠ Coinbase 规模的工程</li>
+<li><strong>文章是教程营销</strong>（导流 Plano repo + 作者日更教程号）——数字全部来自 Coinbase/Plano 自述，无独立验证；"1 min 完成"指安装不指效果</li>
+</ol>
+<h2 id="_3">四、可吸收的三个增量（零破坏，全部本机原生实现）</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>动作</th>
+<th>依据</th>
+<th>工作量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td><strong>auxiliary 七子系统档位审计</strong>：逐个核对 compression/curator/mcp/session_search 等的 provider/model 是否与任务复杂度匹配（弱任务用强模型=浪费额度，强任务用 flash-lite=质量险）</td>
+<td>§2.3 缺口</td>
+<td>0.5 天（改 config 一处一行，可逆）</td>
+</tr>
+<tr>
+<td>2</td>
+<td><strong>per-request 成本观测列</strong>：<code>planoai obs</code> 的启发——我们的 gateway 事件日志加"本请求 provider/model/token 数"聚合（observability-dashboard skill 已有底子，补 model 维度）</td>
+<td>§1.3②</td>
+<td>0.5 天</td>
+</tr>
+<tr>
+<td>3</td>
+<td><strong>alias 思想用于 fallback 链</strong>：config 的 fallback 手列 8 条重复池名——若 Hermes 支持 provider 组概念则一档一行；不支持则写个 config 生成小脚本（源码级，低风险）</td>
+<td>§1.3③</td>
+<td>0.5 天（可选）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不做的</strong>（明确记录理由防手痒）：<br />
+- ❌ 引入 Plano 代理层——会话级模型绑定已免疫其核心问题；代理跳数+新组件维护成本&gt;收益<br />
+- ❌ Arch-Router 动态分类——任务类型有限且手配可控；分类错误风险不可接受<br />
+- ❌ 按 price 重排 fallback——池健康度 ≠ 单价，会破坏现有 429 经验</p>
+<h2 id="_4">五、批判性审视</h2>
+<ol>
+<li><strong>"bill 2x"标题党</strong>：降 50-70% 是 Coinbase 口径（app 内 routine 占比高）；教程作者的 Hermes 账单数字没给——演示只证明"路由生效"没证明"省钱多少"</li>
+<li><strong>模型亲和是补丁不是特性</strong>：如果路由层不做 per-call 独立分类，根本不需要 pin——Plano 先制造问题再解决它的结构值得警惕</li>
+<li><strong>Arch-Router-1.5B 的偏好数据偏差</strong>：训练于"开发者偏好"——偏好随模型代际漂移（sonnet-4.5 的偏好数据对 4.6 过时），路由模型本身有维护成本</li>
+<li><strong>10 分钟 pin 的边界情况</strong>：长任务（&gt;10min）中途 pin 过期会换模型——恰好在我们长训盯盘/长管线场景是真实风险，文章未讨论</li>
+<li><strong>缓存命中的口径</strong>：5%→60% 没说分母（全部请求 or 可缓存请求）——缓存命中率是易操纵指标</li>
+</ol>
+<h2 id="_5">六、金句提取</h2>
+<blockquote>
+<p>"Model selection is a job for AI."（Brian Armstrong）</p>
+<p>"The routing decision lived in the YAML, not in the agent."</p>
+<p>"The model on call 4 has no memory of decisions made in call 1. And every model switch invalidates the cache."</p>
+</blockquote>
+<h2 id="_6">七、局限性</h2>
+<ol>
+<li>Plano 源码未读（路由实现质量以文章为准）；GitHub star 数未核</li>
+<li>Coinbase 数据全部二手（文章转述 Armstrong），无原始工程博客核对</li>
+<li>本机 config.yaml 只读了 model/fallback/auxiliary 段（~340 行），其余配置未全扫</li>
+<li>§四动作 3 依赖 Hermes 对 provider 组的支持情况未验证（源码未查）</li>
+<li>未实际跑 Plano 验证（判定基于机制分析，"不引入"结论不依赖实测）</li>
+</ol>
+<h2 id="_7">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一</td>
+<td><strong>原文忠实还原</strong>（X Article 全文直读）</td>
+</tr>
+<tr>
+<td>二</td>
+<td><strong>本机对照判定</strong>（config.yaml 实测 + skills 库盘点）</td>
+</tr>
+<tr>
+<td>三、五</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+<tr>
+<td>四</td>
+<td><strong>零破坏吸收方案</strong>（待拍板，零代码改动）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
