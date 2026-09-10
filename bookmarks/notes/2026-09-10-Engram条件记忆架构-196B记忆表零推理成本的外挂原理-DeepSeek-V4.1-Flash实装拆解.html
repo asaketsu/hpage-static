@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Obscura 竞品分析</title>
+<title>Engram条件记忆架构-196B记忆表零推理成本的外挂原理-DeepSeek-V4.1-Flash实装拆解</title>
 
-<meta property="og:title" content="Obscura 竞品分析" />
+<meta property="og:title" content="Engram条件记忆架构-196B记忆表零推理成本的外挂原理-DeepSeek-V4.1-Flash实装拆解" />
 <meta property="og:type" content="article" />
 <meta property="og:description" content="笔记 | cyber" />
-<meta property="og:image" content="https://hpage.top/homepage/covers/2026-05-01-obscura-analysis.png" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
 
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
@@ -439,276 +439,297 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
-<h1 id="obscura-rust">Obscura — 开源轻量级无头浏览器（Rust）</h1>
-<p class="note-date">生成日期 2026-05-01</p>
-<h2 id="_1">一、项目画像</h2>
+<h1 id="engram-196b-deepseek-v41-flash-n-gram">Engram 条件记忆架构：196B 记忆表零推理成本的外挂原理——DeepSeek V4.1 Flash 实装拆解 + N-gram 哈希查表机制 + 三层存储分层</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @Michaelzsguo（Michael Guo）推文《DeepSeek V4.1 Flash 能把模型做到极致，离不开这项关键技术：Engram》2026-09-10（987 字全文直读）<br />
+<strong>原文链接</strong>：https://x.com/Michaelzsguo/status/2098021103792734493<br />
+<strong>交叉验证</strong>：deepseek-ai/Engram GitHub（4.6k stars，Apache 2.0，含 33 页论文 PDF）+ DeepSeek V4.1 Tech Report（HuggingFace）+ 量子位《DeepSeek V4最大的遗憾》+ Introl/VERTU 分析<br />
+<strong>抓取方式</strong>：vxtwitter 全文 + web_search 四源交叉 + GitHub README<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《LLM八种精度格式全解》（FP8 表精度）《TTFT首字延迟全解》（预取-计算重叠）《Transformers即贝叶斯网络》（前几层重建静态关系的浪费）《自进化Harness与记忆》</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>Engram = 给 Transformer 外挂一张 196B 参数的"N-gram 哈希查表"，但每个 token 只查极少数条目（O(1)），推理几乎零成本——"让便宜的存储负责记住，让昂贵的 GPU 负责思考"。</strong> DeepSeek V4.1 Flash 用它实现 748B 总参数（552B backbone + 196B Engram）却只激活 8B（prefill）/16B（decode）。这是与 MoE 正交的第二条稀疏轴：MoE 稀疏化计算（这次调哪些神经元），Engram 稀疏化存储（这次开哪几个抽屉）。推文基本准确，但有三处需校正（见 §六）。</p>
+<h2 id="transformer">一、问题：Transformer 没有"查表"原语</h2>
+<p><strong>核心观察（论文原命题）</strong>：语言建模混着两种性质完全不同的任务——</p>
 <table>
 <thead>
 <tr>
-<th>维度</th>
-<th>信息</th>
+<th>任务类型</th>
+<th>例子</th>
+<th>传统 Transformer 的浪费</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>仓库</td>
-<td>h4ckf0r0day/obscura</td>
+<td>深度动态计算</td>
+<td>组合推理</td>
+<td>这是该 GPU 干的</td>
 </tr>
 <tr>
-<td>Stars</td>
-<td><strong>8,770 ⭐</strong> / 549 Forks</td>
-</tr>
-<tr>
-<td>语言</td>
-<td>Rust</td>
-</tr>
-<tr>
-<td>创建</td>
-<td>2026-04-13（18 天前）</td>
-</tr>
-<tr>
-<td>最新版</td>
-<td>v0.1.1 (2026-04-25)</td>
-</tr>
-<tr>
-<td>许可</td>
-<td>Apache 2.0</td>
-</tr>
-<tr>
-<td>定位</td>
-<td>面向 AI Agent 和爬虫的开源无头浏览器引擎</td>
+<td><strong>检索静态知识</strong></td>
+<td>常见人名/固定表达/代码模式</td>
+<td><strong>前几层 Attention+FFN 每次运行时重新构建静态关系</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>一句话：</strong> Rust 写的轻量级无头浏览器，替代 headless Chrome，内存 30MB vs Chrome 200MB+，内置反指纹和 tracker 屏蔽。</p>
-<h2 id="_2">二、核心卖点</h2>
-<h3 id="headless-chrome">对比 headless Chrome</h3>
+<p>论文的例子：识别 "Diana, Princess of Wales" 要走 6 层——前几层纠结"Wales 是地区"“Princess of Wales 是头衔"这些中间状态，最后一层才反应过来是戴安娜王妃。推文的类比更狠：<strong>"就像每次看到一个熟人，都要重新分析一遍他是谁"</strong>。量子位类比：做数学题，公式不必每次从头推，翻表代进去就行——Transformer 之前没这张表，只能每道题从公理走起。</p>
+<h2 id="engram">二、机制：Engram 怎么查表（推文+论文+技术报告三源合并）</h2>
+<h3 id="21">2.1 数据流（四步）</h3>
+<pre><code>当前 token + 前几个 token
+   ↓ 组成 N-gram（2/3/4-gram）
+确定性 Hash（8 个 hash heads）
+   ↓ 直接定位记忆表中少数几个 Embedding（O(1)）
+门控 Gate（按当前上下文判断相关性）
+   ├─ 相关 → 注入 Transformer 隐状态（与文本 embedding 联合处理）
+   └─ 不相关 → 抑制掉（防 Hash 冲突/一词多义噪声）
+</code></pre>
+<p><strong>门控的价值示例</strong>（量子位）："张"是常见姓氏，但"张仲景"三字凑一起是固定历史实体——门控负责识别这种区别。</p>
+<h3 id="22-v41-flash">2.2 V4.1 Flash 的实装参数（技术报告核对）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Engram 总参数</td>
+<td><strong>196B</strong>（均匀分给两个模块）</td>
+</tr>
+<tr>
+<td>插入位置</td>
+<td><strong>第 1 层和第 14 层</strong>（早期层解除静态模式重建）</td>
+</tr>
+<tr>
+<td>N-gram 阶数</td>
+<td>{2, 3, 4}</td>
+</tr>
+<tr>
+<td>Hash heads</td>
+<td>8 个/阶</td>
+</tr>
+<tr>
+<td>每阶 embedding 维度</td>
+<td>2048</td>
+</tr>
+<tr>
+<td>每头索引表</td>
+<td>~16M 条目，<strong>表大小取互异素数</strong>（分布均匀性）</td>
+</tr>
+<tr>
+<td>精度</td>
+<td><strong>表与 KV 投影全 FP8</strong></td>
+</tr>
+<tr>
+<td>训练优化</td>
+<td>动量更新 + Sinkhorn 平衡</td>
+</tr>
+<tr>
+<td>并行</td>
+<td>按行分区 engramparallel 组；优化器状态再分片</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23">2.3 三层存储分层（推文最有价值的段落）</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>介质</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>热层</td>
+<td>GPU HBM</td>
+<td>常用条目缓存</td>
+</tr>
+<tr>
+<td>主表</td>
+<td><strong>CPU Host Memory（服务器 DDR / Apple Silicon 统一内存 LPDDR）</strong></td>
+<td>主要记忆表</td>
+</tr>
+<tr>
+<td>长尾</td>
+<td><strong>NVMe SSD</strong></td>
+<td>冷数据</td>
+</tr>
+</tbody>
+</table>
+<p><strong>卸载可行的根本原因：确定性寻址</strong>——Engram 的地址完全由输入 token 决定，系统<strong>提前知道需要哪些记忆</strong> → GPU 算前几层 Transformer 的同时，CPU 已异步预取对应 Embedding，传输隐藏在计算里。<strong>实测：100B 参数表放 Host Memory，额外性能开销 &lt;3%</strong>（论文）。</p>
+<h3 id="24">2.4 两条稀疏轴的正交性</h3>
+<table>
+<thead>
+<tr>
+<th>轴</th>
+<th>稀疏化什么</th>
+<th>问句</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MoE</td>
+<td>计算</td>
+<td>"这次调用哪些神经元？"</td>
+</tr>
+<tr>
+<td><strong>Engram</strong></td>
+<td>存储</td>
+<td>"这次打开哪几个抽屉？"</td>
+</tr>
+</tbody>
+</table>
+<p>推文的总结句：<strong>"MoE 是条件计算，Engram 是条件记忆。"</strong> 两者互补不冲突——V4.1 同时用了两者。</p>
+<h2 id="_2">三、实证结果（论文+技术报告+社区）</h2>
+<h3 id="31-engram-27b-iso-parameteriso-flops">3.1 论文级（Engram-27B，严格 iso-parameter/iso-FLOPs 对照）</h3>
 <table>
 <thead>
 <tr>
 <th>指标</th>
-<th>Obscura</th>
-<th>Headless Chrome</th>
+<th>提升</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>内存</td>
-<td><strong>30 MB</strong></td>
-<td>200+ MB</td>
+<td>知识/推理/代码/数学</td>
+<td>一致 +3~5 分</td>
 </tr>
 <tr>
-<td>二进制大小</td>
-<td><strong>70 MB</strong></td>
-<td>300+ MB</td>
+<td><strong>Needle-in-a-Haystack</strong></td>
+<td><strong>84.2% → 97%</strong>（最惊人的一项）</td>
 </tr>
 <tr>
-<td>反检测</td>
-<td><strong>内置</strong></td>
-<td>无</td>
-</tr>
-<tr>
-<td>页面加载</td>
-<td><strong>85 ms</strong></td>
-<td>~500 ms</td>
-</tr>
-<tr>
-<td>启动</td>
-<td><strong>即时</strong></td>
-<td>~2s</td>
-</tr>
-<tr>
-<td>Puppeteer</td>
-<td>✅</td>
-<td>✅</td>
-</tr>
-<tr>
-<td>Playwright</td>
-<td>✅</td>
-<td>✅</td>
+<td>机制分析</td>
+<td>Engram 解放早期层免于静态模式重建，<strong>为复杂推理保留有效深度</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>关键：</strong> 通过 CDP（Chrome DevTools Protocol）兼容 Puppeteer/Playwright，迁移成本接近零。</p>
-<h2 id="_3">三、技术架构</h2>
-<h3 id="31">3.1 能力矩阵</h3>
+<h3 id="32-v41-flash">3.2 产品级（V4.1 Flash）</h3>
+<ul>
+<li>748B 总参（552B+196B）激活 8B/16B；<strong>PD 不对称</strong>（prefill 8B &lt; decode 16B——Agent 时代输入远多于输出，降 prefill 算力=省成本，知乎刘延观点）</li>
+<li>Benchmark 超 DeepSeek V4 Pro；DeepSWE v1.1 得 74.2（接近 GPT-6 Astra/Claude Opus 5 的 ~74——<strong>该基准接近饱和</strong>）</li>
+<li>1-100 整数连续可控推理强度</li>
+<li>300+ TPS 有疯狂查表的功劳（查表算力远低于计算）</li>
+</ul>
+<h3 id="33">3.3 反直觉实验（量子位报道，值得记录）</h3>
+<p>论文发布第 11 天，TaoLin 单作者发《A Collision-Free Hot-Tier Extension for Engram-Style Conditional Memory》：把高频 N-gram 用 Minimal Perfect Hash <strong>完全消除冲突</strong>（无冲突热层+多头哈希冷层）——<strong>严格 iso-parameter 下无稳定 loss 提升</strong>。结论：哈希冲突不是瓶颈，门控聚合已消化它。<em>（很好的"显然的优化不成立"案例。）</em></p>
+<h3 id="34">3.4 谱系（量子位考古）</h3>
+<ul>
+<li>2026-01-12：DeepSeek+北大 33 页论文《Conditional Memory via Scalable Lookup》（一作程鑫，末位作者<strong>梁文锋</strong>）</li>
+<li>V4 正式版<strong>没用上</strong>（"V4 最大的遗憾"）——首个实装的开源大模型是<strong>阿里 Qwen Next 3.8</strong>（表更小）</li>
+<li>V4.1 Flash 是 DeepSeek 自家首次大规模实装（196B，远超 Qwen）</li>
+</ul>
+<h2 id="_3">四、与我们体系的全景对接</h2>
+<h3 id="41">4.1 架构哲学的三重呼应</h3>
 <table>
 <thead>
 <tr>
-<th>能力</th>
-<th>实现方式</th>
+<th>Engram 原则</th>
+<th>我们体系的对应</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>JS 执行</td>
-<td>内嵌 V8 引擎</td>
+<td><strong>计算/记忆/存储分离扩展</strong></td>
+<td>三级记忆架构（L1 铁律常驻/L2 短期/L3 topic 按需）——<strong>同一个洞察的模型层与 agent 层实现</strong></td>
 </tr>
 <tr>
-<td>浏览器协议</td>
-<td>CDP 完整实现</td>
+<td>确定性寻址→可预取→异步隐藏传输</td>
+<td>发布管线幂等链的前置计算；流式语音笔记"说话期间并行检索"同构</td>
 </tr>
 <tr>
-<td>反指纹</td>
-<td>per-session 随机化（GPU/screen/canvas/audio/battery）</td>
-</tr>
-<tr>
-<td>Tracker 屏蔽</td>
-<td>3,520 域名黑名单，含分析/广告/遥测/指纹</td>
-</tr>
-<tr>
-<td>并发爬取</td>
-<td>多 worker 进程 + 可配置并发数</td>
-</tr>
-<tr>
-<td>代理</td>
-<td>HTTP/SOCKS5</td>
-</tr>
-<tr>
-<td>输出格式</td>
-<td>HTML / text / links / JSON / Markdown</td>
+<td>让便宜层干记住的活，贵层干思考</td>
+<td>L1 注入 &lt;8K 字省 token；cache 友好的 prompt 三层（stable 左缘）</td>
 </tr>
 </tbody>
 </table>
-<h3 id="32-cdp">3.2 CDP 支持范围</h3>
+<p><strong>最深的连接</strong>：Engram 论文的" relieving early layers from static pattern reconstruction"与 Transformers=BP 笔记的推论互证——<strong>静态知识检索与动态推理混在一起是架构级浪费</strong>，BP 视角下前几层重建的是"固定置信传播链"，本可以直接查表短路。</p>
+<h3 id="42">4.2 对量化/部署笔记的增量</h3>
+<ul>
+<li>FP8 表精度（§2.2）是《LLM 八种精度格式》的实战补章：<strong>embedding 表是 FP8 的理想负载</strong>（静态、访问稀疏、容错高）</li>
+<li>"100B 表卸载 DRAM 开销 &lt;3%"给 TTFT 笔记的访存瓶颈讨论加了正样本：<strong>确定性寻址的负载天然适合预取</strong>——与 SGLang 的 RadixAttention 前缀缓存（确定性前缀）同族</li>
+</ul>
+<h3 id="43">4.3 周论文选题钩子</h3>
+<p>今日记忆主题三连（mem0 三种写 → beamnxw 三级记忆 → Engram 条件记忆）形成完整光谱：<strong>模型内记忆（Engram）— agent 文件记忆（Pin/SKILL.md）— 外部记忆系统（Mem0）</strong>。选题候选：《记忆的三个层位：从 Engram 查表到 Agent 知识库的同构性分析》——三问检验：收敛（分层+稀疏访问共识）/矛盾（何时记忆进权重 vs 进文件）/空白（agent 层缺 Engram 式的"确定性寻址"——我们的 link_weaver 双门限是语义寻址，非确定性）。</p>
+<h2 id="_4">五、批判性审视（推文三处需校正）</h2>
 <table>
 <thead>
 <tr>
-<th>域</th>
-<th>方法</th>
+<th>#</th>
+<th>推文说法</th>
+<th>校正</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Target</td>
-<td>create/close/attach/createContext</td>
+<td>1</td>
+<td>"查找复杂度接近 O(1)"</td>
+<td>准确但需限定：<strong>每次查表是 O(K) 聚合</strong>（K 个 hash head），对序列总量是每 token 常数次——工程上成立，数学上"接近"用得诚实</td>
 </tr>
 <tr>
-<td>Page</td>
-<td>navigate/frameTree/lifecycleEvents</td>
+<td>2</td>
+<td>"额外性能开销可以控制在 3% 以内"</td>
+<td>这是<strong>论文中 27B/40B 规模的实验数字</strong>，推文隐含这是 V4.1 生产数字——技术报告口径是集成 SGLang 端到端吞吐损失 &lt;5%（量子位），<strong>量级一致但数字不同</strong></td>
 </tr>
 <tr>
-<td>Runtime</td>
-<td>evaluate/callFunctionOn/getProperties</td>
-</tr>
-<tr>
-<td>DOM</td>
-<td>getDocument/querySelector/getOuterHTML</td>
-</tr>
-<tr>
-<td>Network</td>
-<td>cookies/headers/userAgent</td>
-</tr>
-<tr>
-<td>Fetch</td>
-<td>enable/continue/fulfill/fail（实时拦截）</td>
-</tr>
-<tr>
-<td>Input</td>
-<td>mouse/key dispatch</td>
-</tr>
-<tr>
-<td>LP</td>
-<td><strong>getMarkdown</strong>（DOM→Markdown 转换）← 独特</td>
+<td>3</td>
+<td>"DeepSeek V4.1 Flash 能够变得更强…的重要原因之一"</td>
+<td>"之一"用得诚实；但 196B 表的贡献无法与 CED 架构/CSA2 注意力重构分离——<strong>单一归因是推文体裁的通病</strong>，benchmark 提升是组合效果</td>
 </tr>
 </tbody>
 </table>
-<h3 id="33-cli">3.3 CLI 命令</h3>
-<pre><code class="language-bash">obscura serve --port 9222 --stealth     # CDP 服务器
-obscura fetch &lt;URL&gt; --eval &quot;...&quot;        # 单页抓取+JS执行
-obscura scrape url1 url2 --concurrency 25 --format json  # 批量并行
-</code></pre>
-<h2 id="_4">四、深度分析</h2>
-<h3 id="41">4.1 为什么能这么快？</h3>
-<ul>
-<li>Rust 零成本抽象 + 无 GC 暂停</li>
-<li>不渲染 GUI（纯 headless，不需要 compositor）</li>
-<li>V8 编译后缓存（首次 ~5min，后续秒级）</li>
-<li>精简渲染管线：不做布局/绘制，只执行 JS + 提取 DOM</li>
-</ul>
-<h3 id="42-stealth-mode">4.2 反检测体系（Stealth Mode）</h3>
-<p>这是 Obscura 最有竞争力的部分：</p>
-<ul>
-<li><code>navigator.webdriver = undefined</code>（Chrome 默认 true）</li>
-<li>GPU/WebGL 指纹随机化</li>
-<li>Canvas 指纹随机化</li>
-<li>AudioContext 指纹随机化</li>
-<li><code>Function.prototype.toString()</code> 返回 <code>[native code]</code></li>
-<li><code>event.isTrusted = true</code></li>
-<li>隐藏内部属性（<code>Object.keys(window)</code> 安全）</li>
-<li>3,520 tracker 域名直接屏蔽（不加载）</li>
-</ul>
-<h3 id="43-lp-domain">4.3 独特的 LP Domain</h3>
-<p>CDP 里有一个 <code>LP.getMarkdown</code> 方法——直接把 DOM 转成 Markdown。这个对 AI Agent 场景特别有价值：抓完网页直接拿 Markdown 喂 LLM，不需要额外的 html-to-markdown 转换步骤。</p>
-<h2 id="_5">五、与我方的关联（三档分析）</h2>
-<h3 id="_6">第一档：有利进化 → 立刻落实</h3>
-<p><strong>无。</strong> Obscura 是一个独立的浏览器引擎，不在我们的技术栈路径上。我们的 browser 工具已经由 Hermes 内置。</p>
-<h3 id="_7">第二档：有价值 → 记录备用</h3>
+<p>其他：①"服务器 Host Memory 通常是 DDR"正确但 Engram 论文的 CXL 探索（量子位提及"为 CXL 量身定做"）推文没展开——CXL 内存池化是这个方向的产业走势；②Qwen Next 3.8 先于 DeepSeek 实装的事实推文未提（"DeepSeek 提出→DeepSeek 首用"的叙事省略了中间者）。</p>
+<h2 id="_5">六、金句提取</h2>
+<blockquote>
+<p>"<strong>让便宜的存储负责'记住'，让昂贵的 GPU 负责'思考'。</strong>"</p>
+<p>"MoE 是条件计算：这次调用哪些神经元。Engram 是条件记忆：这次打开哪几个抽屉。"</p>
+<p>"就像每次看到一个熟人，都要重新分析一遍他是谁。"（传统 Transformer 的浪费）</p>
+<p>"未来大模型的扩展，可能不再只是继续堆 GPU 和计算参数，而是把计算、记忆和存储彻底分开，各自扩展。"</p>
+<p>论文摘要："While MoE scales capacity via conditional computation, Transformers lack a native primitive for knowledge lookup."</p>
+</blockquote>
+<h2 id="_6">七、局限性</h2>
 <ol>
-<li><strong>反检测思路</strong> — 如果未来需要绕过网站反爬（如竞品监控、数据采集），Obscura 的反指纹策略清单（7 层）是很好的参考。记入 memory。</li>
-<li><strong>CDP.getMarkdown</strong> — DOM 直接转 Markdown 的思路，如果需要优化 web_extract 的输出质量，值得关注。</li>
-<li><strong>并行爬取模式</strong> — <code>--concurrency 25</code> + worker 进程的模式，批量抓取场景可参考。</li>
+<li>推文 987 字为科普口径，参数细节以技术报告/GitHub README 为准（已交叉核对 §2.2）</li>
+<li>论文 PDF（33 页）未逐页精读——U 形 scaling law 的具体形式、Sinkhorn 平衡的推导未展开</li>
+<li>V4.1 Flash benchmark 数字为官方口径（DeepSWE 74.2 有社区"接近饱和"的质疑背景）</li>
+<li>TaoLin 反直觉实验为二手转述（量子位），原文未核</li>
+<li>4.1/4.3 节体系对接为本笔记扩展</li>
 </ol>
-<h3 id="_8">第三档：知识库内容</h3>
-<ul>
-<li>Rust + V8 的无头浏览器架构</li>
-<li>CDP 协议兼容设计</li>
-<li>Tracker 黑名单维护</li>
-<li>性能优化手法</li>
-</ul>
-<h2 id="_9">六、竞品格局</h2>
-<p>Obscura 处于一个快速升温的赛道：</p>
+<h2 id="_7">出处标注</h2>
 <table>
 <thead>
 <tr>
-<th>竞品</th>
-<th>定位</th>
-<th>Obscura 的差异</th>
+<th>章节</th>
+<th>来源类型</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Headless Chrome</td>
-<td>通用浏览器</td>
-<td>Obscura 专攻自动化，轻 7x</td>
+<td>一、二.1</td>
+<td><strong>推文忠实还原</strong>（987 字全文）</td>
 </tr>
 <tr>
-<td>Playwright</td>
-<td>测试框架</td>
-<td>Obscura 是底层引擎</td>
+<td>二.2-2.4</td>
+<td><strong>技术报告+GitHub 论文核对</strong>（交叉源）</td>
 </tr>
 <tr>
-<td>Puppeteer</td>
-<td>Chrome 自动化</td>
-<td>Obscura 兼容其协议</td>
+<td>三</td>
+<td>论文 README + 量子位/知乎/Introl 多源</td>
 </tr>
 <tr>
-<td>Crawl4AI</td>
-<td>AI 爬虫框架</td>
-<td>Obscura 更底层</td>
+<td>四</td>
+<td><strong>体系映射</strong>（本笔记扩展）</td>
 </tr>
 <tr>
-<td>Firecrawl</td>
-<td>网页转 API</td>
-<td>Obscura 是引擎不是服务</td>
+<td>五</td>
+<td><strong>批判性审视</strong>（三处校正为本笔记增量）</td>
 </tr>
 </tbody>
 </table>
-<p><strong>8,770 星 / 18 天</strong> = 增长速度惊人，说明 AI Agent + 网页交互的需求爆发。</p>
-<h2 id="_10">七、预判</h2>
-<ol>
-<li><strong>短期：</strong> 会成为 AI Agent 生态的标准浏览器引擎之一（类似 Crawl4AI 之于爬虫）</li>
-<li><strong>中期：</strong> 会被 AI Agent 框架（LangChain、CrewAI 等）集成</li>
-<li><strong>长期：</strong> 可能出现云托管版（类似 Browserbase），Obscura 做底层引擎</li>
-</ol>
-<h2 id="_11">八、关联笔记</h2>
-<ul>
-<li>[[DeepSeek Agent 生态]] — Agent 工具链中的浏览器层</li>
-<li><a href="垂域模型.md">垂域模型</a> — 反指纹技术是安全领域的垂域能力</li>
-</ul>
-<h2 id="_12">相关笔记</h2>
-<ul>
-<li><a href="20260501-scrapling-analysis.md">Scrapling — 自适应 Web Scraping 框架</a></li>
-</ul>
 </body>
 </html>
