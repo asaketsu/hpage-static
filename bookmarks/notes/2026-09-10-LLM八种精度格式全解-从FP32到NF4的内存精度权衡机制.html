@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM八种精度格式全解-从FP32到NF4的内存精度权衡机制</title>
+
+<meta property="og:title" content="LLM八种精度格式全解-从FP32到NF4的内存精度权衡机制" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="llm-fp32-nf4-">LLM 八种精度格式全解：从 FP32 到 NF4 的内存-精度权衡机制 + 训练/推理场景对照表</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @DailyDoseOfDS_ 推文《8 LLM precision formats, clearly explained》2026-09-09<br />
+<strong>原文链接</strong>：https://x.com/DailyDoseOfDS_/status/2097618528195297632<br />
+<strong>抓取方式</strong>：vxtwitter 直连（full text 3.5KB 完整获取）<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《显卡微调小模型精度选择指南-LoRA-QLoRA全流程代码配置》（同日笔记，实操侧对照）《LLM推理优化技术》《GGUF量化》</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>这是一篇把"为什么 12GB 显卡能跑 7B 模型"讲透的科普长推——核心机制只有一句：浮点数的位数从指数位或尾数位里出，出指数位丢范围（大值溢出），出尾数位丢精度（近值合并），八种格式就是在两种损失间做不同分配。</strong></p>
+<p>对我们价值的定位：这是<strong>理论补充</strong>——同日的《显卡微调小模型精度选择指南》笔记已覆盖实操（3090 选 FP16/4090 选 BF16/QLoRA 配置），本篇补齐"为什么"层：BF16 为什么不溢出、FP16 为什么要 Loss Scaling、NF4 为什么对 QLoRA 特殊。两篇构成"理论-实操"闭环。</p>
+<h2 id="_2">一、八种格式机制全景（忠实还原）</h2>
+<h3 id="10">1.0 基础：浮点数的三段分配</h3>
+<pre><code>[符号位 | 指数位（范围） | 尾数位（精度）]
+</code></pre>
+<ul>
+<li><strong>减指数位</strong> → 大值溢出（overflow）</li>
+<li><strong>减尾数位</strong> → 近值合并（rounding error 逐层累积）</li>
+</ul>
+<h3 id="11">1.1 八格式速查表</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>格式</th>
+<th>指数位</th>
+<th>尾数位</th>
+<th>字节/参数</th>
+<th>核心机制</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>FP32</td>
+<td>8</td>
+<td>23</td>
+<td>4</td>
+<td>全精度基准</td>
+<td>优化器状态（即使低精度训练也保留）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>BF16</td>
+<td>8</td>
+<td>7</td>
+<td>2</td>
+<td>保范围舍精度——<strong>向下转型永不溢出</strong></td>
+<td>4090+/H100 训练默认</td>
+</tr>
+<tr>
+<td>3</td>
+<td>FP16</td>
+<td>5</td>
+<td>10</td>
+<td>2</td>
+<td>保精度舍范围——分辨率 8 倍但上限 65504</td>
+<td>3090 训练（需 Loss Scaling）</td>
+</tr>
+<tr>
+<td>4</td>
+<td>TF32</td>
+<td>8</td>
+<td>10</td>
+<td>4（存储不变）</td>
+<td><strong>只算不存</strong>——Tensor Core 内部用 FP32 指数+FP16 尾数</td>
+<td>A100/Ampere matmul 加速</td>
+</tr>
+<tr>
+<td>5</td>
+<td>FP8 E4M3</td>
+<td>4</td>
+<td>3</td>
+<td>1</td>
+<td>上限 448，承权重+激活</td>
+<td>H100 推理/训练前向</td>
+</tr>
+<tr>
+<td>6</td>
+<td>FP8 E5M2</td>
+<td>5</td>
+<td>2</td>
+<td>1</td>
+<td>上限 57344，承梯度（跨更多数量级）</td>
+<td>H100 训练反向</td>
+</tr>
+<tr>
+<td>7</td>
+<td>INT8/INT4</td>
+<td>—</td>
+<td>—</td>
+<td>1/0.5</td>
+<td>等距 256/16 级 + 独立 scale factor</td>
+<td>CPU/边缘推理（GGUF 主战场）</td>
+</tr>
+<tr>
+<td>8</td>
+<td>NF4</td>
+<td>—</td>
+<td>—</td>
+<td>0.5</td>
+<td><strong>16 级不等距</strong>，按预训练权重实际分布排布</td>
+<td>QLoRA 冻结底座</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12">1.2 三个最关键的机制细节</h3>
+<p><strong>① FP32 为什么在低精度训练中仍然活着</strong>：梯度更新量太小，16 位存储会把它 round 掉——所以优化器状态（momentum/variance）默认仍是 FP32。这就是"混合精度训练"的混合所在：前向 FP16/BF16，master weights + optimizer FP32。</p>
+<p><strong>② FP16 的 Loss Scaling 补偿机制</strong>：小梯度低于 65504/2^11 的表示下限会 flush to zero——所以训练时先把 loss 放大再反向，更新前再除回来。<strong>这是 3090（无 BF16 Tensor Core 加速优势）训练的实际成本：不是不能训，是要管好这个 scaling</strong>。</p>
+<p><strong>③ TF32 是"计算格式"不是"存储格式"</strong>：内存里还是 FP32（4 字节不变），只在 Tensor Core 做矩阵乘时用 TF32——"never touches memory"这个表述是本推最精辟的一句。A100 上 matmul 提速但显存零节省。</p>
+<h3 id="13-int">1.3 INT 量化的离群值陷阱（大模型量化的核心难题）</h3>
+<p>INT8/INT4 的等距映射有个致命弱点：<strong>一个离群值（outlier）拉伸 scale，使所有普通值挤进第一格、round 到零</strong>。</p>
+<p>这个问题在 <strong>activations</strong> 上最严重（LLM 激活值有系统性离群通道）。两个经典解法：<br />
+- <strong>LLM.int8()</strong>：离群通道分离计算（FP16 处理 0.1% 离群维度，INT8 处理其余）<br />
+- <strong>SmoothQuant</strong>：把激活的离群难度数学上迁移到权重侧（权重好量化）</p>
+<h3 id="14-nf4-qlora">1.4 NF4 为什么配 QLoRA</h3>
+<p>NF4 的 16 个量化级<strong>不等距</strong>，按预训练权重的实际分布（近似正态/信息论最优）排布——普通值密集区精度高，尾部稀疏区精度低。这让 QLoRA 能把冻结底座压到 4bit，同时 LoRA 适配器以 BF16 在上面训练——<strong>底层不动的精度损失被顶层的可训练精度补偿</strong>。</p>
+<h3 id="15-kv-cache">1.5 权重之外：KV Cache 是另一个战场</h3>
+<p>推文尾段点到：<strong>长上下文时 KV Cache 会超过权重本身</strong>。prefill（算力瓶颈，并行处理全部输入）与 decode（带宽瓶颈，逐 token 生成）的分界，以及 DeepSeek V4 围绕 cache 重设计 attention 把 1M context 的 cache 压到十分之一。</p>
+<h2 id="_3">二、与我们已有知识的交叉验证</h2>
+<table>
+<thead>
+<tr>
+<th>推文论断</th>
+<th>我们的印证</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BF16 向下转型永不溢出（8 指数位）</td>
+<td>《显卡微调》笔记：4090 选 bf16</td>
+<td>✅ 一致</td>
+</tr>
+<tr>
+<td>FP16 上限 65504，小梯度 flush to zero</td>
+<td>《显卡微调》笔记批判章：3090 选 FP16 的真实理由是速度（Tensor Core 吞吐 2 倍）非兼容性</td>
+<td>✅ 互补——推文讲机制，我们的笔记讲选型理由</td>
+</tr>
+<tr>
+<td>NF4 按权重分布排布 → QLoRA</td>
+<td>《显卡微调》笔记 QLoRA 代码：bnb 4bit_compute_dtype + 双量化</td>
+<td>✅ 一致</td>
+</tr>
+<tr>
+<td>优化器状态仍 FP32</td>
+<td>混合精度训练标准实践（torch.amp 默认行为）</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>KV Cache 长上下文超权重</td>
+<td>《LLM推理优化》PagedAttention 笔记同向</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>DeepSeek V4 cache 压缩 10×@1M ctx</td>
+<td>MLA（Multi-head Latent Attention）路线的延续</td>
+<td>✅ 方向正确</td>
+</tr>
+</tbody>
+</table>
+<p><strong>批判一处</strong>：推文说"FP16 covers roughly up to 65504"——准确；但"BF16 casting down never overflows"表述过强：BF16 溢出边界与 FP32 相同（~3.4e38），<strong>范围不损失但精度损失 8 倍</strong>，累积误差在深网络仍然存在。"never overflows"对单次转型成立，对训练动态不完全是护身符。</p>
+<h2 id="jetson-orin">三、Jetson Orin 侧对照（我们的部署现实）</h2>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>Orin 可用性</th>
+<th>我们的实践</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP32</td>
+<td>✅</td>
+<td>默认兜底</td>
+</tr>
+<tr>
+<td>FP16</td>
+<td>✅（Ampere Tensor Core）</td>
+<td>LuxTTS/whisper 推理</td>
+</tr>
+<tr>
+<td>BF16</td>
+<td>✅ 硬件支持（Ampere）但 Tensor Core 无 BF16 加速</td>
+<td>训练选 FP16（与 3090 同理）</td>
+</tr>
+<tr>
+<td>TF32</td>
+<td>✅（Ampere）</td>
+<td>matmul 自动受益</td>
+</tr>
+<tr>
+<td>FP8</td>
+<td>❌（Hopper+）</td>
+<td>不适用</td>
+</tr>
+<tr>
+<td>INT8</td>
+<td>✅（67 TOPS INT8 是官方口径）</td>
+<td>TensorRT 部署主格式</td>
+</tr>
+<tr>
+<td>INT4</td>
+<td>✅</td>
+<td>GGUF q4 路线（nexa 本地推理）</td>
+</tr>
+<tr>
+<td>NF4</td>
+<td>✅（软件层）</td>
+<td>QLoRA 微调（AutoDL 上用，本机不训）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：Orin 的 67 TOPS 是 INT8 口径——我们边缘部署的最优格式链是 INT8（TensorRT）&gt; INT4（GGUF/llama.cpp）&gt; FP16（兼容兜底）。FP8/NVFP4 是 H100/GB10 的武器，与边缘无关——这与昨日 MiaAI-Lab 笔记的 NVFP4 生态形成平台分层。</p>
+<h2 id="-">四、训练-推理格式决策树（整合两篇笔记）</h2>
+<pre><code>训练场景：
+├─ H100/GB10 → BF16（或 FP8 E4M3 前向+E5M2 反向）
+├─ 4090/A100 → BF16
+├─ 3090/Orin → FP16 + Loss Scaling（吞吐优先）
+│   └─ 梯度溢出难管？→ 降 BF16（速度减半换稳定）
+└─ 显存不够 → QLoRA（NF4 底座 + BF16 适配器）
+
+推理场景：
+├─ 边缘（Orin/Pi5）→ INT8 TensorRT / INT4 GGUF
+├─ 3090/4090 → AWQ/GPTQ INT4 或 FP16
+├─ H100 → FP8 / NVFP4
+└─ 128GB 统一内存（GB10）→ BF16 全精度也放得下（Mia 路线）
+</code></pre>
+<h2 id="_4">五、金句提取</h2>
+<blockquote>
+<p>"Every format below FP32 does the same thing: it trades numeric detail for memory."</p>
+<p>"BF16 casting down never overflows / FP16 resolves values eight times more finely but covers a far smaller range."</p>
+<p>"TF32 never touches memory."（计算格式与存储格式的分离——本推最精辟）</p>
+<p>"A single outlier stretches the range so far that every ordinary value falls inside the first step and rounds to zero."（INT 量化的本质难题）</p>
+<p>"Halving the bits halves the memory, but the bits have to come out of either the exponent or the mantissa."</p>
+<p>"On long contexts, the KV cache outgrows the weights entirely."</p>
+</blockquote>
+<h2 id="_5">六、局限性</h2>
+<ol>
+<li>推文为科普体，未给参考文献（LLM.int8/SmoothQuant/MLA 均为真实工作，但无链接）</li>
+<li>"DeepSeek V4 cache 压到十分之一"为推文自报数字，未核原论文（1M ctx MLA 路线方向正确）</li>
+<li>未覆盖 NVFP4/FP4（昨日 Mia 笔记的 GB10 主格式）——推文写作时 NVFP4 生态可能尚未主流化，或作者有意限定在"经典八格式"</li>
+<li>第三章 Jetson 对照与第四章决策树为本笔记扩展</li>
+<li>媒体图（推文附视觉图）未获取（media:0——图为外链）</li>
+</ol>
+<h2 id="_6">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一</td>
+<td><strong>原文忠实还原</strong>（vxtwitter full text 3.5KB 全文）</td>
+</tr>
+<tr>
+<td>二</td>
+<td><strong>交叉验证</strong>（对照同日《显卡微调》笔记与已有量化知识）</td>
+</tr>
+<tr>
+<td>三、四</td>
+<td><strong>本笔记扩展</strong>（Orin 对照 + 决策树整合）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
