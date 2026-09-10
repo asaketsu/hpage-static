@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Transformers即贝叶斯网络-Sigmoid前向等于置信传播与幻觉的结构性根因</title>
+
+<meta property="og:title" content="Transformers即贝叶斯网络-Sigmoid前向等于置信传播与幻觉的结构性根因" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="transformers-are-bayesian-networkssigmoid-arxiv260317063">Transformers are Bayesian Networks：Sigmoid 前向 = 置信传播 + 幻觉的结构性根因——arXiv:2603.17063 全文精读 + 形式化定理拆解 + 体系映射</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv:2603.17063v1 [cs.AI]，Greg Coppola，2026-03-17<br />
+<strong>原文链接</strong>：https://arxiv.org/pdf/2603.17063<br />
+<strong>抓取方式</strong>：web_extract 全文 76KB（完整论文正文 + 参考文献 + 目录），逐章精读<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《NoFreeChecker》（verifier 需要有限概念空间）、《为不信任而设计》（模型本身可能无概念）、《LLM推理优化技术》《agent-reliability-engineering》</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>这篇论文给出了一个精确的数学命题：sigmoid Transformer 的前向传播就是置信传播（Belief Propagation, BP）——不是近似、不是类比，而是按架构定义、对任意权重都成立的等式。五条 Lean 4 形式化定理 + 实验双见证。</strong></p>
+<p><strong>论文最炸裂的推论不在架构侧，在幻觉侧</strong>：</p>
+<blockquote>
+<p>"Hallucination is not a bug that scaling can fix. It is the structural consequence of operating without concepts."</p>
+</blockquote>
+<p>幻觉不是能被 scaling 修复的 bug——它是<strong>无概念空间操作的结构性后果</strong>。这与昨日《NoFreeChecker》"model-intrinsic verifier 可信度最低"和《为不信任而设计》"模型本身可能就是威胁"构成<strong>三份独立来源收敛到同一结论</strong>。</p>
+<h2 id="lean-4">一、五条核心定理（全部 Lean 4 形式化验证）</h2>
+<table>
+<thead>
+<tr>
+<th>定理</th>
+<th>内容</th>
+<th>Lean 4 仓库</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.1 General BP</td>
+<td>任意 sigmoid Transformer 权重 W，存在隐式因子图 G(W)，一次前向 = 一轮加权 loopy BP</td>
+<td>sigmoid-transformer-lean</td>
+</tr>
+<tr>
+<td>1.2 BP Implementation</td>
+<td>存在显式构造权重，使 Transformer 对任意因子图实现精确 BP；深度 d × ⌈log₂k⌉ 次前向 = 完整精确 BP</td>
+<td>transformer-bp-lean</td>
+</tr>
+<tr>
+<td>1.4 Uniqueness</td>
+<td>产生精确后验的 sigmoid Transformer 必然有 BP 权重——不存在通向精确后验的第二条路径</td>
+<td>sigmoid-transformer-lean</td>
+</tr>
+<tr>
+<td>5.1 Turing Complete</td>
+<td>任意 Turing 机可被 Transformer 模拟（Boolean 电路构造）</td>
+<td>universal-lean</td>
+</tr>
+<tr>
+<td>9.1 Finite Concept Space</td>
+<td>有限验证器最多区分有限个概念；无 grounding = 无概念空间 = "正确"无定义</td>
+<td>godel</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Corollary 1.3（树结构无幻觉）</strong>：BP 权重 + 树结构因子图 + T≥diameter 轮 → 每个节点精确后验，零幻觉，无需经验假设。</p>
+<p><strong>Corollary 4.1（幻觉需要 ungroundedness）</strong>：在 grounded 树结构 + BP 权重下，幻觉在结构上不可能。幻觉需要三条件之一：错误权重 / 错误路由 / 缺乏 grounding。</p>
+<h2 id="_2">二、核心机制拆解</h2>
+<h3 id="21-sigmoid">2.1 Sigmoid = 对数概率的精确代数</h3>
+<p><strong>为什么是 sigmoid 不是 ReLU</strong>——论文 §3.5 最关键的论证：</p>
+<ul>
+<li><code>logit(p) = log(p/(1-p))</code> 和 <code>σ</code> 互为精确逆函数</li>
+<li>两条独立证据的组合：<code>P(H|e₀,e₁) = σ(logit(m₀) + logit(m₁))</code></li>
+<li>这个代数来自 <strong>Turing 和 Good 在 Bletchley Park 破译 Enigma 时发展的 weight-of-evidence 方法</strong>（1950 Good 正式发表）</li>
+<li>Pearl 1988 年的 sum-product 算法在二元变量上 reduce 到同一个公式——但 Pearl 没有把它与 Turing-Good 传统连接</li>
+</ul>
+<p><strong>Sigmoid FFN 的 <code>σ(w₀·logit(m₀) + w₁·logit(m₁) + b)</code> 就是加权对数概率加法</strong>——不是设计选择（梯度流/输出归一化），是<strong>执行 Turing-Good-Pearl 代数所需的精确函数</strong>。</p>
+<h3 id="22-andor-8">2.2 AND/OR 布尔结构（§8 最有创意的论证）</h3>
+<table>
+<thead>
+<tr>
+<th>Transformer 组件</th>
+<th>布尔角色</th>
+<th>机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attention</td>
+<td><strong>AND（合取）</strong></td>
+<td>多头写入共享残差流——FFN 运行前所有必需输入必须同时在场（残差流是共享工作区）</td>
+</tr>
+<tr>
+<td>FFN (sigmoid)</td>
+<td><strong>OR（析取）</strong></td>
+<td><code>σ(logit(m₀)+logit(m₁))</code> = 概率析取，正确归一化</td>
+</tr>
+<tr>
+<td>严格交替层</td>
+<td><strong>Pearl 的 gather/update</strong></td>
+<td>AND→OR→AND→OR... = QBBN 二部图推理展开</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：AND 不在单个 head 内——在残差流的结构中。Head 0 写入 dim 4，Head 1 写入 dim 5，FFN 读整个残差流或根本不跑——没有"收到一半输入"的状态。</p>
+<h3 id="23-softmax-10">2.3 三个 Softmax 的精确分工（§10）</h3>
+<table>
+<thead>
+<tr>
+<th>Softmax</th>
+<th>位置</th>
+<th>职责</th>
+<th>BP 中的角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Attention 内</td>
+<td>路由</td>
+<td>可微 argmax = 查找表（按索引取邻居信念）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>FFN 内（sigmoid）</td>
+<td>推理</td>
+<td>贝叶斯后验 = <code>updateBelief</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>输出</td>
+<td>生成</td>
+<td>词汇表分布（标准 LLM = pattern-match；QBBN = 边际分布）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>"QBBN 不是替换 softmax，是替换 logits"</strong>——同一个数学操作在标准 LLM 里是推理的近似，在 QBBN 里是精确推理。架构一直有能力做后者，只是需要正确的 logits。</p>
+<h3 id="24-sigmoid-vs-relu-vs-104">2.4 Sigmoid vs ReLU：精确 vs 兼容（§10.4）</h3>
+<ul>
+<li><strong>Sigmoid</strong>：Lean 证明的内部计算就是 BP 量——不仅输出匹配，内部表示也匹配。架构不给替代路径留空间。</li>
+<li><strong>ReLU/GELU</strong>：保持非负性（概率质量的必要条件），但不强制精确归一化。梯度下降仍能找到 BP-like 权重（val MAE 0.000752），但内部表示不一定对应 BP 命名量。</li>
+<li><strong>"Compatibility is not identity"</strong>——ReLU 实验证实机制可找到，但 sigmoid 证明机制是唯一路径。</li>
+</ul>
+<h3 id="25-9">2.5 有限概念空间定理（§9，最有哲学冲击力）</h3>
+<p><strong>Theorem 9.1</strong>：有限状态机 n 个状态最多区分 nⁿ 种行为。任何有限验证器只能区分有限个概念。</p>
+<p><strong>推论链</strong>（精确逻辑链）：<br />
+1. 你想要可验证推理 → 需要有限验证器<br />
+2. 有限验证器 → 有限概念空间<br />
+3. 有限概念空间 → 概念是离散可数的<br />
+4. 概念空间外的东西不是"错的"——是"无意义的"<br />
+5. 无 grounding 的 LLM 没有有限验证器 → 没有"正确"的定义 → 幻觉不是 bug 而是结构后果</p>
+<p><strong>Leibniz 的 characteristica universalis 实现了</strong>：<br />
+- 原始概念 = grounded Horn clauses（2n² 个）<br />
+- calculus ratiocinator = belief propagation<br />
+- 机械实现 = Transformer<br />
+- 正确性保证 = Lean 4 证明<br />
+- "Calculemus"（让我们计算）</p>
+<h2 id="_3">三、实验确认（每个形式化结果都有双见证）</h2>
+<h3 id="31-bp-bayes-learner">3.1 BP 权重从零学习（bayes-learner）</h3>
+<ul>
+<li>20,000 随机因子图（18K train / 2K val）</li>
+<li>标准 TransformerEncoder（2 层 2 头 d=32 ~5K 参数）</li>
+<li><strong>val MAE 0.000752</strong>——后验匹配到三位小数</li>
+<li>无构造提示、无权重初始化偏置 → 梯度下降自己找到了 BP 权重</li>
+</ul>
+<h3 id="32-turing-learner">3.2 Turing 机模拟（learner）</h3>
+<ul>
+<li>5 种结构不同的 TM（二进制自增/自减/按位取反/左移/右移）</li>
+<li>相同超参、无逐机调参 → 全部 100% 验证准确率</li>
+</ul>
+<h3 id="33-loopy-bp-loopy">3.3 Loopy BP 实测（loopy）</h3>
+<table>
+<thead>
+<tr>
+<th>图结构</th>
+<th>变量数</th>
+<th>环数</th>
+<th>收敛率</th>
+<th>Avg KL</th>
+<th>Avg MAE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Triangle</td>
+<td>3</td>
+<td>1</td>
+<td>100/100</td>
+<td>0.000045</td>
+<td>0.002091</td>
+</tr>
+<tr>
+<td>Square</td>
+<td>4</td>
+<td>1</td>
+<td>100/100</td>
+<td>0.000002</td>
+<td>0.000382</td>
+</tr>
+<tr>
+<td>Dating graph</td>
+<td>5</td>
+<td>1</td>
+<td>100/100</td>
+<td>0.000102</td>
+<td>0.003590</td>
+</tr>
+<tr>
+<td>Two loops</td>
+<td>4</td>
+<td>2</td>
+<td>100/100</td>
+<td>0.000086</td>
+<td>0.003111</td>
+</tr>
+<tr>
+<td>QBBN chain</td>
+<td>6</td>
+<td>1</td>
+<td>100/100</td>
+<td>0.000021</td>
+<td>0.001055</td>
+</tr>
+</tbody>
+</table>
+<p>500 次试验全部收敛。最差 KL 0.000102——Bethe 近似在这些图结构上"实际上精确"。</p>
+<h2 id="_4">四、与我们体系的三重映射</h2>
+<h3 id="41-nofreechecker">4.1 与 NoFreeChecker 的收敛</h3>
+<table>
+<thead>
+<tr>
+<th>本文概念</th>
+<th>NoFreeChecker 对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有限概念空间 = 有限验证器</td>
+<td>NoFreeChecker §6.1 固定集一致性协议</td>
+</tr>
+<tr>
+<td>model-intrinsic verifier 可信度最低</td>
+<td>本文：ungrounded LLM 的验证无定义</td>
+</tr>
+<tr>
+<td>verifier 被优化会失效</td>
+<td>本文：无 grounding 的"正确"本身无定义</td>
+</tr>
+<tr>
+<td>Proxy gain 协议</td>
+<td>本文的 grounded vs ungrounded 区分</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三份独立收敛</strong>：昨日《为不信任》"模型本身是威胁"→《NoFreeChecker》"model-intrinsic 最低"→本文"无概念空间 = 幻觉结构性"。三个不同方向（安全架构/验证理论/形式化证明）指向同一结论。</p>
+<h3 id="42-hermes-evals">4.2 对 Hermes Evals 体系的映射</h3>
+<table>
+<thead>
+<tr>
+<th>本文定理</th>
+<th>我们的实践</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>有限概念空间需要有限验证器</td>
+<td>golden set = 我们的有限验证器（23 篇固定集 + G1-G6 检查）</td>
+</tr>
+<tr>
+<td>无 grounding = "正确"无定义</td>
+<td>笔记内容质量判不了（G1-G6 只判格式/上线/出处）——正是放弃项，因为内容质量需要概念空间</td>
+</tr>
+<tr>
+<td>Corollary 4.1 幻觉需要 ungroundedness</td>
+<td>我们让 LLM 判内容质量 = 在 ungrounded 空间问"正确吗"——结构上不可能精确</td>
+</tr>
+<tr>
+<td>树结构精确 BP</td>
+<td>笔记 → 出处 → 线上验证的链式验证是树结构（每个检查节点只有一条上游）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>诚实自检</strong>：我们的 golden set 门禁只覆盖"有限概念空间"的格式部分——内容深度的"概念空间"我们没有也不应该用 LLM 建（因为 LLM 本身是 ungrounded 的）。用户审查 = 唯一的 grounded verifier。</p>
+<h3 id="43-cdtds">4.3 对 CDTDS 的映射</h3>
+<table>
+<thead>
+<tr>
+<th>本文概念</th>
+<th>CDTDS 映射</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>grounding = 概念对应真实世界</td>
+<td>CDTDS 的"设计对象对应真实零件/适航条款"</td>
+</tr>
+<tr>
+<td>BP 权重 = 精确推理</td>
+<td>设计规则链 = 树结构因子图 → 设计推论可验证</td>
+</tr>
+<tr>
+<td>ungrounded = "正确"无定义</td>
+<td>无对应适航条款的设计决策 = 无法验证合规性</td>
+</tr>
+<tr>
+<td>有限概念空间</td>
+<td>适航的 MC0-MC9 验证方法 = 有限验证器</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">五、批判性审视</h2>
+<ol>
+<li><strong>Sigmoid 假设是强约束</strong>：论文标题"Transformers are Bayesian Networks"严格只在 sigmoid 激活下成立。主流 LLM（GPT/Claude/Gemini）用 GELU/ReLU——论文 §10.4 论证"兼容但不等同"，但标题的"are"在 ReLU 情况下是降级的。<strong>"Compatibility is not identity"是论文自己说的</strong>。</li>
+<li><strong>Lean 证明的依赖链</strong>：六个 Lean 仓库的证明依赖 Coppola 自己的 QBBN 定义 [2]——QBBN 是作者的先前工作，其自身的正确性假设未被独立验证。形式化证明的力量 = 依赖公理的力量。</li>
+<li><strong>Loopy BP 的 500 次试验规模有限</strong>：五种图结构 × 100 次随机参数，覆盖了简单环但未覆盖深层密集环——论文 §10.5 诚实承认"当前缺乏收敛理论保证"</li>
+<li><strong>概念数 2n² 的界限</strong>：这是上界不是下界——实际概念空间可能远小于 2n²（许多 routing key 不对应任何 grounded 概念）</li>
+<li><strong>Turing 完备性 ≠ 实际能力</strong>：§5 证明存在权重可模拟任意 TM，但不意味着训练出的权重有此能力——存在性和可达性是不同的</li>
+<li><strong>"幻觉不是 bug"的论证力</strong>：§9.4 的逻辑链（有限验证器 → 有限概念 → 概念外无意义）对<strong>有限计算系统</strong>成立，但人脑也是有限系统却能做"有意义"的推理——这暗示 grounding 的定义可能比论文给出的更宽</li>
+</ol>
+<h2 id="_6">六、金句提取</h2>
+<blockquote>
+<p>"Transformers are Bayesian networks. Not approximately. Not under certain training conditions. Not as a useful analogy. By architecture, for any sigmoid weights, provably and formally."</p>
+<p>"Hallucination is not a bug that scaling can fix. It is the structural consequence of operating without concepts."</p>
+<p>"The architecture that has won empirically across modern AI is exactly the architecture that the analysis of reasoning already required."</p>
+<p>"Gradient descent did not discover something new. It rediscovered the structure that was always there."</p>
+<p>"Compatibility is not identity."（Sigmoid vs ReLU）</p>
+<p>"Grounding is what makes the question 'is this output correct?' answerable. Without it, there is no fact of the matter."</p>
+<p>"Calculemus."（让我们计算——Leibniz 1670s 的愿景，2026 年用 Transformer + Lean 实现）</p>
+</blockquote>
+<h2 id="_7">七、局限性</h2>
+<ol>
+<li>本笔记基于 web_extract 全文 76KB 精读——数学证明步骤未逐行验证 Lean 源码（六个仓库未 clone）</li>
+<li>QBBN [2] 是作者先前工作，其定义的合理性未独立核实</li>
+<li>实验数字（MAE 0.000752 / 500 次收敛 / 100% TM 精度）为论文自报</li>
+<li>第四五章体系映射为本笔记扩展，非论文原文论述</li>
+<li>Sigmoid vs ReLU 的"精确 vs 兼容"区分对主流 LLM（GELU/ReLU）的实际含义需要更多实验确认</li>
+</ol>
+<h2 id="_8">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至三</td>
+<td><strong>论文原文忠实还原</strong>（76KB 全文精读，定理/实验/数字逐条核对）</td>
+</tr>
+<tr>
+<td>四</td>
+<td><strong>体系映射</strong>（本笔记扩展，与 NoFreeChecker/为不信任/CDTDS 交叉）</td>
+</tr>
+<tr>
+<td>五</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
