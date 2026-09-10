@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>显卡微调小模型精度选择指南-LoRA-QLoRA全流程代码配置</title>
+
+<meta property="og:title" content="显卡微调小模型精度选择指南-LoRA-QLoRA全流程代码配置" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="30904090-loraqlora-autodl">显卡微调小模型精度选择指南：3090/4090 LoRA/QLoRA 全流程代码配置——千问对话精读 + 技术核实 + AutoDL 实战映射</h1>
+<blockquote>
+<p><strong>来源</strong>：千问（Qwen）分享对话《显卡微调小模型精度选择指南》2026-09-10<br />
+<strong>原文链接</strong>：https://qianwen.my.cn/share/chat/7c548408768e4797a61dbaa6abf52f1a<br />
+<strong>抓取方式</strong>：web_extract/智谱MCP 均无法读千问 SPA → 本地 Chromium CDP 渲染直读（614 行全文，本轮新降级链路验证）<br />
+<strong>对话结构</strong>：4 问 4 答（精度选择理解 → LoRA 代码配置 → PEFT 原理 → QLoRA 完整代码 → 推理挂载/合并代码）<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《MiniCPM5航空问答微调》（我们自己的 LoRA 实战）《free-model-apis》《auto-dl-gpu-config-pitfalls》</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p>对话核心是一句避坑指南：<strong>消费级卡（3090/4090）+ 小模型 LoRA 微调，fp16=True（3090）或 bf16=True（4090）就是最佳答案；FP8 是 H100/L40S 的大模型预训练武器，小模型 LoRA 用 FP8 几乎零收益还引入量化噪声</strong>。</p>
+<p>技术判定：<strong>这段建议整体正确且与我们 AutoDL 实战经验一致</strong>，但有三处需要修正/补强（见第三章批判节）——最关键的是"3090 对 BF16 支持不好"这个流行说法<strong>不准确</strong>（3090 是 Ampere，硬件原生支持 BF16），真实差异在 Tensor Core 吞吐与生态默认值。</p>
+<h2 id="_2">一、对话全文要点忠实还原</h2>
+<h3 id="11">1.1 精度选择的三维度解释（第一问）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>千问的回答</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>为什么 FP16/BF16</td>
+<td>消费级卡微调 7B 级模型显存通常够（8B + BF16 + LoRA 在 24GB 是舒适区），半精度最稳妥</td>
+</tr>
+<tr>
+<td>3090 → FP16</td>
+<td>"Ampere 之前架构对 BF16 支持不如新一代"⚠️（不准确，见三）需配合动态损失缩放防梯度下溢</td>
+</tr>
+<tr>
+<td>4090 → BF16</td>
+<td>BF16 动态范围与 FP32 一致（8 位指数），抗溢出，无需 Loss Scaling，训练更稳</td>
+</tr>
+<tr>
+<td>FP8 为何劝退</td>
+<td>①硬件场景错位：FP8 为 H100/L40S/Ada+ 设计，4090 训 SDXL LoRA 时 FP16 已轻松跑，开 FP8 反而精度下降需加训练步数 ②量化噪声：8 位精度低，小模型 LoRA 盲用可能效果变差</td>
+</tr>
+</tbody>
+</table>
+<h3 id="12-lora">1.2 LoRA 微调代码配置（第二问，代码保留）</h3>
+<p><strong>基座加载</strong>：</p>
+<pre><code class="language-python">import torch
+from transformers import AutoModelForCausalLM
+
+model = AutoModelForCausalLM.from_pretrained(
+    &quot;你的基座模型路径&quot;,
+    torch_dtype=torch.float16,  # 以半精度加载基座模型
+    device_map=&quot;auto&quot;
+)
+</code></pre>
+<p><strong>LoRA 注入（PEFT）</strong>：</p>
+<pre><code class="language-python">from peft import LoraConfig, get_peft_model, TaskType
+
+lora_config = LoraConfig(
+    task_type=TaskType.CAUSAL_LM,
+    r=16,                    # LoRA 秩，决定模型容量
+    lora_alpha=32,           # 缩放因子，通常为 r 的 1~4 倍
+    lora_dropout=0.05,       # 防止过拟合
+    target_modules=[&quot;q_proj&quot;, &quot;k_proj&quot;, &quot;v_proj&quot;]  # 目标微调模块
+)
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()
+</code></pre>
+<p><strong>训练参数（精度二选一）</strong>：</p>
+<pre><code class="language-python">from transformers import TrainingArguments
+
+training_args = TrainingArguments(
+    output_dir=&quot;./lora_output&quot;,
+    num_train_epochs=3,
+    per_device_train_batch_size=4,
+    gradient_accumulation_steps=8,      # 等效 Batch Size = 4 * 8 = 32
+
+    # ========== 精度选择（二选一）==========
+    fp16=True,   # RTX 3090 推荐：开启 FP16 混合精度
+    bf16=True,   # RTX 4090 推荐（注意：fp16 和 bf16 不能同时为 True）
+    # ====================================
+
+    learning_rate=2e-4,                 # LoRA 学习率通常高于全参微调
+    logging_steps=20,
+    save_strategy=&quot;epoch&quot;,
+    gradient_checkpointing=True,        # 核心：用计算时间换取约 40%-65% 的显存空间
+    optim=&quot;paged_adamw_32bit&quot;,          # 分页优化器，有效防止显存溢出 (OOM)
+)
+</code></pre>
+<p><strong>千问标注的三个坑</strong>：<br />
+1. 精度冲突：fp16/bf16 只能一个 True，框架检测到同时开会优先 BF16<br />
+2. <strong>KV 缓存冲突</strong>：开 gradient_checkpointing 必须关 <code>model.config.use_cache = False</code>，否则激活值暴涨直接 OOM<br />
+3. 防过拟合：数据集小（万级以内）lora_dropout 调到 0.1；数据量极大设 0</p>
+<h3 id="13-peft">1.3 PEFT 原理与选型（第三问）</h3>
+<table>
+<thead>
+<tr>
+<th>要点</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心思想</td>
+<td>冻结预训练模型绝大部分参数，仅引入 0.1%-1% 可训练参数，存储空间减 90%+</td>
+</tr>
+<tr>
+<td>支持方法</td>
+<td>LoRA / QLoRA / Prompt Tuning / Prefix Tuning / Adapter / DoRA</td>
+</tr>
+<tr>
+<td>关键参数</td>
+<td>r（秩）/ lora_alpha（缩放）/ target_modules（目标层）</td>
+</tr>
+<tr>
+<td>选型三原则</td>
+<td>显存充足追求质量→<strong>DoRA</strong>（use_dora=True）；显存紧张→<strong>QLoRA</strong>（4-bit 基座+LoRA）；历史项目/极致速度→标准 LoRA</td>
+</tr>
+<tr>
+<td>抗遗忘</td>
+<td>保留预训练通用知识，缓解灾难性遗忘，支持多任务动态切换 adapter</td>
+</tr>
+</tbody>
+</table>
+<h3 id="14-qlora">1.4 QLoRA 完整代码（第四问，代码保留）</h3>
+<p><strong>安装 + 4-bit 量化配置</strong>：</p>
+<pre><code class="language-bash">pip install torch transformers datasets accelerate peft bitsandbytes
+</code></pre>
+<pre><code class="language-python">import torch
+from datasets import load_dataset
+from transformers import (
+    AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig,
+    TrainingArguments, Trainer, DataCollatorForLanguageModeling
+)
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+# ================= 1. 配置 4-bit 量化 (QLoRA 核心) =================
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,                # 开启 4-bit 量化加载
+    bnb_4bit_quant_type=&quot;nf4&quot;,        # 使用 NF4 数据类型（效果最优）
+    bnb_4bit_compute_dtype=torch.bfloat16,  # 前向/反向计算使用 BF16 (4090推荐)
+    bnb_4bit_use_double_quant=True,   # 开启双重量化，进一步节省显存
+)
+
+# ================= 2. 加载基座模型与分词器 =================
+model_name = &quot;Qwen/Qwen2.5-7B-Instruct&quot;
+tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+tokenizer.pad_token = tokenizer.eos_token  # 必须设置 pad_token
+
+model = AutoModelForCausalLM.from_pretrained(
+    model_name, quantization_config=bnb_config,
+    device_map=&quot;auto&quot;, trust_remote_code=True
+)
+# 关键步骤：为 4-bit 模型准备训练环境（如归一化层转 FP32）
+model = prepare_model_for_kbit_training(model)
+
+# ================= 3. 配置 LoRA 适配器 =================
+lora_config = LoraConfig(
+    r=16, lora_alpha=32,
+    target_modules=[&quot;q_proj&quot;, &quot;k_proj&quot;, &quot;v_proj&quot;, &quot;o_proj&quot;],
+    lora_dropout=0.05, bias=&quot;none&quot;, task_type=&quot;CAUSAL_LM&quot;
+)
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()  # 通常可训练参数 &lt; 1%
+
+# ================= 4. 准备数据集 =================
+dataset = load_dataset(&quot;YeungNLP/firefly-train-1.1M&quot;, split=&quot;train[:10000]&quot;)
+
+def format_function(examples):
+    texts = [f&quot;User: {inp}\nAssistant: {out}{tokenizer.eos_token}&quot;
+             for inp, out in zip(examples['input'], examples['target'])]
+    return tokenizer(texts, truncation=True, max_length=1024, padding=&quot;max_length&quot;)
+
+tokenized_dataset = dataset.map(format_function, batched=True, remove_columns=dataset.column_names)
+
+# ================= 5. 训练参数 =================
+training_args = TrainingArguments(
+    output_dir=&quot;./qwen2.5-7b-qlora&quot;,
+    num_train_epochs=3,
+    per_device_train_batch_size=2,     # QLoRA 显存省，可适当开大
+    gradient_accumulation_steps=8,     # 等效 Batch Size = 2 * 8 = 16
+    learning_rate=2e-4,
+    bf16=True,                         # 4090 推荐 BF16，3090 请改为 fp16=True
+    gradient_checkpointing=True,
+    optim=&quot;paged_adamw_32bit&quot;,
+    logging_steps=20, save_strategy=&quot;epoch&quot;,
+)
+data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+trainer = Trainer(model=model, args=training_args,
+                  train_dataset=tokenized_dataset, data_collator=data_collator)
+trainer.train()
+
+# ================= 6. 保存轻量级 LoRA 权重 =================
+trainer.save_model(&quot;./qwen2.5-7b-qlora/final&quot;)
+tokenizer.save_pretrained(&quot;./qwen2.5-7b-qlora/final&quot;)
+</code></pre>
+<p><strong>千问标注的四个要点</strong>：3090 改 fp16=True；gradient_checkpointing + paged_adamw_32bit 是防 OOM 黄金搭档；<strong>训练时关 KV 缓存</strong>；推理只需几 MB 的 LoRA 权重挂载。</p>
+<h3 id="15">1.5 推理挂载与合并（第五问，代码保留）</h3>
+<p><strong>动态挂载（不合并）</strong>：</p>
+<pre><code class="language-python">import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel
+
+base_model_name = &quot;Qwen/Qwen2.5-7B-Instruct&quot;
+lora_adapter_path = &quot;./qwen2.5-7b-qlora/final&quot;
+
+tokenizer = AutoTokenizer.from_pretrained(base_model_name, trust_remote_code=True)
+tokenizer.pad_token = tokenizer.eos_token
+
+base_model = AutoModelForCausalLM.from_pretrained(
+    base_model_name, torch_dtype=torch.bfloat16,  # 4090 推荐，3090 改 float16
+    device_map=&quot;auto&quot;, trust_remote_code=True
+)
+model = PeftModel.from_pretrained(base_model, lora_adapter_path)
+model.eval()  # 切换为评估模式
+
+inputs = tokenizer(&quot;你好，请介绍一下你自己&quot;, return_tensors=&quot;pt&quot;).to(model.device)
+outputs = model.generate(**inputs, max_new_tokens=256)
+print(tokenizer.decode(outputs[0], skip_special_tokens=True))
+</code></pre>
+<p><strong>物理合并（部署用）</strong>：</p>
+<pre><code class="language-python">merged_model_save_path = &quot;./qwen2.5-7b-merged&quot;
+
+model = PeftModel.from_pretrained(base_model, lora_adapter_path)
+merged_model = model.merge_and_unload()  # 核心：将 LoRA 权重融合进基座模型
+merged_model.save_pretrained(merged_model_save_path)
+tokenizer.save_pretrained(merged_model_save_path)
+# 后续直接用 AutoModelForCausalLM 加载这个新路径
+</code></pre>
+<p><strong>千问标注</strong>：基座版本必须与训练时完全一致（否则维度不匹配）；推理一般不开 4-bit（除非显存极度受限）；推理前务必 model.eval()。</p>
+<h2 id="_3">二、技术核实（对照官方文档与我们实战）</h2>
+<table>
+<thead>
+<tr>
+<th>千问论断</th>
+<th>核实</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>fp16/bf16 不能同时 True</td>
+<td>✅</td>
+<td>HF TrainingArguments 文档明确</td>
+</tr>
+<tr>
+<td>BF16 动态范围与 FP32 一致</td>
+<td>✅</td>
+<td>BF16=8位指数+7位尾数，FP32=8位指数+23位尾数——指数位相同</td>
+</tr>
+<tr>
+<td>KV 缓存与 gradient_checkpointing 冲突致 OOM</td>
+<td>✅</td>
+<td>HF 官方 issue 常见坑，use_cache=False 必做</td>
+</tr>
+<tr>
+<td>gradient_checkpointing 省 40-65% 显存</td>
+<td>✅ 数量级合理</td>
+<td>官方说法"用约一次额外前向换激活值不存储"</td>
+</tr>
+<tr>
+<td>paged_adamw_32bit 防显存碎片 OOM</td>
+<td>✅</td>
+<td>bitsandbytes 分页优化器设计目的</td>
+</tr>
+<tr>
+<td><strong>"3090 对 BF16 支持不如新一代"</strong></td>
+<td>⚠️ <strong>不准确</strong></td>
+<td>3090=Ampere（SM86），硬件原生 BF16；真实差异是 FP16 Tensor Core 吞吐高于 BF16（约2×）且旧版 torch/transformers 默认值偏 FP16——不是"不支持"</td>
+</tr>
+<tr>
+<td>FP8 用于 4090 LoRA 零收益</td>
+<td>⚠️ 方向正确表述过强</td>
+<td>4090（Ada）有 FP8 Tensor Core；"零收益"场景是显存充裕时，QLoRA 显存极限场景 FP8 量化基座仍可省显存——但确实非主流路线</td>
+</tr>
+<tr>
+<td>LoRA lr=2e-4 高于全参</td>
+<td>✅</td>
+<td>QLoRA 论文推荐 1e-4~3e-4 区间</td>
+</tr>
+<tr>
+<td>r=16/alpha=32 起手配置</td>
+<td>✅</td>
+<td>社区标准起手参数</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">三、批判性审视（四条实质修正）</h2>
+<ol>
+<li><strong>"3090 不支持好 BF16"是流传最广的谬误之一</strong>：3090（Ampere GA102）硬件支持 BF16，真实情况是 FP16 的 Tensor Core 峰值吞吐约为 BF16 的 2 倍（Ampere 上 FP16 312 TFLOPS vs BF16 156 TFLOPS dense）。所以 3090 选 FP16 的真实理由是<strong>速度</strong>（+需 Loss Scaling 的代价），不是兼容性。若训练对溢出敏感且不在乎半速，3090 用 BF16 也完全可行</li>
+<li><strong><code>padding="max_length"</code> 是反模式</strong>：数据格式化示例对所有样本 pad 到 1024——浪费大量计算。生产应该用 <code>padding=True</code>（动态 padding）+ DataCollator 按批内最长 pad。我们的 AM_MiniCPM5 训练就是动态 padding</li>
+<li><strong>firefly-train-1.1M 万条通用指令数据是演示级配置</strong>：领域微调（如航空问答）应该用领域数据，通用数据混入比例过高会稀释领域信号——我们 R1→R3 的实战就是纯领域数据迭代</li>
+<li><strong>漏了 tokenizer 一个高频坑</strong>：<code>tokenizer.pad_token = tokenizer.eos_token</code> 之后，某些模型 generate 时会把 eos 当 pad 重复生成——需要同时设置 <code>tokenizer.pad_token_id</code> 并在 generate 传 <code>pad_token_id=tokenizer.eos_token_id</code>。对话没提</li>
+</ol>
+<h2 id="autodl-lora">四、AutoDL 实战映射（我们的 LoRA 流程对照）</h2>
+<table>
+<thead>
+<tr>
+<th>千问配置</th>
+<th>我们 AM_MiniCPM5 实战</th>
+<th>差异说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bf16=True（4090）</td>
+<td>✅ AutoDL 4090 同配置</td>
+<td>一致</td>
+</tr>
+<tr>
+<td>r=16/alpha=32</td>
+<td>我们的起手也是 r=16</td>
+<td>一致；容量不足时升 r=32 对比</td>
+</tr>
+<tr>
+<td>target_modules q/k/v/o</td>
+<td>按 MiniCPM5 架构调整</td>
+<td><strong>必查模型实际层名</strong>，不同架构投影层名不同</td>
+</tr>
+<tr>
+<td>merge_and_unload 部署</td>
+<td>✅ R3 就是 merged 部署</td>
+<td>一致；<strong>merge 后必串行拉回本地</strong>（scp 错 stat 核字节）</td>
+</tr>
+<tr>
+<td>QLoRA 4-bit 路线</td>
+<td>未用（显存够）</td>
+<td>24GB 对 2B 模型 LoRA 富余，无需 QLoRA</td>
+</tr>
+<tr>
+<td>GGUF 量化</td>
+<td>⚠️ 我们实测过</td>
+<td>MiniCPM5 自定义架构 GGUF 转 llama.cpp panic——<strong>转换成功≠运行可用</strong>（对话未涉及，是真实更深坑）</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">五、金句提取</h2>
+<blockquote>
+<p>"FP8 是 H100/L40S/Ada+ 的大模型预训练武器，小模型 LoRA 微调用 FP8 几乎零收益还引入量化噪声风险。"</p>
+<p>"gradient_checkpointing 和 paged_adamw_32bit 是黄金搭档。"（QLoRA 防溢出双保险）</p>
+<p>"确保推理时加载的基座模型版本与训练时完全一致，否则合并权重时可能会出现维度不匹配。"</p>
+</blockquote>
+<h2 id="_6">六、局限性</h2>
+<ol>
+<li>对话由用户逐问引导生成，覆盖精度选择主线但对多卡/分布式、deepspeed zero2/zero3 只字未提（AutoDL 单卡场景够用）</li>
+<li>数据集格式化示例是通用模板，chat 模型应该用各自的 chat template（apply_chat_template）而非手拼 "User:/Assistant:" 字符串</li>
+<li>训练超参（lr/epoch/等效 batch）为起手值，领域任务需按 eval_loss 曲线调</li>
+<li>抓取为渲染文本，代码块行号已剥离，语义无损但非逐字节原文</li>
+</ol>
+<h2 id="_7">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一</td>
+<td><strong>对话忠实还原</strong>（CDP 渲染全文 9.7KB，代码完整保留）</td>
+</tr>
+<tr>
+<td>二</td>
+<td><strong>一手源核实</strong>（HF/bitsandbytes 官方文档 + QLoRA 论文 + Ampere 白皮书吞吐数据）</td>
+</tr>
+<tr>
+<td>三、四</td>
+<td><strong>批判性审视 + 实战映射</strong>（本笔记扩展，对照 AM_MiniCPM5 三轮微调实战）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
