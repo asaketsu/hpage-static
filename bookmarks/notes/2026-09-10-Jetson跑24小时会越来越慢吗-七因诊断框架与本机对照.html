@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jetson跑24小时会越来越慢吗-七因诊断框架与本机对照</title>
+
+<meta property="og:title" content="Jetson跑24小时会越来越慢吗-七因诊断框架与本机对照" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="jetson-24-jc-server-orin">Jetson 跑 24 小时会越来越慢吗？——热平衡/内存泄漏/队列积压/长尾延迟七因诊断框架精读 + 本机（jc-server Orin）对照实测</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号文章《Jetson跑24小时，会越来越慢吗？》2026-09-10<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/lmWWk4doAEeC8u7y8xhFSQ<br />
+<strong>抓取方式</strong>：桌面 UA curl 直读（移动端 UA 被风控返空壳，桌面 UA 3.2MB 完整页）+ js_content 正则提取，5.4KB 正文全量<br />
+<strong>文章类型</strong>：边缘 AI 系统工程方法论（诊断框架 + 验收标准），参考文献 4 条全 NVIDIA 官方文档<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《jetson-orin-platform》《system-info》《watchdog-full-system-check》《ASA演示与长时运行》（我们的 50Hz 长时跑）<br />
+<strong>特别价值</strong>：我们本机就是 Jetson Orin（jc-server），且 asa 演示跑过长时间 velstand——本文可直接对照实测</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>文章核心答案：不会。芯片不会因为工作 24 小时而"疲劳"，真正随时间积累的是热量、内存、Swap、队列、缓存和 I/O 压力。</strong> 判断系统稳定性的正确姿势不是看开机第一分钟的峰值（Peak Performance），而是看<strong>热平衡后的持续性能（Sustained Performance）与性能稳定性（Performance Stability）</strong>。</p>
+<p>一个重要的诊断分界线：Warm-up 后温度上升→频率调整→进入稳定状态 = <strong>正常</strong>；FPS/延迟/响应性继续恶化 = <strong>故障</strong>，按七因排查。</p>
+<p>对我们最直接的映射：本机 jc-server 就是 Orin，Hermes Gateway + cron 群 + LuxTTS daemon 就是"多模型资源竞争"场景（文章第 06 节），本文的七因框架可直接作为 watchdog-full-system-check 的理论升级版。</p>
+<h2 id="_2">一、七因诊断框架忠实还原</h2>
+<h3 id="01">01 运行时间本身不致慢（三阶段模型）</h3>
+<pre><code>冷机启动（散热器凉，Benchmark 漂亮）→ 温度爬升（频率调整）→ 稳定运行（热平衡）
+</code></pre>
+<p>健康系统应停留在第三阶段。</p>
+<h3 id="02-thermalpower-throttling-02-01">02 Thermal/Power Throttling（原文 02 节，正文提取涵盖于摘要与 01）</h3>
+<p>温度超阈值 → SOC 降频维持热平衡。表现：FPS 平滑下降而非崩溃。优化顺序：<strong>确认功耗模式和风扇策略 → 改善散热器接触/风道/进出风 → 选可持续频率与功耗，而不是直接修改热保护阈值</strong>（最后这条是危险动作）。</p>
+<h3 id="03-swap">03 内存泄漏与 Swap（最典型软件因）</h3>
+<ul>
+<li>泄漏点清单：Camera Buffer / CUDA 内存 / TensorRT 输出 / GStreamer Sample / OpenCV Mat / 消息队列 / 日志对象 / 异常路径资源</li>
+<li><strong>量化示例（全文最硬核的算术）</strong>：每帧漏 1 KB × 30 FPS × 24h ≈ <strong>2.6 GB</strong>——短 Benchmark 完全发现不了</li>
+<li>恶化链条：内存压力 → 先回收 Page Cache → 开始用 Swap → 分配/复制/页面换入换出变慢 → <strong>尾延迟（P99）急剧恶化</strong>（不是平均变慢）</li>
+<li>VLM 特有：区分"泄漏"与"有意增长"——对话历史/视觉 Token/KV Cache/检索结果/Agent 状态无边界时，<strong>第 100 轮推理比第 1 轮慢是逻辑正确但同样致命</strong></li>
+<li>正确做法：Context/KV Cache/历史帧/轨迹/结果缓存全部设上限；定期记录进程 RSS/GPU 内存/系统 RAM/Swap；<strong>持续线性或阶梯式增长都需要解释</strong></li>
+</ul>
+<h3 id="04">04 越来越晚而不是越来越慢（队列积压——最隐蔽）</h3>
+<ul>
+<li>场景：Camera 30 FPS 输入，模型只能处理 25 FPS，无限 FIFO 不丢帧 → 每秒积压 5 帧</li>
+<li><strong>监控面板 FPS 不掉（吞吐恒 25），但处理的画面越来越旧</strong> → 用户看到的是延迟增长</li>
+<li>对机器人/无人机/实时告警尤其危险：<strong>模型仍准确识别目标，但识别的是几秒前的目标位置</strong></li>
+<li>解法：每帧带 Capture Timestamp，结果发布时算 <strong>Camera-to-Result</strong> 延迟；队列记录深度/最老帧年龄/丢帧数；实时任务用有限队列 + Latest Frame + 主动丢帧，<strong>放弃"每帧都不能丢"的执念</strong></li>
+</ul>
+<h3 id="05-camera">05 Camera/解码/日志/存储（模型之外的瓶颈）</h3>
+<ul>
+<li>完整链路任一环节积压：Camera 驱动/Argus/GStreamer/USB 传输/硬件解码/颜色转换/后处理</li>
+<li><strong>单独跑 Engine 稳定 ≠ Camera-to-Result 稳定</strong></li>
+<li>日志三宗罪：每帧打印/持续保存 Debug Image/日志不轮转 → I/O 压力 + 占满磁盘 + 阻塞业务线程；写入变慢时表现为<strong>随机卡顿而非平滑掉帧</strong></li>
+<li><strong>二组测试法</strong>：第一组只跑 TensorRT Engine 固定输入；第二组跑完整链路。只有第二组慢 → 问题在模型之外</li>
+<li>VLM 拆分记录：Vision Encoder / Prefill / Decode / KV Cache 大小 / 上下文长度——否则"VLM 越跑越慢"可能只是输入历史越来越长</li>
+</ul>
+<h3 id="06">06 多模型满载 → 长尾延迟（周期任务同相问题）</h3>
+<ul>
+<li>Jetson 常态：检测+跟踪+深度+分割+VLM+视频编码并行，竞争 GPU/DLA/CPU/EMC 带宽/内存分配器/散热预算</li>
+<li><strong>平均利用率接近 100% 看起来充分，但突发（VLM Prefill/录像写盘/多路 Camera 同时到来）无余量吸收</strong></li>
+<li>独特洞察：<strong>长期运行后多个周期任务逐渐同相</strong>，在某些时刻同时争抢资源 → 周期性抖动；平均 FPS 合格但 P99 明显升高</li>
+<li>架构解法：保留 Headroom；关键任务设优先级和 Deadline；低频 VLM 按需触发；限制并发 Context 数。<strong>检测常驻 → 跟踪填补检测间隔 → VLM 只在复杂语义或异常时运行</strong></li>
+</ul>
+<h3 id="07-tegrastats-24">07 tegrastats 与 24 小时测试规程</h3>
+<ul>
+<li>tegrastats 提供 RAM/Swap/CPU 频率与利用率/GPU/EMC/温度/功耗——适合基础遥测</li>
+<li>应用层必须补：FPS / Camera-to-Result / Queue Depth / 丢帧 / 上下文长度 / 错误计数</li>
+<li>采样策略：<strong>按秒记系统指标，按帧记关键时间戳，按分钟聚合趋势，保留 P50/P95/P99 和最大值</strong></li>
+<li>测试覆盖：冷启动/Warm-up/稳态/突发任务/恢复阶段；0/10/30min 及 1/2/4/8/12/24h 状态快照</li>
+<li>环境记录：环境温度/JetPack 版本/功耗模式/风扇配置/模型版本/输入尺寸/Camera 数量——<strong>否则不同轮次无法比较</strong></li>
+</ul>
+<h3 id="08">08 健康系统验收标准</h3>
+<p>健康 ≠ 曲线全水平，而是 <strong>Warm-up 后围绕稳定区间波动</strong>：<br />
+- 温度达平台；GPU/CPU 时钟在允许范围内调整；RAM 与 Queue 不再持续增长；FPS 无趋势性下降；P95/P99 不随时间恶化</p>
+<p>验收指标由任务定：稳态 FPS 下降比例上限 / P99 延迟增长上限 / 最大 Queue Depth / 允许丢帧率 / <strong>RAM 增长斜率</strong> / Swap 使用上限；异常自动降级或重启局部服务。机器人还要验证<strong>延迟超限后的 Safe Hold</strong>（不只记日志）。</p>
+<h2 id="_3">二、一手源核实</h2>
+<table>
+<thead>
+<tr>
+<th>文内论断</th>
+<th>核实</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>tegrastats 输出维度（RAM/Swap/CPU/GPU/EMC/温度/功耗）</td>
+<td>✅</td>
+<td>NVIDIA Jetson Linux Developer Guide（文中参考资料[1][3]真实可查，r36.4.3/r39.2 版本路径有效）</td>
+</tr>
+<tr>
+<td>热节流行为（温度超限→SOC 降频）</td>
+<td>✅</td>
+<td>Jetson Orin Power and Performance 官方文档（参考资料[2]）</td>
+</tr>
+<tr>
+<td>每帧 1KB×30FPS×24h≈2.6GB</td>
+<td>✅ 算术正确</td>
+<td>1024 B × 30 × 86400 s = 2.649 GB</td>
+</tr>
+<tr>
+<td>TensorRT 性能最佳实践（固定输入测 Engine）</td>
+<td>✅</td>
+<td>TensorRT Performance Best Practices（参考资料[4]）</td>
+</tr>
+<tr>
+<td>修改热保护阈值是危险动作</td>
+<td>✅ 与官方立场一致</td>
+<td>NVThermal 民间解锁有烧板风险，官方不推荐</td>
+</tr>
+<tr>
+<td>周期任务同相导致周期性抖动</td>
+<td>⚠️ 合理推断</td>
+<td>经验性论断，无论文级引用——方向正确（经典排队论现象），标注为作者工程经验</td>
+</tr>
+</tbody>
+</table>
+<p><strong>核实结论</strong>：参考文档全部真实存在（4/4），无幽灵引用；核心机制描述与 NVIDIA 官方文档一致；唯一无引用的"周期任务同相"是合理工程经验。</p>
+<h2 id="_4">三、批判性审视</h2>
+<ol>
+<li><strong>"芯片不会疲劳"表述过强</strong>：半导体确实存在老化机制（electromigration/负偏压温度不稳定性），但时间尺度是年不是天——24 小时语境下文章结论成立。严谨表述应为"老化效应在 24h 尺度可忽略"</li>
+<li><strong>DLA 提了一句但没展开</strong>：Orin 的 DLA 是 GPU 之外的关键算力（我们 TTS/检测可卸载），多模型竞争节完全没讲 DLA 卸载策略——对 Orin 用户是明显缺失</li>
+<li><strong>没有给 tegrastats 具体命令行</strong>：如 <code>tegrastats --interval 1000 --logfile</code>，落地还需查文档（小缺陷）</li>
+<li><strong>Swap 判定缺一个本机常见坑</strong>：Jetson 默认 zram swap，文章没提 zram 与磁盘 swap 的区别——zram 满时行为更隐蔽（CPU 压缩开销上升而非磁盘 I/O）</li>
+<li><strong>领域映射（航空）</strong>：本文框架 = 适航持续适航监控同构。"峰值性能 vs 持续性能" = 合格审定额值 vs 机队持续监控；"延迟超限 Safe Hold" = 飞控降级模式；"周期任务同相" = 航电负载峰值叠加分析（DO-178C 时序分析场景）。可直接借鉴到 CDTDS/数字孪生系统的健康监控设计</li>
+</ol>
+<h2 id="jc-server-jetson-orin">四、本机对照实测（jc-server = Jetson Orin）</h2>
+<p>文章框架对我们不是理论——本机就是运行场景。快速对照：</p>
+<table>
+<thead>
+<tr>
+<th>文中七因</th>
+<th>本机暴露面</th>
+<th>现有防线</th>
+<th>差距</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>02 热节流</td>
+<td>长时 cron 群 + TTS daemon</td>
+<td>watchdog-full-system-check 有温度检查</td>
+<td>无 FPS/频率趋势记录</td>
+</tr>
+<tr>
+<td>03 内存泄漏</td>
+<td>Hermes Gateway 长驻 + LuxTTS daemon</td>
+<td>watchdog 有磁盘/进程检查</td>
+<td><strong>无 RSS/Swap 斜率监控</strong>（本文最值得抄的指标）</td>
+</tr>
+<tr>
+<td>04 队列积压</td>
+<td>飞书消息队列（Redirect 高发时段）</td>
+<td>无</td>
+<td>Gateway 内部队列深度不可见</td>
+</tr>
+<tr>
+<td>05 日志写盘</td>
+<td>cron 输出 + 会话日志</td>
+<td>有日志轮转</td>
+<td>合格</td>
+</tr>
+<tr>
+<td>06 多模型竞争</td>
+<td>LLM 推理(远程) + TTS(本地 GPU) + 前端</td>
+<td>无优先级机制</td>
+<td>本地仅 TTS 用 GPU，冲突面小</td>
+</tr>
+<tr>
+<td>07 遥测</td>
+<td>tegrastats 未常态记录</td>
+<td>cluster-health-check 手动</td>
+<td><strong>可加：tegrastats 按小时采样入趋势文件</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>可执行吸收</strong>（暂不动手，列入观察）：watchdog 下轮迭代加两项确定性检查——①Gateway 进程 RSS 24h 斜率（&gt;50MB/h 告警）②zram swap 使用率。这就是本文 07 节方法论的最小落地。</p>
+<h2 id="_5">五、金句提取</h2>
+<blockquote>
+<p>"边缘 AI 真正的性能，不是开机第一分钟有多快，而是第二十四小时还能不能一样稳定。"</p>
+<p>"每帧泄漏 1 KB，30 FPS 连续运行 24 小时，累计约 2.6 GB。"</p>
+<p>"用户看到的是延迟不断增长，而不是 FPS 下降。"</p>
+<p>"加大内存只会推迟故障。"（修泄漏才是根治）</p>
+<p>"平均利用率接近 100% 看起来很充分，但系统就没有余量吸收突发负载。"</p>
+</blockquote>
+<h2 id="_6">六、局限性</h2>
+<ol>
+<li>全文定性框架为主，无一个实测数据集/基准数字（诊断方法论文章的通病——框架正确但读者需自建数据）</li>
+<li>未覆盖 JetPack 6/Orin 的具体工具演进（如 jetson_clocks --fan、nvjpeg 等）</li>
+<li>周期任务同相为工程经验无引用</li>
+<li>领域映射章为本笔记扩展</li>
+<li>抓取为正文提取，图片已标注 URL 未含图内文字（图应为性能曲线示意，不影响正文语义）</li>
+</ol>
+<h2 id="_7">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一、五</td>
+<td><strong>原文忠实还原</strong>（js_content 提取 5.4KB 全文）</td>
+</tr>
+<tr>
+<td>二</td>
+<td><strong>一手源核实</strong>（NVIDIA 官方文档 4/4 有效 + 算术验证）</td>
+</tr>
+<tr>
+<td>三、四</td>
+<td><strong>批判性审视 + 本机对照</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
