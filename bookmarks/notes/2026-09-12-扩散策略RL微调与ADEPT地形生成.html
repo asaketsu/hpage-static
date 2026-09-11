@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>扩散策略RL微调与ADEPT地形生成</title>
+
+<meta property="og:title" content="扩散策略RL微调与ADEPT地形生成" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rl-adept">扩散策略 RL 微调与 ADEPT 自适应地形生成 — 双足重训决策参考</h1>
+<blockquote>
+<p>2026-09-12 夜间自学习笔记。来源：MDPI Robotics《Reinforcement Learning for Diffusion Policies in Robotics: A Survey and State-Based Locomotion Reproduction》(robotics 15(8):147) + arXiv 2506.01759《ADEPT: Adaptive Diffusion Environment for Policy Transfer Sim-to-Real》。<br />
+服务对象：DUCK-Pi_5 重训决策（用户已定调"参数已定+打算重训+性能功能为上"）。</p>
+
+<p class="meta-date">生成日期 2026-09-12</p></blockquote>
+<h2 id="_1">一句话结论</h2>
+<p>扩散策略的 RL 微调增益<strong>并非扩散特有</strong>（Gaussian policy + PPO 同样涨）；真正可白嫖的是 ADEPT 的<strong>难度加权环境采样</strong>思想——不改网络、不加训练成本，只改地形课程的数据分布，就能提升泛化与收敛速度。</p>
+<h2 id="1-dppo-84">1. DPPO 综述硬数据（84 项研究的证据地图）</h2>
+<h3 id="11">1.1 综述骨架</h3>
+<ul>
+<li>四条检索路径 → 178 条记录 → 162 去重候选 → <strong>84 项研究入图</strong></li>
+<li>层级规则分类：<strong>41 项直接奖励驱动</strong>（reward-driven）+ 32 项邻近机器人研究 + 8 项替代生成器 + 3 项非机器人</li>
+<li>五轴分类法：初始化/数据、交互机制、优化对象、信用分配、生成器类型</li>
+</ul>
+<h3 id="12-d4rl-11-hopper">1.2 关键实测（D4RL 1.1 Hopper 基准，固定终点评估协议）</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 个 DPPO 微调 seed 相对 BC 初始化的平均回报提升</td>
+<td><strong>+1261.2</strong></td>
+</tr>
+<tr>
+<td>seed 级标准差</td>
+<td>125.5</td>
+</tr>
+<tr>
+<td>95% 置信区间</td>
+<td>1105.3 ~ 1417.1</td>
+</tr>
+<tr>
+<td>微调起点</td>
+<td>2 个已录制的 BC checkpoint</td>
+</tr>
+</tbody>
+</table>
+<p><strong>最重要的一句话</strong>：Gaussian 策略在 PPO 后同样提升——<strong>增益不是扩散专属的</strong>。这对我们的重训选型是直接证据：MLP+PPO 主线（MODEL_VERSIONS 真值里的既定路线）不需要因为"扩散策略更潮"而动摇。</p>
+<h3 id="13">1.3 综述里的代表性路线（与我们相关的两条）</h3>
+<ul>
+<li><strong>TMRL</strong>：扩散策略先用 context-smoothed BC 预训练，再在线 RL 微调（O2O），真机操作任务验证——"预训练保留探索结构、微调榨任务回报"的两段式。</li>
+<li><strong>Adaptive DP Nav</strong>：模仿预训练的视觉扩散导航策略 + RL 微调，零样本迁移到四足真机。</li>
+</ul>
+<h2 id="2-adept">2. ADEPT：扩散模型生成训练环境（公式级拆解）</h2>
+<h3 id="21">2.1 核心思想</h3>
+<p>环境生成器与策略<strong>共同进化</strong>：用 DDPM 的初始噪声优化，生成"当前策略刚好学得动"的环境。冻结扩散模型权重（保证生成环境贴合真实分布），只优化初始噪声——不需要 classifier-free guidance 的全步扰动，也不需要微调扩散模型。</p>
+<h3 id="22">2.2 三个可直接复刻的机制</h3>
+<p><strong>① 难度加权插值（生成"跳一跳够得着"的环境）</strong></p>
+<p>对数据集子集 Λ̄ 中每个环境 e^i 加噪到第 k 步得到潜变量 e_k^i，按策略改进权重加权平均：</p>
+<pre><code>e'_k = Σ w(e^i,π)·e_k^i / Σ w(e^m,π)
+w(e,π) = exp{ -(s(e,π) - s̄)² / σ² }
+</code></pre>
+<ul>
+<li><code>s(e,π)</code> = 环境难度代理，<strong>用导航/行走成功率</strong>（比 TD-error、regret 更便宜且够用）</li>
+<li>权重惩罚"太容易"和"太难"两端的偏离，σ 是温度</li>
+<li>新环境 = 从加权融合的潜变量做反向扩散</li>
+</ul>
+<p><strong>② 多样性自适应（防训练后期躺平）</strong></p>
+<ul>
+<li>对数据集每张高程图做 PCA，前几个主成分的方差 → 数据集多样性代理 Λ_var</li>
+<li>反向扩散起始步 <code>k = K·(1 - Λ_var)</code>：数据越多样 k 越小（生成越接近已有环境，精修难度）；数据越单一 k 越大（越接近纯噪声，生成全新地形）</li>
+</ul>
+<p><strong>③ 环境选择器</strong></p>
+<p>不用确定性 argmax，按权重采样 + UCB（Upper Confidence Bound）偏好——兼顾利用与探索。</p>
+<h3 id="23">2.3 环境表示与真机部署</h3>
+<ul>
+<li><strong>两层地图</strong> e∈R^{2×W×H}：裸地形高程 + 植被冠层布局。不用 SDF/多边形网格（越野细节需要精细空间分辨率，计算太贵）。生成后由程序化生成补细节（coarse-to-fine）。</li>
+<li><strong>感知域处理</strong>：不搞复杂手工深度噪声模型，只随机化单个红外噪声模型参数（立体匹配模拟）——简单可控且够真实。</li>
+<li><strong>部署链</strong>：特权教师策略（ADEPT 环境训练）→ teacher-student 蒸馏 + 物理/感知域随机化 → 学生策略零样本上真机（轮式机器人越野验证，优于程序化生成与自然环境训练）。</li>
+</ul>
+<h2 id="3-duck-pi_5">3. 对 DUCK-Pi_5 的落地分析（四分判定式）</h2>
+<table>
+<thead>
+<tr>
+<th>判定</th>
+<th>内容</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>已满足</strong></td>
+<td>MLP+PPO 主线（v4 重训指南 docs/45）：综述证明 Gaussian+PPO 增益与扩散持平，无需换扩散策略网络</td>
+<td>关闭，不动</td>
+</tr>
+<tr>
+<td><strong>新增主线候选</strong></td>
+<td><strong>难度加权地形重采样</strong>：现有 microduck 地形库（mujoco-scene-design 的 hfield/bin 体系）按 episode 成功率做加权采样——w(e,π) 公式可直接抄，success rate 平方惩罚，σ 可调</td>
+<td>重训时实装，零额外训练成本，只改数据采样逻辑</td>
+</tr>
+<tr>
+<td><strong>增强阶段（带触发）</strong></td>
+<td>PCA 多样性代理 + 起始步调度：当地形库固定、训练后期回报平台化时再引入；程序化地形参数化空间有限是已知痛点</td>
+<td>触发条件：重训中观察到回报平台 + 地形过拟合（训练地形好、新地形差）</td>
+</tr>
+<tr>
+<td><strong>明确不做</strong></td>
+<td>训练一个 DDPM 来生成地形：鸭子是小足式机器人非越野导航，地形复杂度需求有限，扩散模型训练成本不成比例；且本机 Jetson 禁跑重型训练</td>
+<td>给理由关闭</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一句话给重训</strong>：重训仍走 MLP+PPO 主线；把"地形按成功率加权重采样"写进重训配置（约 20 行采样逻辑），这是 ADEPT 摘出来最便宜的一块肉。</p>
+<h2 id="4">4. 证据与引用</h2>
+<ul>
+<li>DPPO Survey: MDPI Robotics 15(8):147, doi:10.3390/robotics15080147（2026, Open Access）</li>
+<li>ADEPT: arXiv 2506.01759（零样本 sim2real 越野导航，含教师-学生蒸馏）</li>
+<li>关联内部资产：<code>mujoco-scene-design</code>（hfield/bin 地形管线）、<code>microduck-training-iteration</code>（重训/诊断）、DUCK-Pi_5 docs/45（v4 重训指南）、docs/44（BeyondMimic 吸收记录）</li>
+</ul>
+</body>
+</html>
