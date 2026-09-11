@@ -439,22 +439,27 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
-<h1 id="rl-adept">扩散策略 RL 微调与 ADEPT 自适应地形生成 — 双足重训决策参考</h1>
-<blockquote>
-<p>2026-09-12 夜间自学习笔记。来源：MDPI Robotics《Reinforcement Learning for Diffusion Policies in Robotics: A Survey and State-Based Locomotion Reproduction》(robotics 15(8):147) + arXiv 2506.01759《ADEPT: Adaptive Diffusion Environment for Policy Transfer Sim-to-Real》。<br />
-服务对象：DUCK-Pi_5 重训决策（用户已定调"参数已定+打算重训+性能功能为上"）。</p>
-
-<p class="meta-date">生成日期 2026-09-12</p></blockquote>
-<h2 id="_1">一句话结论</h2>
-<p>扩散策略的 RL 微调增益<strong>并非扩散特有</strong>（Gaussian policy + PPO 同样涨）；真正可白嫖的是 ADEPT 的<strong>难度加权环境采样</strong>思想——不改网络、不加训练成本，只改地形课程的数据分布，就能提升泛化与收敛速度。</p>
-<h2 id="1-dppo-84">1. DPPO 综述硬数据（84 项研究的证据地图）</h2>
-<h3 id="11">1.1 综述骨架</h3>
+<h1 id="rladept-duck-pi5">扩散策略RL微调与ADEPT地形生成 #强化学习 #机器人 #DUCK-Pi5</h1>
+<p class="note-date">生成日期 2026-09-12</p>
+<h2 id="_1">出处</h2>
 <ul>
-<li>四条检索路径 → 178 条记录 → 162 去重候选 → <strong>84 项研究入图</strong></li>
-<li>层级规则分类：<strong>41 项直接奖励驱动</strong>（reward-driven）+ 32 项邻近机器人研究 + 8 项替代生成器 + 3 项非机器人</li>
-<li>五轴分类法：初始化/数据、交互机制、优化对象、信用分配、生成器类型</li>
+<li>主源1：MDPI Robotics《Reinforcement Learning for Diffusion Policies in Robotics: A Survey and State-Based Locomotion Reproduction》robotics 15(8):147, doi:10.3390/robotics15080147（2026, Open Access）</li>
+<li>主源2：arXiv 2506.01759《ADEPT: Adaptive Diffusion Environment for Policy Transfer Sim-to-Real》</li>
+<li>检索路径：web_search "bipedal robot reinforcement learning diffusion policy sim2real 2026 arxiv" → 综述+ADEPT 双命中，web_extract 全文精读</li>
 </ul>
-<h3 id="12-d4rl-11-hopper">1.2 关键实测（D4RL 1.1 Hopper 基准，固定终点评估协议）</h3>
+<h2 id="_2">一、内容整理（忠实还原）</h2>
+<h3 id="11-dppo-84">1.1 DPPO 综述骨架（84 项研究的证据地图）</h3>
+<p>四条检索路径 → 178 条记录 → 162 去重候选 → <strong>84 项研究入图</strong>。层级规则分类：<strong>41 项直接奖励驱动</strong>（reward-driven）+ 32 项邻近机器人研究 + 8 项替代生成器 + 3 项非机器人。五轴分类法：初始化/数据、交互机制、优化对象、信用分配、生成器类型。</p>
+<p>代表性路线两条：<strong>TMRL</strong>（扩散策略先用 context-smoothed BC 预训练再在线 RL 微调 O2O，真机操作验证）、<strong>Adaptive DP Nav</strong>（模仿预训练视觉扩散导航策略+RL 微调，零样本迁移四足真机）。</p>
+<h3 id="12-adept">1.2 ADEPT：扩散模型生成训练环境</h3>
+<p>核心思想：环境生成器与策略<strong>共同进化</strong>。用 DDPM 初始噪声优化生成"当前策略刚好学得动"的环境；冻结扩散模型权重保证生成环境贴合真实分布，只优化初始噪声——无需 classifier-free guidance 全步扰动，无需微调扩散模型。</p>
+<p>三个机制：<br />
+1. <strong>难度加权插值</strong>：数据集子集每个环境加噪到第 k 步取潜变量，按策略改进权重加权平均后反向扩散生成新环境。权重 <code>w(e,π)=exp{-(s(e,π)-s̄)²/σ²}</code> 惩罚"太容易/太难"两端，难度代理用<strong>导航成功率</strong>（比 TD-error/regret 便宜且够用）。<br />
+2. <strong>多样性自适应</strong>：对地形图 PCA 前几主成分方差 → 数据集多样性 Λ_var；反向起始步 <code>k=K·(1-Λ_var)</code>——数据越单一 k 越大（生成越新颖），越多样 k 越小（精修难度）。<br />
+3. <strong>环境选择器</strong>：按权重采样 + UCB 上置信界，兼顾利用与探索。</p>
+<p>环境表示：两层地图 e∈R^{2×W×H}（裸地形高程+植被冠层），coarse-to-fine（扩散出粗轮廓、程序化补细节）；感知域只随机化单个红外噪声模型参数。部署链：特权教师策略 → teacher-student 蒸馏 + 物理/感知域随机化 → 学生零样本上真机（轮式越野验证，优于程序化生成与自然环境训练）。</p>
+<h2 id="_3">二、查询拓展（深挖实验数据）</h2>
+<p><strong>DPPO 综述的 D4RL 1.1 Hopper 固定终点评估</strong>（最硬的一组数）：</p>
 <table>
 <thead>
 <tr>
@@ -464,7 +469,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </thead>
 <tbody>
 <tr>
-<td>5 个 DPPO 微调 seed 相对 BC 初始化的平均回报提升</td>
+<td>5 个 DPPO 微调 seed 相对 BC 初始化平均回报提升</td>
 <td><strong>+1261.2</strong></td>
 </tr>
 <tr>
@@ -477,44 +482,25 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 <tr>
 <td>微调起点</td>
-<td>2 个已录制的 BC checkpoint</td>
+<td>2 个已录制 BC checkpoint</td>
 </tr>
 </tbody>
 </table>
-<p><strong>最重要的一句话</strong>：Gaussian 策略在 PPO 后同样提升——<strong>增益不是扩散专属的</strong>。这对我们的重训选型是直接证据：MLP+PPO 主线（MODEL_VERSIONS 真值里的既定路线）不需要因为"扩散策略更潮"而动摇。</p>
-<h3 id="13">1.3 综述里的代表性路线（与我们相关的两条）</h3>
+<p>深挖结论：<strong>Gaussian 策略在 PPO 后同样提升——增益不是扩散专属的</strong>。这是综述自己做的对照实验，不是转述。</p>
+<p>ADEPT 的对照设置：与程序化生成地形（参数化课程）和自然环境数据集对比训练，ADEPT 策略在泛化（未见环境）与收敛速度双胜；蒸馏后学生策略零样本 sim2real 在真机上优于 SOTA 导航方法。</p>
+<h2 id="_4">三、归纳总结</h2>
+<ol>
+<li>扩散策略的 RL 微调增益，控制变量后与 Gaussian+PPO 持平——"扩散更潮"不构成重训换网络的理由。</li>
+<li>ADEPT 的真正贡献不在扩散模型本身，而在<strong>把环境采样分布变成策略性能的函数</strong>（课程学习视角）——这个思想可以脱离 DDPM 独立使用。</li>
+<li>成功率平方惩罚权重（既不太难也不太容易）+ UCB 采样，是白嫖成本最低的两件套。</li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
 <ul>
-<li><strong>TMRL</strong>：扩散策略先用 context-smoothed BC 预训练，再在线 RL 微调（O2O），真机操作任务验证——"预训练保留探索结构、微调榨任务回报"的两段式。</li>
-<li><strong>Adaptive DP Nav</strong>：模仿预训练的视觉扩散导航策略 + RL 微调，零样本迁移到四足真机。</li>
+<li>扩散策略在操作类任务（多模态分布重要）保持优势，但在纯 locomotion（state-based）场景，MLP+PPO 仍是性价比之王，且微调管线更成熟（PPO 全生态）。</li>
+<li>环境生成正从"手工参数化地形"→"程序化课程"→"生成式模型引导课程"演进；ADEPT 的"冻结生成器、优化噪声"路线比微调生成器便宜一个量级，会成为主流。</li>
+<li>Teacher-student 蒸馏 + 域随机化已是 sim2real 标准配置，竞争点转移到"教师见过的环境分布质量"。</li>
 </ul>
-<h2 id="2-adept">2. ADEPT：扩散模型生成训练环境（公式级拆解）</h2>
-<h3 id="21">2.1 核心思想</h3>
-<p>环境生成器与策略<strong>共同进化</strong>：用 DDPM 的初始噪声优化，生成"当前策略刚好学得动"的环境。冻结扩散模型权重（保证生成环境贴合真实分布），只优化初始噪声——不需要 classifier-free guidance 的全步扰动，也不需要微调扩散模型。</p>
-<h3 id="22">2.2 三个可直接复刻的机制</h3>
-<p><strong>① 难度加权插值（生成"跳一跳够得着"的环境）</strong></p>
-<p>对数据集子集 Λ̄ 中每个环境 e^i 加噪到第 k 步得到潜变量 e_k^i，按策略改进权重加权平均：</p>
-<pre><code>e'_k = Σ w(e^i,π)·e_k^i / Σ w(e^m,π)
-w(e,π) = exp{ -(s(e,π) - s̄)² / σ² }
-</code></pre>
-<ul>
-<li><code>s(e,π)</code> = 环境难度代理，<strong>用导航/行走成功率</strong>（比 TD-error、regret 更便宜且够用）</li>
-<li>权重惩罚"太容易"和"太难"两端的偏离，σ 是温度</li>
-<li>新环境 = 从加权融合的潜变量做反向扩散</li>
-</ul>
-<p><strong>② 多样性自适应（防训练后期躺平）</strong></p>
-<ul>
-<li>对数据集每张高程图做 PCA，前几个主成分的方差 → 数据集多样性代理 Λ_var</li>
-<li>反向扩散起始步 <code>k = K·(1 - Λ_var)</code>：数据越多样 k 越小（生成越接近已有环境，精修难度）；数据越单一 k 越大（越接近纯噪声，生成全新地形）</li>
-</ul>
-<p><strong>③ 环境选择器</strong></p>
-<p>不用确定性 argmax，按权重采样 + UCB（Upper Confidence Bound）偏好——兼顾利用与探索。</p>
-<h3 id="23">2.3 环境表示与真机部署</h3>
-<ul>
-<li><strong>两层地图</strong> e∈R^{2×W×H}：裸地形高程 + 植被冠层布局。不用 SDF/多边形网格（越野细节需要精细空间分辨率，计算太贵）。生成后由程序化生成补细节（coarse-to-fine）。</li>
-<li><strong>感知域处理</strong>：不搞复杂手工深度噪声模型，只随机化单个红外噪声模型参数（立体匹配模拟）——简单可控且够真实。</li>
-<li><strong>部署链</strong>：特权教师策略（ADEPT 环境训练）→ teacher-student 蒸馏 + 物理/感知域随机化 → 学生策略零样本上真机（轮式机器人越野验证，优于程序化生成与自然环境训练）。</li>
-</ul>
-<h2 id="3-duck-pi_5">3. 对 DUCK-Pi_5 的落地分析（四分判定式）</h2>
+<h2 id="duck-pi_5">五、关联分析（×DUCK-Pi_5 四分判定）</h2>
 <table>
 <thead>
 <tr>
@@ -525,33 +511,41 @@ w(e,π) = exp{ -(s(e,π) - s̄)² / σ² }
 </thead>
 <tbody>
 <tr>
-<td><strong>已满足</strong></td>
-<td>MLP+PPO 主线（v4 重训指南 docs/45）：综述证明 Gaussian+PPO 增益与扩散持平，无需换扩散策略网络</td>
-<td>关闭，不动</td>
+<td>已满足</td>
+<td>MLP+PPO 主线（v4 重训指南 docs/45）：综述证明 Gaussian+PPO 增益与扩散持平</td>
+<td>关闭不动</td>
 </tr>
 <tr>
 <td><strong>新增主线候选</strong></td>
-<td><strong>难度加权地形重采样</strong>：现有 microduck 地形库（mujoco-scene-design 的 hfield/bin 体系）按 episode 成功率做加权采样——w(e,π) 公式可直接抄，success rate 平方惩罚，σ 可调</td>
-<td>重训时实装，零额外训练成本，只改数据采样逻辑</td>
+<td><strong>难度加权地形重采样</strong>：microduck 地形库按 episode 成功率加权采样，w(e,π) 公式直接抄</td>
+<td>重训时实装，约 20 行采样逻辑，零额外训练成本</td>
 </tr>
 <tr>
-<td><strong>增强阶段（带触发）</strong></td>
-<td>PCA 多样性代理 + 起始步调度：当地形库固定、训练后期回报平台化时再引入；程序化地形参数化空间有限是已知痛点</td>
-<td>触发条件：重训中观察到回报平台 + 地形过拟合（训练地形好、新地形差）</td>
+<td>增强阶段（带触发）</td>
+<td>PCA 多样性代理+起始步调度</td>
+<td>触发条件：重训观察到回报平台+地形过拟合（训练地形好、新地形差）</td>
 </tr>
 <tr>
-<td><strong>明确不做</strong></td>
-<td>训练一个 DDPM 来生成地形：鸭子是小足式机器人非越野导航，地形复杂度需求有限，扩散模型训练成本不成比例；且本机 Jetson 禁跑重型训练</td>
+<td>明确不做</td>
+<td>训练 DDPM 生成地形：鸭子非越野导航，地形复杂度需求有限；本机 Jetson 禁跑重型训练</td>
 <td>给理由关闭</td>
 </tr>
 </tbody>
 </table>
-<p><strong>一句话给重训</strong>：重训仍走 MLP+PPO 主线；把"地形按成功率加权重采样"写进重训配置（约 20 行采样逻辑），这是 ADEPT 摘出来最便宜的一块肉。</p>
-<h2 id="4">4. 证据与引用</h2>
+<h2 id="_6">六、拓展应用推荐</h2>
+<ol>
+<li><strong>重训配置直接加一段</strong>：地形按成功率加权重采样（ADEPT Eq.2/3 摘出来最便宜的一块肉）。</li>
+<li>success rate 同时是"难度代理"和"防 reward-hack 信号"——与 microduck-training-iteration 的站桩检测共用同一数据源。</li>
+<li>UCB 采样思想可用于 dp5 的任务/地形选择器，防训练后期在简单地形上躺平刷分。</li>
+</ol>
+<h2 id="_7">七、指南分析（可操作清单）</h2>
 <ul>
-<li>DPPO Survey: MDPI Robotics 15(8):147, doi:10.3390/robotics15080147（2026, Open Access）</li>
-<li>ADEPT: arXiv 2506.01759（零样本 sim2real 越野导航，含教师-学生蒸馏）</li>
-<li>关联内部资产：<code>mujoco-scene-design</code>（hfield/bin 地形管线）、<code>microduck-training-iteration</code>（重训/诊断）、DUCK-Pi_5 docs/45（v4 重训指南）、docs/44（BeyondMimic 吸收记录）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 重训前：在地形采样代码里加 <code>w = exp(-(sr - sr_target)²/σ²)</code> 加权（sr=各地形近 N episode 成功率，sr_target≈0.5~0.7，σ 可调）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 重训中：监控"训练地形 vs 留出地形"成绩差，差值持续扩大 → 触发多样性机制（把采样 k 档拉高）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 重训后：验收仍看真实功能指标（鸭子位移）非代理指标——与长训盯盘铁律一致</li>
+<li style="list-style:none"><input type="checkbox" disabled> 不引入 DDPM 地形生成；若未来上 AutoDL 大规模训练再评估</li>
 </ul>
+<h2 id="_8">内部资产关联</h2>
+<p><code>mujoco-scene-design</code>（hfield/bin 地形管线）、<code>microduck-training-iteration</code>（重训/诊断）、<code>dp5-training-findings</code>、DUCK-Pi_5 docs/44（BeyondMimic 吸收）、docs/45（v4 重训指南）、docs/46（关节精调台账）</p>
 </body>
 </html>
