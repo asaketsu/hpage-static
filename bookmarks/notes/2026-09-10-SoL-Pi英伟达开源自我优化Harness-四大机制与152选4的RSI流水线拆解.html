@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SoL-Pi英伟达开源自我优化Harness-四大机制与152选4的RSI流水线拆解</title>
+
+<meta property="og:title" content="SoL-Pi英伟达开源自我优化Harness-四大机制与152选4的RSI流水线拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="sol-pi-harness-152-4-rsi">SoL-Pi：英伟达开源的自我优化 Harness——四大机制（动作融合/在线压缩/输出归档/证据核验）+ 152 选 4 的 RSI 流水线拆解</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号新智元《英伟达震撼开源Harness！AI自己爆改AI》2026-09-10<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/nX2j61IjOCVtwEDaxGagCQ<br />
+<strong>官方项目</strong>：https://github.com/NVlabs/SoL-Pi + https://nvlabs.github.io/SoL-Pi/（韩松 Efficient AI 团队）<br />
+<strong>抓取方式</strong>：微信桌面 UA + js_content 提取 3.5KB 全文<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《自进化Harness与记忆》（今日 harness 簇首篇，mem0 三种写）《Harness重塑AI性能》（Minara 58 分差）《Agent后台办公桌实战》《Transformers即贝叶斯网络》（证据核验的幻觉防线）</p>
+
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>SoL-Pi = 英伟达（韩松团队）用"AI 研究 AI"流水线从 152 个候选机制中筛出的 4 个 harness 效率机制，装在 Pi 底盘上：Token 省 45-64%、成本降 50-54%、得分保留 94%。</strong> 四个机制全部是"确定性优化"（删重复、并请求、按需召回、小模型初筛+证据核验），不是提示词技巧——这正是它们能跨任务跨模型迁移的原因。对我们最直接的增量：<strong>ObservationPack（输出归档+句柄召回）与 Evidence-Preserving Reducer（小模型初筛+原文核验）</strong>——这两个机制正是我们 context 压缩与 golden set 验证思路的工业级同构物，且有可抄的实现细节。</p>
+<h2 id="rsi">一、问题定义：RSI 的账单</h2>
+<blockquote>
+<p>"在让 AI 递归改进自己之前，能不能先让它把自我改进的账单打下来？"</p>
+</blockquote>
+<p>编程智能体任务越变越长（数小时级），平时不起眼的 token 浪费开始累积：改完文件下一步明明是跑测试、模型还要再推理一轮；大文件读过一次后续每轮请求重复携带；几千行日志里影响决策的只有几行、贵模型从头读。<strong>RSI（递归自我改进）尤其烧钱：每次试错都付 token 费，失败的方案也照样收费。</strong></p>
+<p><strong>实测数字</strong>（vs 不同基线）：</p>
+<table>
+<thead>
+<tr>
+<th>基线</th>
+<th>Token</th>
+<th>成本</th>
+<th>得分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>底座 Pi</td>
+<td>-45%~49%</td>
+<td>≈-1/3</td>
+<td>保留 ~94%</td>
+</tr>
+<tr>
+<td>Codex/Claude Code 原配 harness</td>
+<td>-35%~64%</td>
+<td>-50%~54%</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>研究场景每小时省 $8.75-13.5。安装一行：<code>pi install git:github.com/NVlabs/SoL-Pi</code>。</p>
+<h2 id="_2">二、四大机制拆解（核心内容，逐层忠实还原）</h2>
+<h3 id="1action-fusion">机制 1：Action Fusion（动作融合）——省掉中间的模型决策轮</h3>
+<ul>
+<li><strong>靶点</strong>：Pi 轨迹里最常见的序列 = 改文件→收结果→<strong>再调模型决策一轮</strong>→跑测试/构建——后续命令已经非常明确，中间的"一来一回"纯浪费</li>
+<li><strong>做法</strong>：把一次编辑+后续命令封装进<strong>同一个本地执行序列</strong>——harness 底层完成修改、跑命令，合并结果一次性返回。测试照常执行，中间那轮模型请求被省掉</li>
+<li><strong>本质</strong>：把两次分散请求合并为一次高效闭环（这就是我们在 Google 流式语音笔记看到的"并行/合并"思想在工具调用层的投影）</li>
+</ul>
+<h3 id="2online-context-compact">机制 2：Online Context Compact（在线上下文压缩）——按子任务动态核算</h3>
+<ul>
+<li><strong>靶点</strong>：何时触发压缩。压缩本身有代价——重写上下文打断 KV-cache 复用、重新支付处理成本；过早压缩未必省钱，传统策略只好尽量推迟</li>
+<li><strong>做法</strong>：大任务拆子任务，每完成一步重新评估；<strong>只有"未来预计省下的开销"≥"本次重写的成本"才执行压缩</strong></li>
+<li><strong>本质</strong>：压缩决策从启发式（阈值/推迟）变成<strong>投资回收计算</strong>——这是经济学口径的上下文管理</li>
+</ul>
+<h3 id="3observationpack">机制 3：ObservationPack（输出归档与索引）——大块文件按需召回</h3>
+<ul>
+<li><strong>靶点</strong>：大文件/超长工具输出首次读入后滞留上下文，后续每轮请求原样携带、持续重复计费</li>
+<li><strong>做法</strong>：完整内容归档本地磁盘，<strong>上下文只留稳定短句柄+一小段摘录</strong>；模型需要细节时按索引分页取回</li>
+<li><strong>本质</strong>："读完长报告把原件存档，手边只留索引和关键摘要"——与我们 web_extract 的 head+tail 截断+全文本地存盘、context-compressor skill 是<strong>同构设计</strong>，但 SoL-Pi 的"稳定句柄+分页召回"更工程化</li>
+</ul>
+<h3 id="4evidence-preserving-reducer">机制 4：Evidence-Preserving Reducer（证据保留归约器）——小模型初筛+严格核验</h3>
+<ul>
+<li><strong>靶点</strong>：构建/测试日志动辄上万字，影响决策的只有几行报错；前沿大模型每次通读成本极高，直接给小模型总结又容易引入幻觉</li>
+<li><strong>做法</strong>：长日志第一遍阅读委派给<strong>低成本模型</strong>，输出紧凑诊断回执；<strong>系统拿回执逐条与归档原始日志比对，只有严丝合缝对得上的原文才放行</strong>给前沿大模型</li>
+<li><strong>本质</strong>："主模型只接收被证实的信息，从源头切断误差传导"——<strong>这是 No Free Checker/验证簇思想的落地形态：摘要必须可对照原文核验，否则不放行</strong></li>
+</ul>
+<h2 id="152-4ai-ai-rsi">三、152 选 4：AI 研究 AI 的流水线（RSI 方法学）</h2>
+<blockquote>
+<p>"先别急着让 AI 更聪明，先让它更省钱。"</p>
+</blockquote>
+<p><strong>为什么选 token 效率不选分数</strong>：刷任务分数容易过拟合（给特定题写规则就行）；但删重复上下文、压缩输出、合并无效决策<strong>能迁移到不同任务和模型</strong>——效率指标难作弊。</p>
+<p><strong>流水线五步</strong>：</p>
+<pre><code>535 个可验证环境（人工构建）
+   ↓
+AI 提出 152 个优化方向
+   ↓ 三轮筛选
+① 历史轨迹估算收益 → 无潜力淘汰
+② AI 自己改代码跑实验 + Reviewer Agent 挑刺
+③ 冻结方案 → held-out 完全隔离任务验真（能力不能掉，效率必须涨）
+   ↓
+**152 → 4（约 40:1 存活率）**
+</code></pre>
+<h2 id="_3">四、两个长线伏笔（团队的野心）</h2>
+<table>
+<thead>
+<tr>
+<th>伏笔</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>闭环预训练</strong>（Pretraining the harness）</td>
+<td>535 环境目前人工构建，未来 Agent 自己全网收集任务、搭环境、验证、更新自己的 harness——<strong>harness 的 Scaling Law</strong></td>
+</tr>
+<tr>
+<td><strong>效率复利</strong>（Efficiency for efficiency）</td>
+<td>用变省的 harness 跑规模更大成本更低的自动研究循环，找出更高效的机制——<strong>成本压缩的复利效应</strong></td>
+</tr>
+</tbody>
+</table>
+<p>人只在初期提供先验方向；进循环后研究到验证零干预；机制跑通后人回来搞清 AI 发现了什么、把粗糙代码重构成工业标准版。</p>
+<h2 id="_4">五、与我们体系的对照（本笔记核心增量）</h2>
+<h3 id="51">5.1 四机制 × 本机现状</h3>
+<table>
+<thead>
+<tr>
+<th>SoL-Pi 机制</th>
+<th>本机对应</th>
+<th>差距判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Action Fusion</td>
+<td>execute_code 单调用多工具合并（批处理原则）；发布管线 &amp;&amp;串联</td>
+<td>✅ 精神已有——<strong>工具调用层的"编辑+验证合并"我们没有</strong>（patch 后自动跑 lint 就是！write_file/patch 的 auto-lint 已是动作融合的微形态）</td>
+</tr>
+<tr>
+<td>Online Context Compact</td>
+<td>Hermes 压缩子会话（context 半满触发）；context-compressor skill</td>
+<td>🟡 我们按<strong>水位</strong>触发，SoL-Pi 按<strong>回收期</strong>触发——它的更优；但 Hermes 压缩是内置行为，改造成本高，先记录</td>
+</tr>
+<tr>
+<td>ObservationPack</td>
+<td>web_extract 大页 head+tail+全文本地盘；context-compressor 渐进式</td>
+<td>🟡 同构已有；<strong>"稳定句柄+分页召回"的接口设计值得抄</strong>——我们的"读 footer 路径再 read_file"就是手动版句柄召回</td>
+</tr>
+<tr>
+<td>Evidence-Preserving Reducer</td>
+<td>golden set 六项机检；fact-check-with-fallbacks skill</td>
+<td>✅ <strong>最强的同构</strong>：我们的"摘要必须可机检"=它的"回执必须对照原文"——但它的"小模型干粗读、原文核对、大模型只收证实信息"的三级分工更细</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-rsi">5.2 RSI 流水线 × 我们的自进化设施</h3>
+<table>
+<thead>
+<tr>
+<th>流水线环节</th>
+<th>本机对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>152 候选广筛</td>
+<td>skill_seed_queue（3 转 3 待 50%）</td>
+</tr>
+<tr>
+<td>收益估算预筛</td>
+<td>skill-health-tier 三级分类</td>
+</tr>
+<tr>
+<td>Reviewer 挑刺</td>
+<td>执行/评判分离（AGENTS.md 准则 2）</td>
+</tr>
+<tr>
+<td>held-out 验真</td>
+<td>golden set + skill-ab-testing（候选版验证后替换）</td>
+</tr>
+<tr>
+<td>40:1 存活率</td>
+<td><strong>我们没有淘汰率数据</strong>——auto-skill 至今只加不减的倾向值得警惕</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键启示</strong>：英伟达的流水线证明"harness 优化的候选死亡率极高是正常且必要的"——<strong>152 个想法只活 4 个</strong>。我们的 skill 生态（600+ skills）从没经历过这种烈度筛选——周五审计的裁剪力度就是这个差距的补偿机制。</p>
+<h3 id="53-harness">5.3 与今日 harness 簇的合流（第六篇收官）</h3>
+<table>
+<thead>
+<tr>
+<th>篇</th>
+<th>核心命题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mem0 三种写</td>
+<td>自进化=持久化写入（persistence is the cut）</td>
+</tr>
+<tr>
+<td>Minara 58 分差</td>
+<td>harness 是性能主变量（配对即单位）</td>
+</tr>
+<tr>
+<td>Google 流式</td>
+<td>编排消灭延迟（并行读者）</td>
+</tr>
+<tr>
+<td>Gipp 3-15%</td>
+<td>为失败率设计（gate 是规则）</td>
+</tr>
+<tr>
+<td>beamnxw Lane</td>
+<td>身份与记忆分离（Pin 宪法）</td>
+</tr>
+<tr>
+<td><strong>SoL-Pi</strong></td>
+<td><strong>harness 本身可以被 AI 用 RSI 优化——且有防作弊的度量（token 效率）</strong></td>
+</tr>
+</tbody>
+</table>
+<p>六篇拼出完整图景：<strong>harness 是 2026 年的"新模型层"——可测量（Minara）、可设计（Gipp/beamnxw）、可编排（Google）、可自进化（mem0）、且自进化本身可自动化（SoL-Pi）。</strong></p>
+<h2 id="_5">六、批判性审视</h2>
+<ol>
+<li><strong>"得分保留 94%"的另一面</strong>：6% 的能力损失在编码基准上无感，在边界任务上可能有感——降本数字亮眼时质量条款要细看（哪些 benchmark 掉了 6%？）</li>
+<li><strong>535 环境人工构建</strong>：团队自己承认是当前局限（闭环预训练伏笔）——152→4 的筛选结论受限于环境分布；环境偏编码/agent 任务，外推到分析/创作类 harness 需谨慎</li>
+<li><strong>Pi 底盘的可迁移性</strong>：四机制装在 Pi 上（极简 harness）；Claude Code/Codex 的原配 harness 有自己的缓存与压缩策略——<strong>"vs Codex 省 50-54%"的对照是否给了对方同等优化机会</strong>（Minara 笔记的滤网 2 同款问题）</li>
+<li><strong>新智元报道的转述层</strong>：数字全部来自项目页/论文，未独立验证；"每小时省 $8.75-13.5"的换算口径（什么任务密度？什么单价？）未给</li>
+<li><strong>韩松团队背书是真的，但"开源"范围</strong>：代码 MIT 开源了，但 535 环境与评测管线是否全开源待查——RSI 流水线的复现门槛可能远高于四个机制的使用门槛</li>
+</ol>
+<h2 id="_6">七、金句提取</h2>
+<blockquote>
+<p>"在让 AI 递归改进自己之前，能不能先让它把自我改进的账单打下来？"</p>
+<p>"只有当'未来预计省下的开销'能够覆盖'本次重写的成本'时，系统才会真正执行压缩。"（压缩的投资回收判据）</p>
+<p>"主模型只接收被证实的信息，从源头上切断了误差传导。"</p>
+<p>"刷任务分数很容易过拟合……但删重复上下文、压缩工具输出、合并无效决策，这些优化能迁移到不同任务和模型。"（效率指标难作弊）</p>
+<p>"现在，模型的 Scaling Law 各家还在争论不休；但 Harness 的 Scaling Law，已经有人开始抢跑了。"</p>
+</blockquote>
+<h2 id="_7">八、局限性</h2>
+<ol>
+<li>微信文 3.5KB 为新智元转述口径；GitHub/项目页未直接核对（机制名与数字以转述为准，SoL-Pi 论文未读）</li>
+<li>四机制的实现细节（触发阈值/句柄格式/核验算法）未获取——需要读源码才能评估可移植性</li>
+<li>152 个候选中被淘汰的 148 个去向（哪些方向被证伪）未披露——失败方向的负知识同样有价值</li>
+<li>§5 对照为本笔记扩展</li>
+<li>"Token 省 45-64%"的区间跨度大——不同任务类型收益分布未拆解</li>
+</ol>
+<h2 id="_8">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至四</td>
+<td><strong>原文忠实还原</strong>（微信文全文提取）</td>
+</tr>
+<tr>
+<td>五</td>
+<td><strong>体系映射</strong>（本笔记扩展，对照本机 skills/设施）</td>
+</tr>
+<tr>
+<td>六</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
