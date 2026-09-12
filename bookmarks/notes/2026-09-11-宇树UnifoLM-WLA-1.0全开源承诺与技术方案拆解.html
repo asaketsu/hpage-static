@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent-Harness-API时代-哑管道终结与outcome导向-OpenAI-Agents-API×Claude-Managed-Agents拆解</title>
+<title>宇树UnifoLM-WLA-1.0全开源承诺与技术方案拆解</title>
 
-<meta property="og:title" content="Agent-Harness-API时代-哑管道终结与outcome导向-OpenAI-Agents-API×Claude-Managed-Agents拆解" />
+<meta property="og:title" content="宇树UnifoLM-WLA-1.0全开源承诺与技术方案拆解" />
 <meta property="og:type" content="article" />
 <meta property="og:description" content="笔记 | cyber" />
 <meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
@@ -439,197 +439,226 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
-<h1 id="agent-harness-api-outcome-openai-agents-api-claude-managed-agents-harness-agnostic-hermes">Agent Harness API 时代：哑管道终结与 outcome 导向——OpenAI Agents API × Claude Managed Agents 拆解 + harness-agnostic 二阶抽象 + Hermes 位置剖析</h1>
+<h1 id="unifolm-wla-10">宇树 UnifoLM-WLA-1.0：全开源承诺与技术方案拆解——三层架构（具身推理/变化预测/动作生成）+ 开源落地评估框架</h1>
 <blockquote>
-<p><strong>来源</strong>：X/Twitter @kevinwhinnery（Kevin Whinnery）Article《Agent harness APIs are here to stay》2026-09-10<br />
-<strong>原文链接</strong>：https://x.com/kevinwhinnery/status/2098444890602455431<br />
-<strong>事件背景</strong>：OpenAI Agents API 公开 beta 发布（前日），与 Claude Managed Agents 并列<br />
-<strong>抓取方式</strong>：X Article 直读全文<br />
-<strong>笔记日期</strong>：2026-09-11<br />
-<strong>关联笔记</strong>：harness 簇（mem0/Minara/Google流式/Gipp/beamnxw/SoL-Pi 六篇）《Plano×Hermes判定》（模型亲和/成本感知）《AGENTS.md手册模式》（指令层资产化）</p>
+<p><strong>来源</strong>：微信公众号（机器之心系科普号）《宇树发布 UnifoLM-WLA-1.0：全开源还差三把钥匙》2026-09-10<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/xAombcSkLNmfhrD6fl7Ftg<br />
+<strong>官方项目页</strong>：https://unigen-x.github.io/unifolm-wla.github.io/（截至 09-10 三个资源入口均 Coming soon）<br />
+<strong>抓取方式</strong>：微信桌面 UA + js_content 提取 3.3KB 全文<br />
+<strong>笔记日期</strong>：2026-09-10<br />
+<strong>关联笔记</strong>：《BeyondMimic引导扩散两阶段范式精读》（VLA 两阶段蒸馏）《Transformers即贝叶斯网络》（验证器有限性）《为不信任而设计》（model-intrinsic 验证可信度）</p>
 
-<p class="meta-date">生成日期 2026-09-11</p></blockquote>
+<p class="meta-date">生成日期 2026-09-10</p></blockquote>
 <hr />
 <h2 id="_1">零、结论先行</h2>
-<p><strong>核心命题：推理 API（Chat Completions/Messages）正从 AI 应用的主集成面降级为基础设施层，取而代之的是 agent harness API——连接工具/认证/计算环境/多 agent 编排/可观测/上下文管理的"完整 harness"通过编程接口暴露。</strong> 文章给出两条实践原则：① outcome 导向（描述+评估要的结果，删掉手工管上下文窗口/工具调用的胶水代码）；② <strong>harness-agnostic 而非 model-agnostic</strong>（推理层抽象已不够，harness+model 越来越一体设计，不同 harness 同模型结果差异巨大）。对我们 Hermes 的判定：我们<strong>已经是 harness-native</strong>（Gateway=自带 harness 的完整 agent，不是哑管道），Plano 判定笔记的"模型亲和已有等价物"结论被本文从产业侧再次印证——但"harness-agnostic 多 harness 对比"是值得追踪的新增量。</p>
-<h2 id="harness-api">一、事件层：两个 harness API 的并列</h2>
+<p><strong>UnifoLM-WLA-1.0 是宇树 6B 参数通用人形基础模型：技术方案（三层架构）值得认真读，"全开源"是尚未兑现的承诺（代码/模型/数据三入口全 Coming soon）。文章的最大价值不是报道本身，而是它示范的"开源落地评估框架"——区分"发布了方案"与"交付了资源"，这套框架可直接复用于任何"全开源"声明的核验。</strong></p>
+<h2 id="vs">一、事实核对（文章口径 vs 可验证状态）</h2>
 <table>
 <thead>
 <tr>
-<th>API</th>
-<th>厂商</th>
-<th>接口模式</th>
-<th>基础设施</th>
+<th>声明</th>
+<th>状态</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Agents API</strong>（公开 beta）</td>
-<td>OpenAI</td>
-<td>事件驱动</td>
-<td>托管</td>
+<td>6B 参数、500 万+ 具身推理样本、~2500 小时真机数据</td>
+<td>官网口径，<strong>不可独立验证</strong>（数据构成未开放）</td>
 </tr>
 <tr>
-<td><strong>Claude Managed Agents</strong></td>
-<td>Anthropic</td>
-<td>事件驱动</td>
-<td>托管</td>
+<td>54 项桌面操作 + 10 项全身移动操作（64 项任务）</td>
+<td>官网演示视频，<strong>标注 2x Speed</strong>——仅证明展示，不证明真实速率/成功率</td>
+</tr>
+<tr>
+<td>二指夹爪 + 两类五指灵巧手</td>
+<td>官网演示</td>
+</tr>
+<tr>
+<td>"全开源"</td>
+<td><strong>❌ 未落地</strong>：Code/Models/Datasets 三入口均 Coming soon（09-10 截图为证）</td>
+</tr>
+<tr>
+<td>已开放的部分</td>
+<td>Unitree Open Datasets + BitRobot-HIW-500（HuggingFace）——<strong>是训练数据的一部分，不等于完整训练集开放</strong></td>
 </tr>
 </tbody>
 </table>
-<p>用法（用过 Claude Code 或 ChatGPT/Codex 就已熟悉）：连接工具 → 配置认证 → 给 agent 一台计算机（你的或云上的）→ 给一个任务 → 它自己干到完成。</p>
-<p><strong>关键一句</strong>："If you've used either Claude Code or ChatGPT, you already know how these APIs work."——harness API 不是新发明，是把已有产品能力编程化暴露。</p>
-<h2 id="_2">二、为什么哑管道不够了</h2>
+<p><strong>关键区分</strong>（文章最锋利的一句）：</p>
 <blockquote>
-<p>"Getting useful results from a model is rarely possible using a dumb token pipe alone."</p>
+<p>"'开源'不是页面上的一个标签，而是一组可执行的权利和可取得的资源。"<br />
+"训练使用了部分开放数据" ≠ "完整训练集已经开放"</p>
 </blockquote>
-<p>真实应用负载需要的：<br />
-- 外部系统连接<br />
-- 计算环境（模型执行代码/干活的地方）<br />
-- 多 agent 编排<br />
-- 认证/授权<br />
-- 会话可观测性<br />
-- 上下文管理（<strong>记忆/压缩/dreaming</strong>）</p>
-<blockquote>
-<p><strong>以上全部=我们一直叫的"harness"</strong></p>
-</blockquote>
-<p>文章的 benchmark 直觉与 Minara 笔记互证："If you tell me 'model XYZ scored 67% on ABC benchmark', my next question is <strong>'using what harness?'</strong> — the model ID is only part of the story."——<strong>配对即性能单位</strong>，正是 Minara 58 分差的总结。</p>
-<h2 id="_3">三、两条原则（文章核心增量）</h2>
-<h3 id="1outcome">原则 1：outcome 导向</h3>
-<ul>
-<li>近几个月你用 Claude Code/ChatGPT 的方式变了：<strong>少 hand-hold prompt、少装 skill、精简 AGENTS.md</strong>——最强模型配现代 harness 只需工具+系统权限+指向问题</li>
-<li>harness API 让 API 负载走同一条路：<strong>删掉精心管上下文窗口或拼工具调用的胶水代码</strong>，聚焦描述+评估工作的结果</li>
-</ul>
-<blockquote>
-<p>这里要注意：文章说"trimming AGENTS.md"与我们 AGENTS.md 笔记的"&lt;200 行"纪律同源——但<strong>方向有张力</strong>：AGENTS.md 笔记说指令层是资产要积累，本文说最强模型不需要那么多指令——和解方式是"积累决策记忆+精简规则"（memory 增、rules 瘦）</p>
-</blockquote>
-<h3 id="2harness-agnostic-model-agnostic">原则 2：harness-agnostic 而非 model-agnostic</h3>
-<ul>
-<li>多数 AI 应用用推理 API 抽象层（Vercel AI SDK / OpenRouter）做 model-agnostic——历史上是审慎的降险选型</li>
-<li><strong>但推理不再是对的东西去抽象</strong>——harness 与 model 越来越一体设计，不同 harness 同模型结果差异巨大</li>
-<li>outcome 导向 + 少 harness 逻辑 → 可以 <strong>delegate work to different harnesses, compare results</strong>（harness-agnostic）</li>
-<li>早期支持已出现（至少对自建基础设施的 harness），预计成熟化</li>
-</ul>
-<blockquote>
-<p>这与 Plano 的 model-agnostic 路由是<strong>不同层</strong>的抽象：Plano 在推理层按价格路由（我们判定不引入），本文在 harness 层按能力对比——后者更接近正确抽象面</p>
-</blockquote>
-<h2 id="harness">四、与今日 harness 簇的合流（第七篇收官）</h2>
+<h2 id="_2">二、三层架构拆解（技术方案的核心价值）</h2>
+<h3 id="21">2.1 架构总览</h3>
+<pre><code>第一层：具身推理 UnifoLM-ER-1（Qwen3-VL-4B 底座）
+  ↓ 提供：场景理解/空间关系/多视角推理
+第二层：未来动态区域预测（VQ-VAE 压缩 + mask token）
+  ↓ 提供：交互会改变哪里的预测信号
+第三层：动作生成（RVQ 动作 token + MMDiT 动作专家）
+  → 输出：连续控制动作
+</code></pre>
+<h3 id="22">2.2 每层机制白话拆解</h3>
 <table>
 <thead>
 <tr>
-<th>篇</th>
+<th>层</th>
+<th>机制</th>
+<th>白话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>具身推理 ER</strong></td>
+<td>Qwen3-VL-4B + 500 万样本（点预测/检测/多图推理/2D 轨迹/3D 检测/空间问答）</td>
+<td>不只认出"盘子"，还要知道盘子在哪、手该从哪接近、多视角怎么对齐——感知底座</td>
+</tr>
+<tr>
+<td><strong>变化预测</strong></td>
+<td>相邻帧光流找变化区域 → VQ-VAE 压成离散 token → 预测"下一步哪些区域会变"</td>
+<td><strong>不生成整个未来画面，只盯"动作会改变哪里"</strong>——手靠近杯子，变化区域跟着杯子走</td>
+</tr>
+<tr>
+<td><strong>动作学习</strong></td>
+<td>统一动作空间拆三块（末端位姿/末端关节/下肢关节）→ RVQ 残差量化成离散 token → 与变化 mask token 在 VLM 中对齐（UnifoLM-ER-Flow）→ MMDiT 动作专家输出连续动作</td>
+<td>"一个模型多任务"不是 64 个技能塞一个文件，是共享"感知→变化→动作"链路</td>
+</tr>
+</tbody>
+</table>
+<h3 id="23-beyondmimic">2.3 与 BeyondMimic 的架构对照</h3>
+<table>
+<thead>
+<tr>
 <th>维度</th>
-<th>本文增量</th>
+<th>BeyondMimic（09-10 笔记）</th>
+<th>UnifoLM-WLA</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>mem0 三种写</td>
-<td>自进化=持久化</td>
-<td>harness API 的上下文管理含"dreaming"——agent 层的 dream 与模型层的关系</td>
+<td>范式</td>
+<td>两阶段蒸馏：VLA 教师 → 扩散学生</td>
+<td>三层串联：VLM → 变化预测 → 动作专家</td>
 </tr>
 <tr>
-<td>Minara 58 分差</td>
-<td>配对即单位</td>
-<td>"model ID is only part of the story" 互证</td>
+<td>动作表示</td>
+<td>扩散去噪</td>
+<td>RVQ 离散 token → MMDiT 连续输出</td>
 </tr>
 <tr>
-<td>Google 流式</td>
-<td>并行编排消灭延迟</td>
-<td>harness API 暴露的就是编排能力</td>
+<td>任务</td>
+<td>特技跟踪（单一技能族）</td>
+<td>通用 64 任务（桌面+全身）</td>
 </tr>
 <tr>
-<td>Gipp 3-15%</td>
-<td>为失败率设计</td>
-<td>harness API 的认证/授权/可观测=Gipp 说的 gate 基础设施化</td>
+<td>数据</td>
+<td>仿真+MoCap</td>
+<td>~2500h 真机</td>
 </tr>
 <tr>
-<td>beamnxw Lane</td>
-<td>身份/记忆分离</td>
-<td>harness API 的 managed infra 消除了自建 Pin 的需要</td>
-</tr>
-<tr>
-<td>SoL-Pi</td>
-<td>harness 可 RSI 优化</td>
-<td>"harness logic overall decreases"=SoL-Pi 优化的终态</td>
-</tr>
-<tr>
-<td><strong>本文</strong></td>
-<td><strong>harness 从产品到 API：哑管道终结</strong></td>
-<td>七篇拼图的收口——harness 不只是内部架构，是新的编程接口面</td>
+<td><strong>共同点</strong></td>
+<td><strong>都在"理解→预测→行动"链路上做文章</strong>；都把动作生成与场景理解分层</td>
+<td>同左</td>
 </tr>
 </tbody>
 </table>
-<h2 id="hermes">五、与 Hermes 体系的对照</h2>
+<p><strong>收敛信号</strong>：两条完全不同的路线（蒸馏 vs 串联）都选择了"分层架构 + 共享感知表征"——这是本周机器人主题簇（BeyondMimic/UnifoLM/RIG-Hover LQR）的第三个独立收敛：<strong>通用性来自共享中间表征，不来自任务堆叠</strong>。</p>
+<h2 id="_3">三、开源落地评估框架（文章的方法论贡献，可复用）</h2>
+<p>文章示范的核验清单——<strong>任何"全开源"声明发布时套用</strong>：</p>
 <table>
 <thead>
 <tr>
-<th>文章主张</th>
-<th>本机现状</th>
-<th>判定</th>
+<th>检查项</th>
+<th>UnifoLM 当前状态</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>推理 API 不再是主集成面</td>
-<td>Hermes Gateway=自带 harness 的完整 agent（工具/记忆/压缩/编排/认证全有），不是哑 Chat Completions 管道</td>
-<td>✅ <strong>已是 harness-native</strong></td>
+<td>① 代码可下载？（验证推理链路/工程依赖）</td>
+<td>❌ Coming soon</td>
 </tr>
 <tr>
-<td>model-agnostic 抽象层不够</td>
-<td>Plano 判定已否决推理层路由；fallback 链按池健康非价格</td>
-<td>✅ 结论一致——推理层抽象不够</td>
+<td>② 权重可下载？（在自己机器人/数据上验证）</td>
+<td>❌ Coming soon</td>
 </tr>
 <tr>
-<td>harness-agnostic（多 harness 对比）</td>
-<td>无等价物——单 harness（Hermes），无第二 harness 做对比</td>
-<td>🟡 <strong>值得追踪</strong>——但当前无第二 harness 可比</td>
+<td>③ 数据可下载？（判断任务分布/采样构成）</td>
+<td>❌ Coming soon（部分旧数据集开放≠完整训练集）</td>
 </tr>
 <tr>
-<td>outcome 导向（删胶水代码）</td>
-<td>AGENTS.md 质量门禁机械化准则；execute_code 批处理合并</td>
-<td>✅ 精神已有</td>
+<td>④ 许可证允许商用/修改/再分发？</td>
+<td>❓ 未知（前三项未上线）</td>
 </tr>
 <tr>
-<td>"dreaming"上下文管理</td>
-<td>auto-dream/idle-busy-loop 系列已有 agent 层 dream</td>
-<td>✅ 已有——文章用这个词说明 harness API 的上下文管理范围</td>
+<td>⑤ 演示是否标注速率倍速/成功率？</td>
+<td>⚠️ 2x Speed 已标注（诚实点）但无成功率数据</td>
+</tr>
+<tr>
+<td>⑥ 评测口径统一？（自测 vs 官方报告混合）</td>
+<td>⚠️ 16 项评测混三种来源——"口径广"≠"统一排行榜"</td>
 </tr>
 </tbody>
 </table>
-<h2 id="nugget">六、增量判定与 Nugget 归宿</h2>
-<p><strong>不形成新 skill</strong>——理由三条：<br />
-1. 我们是 harness-native 架构（Gateway 即 harness），文章描述的"从哑管道迁移到 harness API"对我们不适用——我们生在正确的一侧<br />
-2. harness-agnostic 多 harness 对比当前无第二 harness 可比（与 AGENTS.md 笔记的触发条件同理：等第二个厂商 agent 协作时再动）<br />
-3. 七篇 harness 簇的模式总结已充分，再建 skill 是通胀</p>
-<p><strong>两个 Nugget 归宿</strong>：<br />
-- <strong>"harness-agnostic"概念</strong> → 记入 AGENTS.md 笔记的同款触发条件：当出现第二 harness（最可能=OpenAI Agents API 或 Claude Managed Agents 走云端版接入我们的工作流），当天把"harness 对比评估"提炼为 skill——本笔记即素材<br />
-- <strong>"outcome 导向=删胶水"</strong> → 已有实践（门禁机械化/批处理），记入下次 AGENTS.md 审计的检查项："哪些手工管上下文/工具调用的代码可以删了"</p>
-<h2 id="_4">七、批判性审视</h2>
+<p><strong>失效条件明确</strong>（好习惯）：任一资源上线 → "暂不可下载"判断更新；三项全开 → 按实际文件+许可证重新判断。</p>
+<h2 id="_4">四、未回答的工程问题（决定开源价值的关键）</h2>
+<p>文章列出的六个待验证问题（资源上线后逐项核）：</p>
 <ol>
-<li><strong>"dumb token pipe is ending" 过强</strong>：推理 API 不会消失——正如 Unix 没被云计算消灭而是降到基础设施层；文章自己也说"will have their place"，但标题选了更激进的口径</li>
-<li><strong>harness-agnostic 的实操缺失</strong>：文章只说"delegate to different harnesses, compare results"——<strong>怎么比？用什么 benchmark？成本如何？</strong> 全无（比 Minara 的六道滤网差远了）——这是概念文不是实操文</li>
-<li><strong>OpenAI Agents API 的 vendor lock-in 风险未提</strong>：托管 harness API = 你的工具/认证/计算环境全在厂商侧——beamnxw 的"identity separate from memory"在这里更关键了，文章一笔带过"authentication/authorization"</li>
-<li><strong>"trimming AGENTS.md"与资产积累的张力</strong>未调和——本文立场是"强模型不需要那么多指令"，但 AGENTS.md 笔记的"决策日志只增不删"也是真的；和解方式=rules 瘦+memory 增（本文没说这层）</li>
-<li><strong>作者背景</strong>：Google/Chrome DevRel 出身，现做 AI 应用——视角是"应用开发者"，不是"infra 工程师"；harness-agnostic 的可行性论证偏乐观</li>
+<li>动作 tokenizer 的码本如何训练？</li>
+<li>不同机器人本体如何映射到统一动作空间？</li>
+<li>~2500 小时数据的任务分布？</li>
+<li>64 项真机评测每项跑了多少次？</li>
+<li><strong>推理延迟能否满足闭环控制？</strong>（与我们 TTFT/延迟主题直接相关——6B 模型 onboard 推理的实时性是硬门槛）</li>
+<li>换场景/物体/末端执行器后的成功率？</li>
 </ol>
-<h2 id="_5">八、金句提取</h2>
+<h2 id="_5">五、与我们体系的对接点</h2>
+<table>
+<thead>
+<tr>
+<th>对接点</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DUCK-Pi_5 / HoverDuck</strong></td>
+<td>问题 5（闭环延迟）正是我们 BeyondMimic 吸收判定 #4 的同款问题——VLA 类模型的实时性门槛，50Hz 控制环上 6B 模型每步推理在 Jetson 级硬件上不可能（TTFT 笔记的 Prefill 二次方增长是理论根因）——<strong>分层架构中"高频控制必须本地轻量"的又一次印证</strong></td>
+</tr>
+<tr>
+<td><strong>开源评估框架</strong></td>
+<td>可直接吸收进 skill：任何"全开源"项目立项前跑一遍六项核验——避免把"宣布开源"当"已开源"吸收进复用清单</td>
+</tr>
+<tr>
+<td><strong>周三论文选题候选</strong></td>
+<td>"变化区域预测"（只预测动作会改变的区域而非全画面）是个可独立研究的表征思想——与预测编码（predictive coding）理论的机器人落地</td>
+</tr>
+<tr>
+<td><strong>验证主题簇</strong></td>
+<td>"官方演示 ≠ 独立验证"与《为不信任而设计》模式同构——model-intrinsic 的评测表不可当独立排行榜</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_6">六、批判性审视</h2>
+<ol>
+<li><strong>文章本身质量高</strong>：不替官方补 WLA 全称（"官网没有给出，本文不替宇树补定义"——克制）、标注 2x Speed、给失效条件——科普文中罕见的诚实样本</li>
+<li><strong>"7/16 项领先"的口径问题文章自己也点了</strong>：混合官方报告/论文/自测——但我们仍需注意文章的评测表转述也是二手口径</li>
+<li><strong>HuggingFace 数据集合页的存在</strong>说明宇树有真实开源记录——"承诺可信度"有历史基线（比纯 PPT 开源强）</li>
+<li><strong>6B 规模的战略位置</strong>：介于 π0（3B）与 RDT（1B）/OpenVLA（7B）之间——通用基础模型的参数竞赛区间，但"通用"的证据（64 任务共享一套链路）目前只有演示视频</li>
+<li><strong>光流+VQ-VAE 的变化预测</strong>不是新技术（世界模型路线常见组件）——创新点在"与动作 token 对齐"的用法，但实现质量待代码验证</li>
+</ol>
+<h2 id="_7">七、金句提取</h2>
 <blockquote>
-<p>"The era of the dumb token pipe is ending."</p>
-<p>"If you tell me 'model XYZ scored 67% on ABC benchmark', my next question is 'using what harness?'"</p>
-<p>"Be harness-agnostic rather than model-agnostic."（引用 @katelyn_lesse）</p>
-<p>"You'll be well-served to start thinking about your AI applications in terms of tasks you want to accomplish."</p>
-<p>"Agent harness APIs will become increasingly cheap and sophisticated, and will enable you to delete the proprietary harness code that has nothing to do with the actual work you want done."</p>
+<p>"'开源'不是页面上的一个标签，而是一组可执行的权利和可取得的资源。"</p>
+<p>"它不是试图生成整个未来画面，而是优先盯住'动作会改变哪里'。"</p>
+<p>"真正决定这次发布能留下什么的，不是'全开源'三个字有多醒目，而是那三个 Coming soon，什么时候变成可以点下去的链接。"</p>
 </blockquote>
-<h2 id="_6">九、局限性</h2>
+<h2 id="_8">八、局限性</h2>
 <ol>
-<li>文章约 900 字，概念文/立场文，无实测数据无代码——价值在框架不在细节</li>
-<li>OpenAI Agents API 的具体能力面（工具定义/事件格式/计费/限制）未展开——需读官方文档</li>
-<li>"harness-agnostic 支持已出现在某些抽象层"未点名是哪些——引用空泛</li>
-<li>§五对照与 §六判定基于本机 Hermes 架构理解，未实际跑 OpenAI Agents API</li>
-<li>与 AGENTS.md 笔记的"trimming vs accumulating"张力未充分展开——留作后续思考</li>
+<li>本文基于公众号转述+官网口径，未直接验证项目页状态（文章附 09-10 动态截图，可信度较高）</li>
+<li>三层架构细节（RVQ 码本大小/MMDiT 配置/训练超参）无论文可查——技术拆解基于文章描述的架构图，粒度受限</li>
+<li>第 2.3 节与 BeyondMimic 对照为本笔记扩展</li>
+<li>开源落地评估框架从文章方法论提炼，六项核验为本人归纳非原文清单</li>
+<li>HuggingFace unitreerobotics/datasets 页面内容未逐项核查</li>
 </ol>
-<h2 id="_7">出处标注</h2>
+<h2 id="_9">出处标注</h2>
 <table>
 <thead>
 <tr>
@@ -639,20 +668,20 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </thead>
 <tbody>
 <tr>
-<td>一至三</td>
-<td><strong>原文忠实还原</strong>（X Article 全文直读）</td>
+<td>一、二</td>
+<td><strong>原文忠实还原</strong>（3.3KB 全文提取）</td>
+</tr>
+<tr>
+<td>三</td>
+<td>原文方法论 + <strong>框架归纳</strong>（六项核验为本笔记结构化）</td>
 </tr>
 <tr>
 <td>四</td>
-<td><strong>harness 簇收口</strong>（今日七篇联动）</td>
+<td>原文问题清单（忠实）</td>
 </tr>
 <tr>
 <td>五、六</td>
-<td><strong>体系映射+判定</strong>（本笔记扩展）</td>
-</tr>
-<tr>
-<td>七</td>
-<td><strong>批判性审视</strong>（本笔记扩展）</td>
+<td><strong>体系映射与批判</strong>（本笔记扩展）</td>
 </tr>
 </tbody>
 </table>
