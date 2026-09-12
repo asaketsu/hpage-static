@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harness-Engineering完整指南-19层从prompt到环境的工程纪律-LunarResearcher体系化拆解</title>
+
+<meta property="og:title" content="Harness-Engineering完整指南-19层从prompt到环境的工程纪律-LunarResearcher体系化拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="harness-engineering-19-prompt-lunarresearcher-hermes">Harness Engineering 完整指南：19 层从 prompt 到环境的工程纪律——LunarResearcher 体系化拆解 × Hermes 对照审计</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @LunarResearcher（Lunar）Article《Harness Engineering: The Complete Guide to Building AI Agents That Don't Fall Apart》2026-09 初<br />
+<strong>原文链接</strong>：https://x.com/LunarResearcher/status/2096570562625655088<br />
+<strong>Substack</strong>：substack.com/@lunarresearcher<br />
+<strong>抓取方式</strong>：X Article 直读全文<br />
+<strong>笔记日期</strong>：2026-09-12（21:14 date 实测确认）<br />
+<strong>关联笔记</strong>：harness 簇全系列（SoL-Pi/Engram/TTFT/Gipp/beamnxw/AGENTS.md/Harness API/OUI-1/Skill 九条/Loop 与 Graph/A100 优化/GPU 互联/KV-Cache）——<strong>本篇是簇的收官纲领</strong></p>
+
+<p class="meta-date">生成日期 2026-09-12</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>19 条不是平行清单——是从"模型≠agent"到"harness 也会腐烂"的完整生命周期工程纪律，核心命题一句话："A prompt changes one attempt. A harness changes every attempt."（prompt 改变一次尝试，harness 改变每次尝试）。</strong> 对我们最直接的价值：这是对本周 harness 簇 13 篇笔记的一次系统性回照——几乎每条都能在我们已有实践中找到对应，但文章把散落的实践编成了有序的层级（L1-L6 最小可行 harness）。<strong>不形成新 skill</strong>（harness-architecture skill 已覆盖理论层，AGENTS.md 准则 1-5 已覆盖实践层），但 §六审计清单是下次 hermes-system-audit 的现成 checklist。</p>
+<h2 id="_2">一、核心命题</h2>
+<blockquote>
+<p>"Many agent failures are not reasoning failures. They are environment failures."</p>
+<p>"A powerful model inside a weak harness is still a weak agent."</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>职责</th>
+<th>失败如果缺失</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Model</strong></td>
+<td>推理/生成/比较/选择</td>
+<td>无智能</td>
+</tr>
+<tr>
+<td><strong>Harness</strong></td>
+<td>理解任务/找上下文/选工具/保状态/守权限/查结果/恢复失败/证明完成</td>
+<td>有智能但不可靠——"impressive individual responses, but inconsistent across long tasks"</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"The goal of harness engineering is not to remove uncertainty from the model. It is to contain that uncertainty inside a system that can observe, verify, and recover."（目标不是消除模型的不确定性，是把它装进一个能观察、验证、恢复的系统里）</p>
+</blockquote>
+<h2 id="19">二、19 条逐条拆解（按原文序）</h2>
+<h3 id="1-agent">第 1 条：模型不是 agent</h3>
+<p>模型能推理——agent 还必须与环境交互。harness = 让推理可操作的一切。</p>
+<h3 id="2-task-contract">第 2 条：任务契约（Task Contract）</h3>
+<p>模糊意图→自主执行前→harness 转为<strong>任务契约</strong>，回答五问：</p>
+<table>
+<thead>
+<tr>
+<th>问</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>什么结果必须存在？</td>
+<td>产出物</td>
+</tr>
+<tr>
+<td>什么在范围内？</td>
+<td>scope</td>
+</tr>
+<tr>
+<td>什么不能变？</td>
+<td>不变量</td>
+</tr>
+<tr>
+<td>什么证据证明完成？</td>
+<td>验收标准</td>
+</tr>
+<tr>
+<td>哪些操作需要人审批？</td>
+<td>权限边界</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"Without a contract, the agent optimizes for plausible activity. With a contract, it can optimize for verified completion."（没有契约→agent 优化"看起来在干活"；有契约→优化"已验证完成"）</p>
+</blockquote>
+<h3 id="3">第 3 条：给地图，不给手册</h3>
+<blockquote>
+<p>"Dumping the entire repository into context is not good context engineering. It is context flooding."</p>
+</blockquote>
+<p>渐进式披露——上下文应因任务需要而扩展，不因信息存在而扩展。目标不是最大上下文，是<strong>maximum signal per token</strong>（每 token 最大信号量）。</p>
+<h3 id="4">第 4 条：工具网关，不是工具堆</h3>
+<p>给 agent 20 个工具=给它 20 种犯错方式。每个工具应有清晰契约。harness 控制：隐藏无关工具/验证参数/限制路径/加超时/幂等重试/归一化输出/风险操作需确认/返回证据非"success"。</p>
+<blockquote>
+<p>"The model can propose an action. The tool gateway decides whether that action is valid enough to execute."（模型提议，网关裁决）</p>
+</blockquote>
+<h3 id="5">第 5 条：分离脑、手、史</h3>
+<table>
+<thead>
+<tr>
+<th>职责</th>
+<th>需要什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Brain（模型）</td>
+<td>当前正确的状态（不是每个原始事件）</td>
+</tr>
+<tr>
+<td>Hands（沙箱）</td>
+<td>安全执行有界动作（不需要理解全部目标）</td>
+</tr>
+<tr>
+<td>History（会话日志）</td>
+<td>保留发生了什么（不需要推理）</td>
+</tr>
+</tbody>
+</table>
+<p>混合在一起=脆弱的长 transcript；分离后可独立替换/恢复/审查。</p>
+<h3 id="6">第 6 条：记忆→持久状态</h3>
+<p>对话历史不是可靠记忆——是事件流。至少保留四类：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>决策（Decisions）</td>
+<td>为什么选 A 不选 B</td>
+</tr>
+<tr>
+<td>不变量（Invariants）</td>
+<td>什么不能变</td>
+</tr>
+<tr>
+<td>教训（Lessons）</td>
+<td>什么试过不行</td>
+</tr>
+<tr>
+<td>状态（State）</td>
+<td>当前进展到哪</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"Store raw history for auditability. Compile durable state for execution."（存原始历史供审计，编持久状态供执行）</p>
+</blockquote>
+<h3 id="7">第 7 条：完成需要证据</h3>
+<blockquote>
+<p>"An agent saying 'done' is not evidence that the task is done. It is only another model output."</p>
+</blockquote>
+<p>harness 先跑最便宜的确定性检查——不用模型 where 编译器/schema/checksum/查询/测试能回答。</p>
+<blockquote>
+<p>"Use models for ambiguity. Use code for plumbing."（模型处理歧义，代码做管道）</p>
+<p>"A model can propose that the task is complete. Only the environment can prove it."（模型能提议完成，只有环境能证明）</p>
+</blockquote>
+<h3 id="8">第 8 条：验证应该攻击结果</h3>
+<p>worker 和 evaluator 不共享同一目标：<br />
+- worker：创造最强方案<br />
+- evaluator：<strong>找拒绝的理由</strong></p>
+<blockquote>
+<p>"Verification is not a second opinion. It is an attempted disproof."（验证不是二次意见，是试图反驳）</p>
+</blockquote>
+<p>同一 agent 同一上下文"自查"=保留了产生错误的假设。</p>
+<h3 id="9">第 9 条：模型提议，策略授权</h3>
+<blockquote>
+<p>"Some rules should never depend on whether the model remembers them. They are not prompt suggestions. They are policy."</p>
+</blockquote>
+<p>策略在推理循环之外。后果越严重→门越硬。</p>
+<blockquote>
+<p>"Autonomy is not the absence of control. It is the ability to operate freely inside a clearly enforced boundary."（自主不是没有控制，是在清晰执行的边界内自由操作）</p>
+</blockquote>
+<h3 id="10">第 10 条：恢复应针对失败类别</h3>
+<blockquote>
+<p>"Something failed. Try again." — That is not recovery. It is repetition.</p>
+</blockquote>
+<p>harness 先分类失败再选下一步——重试应改变至少一个相关条件，否则是在付钱复现同一失败。每个 loop 需要 budget：最大尝试/时间/花费/破坏范围/升级条件。</p>
+<blockquote>
+<p>"Reliable agents know how to continue. They also know when continuing is no longer rational."（可靠的 agent 知道怎么继续，也知道什么时候继续不再理性）</p>
+</blockquote>
+<h3 id="11">第 11 条：指令→基础设施</h3>
+<blockquote>
+<p>"Instructions are useful when they explain local reality. But instructions alone are weak enforcement."</p>
+</blockquote>
+<p><strong>指令阶梯</strong>（instruction ladder）：prompt → skill → tool gateway → code → policy</p>
+<blockquote>
+<p>"Move important knowledge as far down that ladder as practical. The prompt should explain judgment. The harness should enforce invariants."（prompt 解释判断，harness 强制不变量）</p>
+</blockquote>
+<h3 id="12">第 12 条：观察运行，不只看最终答案</h3>
+<blockquote>
+<p>"A clean final artifact can hide a terrible process."</p>
+</blockquote>
+<p>有用 trace 记录：状态转换/上下文来源/工具 IO/环境变化/验证结果/重试原因/审批决策/成本和延迟。</p>
+<blockquote>
+<p>"The goal is not surveillance. The goal is local repair."（目标不是监控，是局部修复）——失败在第 18 步时可从可信检查点重启而非从头重放。</p>
+</blockquote>
+<h3 id="13">第 13 条：每次运行需要变更收据</h3>
+<p>不是"模型说了什么"的摘要——是"系统能证明什么"的摘要。给人和下一个 session 一个可信起点。</p>
+<blockquote>
+<p>"The best handoff is not 'here is the conversation.' It is 'here is the state, the evidence, and the unresolved risk.'"（最好的交接不是"这是对话"，是"这是状态、证据、未解决风险"）</p>
+</blockquote>
+<h3 id="14-harness">第 14 条：每次失败升级 harness</h3>
+<blockquote>
+<p>"The weakest teams fix the failed output. The strongest teams also fix the system that allowed it."</p>
+</blockquote>
+<p>问：什么不变量本应阻止它？为什么没阻止？哪个检查漏了？转为可复用改进。</p>
+<blockquote>
+<p>"A corrected answer helps one run. A corrected harness helps every future run."（修正的答案帮助一次运行，修正的 harness 帮助每次后续运行）</p>
+</blockquote>
+<h3 id="15-harness">第 15 条：harness 也会腐烂</h3>
+<blockquote>
+<p>"More harness is not always better."</p>
+</blockquote>
+<p>模型改进/工具改进/任务变化→旧安全措施可能变成不必要的摩擦。为昨天模型做的 workaround 可能阻止今天模型用更好的策略。</p>
+<blockquote>
+<p>"The best harness is not the largest one. It is the smallest system that reliably closes the gap between intent and evidence."（最好的 harness 不是最大的，是可靠弥合意图与证据之间差距的最小系统）</p>
+<p><strong>"Build to delete."（为删除而构建）</strong></p>
+</blockquote>
+<h3 id="16-harnessl1-l6">第 16 条：最小可行 harness（L1-L6）</h3>
+<table>
+<thead>
+<tr>
+<th>Level</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L1</td>
+<td>有界任务（目标/scope/约束/验收检查）</td>
+</tr>
+<tr>
+<td>L2</td>
+<td>可读环境（项目地图/命令/本地指令/已知依赖）</td>
+</tr>
+<tr>
+<td>L3</td>
+<td>受控操作（类型化工具/参数验证/路径权限边界/结构化结果）</td>
+</tr>
+<tr>
+<td>L4</td>
+<td>持久执行（显式运行状态/检查点/决策/教训）</td>
+</tr>
+<tr>
+<td>L5</td>
+<td>证据（确定性检查/对抗性验证/变更收据）</td>
+</tr>
+<tr>
+<td>L6</td>
+<td>恢复与学习（失败分类/有界重试/升级/harness 更新）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"Build the smallest layer that eliminates the failure you actually have."——不为偶尔需要澄清的 prompt 搭多 agent 架构。<strong>复杂度应由观察到的失败来挣得。</strong></p>
+</blockquote>
+<h3 id="17-harness">第 17 条：可复用 harness 规格</h3>
+<p>给 agent 有意义自主前定义：scope/boundaries/tools/memory model/verification/escalation——未定义=agent 在即兴表演不是自主。</p>
+<h3 id="18">第 18 条：正确层级度量</h3>
+<p>token 数不是最终指标——<strong>accepted work</strong>（被接受的工作）才是。实用指标：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>first-pass acceptance rate</td>
+<td>首次通过率</td>
+</tr>
+<tr>
+<td>recovery rate after tool failure</td>
+<td>工具失败后恢复率</td>
+</tr>
+<tr>
+<td>repeated failure rate</td>
+<td>重复失败率</td>
+</tr>
+<tr>
+<td>human interventions per task</td>
+<td>每任务人工干预次数</td>
+</tr>
+<tr>
+<td>unsupported completion claims</td>
+<td>无证据的完成声明</td>
+</tr>
+<tr>
+<td>time from request to verified outcome</td>
+<td>请求到验证完成时间</td>
+</tr>
+<tr>
+<td>harness overhead by component</td>
+<td>各组件 harness 开销</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"An agent can look highly productive while creating expensive review work."（agent 看起来高效但制造昂贵的审查工作）</p>
+<p>"The objective is not more agent activity. It is more trusted outcomes per unit of human attention."（目标不是更多 agent 活动，是每单位人类注意力产生更多可信结果）</p>
+</blockquote>
+<h3 id="19-harness">第 19 条：什么时候不需要重 harness</h3>
+<p>简单 prompt 够用的条件：任务短/输出易检/失败便宜/无外部副作用/人在回路。</p>
+<p>加 harness 的条件：跨多工具或 session/环境可变/操作有真实后果/完成难手动判断/同一失败反复出现/人审成瓶颈。</p>
+<h2 id="harness-13">三、与本周 harness 簇 13 篇笔记的交叉对照</h2>
+<table>
+<thead>
+<tr>
+<th>文章条</th>
+<th>对应笔记</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>② Task Contract</td>
+<td>AGENTS.md 准则"完成定义"五项</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>③ 地图非手册</td>
+<td>AGENTS.md 准则 1"上下文分层加载"</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>④ Tool Gateway</td>
+<td>AGENTS.md 权限三层模型</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>⑤ 脑/手/史分离</td>
+<td>Skill 九条原则 ②渐进式披露</td>
+<td>✅ 互补</td>
+</tr>
+<tr>
+<td>⑥ 记忆→持久状态</td>
+<td>三级记忆架构（L1/L2/L3）</td>
+<td>✅ 已满足且更系统</td>
+</tr>
+<tr>
+<td>⑦ 完成需证据</td>
+<td>AGENTS.md"退出码≠0=未完成" + golden set</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>⑧ 验证攻击结果</td>
+<td>Loop/Graph"两个乐观主义者同意" + Skill 九条⑤</td>
+<td>✅ 互补</td>
+</tr>
+<tr>
+<td>⑨ 模型提议策略授权</td>
+<td>Loop/Graph"爆炸半径车道" + AGENTS.md 权限三层</td>
+<td>✅ 互证</td>
+</tr>
+<tr>
+<td>⑩ 恢复针对失败类</td>
+<td>AGENTS.md"3+ fixes=停下问架构" + systematic-debugging</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>⑪ 指令→基础设施</td>
+<td>Skill 九条⑥"代码胜于推理" + AGENTS.md 准则 5</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>⑫ 观察运行</td>
+<td>observability-dashboard skill</td>
+<td>✅ 有机制</td>
+</tr>
+<tr>
+<td>⑬ 变更收据</td>
+<td>PROGRESS.md 状态子系统</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>⑭ 每次失败升级 harness</td>
+<td>evolver skill + AGENTS.md 准则 5"规范即活文档"</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>⑮ harness 腐烂</td>
+<td>Skill 九条⑧"Skills decay" + skill-review</td>
+<td>✅ 互补</td>
+</tr>
+<tr>
+<td>⑯ L1-L6 最小可行</td>
+<td>hermes-system-audit skill 的分层</td>
+<td>✅ 可对标</td>
+</tr>
+<tr>
+<td>⑱ 正确层级度量</td>
+<td>观察到的：first-pass rate/recovery rate</td>
+<td>🟡 我们没系统追踪这些指标</td>
+</tr>
+<tr>
+<td>⑲ 何时不需要重 harness</td>
+<td>AGENTS.md"简单任务直接分配"</td>
+<td>✅ 已满足</td>
+</tr>
+</tbody>
+</table>
+<p><strong>13 篇笔记的合流点</strong>：几乎每条原则都能在簇中找到 1-2 篇笔记的独立互证——<strong>本周的笔记选择不是随机的，是在无意识中覆盖了 harness engineering 的完整谱系</strong>。</p>
+<h2 id="nugget">四、三条最增量 Nugget</h2>
+<h3 id="41-build-to-delete">4.1 "Build to delete"（为删除而构建）</h3>
+<p>这是对 Skill 九条⑧"Skills decay"的补全——不只"skill 会腐烂"，harness 本身也会。且方向明确：<strong>每次加一层时问"如果删了会怎样"</strong>——这是我们 600+ skill 库从未问过的问题。</p>
+<h3 id="42-complexity-should-be-earned-by-observed-failure">4.2 "Complexity should be earned by observed failure"（复杂度应由观察到的失败挣得）</h3>
+<blockquote>
+<p>"Do not begin with a multi-agent architecture because a single prompt occasionally needs clarification."</p>
+</blockquote>
+<p>这是对 SoL-Pi 152→4 的 harness 层表述——不是"少做多做"的品味，是<strong>没有失败证据不加复杂度</strong>的纪律。</p>
+<h3 id="43-accepted-work">4.3 "Accepted work"作为度量单位</h3>
+<blockquote>
+<p>"The objective is not more agent activity. It is more trusted outcomes per unit of human attention."</p>
+</blockquote>
+<p>我们追踪 token/任务数/笔记数——但<strong>从未追踪"被用户接受的工作"比率</strong>。这是 hermes-system-audit 应该加的指标。</p>
+<h2 id="agentsmd">五、与 AGENTS.md 准则的逐条映射</h2>
+<table>
+<thead>
+<tr>
+<th>AGENTS.md 准则</th>
+<th>文章条</th>
+<th>关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. 上下文分层加载</td>
+<td>③ 地图非手册</td>
+<td>同构</td>
+</tr>
+<tr>
+<td>2. 执行/评判分离</td>
+<td>⑧ 验证攻击结果</td>
+<td>同构</td>
+</tr>
+<tr>
+<td>3. 质量门禁机械化</td>
+<td>⑦ 完成需证据</td>
+<td>同构</td>
+</tr>
+<tr>
+<td>4. Dry Run 先行</td>
+<td>⑯ L1-L6 最小可行</td>
+<td>互补</td>
+</tr>
+<tr>
+<td>5. 规范即活文档</td>
+<td>⑭ 每次失败升级 harness</td>
+<td>同构</td>
+</tr>
+</tbody>
+</table>
+<p><strong>五条准则 = 文章 19 条的压缩版</strong>——我们的 AGENTS.md 在 2026-05-07 就已经把这 19 条蒸馏成了 5 条。文章给的是展开版，适合做审计 checklist。</p>
+<h2 id="_3">六、批判性审视</h2>
+<ol>
+<li><strong>19 条是"完整指南"的声称未经验证</strong>——文章无实测数据、无案例、无代码——是概念框架不是工程文档（与 beamnxw Lane 的身份/记忆分离实测形成对比）</li>
+<li><strong>"harness 也会腐烂"的检测方法太抽象</strong>——"Measure whether they still provide lift"——怎么测？lift 的定义？文章停在提问不给解法</li>
+<li><strong>L1-L6 分层隐含线性递进</strong>——但真实系统可能 L4（持久执行）比 L3（受控操作）更急需——文章说"按你实际有的失败建"，但没给优先级判定方法</li>
+<li><strong>"Accepted work"指标无操作性</strong>——怎么定义"被接受"？用户没拒绝就算？还是需要显式确认？——我们的 golden set 门禁是更具体的版本</li>
+<li><strong>Substack 导流</strong>：文章末尾 "Follow my Substack" + "Send this article to someone"——概念文的营销属性</li>
+<li><strong>与我们已有实践的偏差未讨论</strong>：我们的三级记忆（L1/L2/L3）比文章四类（Decisions/Invariants/Lessons/State）更细——文章没讨论记忆的分层策略</li>
+</ol>
+<h2 id="_4">七、金句提取</h2>
+<blockquote>
+<p>"A prompt changes one attempt. A harness changes every attempt."</p>
+<p>"Many agent failures are not reasoning failures. They are environment failures."</p>
+<p>"The goal is not to remove uncertainty from the model. It is to contain that uncertainty inside a system that can observe, verify, and recover."</p>
+<p>"Without a contract, the agent optimizes for plausible activity. With a contract, it can optimize for verified completion."</p>
+<p>"The model can propose an action. The tool gateway decides whether that action is valid enough to execute."</p>
+<p>"Use models for ambiguity. Use code for plumbing."</p>
+<p>"A model can propose that the task is complete. Only the environment can prove it."</p>
+<p>"Verification is not a second opinion. It is an attempted disproof."</p>
+<p>"Autonomy is not the absence of control. It is the ability to operate freely inside a clearly enforced boundary."</p>
+<p>"Reliable agents know how to continue. They also know when continuing is no longer rational."</p>
+<p>"The prompt should explain judgment. The harness should enforce invariants."</p>
+<p>"A corrected answer helps one run. A corrected harness helps every future run."</p>
+<p>"The best harness is not the largest one. It is the smallest system that reliably closes the gap between intent and evidence."</p>
+<p>"Build to delete."</p>
+<p>"Complexity should be earned by observed failure."</p>
+<p>"The objective is not more agent activity. It is more trusted outcomes per unit of human attention."</p>
+<p>"The best handoff is not 'here is the conversation.' It is 'here is the state, the evidence, and the unresolved risk.'"</p>
+</blockquote>
+<h2 id="_5">八、局限性</h2>
+<ol>
+<li>X Article 约 4000 字——概念文/框架文，无实测数据无代码无案例</li>
+<li>19 条来源未给——是作者经验总结还是调研结果不清楚</li>
+<li>L1-L6 的"最小可行"判定方法未给——只说"按实际失败建"但没给优先级</li>
+<li>"Accepted work"等指标无操作性定义</li>
+<li>§三对照基于本机笔记库和 AGENTS.md 自查——未实际改造 harness</li>
+<li>文章面向"building AI agents"的通用读者——与我们 Hermes 特定架构的偏差未讨论</li>
+<li>与 harness-architecture skill（已存在）的重叠度约 70%——本笔记的增量在 §三交叉对照和 §四 Nugget</li>
+</ol>
+<h2 id="_6">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至二</td>
+<td><strong>原文忠实还原</strong>（X Article 全文直读，19 条逐条）</td>
+</tr>
+<tr>
+<td>三</td>
+<td><strong>体系映射</strong>（本周 13 篇笔记 + AGENTS.md 交叉对照）</td>
+</tr>
+<tr>
+<td>四</td>
+<td><strong>Nugget 提炼</strong>（本笔记扩展）</td>
+</tr>
+<tr>
+<td>五</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
