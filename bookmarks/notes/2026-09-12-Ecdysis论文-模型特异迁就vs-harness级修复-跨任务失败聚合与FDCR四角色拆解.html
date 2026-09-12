@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ecdysis论文-模型特异迁就vs-harness级修复-跨任务失败聚合与FDCR四角色拆解</title>
+
+<meta property="og:title" content="Ecdysis论文-模型特异迁就vs-harness级修复-跨任务失败聚合与FDCR四角色拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="ecdysis-vs-harness-fdcr-1841856">Ecdysis 论文：模型特异迁就 vs harness 级修复——跨任务失败模式聚合与 FDCR 四角色协作拆解（1.84×/18.56%）</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @dair_ai 推荐论文 → arXiv:2609.11677（cs.SE/cs.AI）<br />
+<strong>论文</strong>：《Ecdysis: Efficient and Effective Training of Runtime Harnesses for LLM Agents》<br />
+<strong>抓取方式</strong>：arXiv HTML 全文直读（60.9K 字符，含完整实验表）<br />
+<strong>笔记日期</strong>：2026-09-12（21:18 date 实测确认）<br />
+<strong>关联笔记</strong>：harness 簇全系列 14 篇——<strong>本篇是簇的学术收口</strong>（之前多为工程/概念文，本篇给出实验证据）；SoL-Pi（152→4 的 RSI 对应）、自进化 Harness 与记忆（SkillsBench 负结果）、Loop 与 Graph（learning edge）、Skill 九条（腐烂与重跑）</p>
+
+<p class="meta-date">生成日期 2026-09-12</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>论文核心洞察：执行失败不是同等可行动的——有的反映模型特异局限，有的反映 harness 系统性缺陷；把单个失败当直接修改信号会过度迁就模型（model-specific accommodation），损害跨模型泛化。Ecdysis 用"跨任务复发的失败模式"作为系统性缺陷的更强证据，配合 FDCR 四角色协作诊断，1.84× 训练加速 + 18.56% 推理精度提升 + 跨 LLM 泛化更强 + token 更省 + 1/4 数据匹配全量训练。</strong> 对我们最深的增量：①"model accommodation ratio"（模型迁就比）的量化框架——我们 evolver/sensor-grid 从未区分"修 harness 还是迁就模型"；②<strong>"至少两个不同任务复发的失败才建立跨任务机制"</strong>——与我们 error-case-library 的"repeat 2 次=系统性"判定完全同构（独立提出，论文验证）；③FDCR 的 Analyst/Critic/Engineer/Moderator 四角色与我们 Dev/OPM/Data Meow 团队结构惊人相似。</p>
+<h2 id="_2">一、论文要解决的两大实践问题</h2>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>现状</th>
+<th>Ecdysis 解法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>搜索慢</strong></td>
+<td>每个候选 harness 需要重复 agent 运行+代码编辑</td>
+<td>批级失败聚合——每轮只调一次 coding agent（N_round ≤ N_serial）</td>
+</tr>
+<tr>
+<td><strong>修复过拟合</strong></td>
+<td>每个失败都当 harness bug 打补丁——即使模型才是原因</td>
+<td>跨任务复发模式才修——隔离模型特异迁就</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"An observed failure can reflect either model-specific deficiencies or systematic harness deficiencies, and directly optimizing against individual failures can lead to unnecessary model-specific accommodation."</p>
+</blockquote>
+<h2 id="h-t">二、核心理论：ΔH 分解与迁就比 t</h2>
+<p>把一轮 harness 更新量分解为：</p>
+<pre><code>ΔH = t·ΔH_model + (1−t)·ΔH_harness,  t ∈ [0,1]
+</code></pre>
+<ul>
+<li><strong>t = 模型特异迁占比</strong>：大 t 能快速解决观察到的问题但<strong>过拟合到当前模型和训练任务</strong></li>
+<li>假设：<strong>跨不同任务实例复发的失败模式</strong>是系统性 harness 缺陷的更强证据（作为归纳偏置而非因果证明）</li>
+<li>实验验证：降低 model accommodation 与更强的跨模型泛化<strong>相关</strong></li>
+</ul>
+<h2 id="_3">三、方法：三阶段 × 两组件</h2>
+<h3 id="31">3.1 演化循环（每轮）</h3>
+<pre><code>① 执行训练任务收集失败证据（trajectories → 结构化失败记录）
+② FDCR 诊断 → 结构化修改规格（specification）
+③ coding agent 按规格改 harness → 候选 H_c
+④ 验证：J_train(H_c) &gt; J_train(H_{i-1}) 才接受，否则保留旧版
+</code></pre>
+<p><strong>接受准则只看训练集总分</strong>——不要求每个任务都改善。</p>
+<h3 id="32-batch-level-failure-aggregation">3.2 批级失败聚合（Batch-Level Failure Aggregation）</h3>
+<ul>
+<li>失败记录（任务 ID/失败决策/终止原因/工具调用史/执行上下文）组织成<strong>失败组</strong></li>
+<li><strong>优先覆盖 ≥2 个不同任务的组</strong>——单任务重复失败不足以建立跨任务机制</li>
+<li>失败组是<strong>诊断证据非强制修复目标</strong>——候选 harness 不必解决每个组</li>
+<li>效率收益：每轮一次 coding agent 调用 vs 每失败一次</li>
+</ul>
+<h3 id="33-fdcrfailure-driven-collaborative-refinement">3.3 FDCR（Failure-Driven Collaborative Refinement）四角色</h3>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>职责</th>
+<th>对应我们</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Analyst</strong></td>
+<td>识别 harness 缺陷，提出最小针对性更新</td>
+<td>Dev Meow（定位根因）</td>
+</tr>
+<tr>
+<td><strong>Critic</strong></td>
+<td>评估提案风险：过宽触发/误阻合法行为/违反运行时契约/已成功任务回归</td>
+<td>Data Meow（审计）</td>
+</tr>
+<tr>
+<td><strong>Engineer</strong></td>
+<td>追踪共识与分歧，标记待澄清问题</td>
+<td>OPM Meow（协调）</td>
+</tr>
+<tr>
+<td><strong>Moderator</strong></td>
+<td>保守仲裁——合并提案/解决分歧/优先复发模式/避免不必要变更</td>
+<td>ubot（CEO 收口）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键分离</strong>：FDCR 诊断（不碰代码）与 coding agent 实施（按规格改）分离——<strong>分析与实施分离</strong>，与我们 AGENTS.md 准则 2"执行/评判分离"同构。</p>
+<h2 id="_4">四、实验证据（精选表）</h2>
+<h3 id="41-preliminary-qwen3">4.1 基线启示（Preliminary，六组 Qwen3 平均）</h3>
+<table>
+<thead>
+<tr>
+<th>配置</th>
+<th>准确率</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>移除全部 harness 层</td>
+<td>29.72%</td>
+</tr>
+<tr>
+<td>人工固定配置 harness</td>
+<td><strong>50.28%</strong></td>
+</tr>
+<tr>
+<td>失败后串行修改（coding agent）</td>
+<td>43.33% —— <strong>低于人工配置！</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键启示</strong>：朴素的"失败即修"不仅不如人工配置，还倒退——<strong>无原则的失败驱动演化比不动更糟</strong>。这是 SoL-Pi 152→4 死亡率的学术版证据。</p>
+<h3 id="42-agentbench">4.2 主结果（五模型 × AgentBench 等）</h3>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>Direct</th>
+<th>Human-Aug</th>
+<th>Self-Evo</th>
+<th>Ecdysis w/o FDCR</th>
+<th><strong>Ecdysis w/ FDCR</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-8B</td>
+<td>10.0</td>
+<td>85.0</td>
+<td>90.0</td>
+<td>85.0</td>
+<td><strong>90.0</strong></td>
+</tr>
+<tr>
+<td>Qwen3-14B</td>
+<td>28.3</td>
+<td>80.0</td>
+<td>85.0</td>
+<td>85.0</td>
+<td><strong>90.0</strong></td>
+</tr>
+<tr>
+<td>Qwen3-32B</td>
+<td>40.0</td>
+<td>75.0</td>
+<td>85.0</td>
+<td>85.0</td>
+<td><strong>90.0</strong></td>
+</tr>
+<tr>
+<td>MiniMax-M2.7</td>
+<td>80.0</td>
+<td>78.3</td>
+<td>83.3</td>
+<td>86.7</td>
+<td><strong>90.0</strong></td>
+</tr>
+<tr>
+<td>Llama-3.1-8B</td>
+<td>5.0</td>
+<td>68.3</td>
+<td>70.0</td>
+<td>80.0</td>
+<td><strong>90.0</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Llama-3.1-8B 最戏剧</strong>：Direct 5% → Ecdysis 90%（+85pt）——弱模型从 harness 演化获益最大，<strong>印证 Minara"harness 可测量且对弱模型影响更大"</strong>。</p>
+<h3 id="43">4.3 效率与成本</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>训练加速</td>
+<td>最高 <strong>1.84×</strong></td>
+</tr>
+<tr>
+<td>推理精度</td>
+<td><strong>+18.56%</strong></td>
+</tr>
+<tr>
+<td>训练时间（AgentBench）</td>
+<td>Self-Evo 1955s vs Ecdysis 1137s/1891s</td>
+</tr>
+<tr>
+<td>缓存命中率</td>
+<td>FDCR 94.59%（vs Self-Evo 92.41%）</td>
+</tr>
+<tr>
+<td>总成本</td>
+<td>$1.51-1.83 vs Self-Evo $2.03</td>
+</tr>
+<tr>
+<td><strong>1/4 数据</strong></td>
+<td>Reduced $0.291 vs Full $5.763——<strong>20× 成本差</strong>，精度 71.67 vs 75.00</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44-llm">4.4 跨 LLM 泛化</h3>
+<p>Ecdysis 训练的 harness 换模型仍强——因为迁就比 t 低（修复的是系统性缺陷而非模型怪癖）。</p>
+<h2 id="harness">五、与本周 harness 簇的交叉对照（学术收口）</h2>
+<table>
+<thead>
+<tr>
+<th>论文概念</th>
+<th>簇中对应</th>
+<th>互证关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>失败≠同等可行动</td>
+<td>Loop/Graph"错误的缺失不是正确的证据"</td>
+<td>同构</td>
+</tr>
+<tr>
+<td>跨任务复发才修</td>
+<td>error-case-library"repeat 2 次=系统性"</td>
+<td><strong>独立同构</strong>（我们 09-10 从实战提炼，论文用实验验证）</td>
+</tr>
+<tr>
+<td>t（迁就比）量化</td>
+<td>无对应</td>
+<td>🟡 <strong>最大增量</strong>——我们从未量化过</td>
+</tr>
+<tr>
+<td>FDCR 四角色</td>
+<td>Dev/OPM/Data Meow + ubot</td>
+<td>结构同构</td>
+</tr>
+<tr>
+<td>分析/实施分离</td>
+<td>AGENTS.md 准则 2</td>
+<td>同构</td>
+</tr>
+<tr>
+<td>接受准则：总分提升才接受</td>
+<td>golden set 门禁（六项全绿才通过）</td>
+<td>同构</td>
+</tr>
+<tr>
+<td>"至少 2 任务"阈值</td>
+<td>SoL-Pi 40:1 死亡率的正面解法</td>
+<td>互补</td>
+</tr>
+<tr>
+<td>失败驱动演化倒退（43.33&lt;50.28）</td>
+<td>SkillsBench -8~-11（考前自写 skill 包降分）</td>
+<td><strong>互证</strong>——两个独立负结果</td>
+</tr>
+<tr>
+<td>1/4 数据匹配全量</td>
+<td>"Complexity earned by observed failure"（Harness 指南）</td>
+<td>互补</td>
+</tr>
+<tr>
+<td>弱模型获益最大</td>
+<td>Minara 笔记（58 分差）</td>
+<td>互证</td>
+</tr>
+</tbody>
+</table>
+<h2 id="evolversensor-grid">六、对 evolver/sensor-grid 的改造启示</h2>
+<table>
+<thead>
+<tr>
+<th>启示</th>
+<th>现状</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>区分"修 harness vs 迁就模型"</strong></td>
+<td>evolver 不区分——所有错误模式都沉淀为规则</td>
+<td>下次 audit 时给 error-case 加 <code>attribution</code> 字段（model/harness/ambiguous）</td>
+</tr>
+<tr>
+<td><strong>跨任务复发阈值</strong></td>
+<td>"repeat 2 次"是会话级不是任务级</td>
+<td>升级为"≥2 个不同任务类型复发"才入主线</td>
+</tr>
+<tr>
+<td><strong>接受准则</strong></td>
+<td>evolver"门禁后写入"无总分对比</td>
+<td>skill-ab-testing 已有候选版机制——补"总分必须提升"</td>
+</tr>
+<tr>
+<td><strong>FDCR 分离</strong></td>
+<td>一体化流程</td>
+<td>delegate_task 已支持多角色——evolver 大改时可参考</td>
+</tr>
+</tbody>
+</table>
+<p><strong>不立即动</strong>（分析阶段禁改代码），记入下次 hermes-system-audit 的 checklist。</p>
+<h2 id="_5">七、批判性审视</h2>
+<ol>
+<li><strong>基准规模小</strong>：主表准确率以 5% 为粒度（60 任务×5=300？）——90 vs 85 差 3 个任务；无置信区间报告（部分表 ±std 有，主表没有）</li>
+<li><strong>"1/4 数据"的 Reduced 版精度 71.67 vs Full 75.00</strong>——降了 3.3pt，说"comparable"略乐观，但成本 20× 差距下确实划算</li>
+<li><strong>t（迁就比）的测量靠"细粒度人工分析"</strong>——论文自己说是 manual，无自动化方法——<strong>最核心的理论量无法自动测量</strong>，限制了实践迁移</li>
+<li><strong>FDCR 固定轮数、顺序执行角色</strong>——为什么这个配置？没消融角色顺序/轮数</li>
+<li><strong>harness 的定义偏代码层</strong>（"the source code of the current harness"）——prompt 层/skill 层的演化未覆盖（我们的 skill 库比这个宽）</li>
+<li><strong>训练时模型冻结</strong>——model+harness 联合演化（另一篇 arXiv 摘要提到的方向）未讨论</li>
+<li><strong>单机单领域</strong>（AgentBench/推理任务）——生产环境多用户多领域的 harness 演化未验证</li>
+</ol>
+<h2 id="_6">八、金句提取</h2>
+<blockquote>
+<p>"Execution failures are not uniformly actionable: they may reflect model-specific limitations rather than harness deficiencies."</p>
+<p>"Treating individual failures as direct modification signals can therefore over-accommodate the evolving model and compromise harness generalization."</p>
+<p>"Cross-task recurrence is used as an inductive bias rather than as proof of causal attribution."</p>
+<p>"Serially modifying the harness with a coding agent after each failure achieves 43.33%, which remains below the 50.28% achieved by the fixed human configuration."（失败即修比不修更糟）</p>
+<p>"Effective harness evolution requires not only correcting failures, but also determining which failures constitute reliable evidence for changes that generalize beyond the model and tasks used during evolution."</p>
+</blockquote>
+<h2 id="_7">九、局限性</h2>
+<ol>
+<li>本笔记基于 arXiv HTML v1 全文（60.9K 字符）——图表以 HTML 表格还原，部分公式渲染不完整</li>
+<li>§4.2 主表缺置信区间——批判 1 基于表面观察</li>
+<li>§六改造启示是分析非实施——evolver 实际改造需另开会话</li>
+<li>论文代码未公开（GitHub 链接未见）——复现依赖细节不足</li>
+<li>与 SoL-Pi/SkillsBench 的对照基于笔记记忆，未重读原文核对数字</li>
+</ol>
+<h2 id="_8">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至四</td>
+<td><strong>原文忠实还原</strong>（arXiv HTML 全文直读）</td>
+</tr>
+<tr>
+<td>五</td>
+<td><strong>体系映射</strong>（本周 14 篇笔记交叉）</td>
+</tr>
+<tr>
+<td>六</td>
+<td><strong>改造启示</strong>（本笔记扩展，未实施）</td>
+</tr>
+<tr>
+<td>七</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
