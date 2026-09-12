@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KV-Cache浪费与PagedAttention救赎-vLLM内存管理全链拆解与2026演进</title>
+
+<meta property="og:title" content="KV-Cache浪费与PagedAttention救赎-vLLM内存管理全链拆解与2026演进" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="kv-cache-pagedattention-80-98-vllm-disaggregated-serving">KV Cache 浪费与 PagedAttention 救赎：从 80% 浪费到 98% 利用率——vLLM 内存管理全链拆解 + 连续批处理/前缀缓存/推测解码/ disaggregated serving 演进</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @vicky_grok（Vikas Gupta）Article《Your KV Cache Is Mostly Waste: How PagedAttention Fixed LLM Serving》2026-09-10<br />
+<strong>原文链接</strong>：https://x.com/vicky_grok/status/2098385343439618151<br />
+<strong>原始论文</strong>：arXiv:2309.06180（SOSP 2023，UC Berkeley，vLLM 团队）<br />
+<strong>抓取方式</strong>：X Article 直读全文<br />
+<strong>笔记日期</strong>：2026-09-11<br />
+<strong>关联笔记</strong>：《LLM八种精度格式全解》（FP8/INT4/GPTQ 量化族）《TTFT首字延迟全解》（Prefill/Decode 分离与访存瓶颈）《Engram条件记忆》（确定性寻址→可预取→异步隐藏传输）</p>
+
+<p class="meta-date">生成日期 2026-09-11</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>PagedAttention = 把操作系统 1960 年代的虚拟内存分页搬到 GPU KV Cache，把 80% 内存浪费降到 &lt;4%，同硬件吞吐 2-4 倍。</strong> 这不是新发明——是经典 OS 概念对 AI 瓶颈的一次完美复用。对我们最深的增量：<strong>文章把 vLLM 2023 基础论文到 2026 现代部署的完整演进链一次讲透</strong>——Chunked Prefill/Prefix Caching/Speculative Decoding/Disaggregated Serving 四大升级全部是 PagedAttention 之上的增量层，且与我们已写笔记多处互证。<strong>不形成新 skill</strong>（部署推理已有 llm-inference-deploy/llm-inference-optimization 两个 skill 覆盖），但作为教学参考笔记有高复用价值。</p>
+<h2 id="kv-cache">一、问题层：KV Cache 为什么爆炸</h2>
+<h3 id="11-kv-cache">1.1 什么是 KV Cache</h3>
+<p>LLM 自回归生成时不能每生成一个词就重读全部前文——它把每个已处理词的数学表示（Keys 和 Values）存入临时存储区，<strong>这个存储区就是 KV Cache</strong>。</p>
+<p><strong>每 token 的内存消耗</strong>（文章给的公式）：</p>
+<pre><code>Bytes/token = 2 × Layers × Attention Heads × Head Dimension × 2 bytes (FP16)
+</code></pre>
+<p>现代模型一个 token 在 KV Cache 里约占 <strong>~1MB VRAM</strong>。</p>
+<h3 id="12">1.2 三种浪费（旧式连续分配的死穴）</h3>
+<table>
+<thead>
+<tr>
+<th>浪费类型</th>
+<th>餐厅类比</th>
+<th>实际场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>内部碎片</strong></td>
+<td>预定 10 人桌只来 1 人，9 把椅子空着</td>
+<td>服务器为 2000 词预分配但用户只问 10 词笑话</td>
+</tr>
+<tr>
+<td><strong>外部碎片</strong></td>
+<td>桌位之间留出奇怪大小的缝，新客进不去</td>
+<td>用户进出后留下不连续空隙，新请求需连续块但拼不出</td>
+</tr>
+<tr>
+<td><strong>共享浪费</strong></td>
+<td>三桌客点同样的系统提示词，复制三份存三处</td>
+<td>3 个用户同一 system prompt → KV Cache 复制 3 份</td>
+</tr>
+</tbody>
+</table>
+<p><strong>UC Berkeley 2023 年实测：高达 80% 的 KV Cache 内存被浪费。GPU 在饥饿的同时持有大量空空间。</strong></p>
+<h2 id="pagedattention">二、救赎层：PagedAttention 机制</h2>
+<h3 id="21">2.1 核心类比（文章最好的设计）</h3>
+<table>
+<thead>
+<tr>
+<th>旧方式</th>
+<th>PagedAttention</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>所有人坐 10 人大桌</td>
+<td>只用 1 人小方桌</td>
+</tr>
+<tr>
+<td>来了就预分配整块</td>
+<td><strong>按需分配一个 block（16-32 token）</strong></td>
+</tr>
+<tr>
+<td>桌必须物理相邻</td>
+<td>桌可散布任意位置，<strong>逻辑上拼接</strong></td>
+</tr>
+<tr>
+<td>系统提示词复制 3 份</td>
+<td><strong>Page Table 指向同一物理 block</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="22-vs">2.2 逻辑块 vs 物理块</h3>
+<ul>
+<li><strong>逻辑块</strong>：用户看到的连续对话（流式句子）</li>
+<li><strong>物理块</strong>：数据实际居住的 GPU 芯片位置（散落各处）</li>
+<li><strong>Page Table</strong>：每个请求一张映射表，连接逻辑→物理</li>
+</ul>
+<p><strong>三种浪费的消灭</strong>：<br />
+- 内部碎片 → block 太小（16-32 token），浪费 &lt;4%<br />
+- 外部碎片 → block 可散布任意位置，无形状不匹配<br />
+- 共享浪费 → 多个 Page Table 指向同一物理 block（系统提示词共享）</p>
+<h3 id="23">2.3 字节级布局（最硬核的一段）</h3>
+<p>24GB VRAM 的 GPU 跑 7B 模型（FP16）：</p>
+<pre><code>VRAM 总量: 24 GB
+ ├─ 模型权重（静态）: 14 GB（永驻不动）
+ └─ KV Cache 工作区（动态）: 10 GB
+
+旧式：预分配 2GB/用户（假设 2000 token × 1MB）→ 最多 5 并发
+      5 用户只问 10 词笑话 → 10GB 全被锁死 → OOM
+
+PagedAttention: 10GB 切成 ~640 个 16MB 物理块
+      用户问 10 词笑话 → 分配 1 个 16MB block
+      剩余 9984 MB 全可用于其他数千用户
+</code></pre>
+<h2 id="_2">三、批处理层：从静态到连续</h2>
+<h3 id="31-prefill-vs-decode">3.1 Prefill vs Decode（两种完全不同的负载）</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>做什么</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Prefill</strong></td>
+<td>AI 读你的 prompt</td>
+<td>大规模并行计算，瞬间完成</td>
+</tr>
+<tr>
+<td><strong>Decode</strong></td>
+<td>AI 写回答</td>
+<td>逐词串行，慢循环</td>
+</tr>
+</tbody>
+</table>
+<h3 id="32">3.2 静态批处理（校车模型）</h3>
+<p>等满 4 人上车→出发→User A 5 词就完了但<strong>不能下车</strong>→等 User B 写完 500 词→A 的内存空坐全程浪费。</p>
+<h3 id="33">3.3 连续批处理（摩天轮模型）</h3>
+<p>PagedAttention 使内存块独立→<strong>每个词生成后评估队列</strong>：User A 做完 5 词→立即驱逐→User C 秒级加载空位。摩天轮永不停转，永远没有空座。</p>
+<h2 id="2-4">四、数字层：2-4 倍从哪来</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>旧式</th>
+<th>vLLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV Cache 浪费</td>
+<td>~80%</td>
+<td><strong>&lt;4%</strong></td>
+</tr>
+<tr>
+<td>吞吐（vs 2023 最佳 TGI/Orca/FasterTransformer）</td>
+<td>基线</td>
+<td><strong>2x-4x</strong></td>
+</tr>
+<tr>
+<td>GPU 内存利用率</td>
+<td>不可预测</td>
+<td><strong>98%</strong></td>
+</tr>
+<tr>
+<td>硬件升级</td>
+<td>需要</td>
+<td><strong>不需要</strong>（纯软件优化）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"Without upgrading the physical hardware, without buying newer GPUs, the researchers allowed servers to handle up to four times as many users simply by organizing the memory blocks intelligently."</p>
+</blockquote>
+<h2 id="20232026">五、2023→2026 演进层（文章最大增量价值）</h2>
+<h3 id="51-chunked-prefill">5.1 Chunked Prefill（分块预填）</h3>
+<p>100,000 词 prompt 一次性读会暂时独占 GPU → <strong>切成小块与正常 decode 流量交错执行</strong>，服务器永不暂停。与我们 TTFT 笔记的"长 prompt 阻塞 decode 队列"问题精确对应——这是解法。</p>
+<h3 id="52-prefix-caching">5.2 Prefix Caching（前缀缓存）</h3>
+<p>50 个员工用同一 1000 词系统提示词 → <strong>只读一次，KV Cache 存共享 Page Table</strong>。与 SGLang RadixAttention（确定性前缀缓存）同族——Engram 笔记的"确定性寻址天然适合预取"同源。</p>
+<h3 id="53">5.3 量化族（与精度笔记全面对齐）</h3>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>文章口径</th>
+<th>我们笔记的补充</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FP8/MXFP8/MXFP4/NVFP4</td>
+<td>Nvidia 原生格式</td>
+<td>《八种精度》已全解——Engram 196B 表用 FP8 是理想负载</td>
+</tr>
+<tr>
+<td>INT8/INT4</td>
+<td>模型缩到 1/4</td>
+<td>边缘部署核心路径</td>
+</tr>
+<tr>
+<td>GPTQ/AWQ</td>
+<td>保精度的专用算法</td>
+<td>与 PagedAttention 叠加可把 $30k 机架塞进单卡</td>
+</tr>
+<tr>
+<td>GGUF</td>
+<td>CPU RAM 无 GPU 时</td>
+<td>Jetson 路径之一</td>
+</tr>
+</tbody>
+</table>
+<h3 id="54-speculative-decoding">5.4 Speculative Decoding（推测解码/编辑模型）</h3>
+<pre><code>小 Draft Model 快猜 5 词 → 大模型当编辑 → 正确则一次接受 5 词
+→ 5 词的生成时间 ≈ 1 词的时间
+</code></pre>
+<p>现代支持：n-gram、suffix matching、EAGLE、DFlash。与 OUI-1 笔记的"窄域小模型当助手"同构——但这里是"小模型加速大模型"而非"小模型自教自己"。</p>
+<h3 id="55-disaggregated-serving">5.5 Disaggregated Serving（分离式部署）</h3>
+<p>Prefill（读）和 Decode（写）用硬件方式不同 → <strong>拆到不同服务器机架</strong>：一台专读 prompt，KV Cache 经网络传给另一台专写回答。与 V4.1 Flash 的 PD 不对称（prefill 8B &lt; decode 16B）同一趋势——<strong>读写分离从模型架构层到部署架构层一以贯之</strong>。</p>
+<h2 id="_3">六、实操层：何时用什么</h2>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>用什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>笔记本跑测试/离线批量 PDF 摘要</td>
+<td>HuggingFace transformers 够（静态批处理，原型阶段）</td>
+</tr>
+<tr>
+<td>开端口多用户实时</td>
+<td><strong>vLLM 强制</strong>（HF 静态批处理必 OOM）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">生产四旋钮</h3>
+<table>
+<thead>
+<tr>
+<th>旋钮</th>
+<th>建议</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Block Size</td>
+<td>16-32</td>
+<td>太大→内部碎片回来；太小→Page Table 过重拖 CPU</td>
+</tr>
+<tr>
+<td>enforce_eager</td>
+<td><strong>Off</strong></td>
+<td>CUDA/HIP Graphs 回放不经过 CPU 省 latency</td>
+</tr>
+<tr>
+<td>Prefix Caching</td>
+<td><strong>常开</strong></td>
+<td>用户共享 system prompt 时收益巨大</td>
+</tr>
+<tr>
+<td>Quantization</td>
+<td>VRAM 不够时</td>
+<td>最容易把大模型塞进便宜服务器</td>
+</tr>
+<tr>
+<td>Speculative Decoding</td>
+<td>严格低延迟（实时语音 AI）时</td>
+<td>配置复杂但大幅提升 token 间延迟</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">七、与我们体系的对接</h2>
+<table>
+<thead>
+<tr>
+<th>文章内容</th>
+<th>已有笔记</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>量化族全解</td>
+<td>《LLM 八种精度格式全解》</td>
+<td>✅ 已有且更深——FP8/NVFP4/MXFP4 实战补章</td>
+</tr>
+<tr>
+<td>Prefill/Decode 分离</td>
+<td>《TTFT 首字延迟全解》</td>
+<td>✅ 已有——文章补了 Chunked Prefill 解法</td>
+</tr>
+<tr>
+<td>确定性寻址→共享前缀</td>
+<td>《Engram 条件记忆》</td>
+<td>✅ 互证——Engram 的确定性 hash 与 Prefix Caching 的确定性前缀同族</td>
+</tr>
+<tr>
+<td>PD 不对称</td>
+<td>DeepSeek V4.1 Flash（Engram 笔记引用）</td>
+<td>✅ 互证——Disaggregated Serving 是部署侧的 PD 分离</td>
+</tr>
+<tr>
+<td>推测解码</td>
+<td>llm-inference-optimization skill</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td>vLLM 部署</td>
+<td>llm-inference-deploy skill</td>
+<td>✅ 已有</td>
+</tr>
+</tbody>
+</table>
+<p><strong>判定：不形成新 skill</strong>——llm-inference-deploy + llm-inference-optimization 两个已有 skill 覆盖了本文全部实操内容。本文的教学价值在于<strong>从 OS 虚拟分页的类比把 PagedAttention 讲得最易懂</strong>，但不引入我们体系没有的知识。</p>
+<p><strong>Nugget 归宿</strong>：文章的"餐厅/校车/摩天轮"三个类比是很好的教学设计——记入 llm-inference-deploy skill 的"教学类比库"（若有人问 PagedAttention 是什么，用这三个类比解释）。</p>
+<h2 id="_6">八、批判性审视</h2>
+<ol>
+<li><strong>"80% 浪费"是 2023 年基线</strong>——文章诚实标注了（"2023 年实测"），但 2026 年几乎所有主要 serving engine 都已采纳某种形式的连续批处理和内存分页——<strong>现代部署的收益远小于 2-4 倍</strong>（文章在"Honest Limits"节自己也说了）</li>
+<li><strong>餐厅/校车/摩天轮类比极佳但掩盖了复杂度</strong>：Page Table 的维护开销、block size 的调优、KV Cache 的驱逐策略（LRU？LFU？）——文章完全没展开</li>
+<li><strong>speculative decoding 的"5 词全对"理想化</strong>：实际 draft model 猜的 5 词可能只有 2-3 词被接受——加速比取决于 acceptance rate，文章给了概念没给数字</li>
+<li><strong>Disaggregated Serving 的网络开销未讨论</strong>：Prefill→Decode 跨机架传 KV Cache 的网络带宽和延迟——这是这个方案的核心成本</li>
+<li><strong>文章是 ByteBuilders Newsletter 导流文</strong>——末尾有 subscribe 链接；但教学质量高于平均，类比设计是认真的</li>
+</ol>
+<h2 id="_7">九、金句提取</h2>
+<blockquote>
+<p>"The math was not the bottleneck. The bottleneck was memory."</p>
+<p>"By looking at a bleeding-edge AI bottleneck and applying a decades-old operating system concept (virtual memory paging), researchers transformed LLM serving from a financially ruinous experiment into a scalable, highly profitable enterprise architecture."</p>
+<p>"Without upgrading the physical hardware, without buying newer GPUs, the researchers allowed servers to handle up to four times as many users simply by organizing the memory blocks intelligently."</p>
+<p>"The Ferris wheel never stops spinning, and there are never any empty seats."（连续批处理）</p>
+<p>"The KV Cache is no longer a graveyard of wasted memory. It is a dynamic, perfectly allocated engine powering the future of software."</p>
+</blockquote>
+<h2 id="_8">十、局限性</h2>
+<ol>
+<li>X Article 约 3000 字，面向初学者（beginner-friendly guide）——深度受限于体裁</li>
+<li>vLLM 2023 原始论文（arXiv:2309.06180）未逐页核对——数字以文章转述为准</li>
+<li>Page Table 的实现细节（block 驱逐策略、跨请求共享的并发安全）未展开</li>
+<li>§五四大升级为概述口径，每个的论文/实测数字未给（Chunked Prefill/Disaggregated Serving 是 2024-2026 的新发展，文章只指方向）</li>
+<li>§七对接基于本机已有 skill 自查，未实际跑 vLLM 验证</li>
+</ol>
+<h2 id="_9">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至六</td>
+<td><strong>原文忠实还原</strong>（X Article 全文直读）</td>
+</tr>
+<tr>
+<td>七</td>
+<td><strong>体系映射</strong>（本笔记扩展，对照已有笔记/skills）</td>
+</tr>
+<tr>
+<td>八</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
