@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPU互联经济学-KV缓存搬一次vs反复搬的带宽账-Mooncake共享到CXL光互连全景拆解</title>
+
+<meta property="og:title" content="GPU互联经济学-KV缓存搬一次vs反复搬的带宽账-Mooncake共享到CXL光互连全景拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="gpu-kv-vs-mooncake-cxlmarvell">GPU 互联经济学：KV 缓存搬一次 vs 反复搬的带宽账——从 Mooncake 共享到 CXL/光互连/Marvell 产品线全景拆解</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @Kay2289123（美研芒格君）Article《越来越值钱的互联：从存储到 AI 推理这条路，能让 GPU 少等一会儿，是被 95% 的人低估了的万亿市场》2026-09-11<br />
+<strong>原文链接</strong>：https://x.com/Kay2289123/status/2098626893193019642<br />
+<strong>核心引用论文</strong>：Mooncake（Moonshot AI × 清华大学，KV 缓存跨节点共享）<br />
+<strong>抓取方式</strong>：X Article 直读全文（作者自述"陆陆续续写了一周"，投资研究口径）<br />
+<strong>笔记日期</strong>：2026-09-12<br />
+<strong>关联笔记</strong>：《KV-Cache 浪费与 PagedAttention 救赎》（昨日，vLLM/前缀缓存/连续批处理）《Engram 条件记忆》（确定性寻址→可预取→异步隐藏传输）《TTFT 首字延迟全解》（Prefill/Decode 分离与访存瓶颈）</p>
+
+<p class="meta-date">生成日期 2026-09-12</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>文章的核心贡献不是讲技术——是算了一笔"搬一次 vs 反复搬"的带宽账，把"为什么 GPU 接上了更多内存仍然在等数据"这个问题用具体数字打透。</strong> 对我们最深的增量：Mooncake 论文的"跨节点缓存共享让 prefill GPU 计算时间减 26%"是 PagedAttention 笔记的产业级证据补充——vLLM 在单机内做内存分页共享，Mooncake 在跨机维度做缓存共享，两者同构（都是"已有结果不重算"），但解决的是不同尺度的浪费。文章的投资视角（美光/海力士/Marvell 各赚哪段钱）对我们不是直接可用知识，但<strong>"客户实际多完成了多少工作？总共多花了多少钱？用过以后还愿不愿意继续买？"这三问</strong>是任何"降本增效"方案的通用验收框架。</p>
+<h2 id="gpu">一、问题层：GPU 在等什么</h2>
+<h3 id="11">1.1 内存墙的两个面</h3>
+<table>
+<thead>
+<tr>
+<th>面</th>
+<th>症状</th>
+<th>已有笔记的解法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>装不下</td>
+<td>模型+运行时数据超出内存容量</td>
+<td>Engram 196B 表卸载 Host Memory；PagedAttention 按需分配</td>
+</tr>
+<tr>
+<td><strong>搬不快</strong></td>
+<td><strong>计算芯片要用的数据迟迟送不到，算得再快也得等</strong></td>
+<td>本篇聚焦——连接是瓶颈</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"能不能把算力发挥到极致的关键，就是每算一个数，从内存拿过来的速度是不是足够快。如果一秒钟只能拿 10 个数，而 GPU 一秒钟能算 100 个数，那内存堆得再多、算力再快，也没有用。"</p>
+</blockquote>
+<h3 id="12-kv">1.2 KV 缓存的特殊地位</h3>
+<p>模型读输入（Prefill）时算出供后续生成使用的中间数据（KV Cache），体积可以比原始文字大几个数量级。<strong>PagedAttention 解决的是"存在哪里/怎么分配"，本篇解决的是"搬多快/跨机器能不能共享"。</strong></p>
+<h2 id="vs">二、核心账本：搬一次 vs 反复搬（文章最硬的一段）</h2>
+<h3 id="21">2.1 场景设定</h3>
+<ul>
+<li>模型：Qwen3-32B</li>
+<li>一次文档读取请求的 KV 缓存：<strong>~8.6 GB</strong></li>
+<li>假设连接通道带宽：<strong>50 GB/s</strong></li>
+</ul>
+<h3 id="22-hbm">2.2 方式一：搬回来放 HBM 里反复用</h3>
+<pre><code>8.6 GB ÷ 50 GB/s ≈ 0.17 秒（搬回来一次）
+→ 之后缓存在 HBM 里，GPU 高速反复读取
+→ 搬一次的 0.17s 成本被均摊到后续所有生成步骤
+</code></pre>
+<p><strong>结论</strong>：如果重新计算这些内容需要 &gt;0.17s，花时间取回已有结果就划算。</p>
+<h3 id="23-token">2.3 方式二：一直放远处，每生成一个 token 都要取一次</h3>
+<pre><code>每秒生成 40 token → 每秒需读取缓存 40 次
+8.6 GB × 40 次/s ≈ 344 GB/s 需求
+通道只有 50 GB/s
+→ 数据送不过来 → GPU 闲下来 → 等于浪费
+</code></pre>
+<p><strong>结论</strong>：远处增加内存只增加"能存多少"，不提高"每秒能送来多少"——<strong>带宽 ≠ 容量</strong>。</p>
+<h3 id="24-pagedattention">2.4 与 PagedAttention 笔记的互证</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>PagedAttention</th>
+<th>本篇</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>解决的浪费</td>
+<td>单机内内存分配浪费（80%→&lt;4%）</td>
+<td>跨机数据搬运浪费（GPU 闲等）</td>
+</tr>
+<tr>
+<td>共享对象</td>
+<td>Page Table 指向同一物理 block（系统提示词）</td>
+<td>跨节点 KV 缓存迁移（Mooncake）</td>
+</tr>
+<tr>
+<td>带宽考量</td>
+<td>GPU 内部 HBM 带宽足够</td>
+<td><strong>跨机网络带宽 50GB/s 不够 344GB/s 需求</strong></td>
+</tr>
+<tr>
+<td>共同原则</td>
+<td>已有结果不重算</td>
+<td>已有结果不重算</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mooncake">三、跨机共享：Mooncake 实证</h2>
+<h3 id="31">3.1 实验设计</h3>
+<p>两组各 10 个 prefill 节点，每个节点缓存额度 ~300 万 token：<br />
+- 对照组：缓存不跨节点共享<br />
+- 实验组：缓存可跨节点共享和迁移</p>
+<h3 id="32">3.2 结果</h3>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>不共享</th>
+<th>共享</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Prefill 平均 GPU 计算时间</td>
+<td>100（基线）</td>
+<td><strong>74（-26%）</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"省下来的时间让 GPU 有机会处理其他请求。"</p>
+</blockquote>
+<p><strong>与 Plano 的 model affinity 互证</strong>：Plano 的"会话粘性避免换模型→缓存失效"是 agent 层的缓存复用，Mooncake 是基础设施层的缓存共享——两者都证明"已有计算结果不重算"是真实的降本杠杆。</p>
+<h2 id="_2">四、连接的三层物理（文章产业拆解）</h2>
+<h3 id="41-vs">4.1 铜连接 vs 光互连</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>铜连接</th>
+<th>光互连</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>优势</td>
+<td>短距离成本低/工程成熟</td>
+<td>长距离/高带宽可行</td>
+</tr>
+<tr>
+<td>劣势</td>
+<td>速率提高→信号损耗+维持功耗</td>
+<td>散热/光纤/维修更讲究</td>
+</tr>
+<tr>
+<td>技术</td>
+<td>—</td>
+<td>NPO（封装附近光电转换）/ CPO（与主芯片共封装）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="42-cxl">4.2 CXL 协议</h3>
+<p>允许兼容主机通过相应链路访问扩展设备中的内存——<strong>Engram 笔记的"CXL 内存池化是产业走势"在这里被展开为具体产品线</strong>。</p>
+<h3 id="43-marvell">4.3 Marvell 的三件产品</h3>
+<table>
+<thead>
+<tr>
+<th>产品</th>
+<th>作用</th>
+<th>状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Structera X</strong></td>
+<td>内存扩容控制器（接 DDR4/DDR5）</td>
+<td><strong>已出货</strong>（超大规模客户部署）</td>
+</tr>
+<tr>
+<td><strong>Structera S</strong></td>
+<td>交换芯片（连接/分配内存资源）</td>
+<td>产品线中有</td>
+</tr>
+<tr>
+<td><strong>Alaska P</strong></td>
+<td>信号调节芯片（维持高速 PCIe 信号）</td>
+<td>产品线中有</td>
+</tr>
+<tr>
+<td><strong>Photonic Fabric</strong></td>
+<td>光连接扩展共享内存</td>
+<td>FMS 演示→等客户导入</td>
+</tr>
+</tbody>
+</table>
+<h3 id="44">4.4 外部内存模块的复合结构</h3>
+<blockquote>
+<p>"DDR5 提供容量，模块上的 HBM 承担缓存作用，光连接负责与计算端传数据。"</p>
+</blockquote>
+<p><strong>关键洞察</strong>：内存往外扩，HBM 不消失而是出现在新位置——<strong>美光/海力士（HBM+DDR5）和 Marvell（连接）有机会同时参与采购</strong>，不是零和博弈。</p>
+<h2 id="_3">五、客户账本：连接值多少钱</h2>
+<h3 id="51">5.1 教学算例</h3>
+<pre><code>原：100 元 → 100 份任务 → 1 元/份
+加连接后：110 元 → 130 份任务 → 0.85 元/份（-15.4%）
+</code></pre>
+<p>客户愿意多花钱，是希望同样一批 GPU 多干活——<strong>与 SoL-Pi 的"token 效率而非分数"同源：性能提升要看每单位成本的实际产出</strong>。</p>
+<h3 id="52">5.2 两个真实案例</h3>
+<table>
+<thead>
+<tr>
+<th>案例</th>
+<th>做法</th>
+<th>效果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Meta</td>
+<td>不常用数据移到压缩内存/SSD</td>
+<td>内存用量降 20-32%（百万台服务器）</td>
+</tr>
+<tr>
+<td>Marvell Structera X</td>
+<td>旧 DDR4 继续用</td>
+<td>客户少买新内存 + Marvell 卖控制器</td>
+</tr>
+</tbody>
+</table>
+<h3 id="53-nugget">5.3 通用三问（本笔记最大 Nugget）</h3>
+<blockquote>
+<p>"客户实际多完成了多少工作？总共多花了多少钱？用过以后，还愿不愿意继续买？"</p>
+</blockquote>
+<p><strong>这是任何"降本增效"方案的通用验收框架</strong>——与我们的 golden set 门禁哲学同构：不看宣称效果，看可验证的数字。</p>
+<h2 id="_4">六、与我们体系的对接</h2>
+<table>
+<thead>
+<tr>
+<th>文章内容</th>
+<th>已有笔记</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KV 缓存搬一次 vs 反复搬</td>
+<td>PagedAttention 笔记</td>
+<td>✅ 互补——单机分页 vs 跨机搬运</td>
+</tr>
+<tr>
+<td>前缀缓存复用</td>
+<td>PagedAttention 的 Prefix Caching</td>
+<td>✅ 同一概念</td>
+</tr>
+<tr>
+<td>确定性寻址→可预取</td>
+<td>Engram 的"确定性 hash → 异步预取"</td>
+<td>✅ 互证——CXL 的确定性寻址使预取可行</td>
+</tr>
+<tr>
+<td>Prefill/Decode 分离</td>
+<td>TTFT 笔记 + V4.1 Flash PD 不对称</td>
+<td>✅ 互证——Mooncake 的 prefill 节点分离</td>
+</tr>
+<tr>
+<td>"用过以后愿不愿继续买"三问</td>
+<td>golden set 门禁哲学</td>
+<td>✅ 同构——通用验收框架</td>
+</tr>
+<tr>
+<td>CXL/光互连产业线</td>
+<td>无</td>
+<td>🟡 新知识——但属投资研究，非我们直接可用</td>
+</tr>
+</tbody>
+</table>
+<p><strong>判定：不形成新 skill</strong>——内容与 PagedAttention/Engram/TTFT 三篇已有笔记高度互补但不引入新工作流。投资视角（美光/海力士/Marvell）对我们非直接可用但记入笔记备查。</p>
+<h2 id="_5">七、批判性审视</h2>
+<ol>
+<li><strong>8.6 GB 的场景偏极端</strong>：文章自己也说"特定输入长度和保存精度下的例子，普通的一句提问未必需要这么多内存"——但这个数字被用于算"344 GB/s 需求"，如果缓存只有 0.5 GB（普通对话），344→20 GB/s，50 GB/s 通道就够——<strong>极端案例的结论不能直接外推</strong></li>
+<li><strong>Mooncake 的 26% 是 prefill 阶段</strong>：不是端到端——decode 阶段（写回答）的收益未报告；如果 decode 才是瓶颈，prefill 省 26% 的整体收益可能小得多</li>
+<li><strong>50 GB/s 带宽假设偏保守</strong>：NVLink 是 900 GB/s，PCIe 5.0 是 ~128 GB/s——文章用 50 可能是 CXL 的数，但没标清楚</li>
+<li><strong>投资视角的幸存者偏差</strong>：文章选 Marvell 是因为它是"连接"概念的最佳标的，但没讨论如果 NVIDIA 自己做连接芯片（NVLink/NVSwitch），Marvell 的市场空间会被压缩</li>
+<li><strong>Meta 20-32% 的口径</strong>：是"内存用量下降"不是"总成本下降"——文章诚实标注了但标题/叙事容易让人混读</li>
+</ol>
+<h2 id="_6">八、金句提取</h2>
+<blockquote>
+<p>"如果一秒钟只能拿 10 个数，而 GPU 一秒钟能算 100 个数，那内存堆得再多、算力再快，也没有用。"</p>
+<p>"远处再增加内存，也只能增加'能存多少'，无法直接提高这条通道'每秒能送来多少'。"</p>
+<p>"已有缓存跨节点共享后，prefill GPU 计算时间减少了 26%。"</p>
+<p>"客户实际多完成了多少工作？总共多花了多少钱？用过以后，还愿不愿意继续买？"</p>
+<p>"不能看到'扩内存'，就认定所有内存厂商都会同样受益。"</p>
+</blockquote>
+<h2 id="_7">九、局限性</h2>
+<ol>
+<li>文章约 4000 字，投资研究口径——技术细节服务于投资逻辑，非工程文档</li>
+<li>Mooncake 论文未直接核对（数字以文章转述）</li>
+<li>Marvell 产品线状态（已出货/演示/待导入）以公司披露为准，未独立验证</li>
+<li>CXL/NPO/CPO 的技术细节未展开（文章面向投资者非工程师）</li>
+<li>8.6 GB 场景的参数（Qwen3-32B 的具体配置/精度/上下文长度）未完整给出</li>
+<li>§六对接基于本机已有笔记自查</li>
+</ol>
+<h2 id="_8">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至五</td>
+<td><strong>原文忠实还原</strong>（X Article 全文直读）</td>
+</tr>
+<tr>
+<td>六</td>
+<td><strong>体系映射</strong>（本笔记扩展）</td>
+</tr>
+<tr>
+<td>七</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
