@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A100跑DeepSeek-v4.1-Flash-存储格式不等于运算格式与五次前提砸碎-清水亮24小时优化实录</title>
+
+<meta property="og:title" content="A100跑DeepSeek-v4.1-Flash-存储格式不等于运算格式与五次前提砸碎-清水亮24小时优化实录" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="a100-deepseek-v41-flash-24-33528-toks">A100 跑 DeepSeek v4.1 Flash：存储格式≠运算格式与五次前提砸碎——清水亮 24 小时优化实录拆解（33→528 tok/s）</h1>
+<blockquote>
+<p><strong>来源</strong>：X/Twitter @yibie 译介 Article《把不支持 FP4 的 A100 拉到 673 tok/s，回过神来发现比官方 API 还快》2026-09-12<br />
+<strong>原作者</strong>：清水亮（shi3z），日本 UEI 社长，自建 4000 万日元 A100×8 机器「継之助」（1.7TB 系统内存邪道配置）<br />
+<strong>原文</strong>：note.com/shi3zblog/n/nd5fc5341b342<br />
+<strong>抓取方式</strong>：X Article 直读全文<br />
+<strong>笔记日期</strong>：2026-09-12（21:11 date 实测确认）<br />
+<strong>关联笔记</strong>：《KV-Cache 浪费与 PagedAttention》（冯诺依曼瓶颈）《GPU 互联经济学》（带宽≠容量）《Engram 条件记忆》（本文模型同名机制）《八种精度》（FP4/FP8 格式族）《本地推理栈》（nexa-local-inference）</p>
+
+<p class="meta-date">生成日期 2026-09-12</p></blockquote>
+<hr />
+<h2 id="_1">零、结论先行</h2>
+<p><strong>这是一篇"把 Claude Code 的五个先入观逐个砸碎"的优化实录——A100（无 FP4/FP8 Tensor Core 的 Ampere 老卡）跑 DeepSeek v4.1 Flash，从 33 tok/s 一路拉到 528 tok/s（64 并行 674），核心武器不是高深数学，是"测量→找慢点→砸前提"的计算机科学基本功。</strong> 对我们最深的三个增量：①<strong>"存储格式"和"运算格式"不必一致</strong>——FP4 存储无损转 INT8 喂老 Tensor Core，FP8 纯当存储格式省带宽，这与《八种精度》"量化是存储优化不是运算优化"的结论完全互证；②<strong>"每 token 2000 次 kernel 启动"</strong>——细粒度固定开销吃掉一半时间，与 TTFT 笔记的"decode 性能不由 FLOPS 决定"互证；③<strong>"AI 的先入观比人更强"</strong>——Claude Code 三次说"极限了/不支持"被作者三次推翻，这是对 agentic coding 最狠的实战批评。</p>
+<h2 id="_2">一、战报：数字演化</h2>
+<table>
+<thead>
+<tr>
+<th>配置/阶段</th>
+<th>速度</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>初始 A100×8（Claude Code 直跑）</td>
+<td>33-38 tok/s</td>
+<td>"能跑就是赚到"心态</td>
+</tr>
+<tr>
+<td>单卡+CPU offload 初始</td>
+<td>5-6 tok/s</td>
+<td>PCIe 每 token 送 4.5GB expert</td>
+</tr>
+<tr>
+<td>单卡优化推进</td>
+<td>17→27→32.5→58.9 tok/s</td>
+<td>短时间 10 倍</td>
+</tr>
+<tr>
+<td>4 卡单流 + MTP</td>
+<td>最高 165 tok/s</td>
+<td>K=3→K=5</td>
+</tr>
+<tr>
+<td>4 卡 8 并行</td>
+<td>600 tok/s</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>4 卡最终</strong></td>
+<td><strong>528 tok/s</strong></td>
+<td><strong>16 倍于起点</strong></td>
+</tr>
+<tr>
+<td>64 并行</td>
+<td><strong>674 tok/s</strong></td>
+<td>超官方 API（~400）</td>
+</tr>
+<tr>
+<td>4卡×2副本（整机）</td>
+<td><strong>~1400 tok/s</strong></td>
+<td>8卡拆双副本反而更高</td>
+</tr>
+<tr>
+<td>对照组</td>
+<td>DGX Spark×4 = 100 tok/s</td>
+<td>drikin 的挑衅配置</td>
+</tr>
+</tbody>
+</table>
+<p><strong>参照系</strong>：Claude Code 约 50-80 tok/s；DeepSeek 官方 API 约 400 tok/s（decode）。</p>
+<h2 id="_3">二、五次"前提砸碎"（文章方法论核心）</h2>
+<h3 id="1a100-fp4">砸碎 ①：「A100 不支持 FP4」</h3>
+<blockquote>
+<p>"「不支持 FP4」并不是说「4bit 的数据在 A100 上算不了」，准确地说，是「没有像 Blackwell 那样把 FP4 连同 block scale 直接装进 Tensor Core 的指令」。"</p>
+</blockquote>
+<p><strong>解法</strong>：E2M1（2bit 指数+1bit 尾数）×2 后是 0、±1、±2、±3、±4、±6、±8、±12 小整数——<strong>FP4 可无损转 INT8</strong>，喂 A100 的 INT8 Tensor Core。连 LUT 都不需要。</p>
+<p><strong>核心认识</strong>：<strong>存储格式 ≠ 运算格式</strong>。</p>
+<h3 id="2gpu-cpu">砸碎 ②：「GPU 算总比 CPU 快」</h3>
+<p>抓 profile 发现真瓶颈：单卡配置下 MoE expert 在主机内存，每 token 经 PCIe 传 4.5GB：</p>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>每层耗时</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PCIe DMA 送到 A100</td>
+<td>179 ms</td>
+<td>4.5GB ÷ 25GB/s（Gen4 x16 实效）</td>
+</tr>
+<tr>
+<td>CPU BF16 计算</td>
+<td>62 ms</td>
+<td>Xeon Silver 双路 1.7TB</td>
+</tr>
+<tr>
+<td><strong>CPU INT8 VNNI</strong></td>
+<td><strong>51 ms</strong></td>
+<td><strong>比送 GPU 快 3 倍+</strong></td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>"为了在 GPU 上算而把数据送过去，还不如全部用 CPU 算快 3 倍以上。异构计算里这种事很常见。只盯着理论算力的人绝对发现不了。"</p>
+</blockquote>
+<p><strong>与 GPU 互联经济学笔记互证</strong>：<strong>带宽 ≠ 容量</strong>——1.7TB 内存装得下 expert 不等于传得动 expert。</p>
+<h3 id="3">砸碎 ③：「运算量是主要瓶颈」</h3>
+<p>CPU 侧 51ms 还不够——DRAM 理论 512GB/s 只跑出 89GB/s。不是带宽限制，<strong>是指令数限制</strong>：FP4 unpack/shuffle/scale/地址计算，每层敲掉几千万条指令。</p>
+<p><strong>解法</strong>：改 weight 排布——按 CPU 吃起来最顺的顺序在加载时重排（nibble 排列让多个 row 共享 activation 载入、共享 scale 计算）。</p>
+<blockquote>
+<p>"和 GPU 一样，CPU 上同样是「少做多余的工作」比「减少运算量」更有效。"</p>
+</blockquote>
+<p><strong>对 Claude Code 的批评</strong>：以"怎么存进模型文件"为基准设计数据结构是三流程序员思路——推理专用场景应在加载时全部重排。</p>
+<h3 id="4gpu">砸碎 ④：「GPU 数量越多越快」</h3>
+<p>8 卡反而比 4 卡慢——decode 是小 GEMV 连续，分到 8 张卡后<strong>同步/kernel 启动/小矩阵/GPU 间通信的比重上升</strong>。</p>
+<p><strong>解法</strong>：4 卡×2 副本 &gt; 8 卡×1 副本（系统整体吞吐超 1300 tok/s）。且注意 NVLink 拓扑（GPU0-1/2-3/4-5/6-7 成对，0-3 与 4-7 不同 NUMA node）。</p>
+<blockquote>
+<p>"GPU 不是堆数量就会变快，同理也不是越新就越好。"</p>
+</blockquote>
+<h3 id="5">砸碎 ⑤：「批处理=同时处理几个人」</h3>
+<p><strong>Task-aware batching</strong>：把 32 个并行上下文按语义分类打包（写代码归写代码/翻译归翻译），同类 prompt 路由选出的 expert 相似→<strong>多个序列共享 expert weight</strong>→单层 distinct expert 数从 216 降到 156。</p>
+<blockquote>
+<p>"scheduler 不只是队列管理。把 prompt 按语义分类来组 batch，这件事本身就是 GPU 优化。"</p>
+</blockquote>
+<p><strong>与 PagedAttention 笔记的 Prefix Caching 同构</strong>：都是"相似输入共享已加载的重量级资源"。</p>
+<h2 id="_4">三、三项硬核技术</h2>
+<h3 id="31-fp8">3.1 FP8 的寄存器直连</h3>
+<p>A100 无 FP8 Tensor Core。粗糙做法（FP8→BF16→写回 VRAM→GEMM）蠢在把展开后的大体积数据写回全局内存（延迟 284-426ns，比寄存器慢 400 倍）。</p>
+<p><strong>正确做法</strong>：FP8 纯当存储格式（省带宽快速搬运），进寄存器后位操作转 BF16 fragment 直接 mma：</p>
+<pre><code>FP8 → 寄存器 → BF16 fragment → mma（不落 VRAM）
+dense 部分：9.2ms → 5ms 台
+</code></pre>
+<h3 id="32-mtp-token">3.2 MTP（多 Token 预测）</h3>
+<p>自回归 decode "1 token→40 层→下一 token"串行躲不掉。MTP 一次处理多个候选 token，且 batch=1 的 GEMV 变多 row 接近 GEMM——GPU 利用率上来。实测 no MTP→K=3→K=5，<strong>速度涨 2-3 倍</strong>。</p>
+<h3 id="33-cuda">3.3 CUDA 内存层级数字表</h3>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>延迟</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>寄存器</td>
+<td>0.71 ns</td>
+<td>每 SM 仅 256KB</td>
+</tr>
+<tr>
+<td>共享内存</td>
+<td>—</td>
+<td>依次变慢</td>
+</tr>
+<tr>
+<td>L2</td>
+<td>—</td>
+<td>依次变慢</td>
+</tr>
+<tr>
+<td><strong>VRAM 全局内存</strong></td>
+<td><strong>284-426 ns</strong></td>
+<td><strong>比寄存器慢 400 倍+</strong></td>
+</tr>
+</tbody>
+</table>
+<p>读 100 万个信息：BF16 981ns vs <strong>FP4 245ns</strong>。</p>
+<h2 id="token-2000-kernel-agentic-coding">四、「每 token 2000 次 kernel 启动」（对 agentic coding 最狠批评）</h2>
+<p>生成 1 token 花了 28.4ms，拆解：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>耗时</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>expert GEMV</td>
+<td>7.0 ms</td>
+</tr>
+<tr>
+<td>dense GEMM</td>
+<td>9.2 ms</td>
+</tr>
+<tr>
+<td><strong>"其他"</strong></td>
+<td><strong>~12 ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p>"其他"= RMSNorm/RoPE/量化/反量化/伪量化等元素级运算，40 层每层单独 kernel——<strong>生成 1 个 token 启动近 2000 次 CUDA kernel</strong>，光启动手续就超 10ms。</p>
+<blockquote>
+<p>"不是 GPU 慢，是把时间花在了「拜托 GPU 干活」的手续上。"</p>
+<p>"你能不能以微秒为单位想象 CPU 和 GPU 在干什么？听到「毫秒」就停止思考，就永远到不了那里。"</p>
+<p>"全交给 agentic coding 的极限"——Claude Code 早早早早说"这就是极限了"，"一个刚出生没几天的毛头小子，少给我摆出一副懂了的口气"（作者 50 岁中二全开）。</p>
+</blockquote>
+<h2 id="ai">五、宏观论：本地 AI 时代的黎明</h2>
+<h3 id="51">5.1 经济账</h3>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>数字</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>継之助（A100×8+1.7TB）</td>
+<td>4000 万日元</td>
+</tr>
+<tr>
+<td>8 卡 H100 服务器</td>
+<td>~1 亿日元</td>
+</tr>
+<tr>
+<td>Claude Code 100 人年费</td>
+<td>3600 万日元</td>
+</tr>
+<tr>
+<td>结论</td>
+<td><strong>一台机器服务 100 人组织，比 API 订阅便宜</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="52">5.2 历史类比</h3>
+<blockquote>
+<p>"革命之所以发生，不是因为 PC 比大型机快，而是因为「性能足够的计算机，可以自己拥有」——能拥有就能随心所欲，就会诞生新的软件、新的用法，和中央巨型机里不可能出现的新文化。"</p>
+</blockquote>
+<p>云 AI（造前沿模型+瞬间用最新模型）与本地 AI（拥有自己的 AI）将并存——<strong>组织级本地 AI 比想象中快得多地进入实用区</strong>。</p>
+<h3 id="53">5.3 与我们的三机架构互证</h3>
+<p>我们的 jc-server（Jetson）+ NAS + 远端 GPU 组合正是"组织一台 AI 超算"的微型版：凌晨 3 点一个人独占全量资源、无 API key、无月账单、可改模型改 kernel——<strong>这是云没有的奢侈</strong>。</p>
+<h2 id="_5">六、与我们体系的对照</h2>
+<table>
+<thead>
+<tr>
+<th>文章主张</th>
+<th>我们的实践</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>存储格式≠运算格式</td>
+<td>《八种精度》笔记已覆盖概念</td>
+<td>✅ 互证</td>
+</tr>
+<tr>
+<td>带宽≠容量（PCIe 179ms）</td>
+<td>GPU 互联经济学笔记同结论</td>
+<td>✅ 互证</td>
+</tr>
+<tr>
+<td>kernel 启动开销</td>
+<td>TTFT 笔记"decode 不由 FLOPS 决定"</td>
+<td>✅ 互证</td>
+</tr>
+<tr>
+<td>Task-aware batching</td>
+<td>PagedAttention 的 Prefix Caching 同构</td>
+<td>✅ 互证</td>
+</tr>
+<tr>
+<td>"AI 的先入观比人更强"</td>
+<td>Loop/Graph 笔记"两个乐观主义者同意"；Skill 九条"预判借口"</td>
+<td>✅ 互证——都是对 AI 自我评估的警惕</td>
+</tr>
+<tr>
+<td>测量→找慢点→砸前提</td>
+<td>systematic-debugging skill 的根因定位</td>
+<td>✅ 已满足</td>
+</tr>
+<tr>
+<td>MTP/weight 重排/寄存器直连</td>
+<td>无</td>
+<td>🟡 新知识——CUDA 级优化我们暂无场景</td>
+</tr>
+<tr>
+<td>组织级本地 AI</td>
+<td>三机架构微型版</td>
+<td>✅ 已在实践</td>
+</tr>
+</tbody>
+</table>
+<p><strong>判定：不形成新 skill</strong>——优化技巧属 CUDA/推理引擎层，我们无直接场景；"测量→砸前提"方法论 systematic-debugging 已覆盖。<strong>Nugget</strong>：①"存储格式≠运算格式"补入《八种精度》笔记的交叉引用；②"AI 的先入观比人更强"与 Skill 九条原则⑤（预判借口）合流成周论文素材。</p>
+<h2 id="_6">七、批判性审视</h2>
+<ol>
+<li><strong>对照系不严谨</strong>："継之助比官方 API 快"作者自己承认是"高速公路 vs 自家停车场出库速度"——官方处理全球海量请求，本地只服务自己——<strong>吞吐数字不可直接对标</strong>（吸收分析零破坏原则：吸收原则不吸收数字）</li>
+<li><strong>4000 万日元的幸存者偏差</strong>：这套优化只有"已有 A100×8+1.7TB 邪道内存"的人可复现——普通人从零买 B200 可能更划算；且 1.7TB 系统内存 Intel 官方不支持开机，是作者反复试错的邪道配置</li>
+<li><strong>Claude Code 批评有失公允</strong>：粗放指令出粗糙代码是使用者责任——作者自己也说"能不能用好 AI 的分水岭就在这种地方"；且 Claude Code 在"砸前提"阶段提供了 LUT/INT8 转换的正确方案——<strong>工具的极限是使用者的极限</strong></li>
+<li><strong>MTP 的质量代价未讨论</strong>：多 token 预测的接受率/输出质量变化未报告——速度 2-3 倍但准确率掉多少？</li>
+<li><strong>译介层的信息损耗</strong>：yibie 的转译忠实度高，但原文（note.com）的代码/图表未包含在 X Article 中</li>
+</ol>
+<h2 id="_7">八、金句提取</h2>
+<blockquote>
+<p>"「存储格式」和「运算格式」不必一致。"</p>
+<p>"为了在 GPU 上算而把数据送过去，还不如全部用 CPU 算快 3 倍以上。异构计算里这种事很常见。只盯着理论算力的人绝对发现不了。"</p>
+<p>"少做多余的工作，比减少运算量更有效。"</p>
+<p>"不是 GPU 慢，是把时间花在了「拜托 GPU 干活」的手续上。"</p>
+<p>"GPU 不是堆数量就会变快，同理也不是越新就越好。"</p>
+<p>"把 prompt 按语义分类来组 batch，这件事本身就是 GPU 优化。"</p>
+<p>"流汗，做 benchmark，立假设，验证，以微秒为单位消除浪费，怀疑前提，破坏结构。如此循环。"</p>
+<p>"AI 始终是照着人类的平均反应训练的。大多数人认定「就是这样」的事，AI 也一样认定。它相信规格表，照单全收说明书。"</p>
+<p>"革命之所以发生，不是因为 PC 比大型机快，而是因为「性能足够的计算机，可以自己拥有」。"</p>
+</blockquote>
+<h2 id="_8">九、局限性</h2>
+<ol>
+<li>X Article 是译介（yibie 译清水亮原文），约 6000 字——无代码无图表，源码"已公开"但链接未给（note.com 原文有）</li>
+<li>优化细节（weight 重排的具体布局/MTP 实现参数/task-aware batching 的分类器）均未给——只有结论数字</li>
+<li>1.7TB 内存+NVLink 拓扑+双路 Xeon 的硬件特异性极强——结论不可直接迁移到消费级硬件</li>
+<li>"4000 万日元 vs 1 亿 H100" 的比较未计入电费/维护/空间/折旧</li>
+<li>§五经济账"Claude Code 100 人年费 3600 万"假设全员满负荷使用 API——实际利用率未知</li>
+<li>§六对照基于本机笔记库自查</li>
+</ol>
+<h2 id="_9">出处标注</h2>
+<table>
+<thead>
+<tr>
+<th>章节</th>
+<th>来源类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一至五</td>
+<td><strong>原文忠实还原</strong>（X Article 译介全文直读）</td>
+</tr>
+<tr>
+<td>六</td>
+<td><strong>体系映射</strong>（本笔记扩展）</td>
+</tr>
+<tr>
+<td>七</td>
+<td><strong>批判性审视</strong>（本笔记扩展）</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>
