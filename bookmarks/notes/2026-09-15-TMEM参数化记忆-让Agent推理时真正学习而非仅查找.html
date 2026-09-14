@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TMEM参数化记忆-让Agent推理时真正学习而非仅查找</title>
+
+<meta property="og:title" content="TMEM参数化记忆-让Agent推理时真正学习而非仅查找" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="tmem-agent">TMEM：参数化记忆——让 Agent 在推理时真正「学习」而非仅「查找」</h1>
+<blockquote>
+<p>论文：Scaling Self-Evolving Agents via Parametric Memory (arXiv:2606.04536, 2026, 阿里通义)<br />
+综述背景：Self-Improvements in Modern Agentic Systems (arXiv:2607.13104, 312 篇论文, 2026)</p>
+
+<p class="meta-date">生成日期 2026-09-15</p></blockquote>
+<h2 id="_1">核心命题</h2>
+<p>当前所有 LLM Agent 的记忆系统（summary-based / retrieval-based）有一个结构性缺陷：<strong>Agent 可以「查阅」经验，但不能「内化」经验</strong>。模型参数在 rollout 期间冻结不变，任何从上下文截断的信息永久丢失。TMEM 打破这个限制——让 Agent 在推理时把经验写进自己的 LoRA 快权重，真正改变后续行为。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1">1. 三层记忆架构</h3>
+<p>TMEM 将 Agent 记忆形式化为三个通道：</p>
+<table>
+<thead>
+<tr>
+<th>通道</th>
+<th>符号</th>
+<th>机制</th>
+<th>特点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>工作上下文</td>
+<td>h_t</td>
+<td>当前 prompt（token 级）</td>
+<td>快但容量有限，attention 成本 O(n²)</td>
+</tr>
+<tr>
+<td>显式记忆</td>
+<td>m_t</td>
+<td>文本摘要/检索片段</td>
+<td>可压缩但 lossy，依赖检索质量</td>
+</tr>
+<tr>
+<td><strong>参数化记忆</strong></td>
+<td><strong>Δ_t</strong></td>
+<td><strong>在线 LoRA 快权重</strong></td>
+<td><strong>直接改变策略，不占 prompt 空间</strong></td>
+</tr>
+</tbody>
+</table>
+<p>当 Δ_t ≡ 0 时，TMEM 退化为标准显式记忆 Agent——<strong>现有所有记忆方法都是 TMEM 的特例</strong>。</p>
+<h3 id="2-rollout">2. 快权重 Rollout 动力学</h3>
+<p>TMEM 的核心创新——将在线 LoRA 更新纳入 Agent 的决策过程：</p>
+<pre><code>标准 Agent:  a_t ~ π_θ(h_t, m_t)         # θ 固定
+TMEM Agent:   a_t ~ π_{θ₀+Δ_t}(h_t, m_t)  # Δ_t 随经验增长
+</code></pre>
+<p>当上下文预算耗尽时，Agent 进入「记忆写入模式」：<br />
+1. 将当前会话蒸馏为 QA 式监督数据<br />
+2. 对 Δ_t 施加轻量在线 SFT 更新<br />
+3. 后续动作从 adapted policy π_{θ₀+Δ_t} 采样</p>
+<p><strong>关键</strong>：base 参数 θ₀ 在 rollout 内固定，只有 Δ_t 变化。</p>
+<h3 id="3-svd">3. SVD 初始化加速在线收敛</h3>
+<p>LoRA 的投影矩阵 A 用预训练权重 W 的 SVD 分解初始化：</p>
+<ul>
+<li>A ← SVD(W) 的前 r 个左奇异向量</li>
+<li>训练时固定 A，只更新系数矩阵 B</li>
+<li>锚定到高能量方向 → 少步收敛 → 降低每次触发的计算成本</li>
+</ul>
+<p>这个技巧的物理含义：<strong>新知识应该先写入模型最「活跃」的参数子空间</strong>，而非随机子空间。</p>
+<h3 id="4-stop-gradient">4. Stop-Gradient 策略优化</h3>
+<p>记忆提取不再 是预处理步骤，而是 <strong>RL 可优化的动作</strong>：</p>
+<ul>
+<li>梯度按段分配：任务行为段 / QA 提取段 / 终端响应段</li>
+<li>通过在线更新算子 T 做梯度截断（stop-gradient）</li>
+<li>结果：base 模型不仅学会做任务，还学会<strong>产出对自己未来 LoRA 更新有用的监督数据</strong></li>
+</ul>
+<p>这是 meta-learning 的一种实例化——模型学习「如何学习」。</p>
+<h3 id="5">5. 实验结果</h3>
+<p>在 LoCoMo、LongMemEval-S、Multi-Objective Search、CL-Bench 四个基准上：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Qwen3-4B</th>
+<th>Qwen3-8B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No Memory</td>
+<td>4.63</td>
+<td>4.90</td>
+</tr>
+<tr>
+<td>MemAgent (summary)</td>
+<td>4.11</td>
+<td>4.90</td>
+</tr>
+<tr>
+<td>A-MEM (retrieval)</td>
+<td>4.11</td>
+<td>4.37</td>
+</tr>
+<tr>
+<td><strong>TMEM</strong></td>
+<td><strong>5.00</strong></td>
+<td><strong>5.16</strong></td>
+</tr>
+</tbody>
+</table>
+<p>TMEM 在两个模型规模上均超越所有 baseline，且 8B 增益更大（参数化记忆容量随模型增大而增强）。</p>
+<h2 id="hermes-agent">对 Hermes Agent 自进化架构的启示</h2>
+<h3 id="hermes">当前 Hermes 记忆体系对照</h3>
+<table>
+<thead>
+<tr>
+<th>Hermes 层</th>
+<th>TMEM 对应</th>
+<th>差距分析</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MEMORY (system prompt 注入)</td>
+<td>h_t 工作上下文</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td>Skills (SKILL.md)</td>
+<td>m_t 显式记忆</td>
+<td>✅ 已有（结构化）</td>
+</tr>
+<tr>
+<td>session_search (FTS5 检索)</td>
+<td>m_t 检索通道</td>
+<td>✅ 已有</td>
+</tr>
+<tr>
+<td><strong>参数化记忆 Δ_t</strong></td>
+<td><strong>缺失</strong></td>
+<td>❌ Hermes 无法在推理时改变模型参数</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_3">可借鉴的三个机制</h3>
+<p><strong>① 经验蒸馏为 QA 监督</strong></p>
+<p>Hermes 的 evolver/experience-bank 当前产出文本经验卡片。可增加一步：将经验卡片转为 QA 对（「遇到 X 症状→用 Y 解法」），为未来在线 LoRA 微调准备数据。</p>
+<p><strong>② SVD 初始化的参数子空间选择</strong></p>
+<p>当前 Hermes 的 Skills 是离散的 markdown 文件。TMEM 的 SVD 启示：<strong>高频使用的 Skill 应该映射到模型参数的高能量子空间</strong>——这可以通过分析 base model 的权重 SVD 与 Skill 使用频率的关联来验证。</p>
+<p><strong>③ 记忆提取作为可优化动作</strong></p>
+<p>当前 Hermes 的 auto-skill / auto-memory 是固定流程（检测到模式→创建 Skill）。TMEM 的思路：将「是否提取记忆」「提取什么」「如何蒸馏」本身作为可 RL 优化的决策——让 Agent 学会<strong>更好的记忆策略</strong>而非固定规则。</p>
+<h2 id="312">综述全景：312 篇论文的分类</h2>
+<table>
+<thead>
+<tr>
+<th>大类</th>
+<th>论文数</th>
+<th>核心问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Foundation Model Improvement</td>
+<td>77</td>
+<td>改模型本身（SFT/RL/自蒸馏）</td>
+</tr>
+<tr>
+<td>Scaffolding Improvement</td>
+<td>176</td>
+<td>改外围脚手架（prompt/memory/tool）</td>
+</tr>
+<tr>
+<td>Evaluation &amp; Benchmarking</td>
+<td>59</td>
+<td>如何衡量改进</td>
+</tr>
+</tbody>
+</table>
+<p>Scaffolding 是主流（176/312 = 56%），其中 Memory 子类 65 篇是最大单一类别。这说明：<strong>业界已认识到记忆是 Agent 进化的核心瓶颈</strong>，但大多仍在 prompt-space 打转，TMEM 的 parametric 路线是少数派但方向正确。</p>
+<h3 id="darwin-godel-machine">Darwin Godel Machine（递归自改进代表）</h3>
+<p>作为 Full Scaffolding 分类的代表：Agent 不仅改进解决方案，还<strong>进化自己的搜索和适应启发式</strong>——meta-evolution。这是 Hermes evolver 技能的理论上限。</p>
+<h2 id="_4">参考文献</h2>
+<ul>
+<li>TMEM 原文：arXiv:2606.04536, 2026</li>
+<li>综述：arXiv:2607.13104, 2026 (312 papers)</li>
+<li>自进化 Agent 综述：arXiv:2507.21046, TMLR 2026 (77 pages)</li>
+<li>Agent Memory 综述：arXiv:2602.06052, TMLR 2026</li>
+<li>A-MEM：NeurIPS 2025</li>
+<li>Mem0：arXiv:2503, 2025</li>
+</ul>
+<hr />
+<p><em>笔记日期：2026-09-15 | 来源：arXiv 精读 | 关联：Hermes Agent 自进化架构 / evolver 技能</em></p>
+</body>
+</html>
