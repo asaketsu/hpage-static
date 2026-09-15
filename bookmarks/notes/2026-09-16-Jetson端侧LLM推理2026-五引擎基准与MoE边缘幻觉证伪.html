@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jetson端侧LLM推理2026-五引擎基准与MoE边缘幻觉证伪</title>
+
+<meta property="og:title" content="Jetson端侧LLM推理2026-五引擎基准与MoE边缘幻觉证伪" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech-blue" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/tech-blue.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="jetson-llm-2026tensorrt-edge-llm-moe">Jetson 端侧 LLM 推理 2026：五引擎基准、TensorRT Edge-LLM 与 MoE 幻觉证伪</h1>
+<blockquote>
+<p>探索日期：2026-09-16 ｜ 兴趣等级：L3 ｜ 来源：4 篇（2026-04 活体基准 + NVIDIA 官方 + arXiv 实证）<br />
+关联平台：本机 Jetson Orin Nano Super 8GB（67 TOPS）+ nexa-local-inference<br />
+前序笔记：2026-09-12-KV-Cache浪费与PagedAttention救赎 / 2026-07-19-LLM推理引擎对决</p>
+
+<p class="meta-date">生成日期 2026-09-16</p></blockquote>
+<h2 id="_1">核心命题</h2>
+<p>2026 年端侧 LLM 完成了从"能跑"到"能产线"的跨越：<strong>成本模型倒挂</strong>（&lt;1000 req/day 时边缘 TCO 胜云 API 一个量级）+ <strong>C++ 原生运行时</strong>（推理路径零 Python）+ <strong>MoE 边缘幻觉证伪</strong>（活跃参数优势在 8GB 统一内存上只兑现一部分）。对 Jetson Orin Nano 8GB 用户，选型答案已收敛：INT4 + llama.cpp/TensorRT Edge-LLM + 1.5-4B dense 模型。</p>
+<h2 id="_2">核心发现</h2>
+<h3 id="1-2026-04-jetson">1. 2026-04 活体基准：三档 Jetson × 五引擎 × 三量化完整矩阵</h3>
+<p>iotdigitaltwinplm 季度更新的 living benchmark（首版 2026-04，GitHub 开源测试脚本）：</p>
+<table>
+<thead>
+<tr>
+<th>模型/配置</th>
+<th>平台</th>
+<th>解码吞吐</th>
+<th>能效</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Llama 3.2 3B INT4 (TRT-LLM, MAXN)</td>
+<td>AGX Orin 64GB</td>
+<td>~85 tok/s</td>
+<td>3.0 tok/s/W</td>
+</tr>
+<tr>
+<td>Llama 3.2 1B FP16</td>
+<td>Orin Nano Super</td>
+<td>~55 tok/s @12W</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Phi-3.5-mini 3.8B INT4</td>
+<td>AGX Orin</td>
+<td>~62 tok/s</td>
+<td>质量保持最佳</td>
+</tr>
+<tr>
+<td>Qwen2.5-1.5B INT8</td>
+<td>Orin Nano Super</td>
+<td>~70 tok/s @10W</td>
+<td><strong>7.0 tok/s/W 冠军</strong></td>
+</tr>
+<tr>
+<td>Gemma 2 2B FP16</td>
+<td>AGX Orin</td>
+<td>~120 tok/s</td>
+<td>4.8 tok/s/W</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Prefill：AGX 128-token p50 ~50ms；Nano 120-180ms（LPDDR5 带宽是瓶颈）</li>
+<li>成本倒挂临界点：<strong>&lt;1000 req/day 边缘 TCO 胜；&lt;100 req/day 胜一个数量级</strong>（AGX 64GB $2,499 / 36 月摊销 / 5000 req/day ≈ $0.0004/次）</li>
+<li>方法论严谨：5 次热身 + 50 样本 + 95% CI + 实测功耗（19.5V/5V 电流）</li>
+</ul>
+<h3 id="2-nvidia-tensorrt-edge-llm-python">2. NVIDIA TensorRT Edge-LLM：推理路径零 Python 的新官方栈</h3>
+<p>Jetson AI Lab 2.0 官方教程（NVIDIA adsahu-nv 出品），定位嵌入式 C++ 推理运行时：</p>
+<pre><code>工作流：量化(INT4/NVFP4/FP8) → ONNX 导出 → TRT engine 编译 → C++ 原生推理
+API 全貌：createRuntime → capture CUDA graphs → handleRequest()
+</code></pre>
+<ul>
+<li><strong>Orin (SM87) 支持 INT4 AWQ；NVFP4/FP8 需 SM89+/Thor</strong></li>
+<li>Qwen3-4B-Instruct INT4 AWQ 官方演示机型就是 <strong>Orin Nano 8GB</strong>（与本机同款）</li>
+<li>支持矩阵广：Llama 3.x / Qwen3 dense+VL / InternVL3.5 / Phi-4-Multimodal / Nemotron-Nano（Mamba2+Attention 混合）/ Alpamayo R1（VLA 机器人）</li>
+<li>关键坑：FP8 ONNX 导出需 <strong>6× 模型体积的 GPU VRAM + 20× CPU RAM</strong>（8B 模型），边缘场景优先 INT4 AWQ；Orin Nano 编译用 <code>make -j4</code> 防 RAM 耗尽</li>
+</ul>
+<h3 id="3-moe-arxiv260621428">3. MoE 边缘幻觉证伪（arXiv:2606.21428，实测论文）</h3>
+<blockquote>
+<p>OLMoE-1B-7B（1.3B active / 6.9B total）vs dense 基线，Apple M2 Pro + <strong>Jetson Orin Nano 8GB</strong>，llama.cpp 实测：<strong>MoE 的活跃参数优势只部分兑现，答案是设备相关的</strong>。</p>
+</blockquote>
+<p>对 8GB 统一内存 SoC 的含义：<br />
+- MoE 总参数全驻内存（6.9B 权重吃掉 INT4 后 ~4GB），活跃参数省的是<strong>算力</strong>不是<strong>显存</strong><br />
+- 解码吞吐受内存带宽限制（Nano 68 GB/s），MoE 每 token 仍需读全部路由专家的权衡在 llama.cpp 上不占优<br />
+- 选型结论：<strong>8GB 边缘选 dense 1.5-4B，不追 MoE</strong>（与云端"MoE 省算力"直觉相反）</p>
+<h3 id="4-8gb-nvidia">4. 8GB 内存档的现实选型梯度（NVIDIA 官方博客交叉验证）</h3>
+<table>
+<thead>
+<tr>
+<th>档位</th>
+<th>模型</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nano 8GB</td>
+<td>Llama 3.2 3B / Phi-3 / Qwen3-4B INT4</td>
+<td>隐私助手/分类/抽取/摘要</td>
+</tr>
+<tr>
+<td>AGX Orin 64GB</td>
+<td>gpt-oss-20b / Llama 3.1 70B 量化 / Qwen2.5-VL-7B</td>
+<td>agent 工作流/多模态</td>
+</tr>
+<tr>
+<td>AGX Thor 128GB</td>
+<td>100B+ 模型</td>
+<td>数据中心级边缘</td>
+</tr>
+</tbody>
+</table>
+<p>Orin Nano 8GB 的甜点区：<strong>1.5-4B dense INT4</strong>，能效冠军 Qwen2.5-1.5B INT8（7.0 tok/s/W）适合电池场景。</p>
+<h3 id="5">5. 边缘栈分层架构已成标准</h3>
+<pre><code>应用层 (REST/gRPC)
+  ↓
+推理服务 (Triton / vLLM / Ollama)   ← 调度开销 20-50ms
+  ↓
+推理引擎 (TRT-LLM 编译型 / vLLM 动态 / llama.cpp 便携)
+  ↓
+CUDA 12.6 + Tensor Core (FP16/INT8 2-4× 加速)
+</code></pre>
+<p>取舍：vLLM/Triton 加 20-50ms 调度换并发；llama.cpp 直连 5ms 但单请求。单机机器人场景选后者。</p>
+<h2 id="_3">与现有工作的关联（改进建议）</h2>
+<ul>
+<li><strong>P1：patch <code>nexa-local-inference</code> skill</strong> — 补 2026-04 基准数字表 + "8GB 档选 dense 不选 MoE"决策铁律 + TensorRT Edge-LLM 作为 llama.cpp 之外的 C++ 选项（Qwen3-4B INT4 官方同机型验证）</li>
+<li><strong>P1：patch <code>llm-inference-optimization</code> skill</strong> — 边缘章节加 MoE 统一内存幻觉结论（arXiv:2606.21428）与成本倒挂临界点（&lt;1000 req/day）</li>
+<li><strong>P2</strong>：TTS/语音栈（luxtts daemon）与 LLM 共存时的内存预算：8GB 减去 TTS+系统后 LLM 可用 ~5GB，INT4 4B 是上限——与实测一致</li>
+</ul>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li>本机若跑本地 LLM：Qwen3-4B-Instruct INT4 AWQ（TRT Edge-LLM 同机型官方路径）或 Qwen2.5-1.5B INT8（能效最优）</li>
+<li>FP8/NVFP4 路线在 Orin (SM87) 不可用，量化选择收敛 INT4/INT8/FP16 三档</li>
+<li>agent 工作流要 20B 级模型时，本机 8GB 不可行——走云 API 或换 64GB 档，不要硬塞</li>
+</ol>
+<h2 id="_4">关键风险与盲点</h2>
+<ul>
+<li>living benchmark 是个人站（iotdigitaltwinplm），非 NVIDIA 官方；数字方法论透明但设备热状态/批次差异未跨实验室复现（来源级别：社区实测，方法论公开）</li>
+<li>MoE 论文 v3 是 FAIEMA 2026 投稿（workshop 级），OLMoE 单模型结论外推到 Qwen3-MoE 系列需谨慎</li>
+<li>TRT Edge-LLM 的 engine 编译期长（per-model），模型频繁更换场景不如 llama.cpp 灵活</li>
+</ul>
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<p><strong>8GB Orin Nano 铁律</strong>：dense 1.5-4B + INT4/INT8；MoE 省算力不省显存，8GB 别碰。<br />
+<strong>吞吐锚点</strong>：Qwen2.5-1.5B INT8 ≈ 70 tok/s @10W（7.0 tok/s/W）；Llama-3.2-3B INT4 @AGX ≈ 85 tok/s。<br />
+<strong>成本倒挂</strong>：&lt;1000 req/day 边缘胜；&lt;100 req/day 边缘胜一个量级。<br />
+<strong>量化档位</strong>：Orin SM87 只到 INT4 AWQ；NVFP4/FP8 是 SM89+/Thor 专属。<br />
+<strong>栈取舍</strong>：并发用 vLLM/Triton (+20-50ms)；单请求低延迟用 llama.cpp/Edge-LLM 直连。</p>
+</blockquote>
+<h2 id="_6">待深入</h2>
+<ul>
+<li>TRT Edge-LLM 在 Orin Nano 8GB 上跑 Qwen3-4B 的实测 tok/s（官方基准表用 Thor，Nano 数字待补）</li>
+<li>Nemotron-Nano 的 Mamba2+Attention 混合架构在长上下文边缘场景的显存优势量化</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ul>
+<li>iotdigitaltwinplm.com — Edge LLM Benchmark Jetson Orin 2026-04（living benchmark，GitHub 开源脚本）</li>
+<li>jetson-ai-lab.com/tutorials/tensorrt-edge-llm — NVIDIA 官方 TRT Edge-LLM 教程</li>
+<li>arXiv:2606.21428 — Does MoE Actually Help Inference on Edge Hardware? (FAIEMA 2026)</li>
+<li>developer.nvidia.com/blog — Getting Started with Edge AI on NVIDIA Jetson</li>
+<li>learnopencv.com — vLLM on Jetson Orin Nano 8GB 实操</li>
+</ul>
+<hr />
+<p><em>笔记日期：2026-09-16 ｜ 来源：2026-04 基准 + NVIDIA 官方 + arXiv 实证 ｜ 关联平台：Jetson Orin Nano Super</em></p>
+</body>
+</html>
