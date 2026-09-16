@@ -506,7 +506,7 @@ action token: e_a = W_a·a_{t-1} + b_a  # 数据依赖的&quot;位置查询&quot
 </table>
 <h2 id="_4">与现有工作的关联（改进建议）</h2>
 <ul>
-<li><strong>P0 — 检查 G8T/G9T 的策略网络是否做了 per-leg tokenization</strong>：若只是把 MLP 换成整帧 transformer，"举一反三"机关缺席，T vs M 的对照结论只能落在时序建模上；若是 token 化的，可预期对"单踝故障"（DUCK id5 已损坏）类 OOD 有结构优势——这直接决定四路对照的解读框架。行动：读 microduck task 的 actor 定义一处即可确认。</li>
+<li><strong>P0 — 检查 G8T/G9T 的策略网络是否做了 per-leg tokenization（✅ 已验证 2026-09-17 04:15）</strong>：读了 <code>duck-p3-pilot/duck_p3_pilot/models/transformer_model.py</code>——<code>DuckTransformerModel</code> 是<strong>整帧 temporal attention</strong>：61D obs <code>input_proj</code> 线性投影 → 64 帧滑窗（50Hz 下 1.28s）temporal attention，每帧一个 token；另有 height_scan/command token 经 cross-attention 的试点变体（§331）。<strong>没有任何 per-leg / per-limb tokenization，ROLT 式跨肢体共享机关不存在</strong>。结论：①G8T/G9T vs G8/G9 的对照差异只能落在"时序历史建模"维度（对标 Radosavovic causal transformer 路线，非 ROLT 路线）；②"单踝故障泛化"（id5 损坏场景）的 token 化结构优势在当前 T 变体上不成立；③若未来做 id5 类故障鲁棒，需改 token 化——把左右腿 5 关节各自成 token 是一个 2-token 起步的最小改动。</li>
 <li><strong>P1 — V5+ 配方加 consistent dropout 消融</strong>：feature dropout 0.1 成本为零（PPO 已有 rollout/update 双阶段），对真机 IMU 噪声鲁棒性是 DUCK sim-to-real 的明确短板（STS 舵机 + 滑齿漂移的观测噪声）。rolt 的 PE dropout 不适用（DUCK 无高度图），feature dropout 适用。</li>
 <li><strong>P1 — action token 数据依赖位置查询模式可移植</strong>：DUCK 双腿对称结构（左腿故障时右腿经验可复用）是 token 化的天然受益体，id5 损坏后"右腿带左腿"的场景即 ROLL stiffness test 的镜像。</li>
 <li><strong>P2 — 更新 rl-policy-architecture-selection skill</strong>：补 ROLT 实证边界——"MLP 默认；需要跨肢体/跨故障泛化或感知噪声鲁棒时选 token 化 transformer；整帧 transformer 无结构性收益证据"。</li>
