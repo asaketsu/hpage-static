@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CPT继续预训练完整方法论-从必要性判定到退火阶段的全流程</title>
+
+<meta property="og:title" content="CPT继续预训练完整方法论-从必要性判定到退火阶段的全流程" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="cpt-">CPT继续预训练完整方法论-从必要性判定到退火阶段的全流程</h1>
+<blockquote>
+<p><strong>来源</strong>：千问分享对话《CPT训练：领域知识内化与任务对齐》<br />
+<strong>原文链接</strong>：https://qianwen.my.cn/share/chat/6772dfb3d5374f66a8d6d42ce8e1e1db?biz_id=ai_qwen&amp;env=prod&amp;qwcontainer=qk<br />
+<strong>记录日期</strong>：2026-09-18（页面标注 2026年9月18日）<br />
+<strong>抓取方式</strong>：CDP 直连本机 Chromium 渲染千问 SPA 页面（web_extract/智谱 webReader 均失败，CDP 成功）<br />
+<strong>参考</strong>：11 篇资料</p>
+
+<p class="meta-date">生成日期 2026-09-18</p></blockquote>
+<p><strong>标签</strong>：#CPT #继续预训练 #领域模型 #SFT #DPO #灾难性遗忘 #LoRA #RAG #领域知识内化 #词表扩展</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-cpt">1.1 CPT 的本质定义</h3>
+<p>原文给出精确定义：<strong>CPT（Continued Pre-Training，继续预训练）是在已有通用预训练模型（如 Qwen、Llama）基础上，用大规模无标注的领域文本继续做自回归语言建模训练（预测下一个 token），目标是把领域知识"写进"模型参数里。</strong></p>
+<p>核心定位：解决通用模型在垂直领域的"知识层缺陷"——模型自注意力机制能解析问题，但参数里压根没有相关条文或参数，只能概率拼凑导致事实性错误。</p>
+<h3 id="12-cpt-sft">1.2 CPT 与 SFT 的分工</h3>
+<p>这是原文最有价值的框架判断：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>解决的问题</th>
+<th>比喻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CPT</td>
+<td>"模型压根不知道"（补知识）</td>
+<td>打地基</td>
+</tr>
+<tr>
+<td>SFT</td>
+<td>"模型知道但说不出来"（学做事）</td>
+<td>盖房子</td>
+</tr>
+<tr>
+<td>DPO/RLHF</td>
+<td>风格/安全对齐</td>
+<td>精装修</td>
+</tr>
+</tbody>
+</table>
+<p><strong>顺序不能颠倒</strong>：先 CPT 再 SFT。如果颠倒，会出现"形式到位、内涵缺失"——模型学会了回答格式但回答内容空洞。</p>
+<p>标准链路：CPT（领域内化）→ SFT（任务对齐）→ DPO/RLHF（风格对齐）。CPT 只是第一步，后面必须接任务微调，否则模型只会"懂领域语言"不会"按指令办事"。</p>
+<h3 id="13">1.3 必要性判定（先评估再做）</h3>
+<p>原文给出了清晰的决策树：</p>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>诊断</th>
+<th>处方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>回答方向基本正确，表述不够专业/格式不对</td>
+<td>能力层不足</td>
+<td><strong>直接 SFT，不需要 CPT</strong></td>
+</tr>
+<tr>
+<td>回答出现大量事实性错误/术语混淆/关键参数偏差</td>
+<td>知识层缺失</td>
+<td><strong>需要 CPT</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>先验证 RAG</strong>：原文最省钱建议——"如果你在做垂域 LLM 落在，可以先用'通用模型+检索'验证八成问题能否解决，再决定是否上 CPT，这是最容易被忽视的省钱点。"</p>
+<p>三条判定路径：<br />
+1. 检索命中 + 回答准确 → RAG 解决<br />
+2. 检索没命中（文档里确实没有）→ 知识盲区，补文档<br />
+3. 检索命中了但模型理解错/格式错/推理错 → 能力问题，标记为需要微调</p>
+<h3 id="14">1.4 数据准备</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据来源</td>
+<td>企业内部文档（工单日志/操作规程/技术方案）、行业白皮书、专利文本、专业论文、标准规范</td>
+</tr>
+<tr>
+<td>数据配比</td>
+<td>领域语料 20%-40%，通用语料 ≥60%（防灾难性遗忘）</td>
+</tr>
+<tr>
+<td>数据清洗</td>
+<td>去 HTML 标签、MinHash 去重、过滤低质量、删敏感信息</td>
+</tr>
+<tr>
+<td>数据量门槛</td>
+<td>高质量行业语料至少几亿 token，低于这个量级效果容易被淹没</td>
+</tr>
+<tr>
+<td>数据格式</td>
+<td>JSONL，每行一个 JSON 对象，核心字段 text</td>
+</tr>
+</tbody>
+</table>
+<h3 id="15">1.5 算力估算</h3>
+<p>以 7B 模型、10B token 为例：<br />
+- 8×A100 理想训练约 4 天，实际按 5-7 天估计<br />
+- 70B 模型 + 100B token 计算量是前者的 100 倍，普通团队很难在合理时间内完成</p>
+<h3 id="16">1.6 训练超参</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>推荐值</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>学习率</td>
+<td>1e-5 量级（全参训练）</td>
+<td>远小于原始预训练，否则一步冲掉通用知识</td>
+</tr>
+<tr>
+<td>循环次数</td>
+<td>&lt;1万条数据 3-5 epoch；&gt;1万条 1-2 epoch</td>
+<td>小数据多轮，大数据少轮</td>
+</tr>
+<tr>
+<td>序列长度</td>
+<td>模型支持的最大值</td>
+<td>长序列捕获更多上下文</td>
+</tr>
+<tr>
+<td>退火阶段</td>
+<td>训练末期学习率降到极小 + 数据换成人工精选高质量种子</td>
+<td>模型收敛质量明显跃升</td>
+</tr>
+</tbody>
+</table>
+<h3 id="17">1.7 防遗忘与评估</h3>
+<p><strong>回放（rehearsal）</strong>：保留一定比例通用样本混进训练（通用占比 ≥60%）。</p>
+<p><strong>双轨评测</strong>：领域基准 + 通用基准一起看。只盯领域涨点是陷阱——通用基准不掉才算适配成功。</p>
+<h3 id="18">1.8 四大误区</h3>
+<table>
+<thead>
+<tr>
+<th>误区</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一</td>
+<td>一上来就烧算力做 CPT，结果领域语料不大，通用模型+检索就能解决，纯属浪费</td>
+</tr>
+<tr>
+<td>二</td>
+<td>只做 CPT 不做 SFT，模型只会"懂领域语言"不会"按指令办事"</td>
+</tr>
+<tr>
+<td>三</td>
+<td>领域语料占比过高（&gt;50%），导致通用能力严重退化</td>
+</tr>
+<tr>
+<td>四</td>
+<td>忽略词表扩展，领域专有术语在原词表里被拆成子词，信息损失严重，训练初期损失居高不下</td>
+</tr>
+</tbody>
+</table>
+<h3 id="19">1.9 三方案对比</h3>
+<table>
+<thead>
+<tr>
+<th>方案</th>
+<th>开发周期</th>
+<th>算力成本</th>
+<th>团队要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RAG</td>
+<td>1-2 周</td>
+<td>几乎为零（API 调用费）</td>
+<td>1-2 个后端工程师</td>
+</tr>
+<tr>
+<td>SFT</td>
+<td>2-4 周</td>
+<td>几万到几十万</td>
+<td>AI 工程师+标注团队</td>
+</tr>
+<tr>
+<td>CPT</td>
+<td>1-3 个月</td>
+<td>几十万到上百万</td>
+<td>专门训练团队+大量算力</td>
+</tr>
+</tbody>
+</table>
+<h3 id="110-cpt">1.10 CPT 的硬需求场景</h3>
+<p>原文给出两种"必须做 CPT"的场景：</p>
+<ol>
+<li><strong>行业有独特语言体系</strong>：古文、医学拉丁文、法律条款引用方式——通用模型的 tokenizer 拆词就拆错了，检索回来的片段模型也读不懂。</li>
+<li><strong>需要深度内化的推理能力</strong>：多跳逻辑、因果链条、复杂决策——RAG 只能给片段，给不了"思维方式"。</li>
+</ol>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-rag-cpt">2.1 "先 RAG 再 CPT"的决策逻辑</h3>
+<p>原文最重要的方法论贡献不是 CPT 怎么训练，而是<strong>做 CPT 之前的决策树</strong>：先用通用模型+检索验证 80% 的问题能否解决。这与本地 08-19《LLM 技术选型决策指南-RAG-SFT-DPO-RL-Distillation》的分层路线完全一致——RAG 是第一道筛，筛不掉的才上微调。</p>
+<p>原文的三条诊断路径（检索命中+回答准确→RAG 解决；检索没命中→补文档；检索命中但回答错→微调）是一个可操作的分流框架，可直接作为领域落地的 SOP。</p>
+<h3 id="22">2.2 "退火阶段"的工程价值</h3>
+<p>原文提到的退火阶段（训练末期学习率降到极小 + 数据换成人工精选高质量种子）是本篇最值得记录的细节。这对应预训练中的 <strong>cooldown / annealing</strong> 阶段——Chinchilla 论文和 Llama 2/3 的训练报告中都有提到，但工程实操中常被忽略。</p>
+<p>退火的本质：训练后期模型已接近收敛，大学习率只会让权重在最优点附近震荡；降到极小学习率 + 切换到最高质量数据，让模型在"最干净的梯度方向"上做最后的精细调整——收敛质量跃升的来源是这个。</p>
+<h3 id="23">2.3 词表扩展的必要性</h3>
+<p>原文误区四指出"领域专有术语在原词表里被拆成子词"——这在航空/医疗/法律领域是真实痛点。例如"翼肋"在 Qwen tokenizer 中可能被拆成 ["翼", "肋"]（2 token），而扩展词表后变成 ["翼肋"]（1 token）。</p>
+<p>影响链：拆词 → 训练初期 loss 居高不下（模型要先学重新组合碎片）→ 有效训练步数减少 → 同等算力下领域知识注入不足。</p>
+<h3 id="24">2.4 灾难性遗忘的量化</h3>
+<p>原文给出配比"通用 ≥60%"，但这个数字与上一篇（domain-llm-training 项目）的"通用 10-15%"有差异。差异来源：</p>
+<ul>
+<li>本篇千问原文的配比可能针对更大规模 CPT（几亿 token 级别），此时通用比例需更高</li>
+<li>domain-llm-training 项目的配比针对小规模 CPT（200-300MB），此时通用比例可低</li>
+<li>通用比例与领域数据量成正比反方向变化：领域数据越大，通用比例需要越高来对抗遗忘</li>
+</ul>
+<p>这是一个需要在实际训练中用双轨评测动态调整的参数，不是固定值。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 领域大模型落地的三层决策</h3>
+<pre><code>1G 领域文档
+├── 第一步：RAG 验证（1-2 周，~¥0）
+│   ├── 80% 问题解决 → 停在这层，不需要训练
+│   └── 解决不了 → 第二步
+├── 第二步：微调路线选择
+│   ├── 回答方向对但格式/表述差 → SFT only
+│   └── 回答事实性错误/术语混淆 → CPT + SFT
+└── 第三步：CPT + SFT 全链路（1-3 个月）
+    ├── CPT（补知识）→ SFT（学做事）→ DPO（精装修）
+    └── 双轨评测：领域↑ + 通用不掉
+</code></pre>
+<h3 id="32-cpt">3.2 CPT 的四阶段工程流程</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>做什么</th>
+<th>关键参数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>数据准备</td>
+<td>清洗+去重+混合通用 60%</td>
+<td>几亿 token 门槛</td>
+</tr>
+<tr>
+<td>训练</td>
+<td>低学习率全参训练</td>
+<td>lr=1e-5, bf16, DeepSpeed</td>
+</tr>
+<tr>
+<td>退火</td>
+<td>末期降学习率+换高质量种子</td>
+<td>cooldown</td>
+</tr>
+<tr>
+<td>后接 SFT</td>
+<td>把知识转化为任务执行</td>
+<td>LoRA SFT</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-domain-llm-training">3.3 与 domain-llm-training 项目的互补关系</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>本篇（CPT 方法论）</th>
+<th>上篇（domain-llm-training 项目）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>视角</td>
+<td>决策树+理论框架</td>
+<td>可执行代码+配置文件</td>
+</tr>
+<tr>
+<td>数据配比</td>
+<td>通用 ≥60%</td>
+<td>通用 10-15%</td>
+</tr>
+<tr>
+<td>基座</td>
+<td>Qwen/Llama 通用</td>
+<td>Qwen2.5-7B-Base</td>
+</tr>
+<tr>
+<td>硬件</td>
+<td>8×A100 为主</td>
+<td>4×A100 L2 标准档</td>
+</tr>
+<tr>
+<td>独特贡献</td>
+<td>退火阶段+词表扩展+必要性判定</td>
+<td>数据预处理脚本+DeepSpeed 配置+量化部署链</td>
+</tr>
+</tbody>
+</table>
+<p><strong>两篇合在一起</strong> = 完整的 CPT 落地方案：本篇给决策依据和理论框架，上篇给可跑的代码和配置。</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<p><strong>趋势 1：CPT 的门槛在下降</strong><br />
+依据：原文提到 PEFT 库做 LoRA/QLoRA 继续预训练，单卡 24G 显存就能跑 7B 模型。含义：CPT 从"百万元团队"向"单人单卡验证"下沉，验证阶段不再需要全参训练。</p>
+<p><strong>趋势 2：退火阶段将从"可选"变为"标配"</strong><br />
+依据：原文明确提到"模型收敛质量会明显跃升"。含义：在数据量有限的领域 CPT 场景，退火阶段的 ROI 极高（几乎不增加成本但显著提升最终质量）。</p>
+<p><strong>趋势 3：RAG→SFT→CPT 的决策树将成为领域落地 SOP</strong><br />
+依据：原文给出三条诊断路径 + 三方案成本对比表。含义：不做 RAG 验证就直接上 CPT 将被视为工程失误。</p>
+<p><strong>趋势 4：词表扩展在中文领域场景将成为必选项</strong><br />
+依据：原文误区四专门提到"信息损失严重，训练初期损失居高不下"。含义：航空/医疗/法律等术语密集领域的 CPT，不扩词表等于白训。</p>
+<p><strong>趋势 5：通用数据配比将从经验值走向动态调整</strong><br />
+依据：原文 60% vs 上篇 10-15% 的差异说明这不是固定值。含义：未来工具会支持"遗忘率监控→自动调整通用配比"的闭环。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-domain-llm-training">5.1 与 domain-llm-training 项目的直接关联</h3>
+<p><a href="2026-09-18-领域大模型LoRA到vLLM生产部署链.md">领域大模型LoRA到vLLM生产部署链</a>（当天前一篇）：该项目给出 CPT+SFT 两阶段的完整代码和配置，本篇给出决策依据和理论框架。两篇合在一起 = 可落地的 CPT 方案。</p>
+<h3 id="52">5.2 与微调方法系列的关联</h3>
+<p><a href="2026-08-18-主流LLM微调方法全景-全参-LoRA-QLoRA-DoRA-SFT-DPO-GRPO.md">主流LLM微调方法全景-全参-LoRA-QLoRA-DoRA-SFT-DPO-GRPO</a>：该篇给出所有微调方法的全景，本篇的 CPT→SFT→DPO 链路是该全景中"预训练→后训练"边界的具体展开。</p>
+<p><a href="2026-09-10-显卡微调小模型精度选择指南-LoRA-QLoRA全流程代码配置.md">显卡微调小模型精度选择指南-LoRA-QLoRA全流程代码配置</a>：该篇的 LoRA/QLoRA 配置可直接用于本篇的"轻量方案"（PEFT 库做 LoRA CPT）。</p>
+<p><a href="2026-09-08-1G垂域微调基座选型与海光DCU适配全解析.md">1G垂域微调基座选型与海光DCU适配全解析</a>：该篇讨论 1GB 数据的基座选型，本篇是其"先决策再选型"的前置环节。</p>
+<h3 id="53-ragsft">5.3 与 RAG/SFT 选型决策的关联</h3>
+<p><a href="2026-09-19-LLM技术选型决策指南-RAG-SFT-DPO-RL-Distillation.md">LLM技术选型决策指南-RAG-SFT-DPO-RL-Distillation</a>：该篇给出五路线选型框架，本篇的三方案对比表（RAG/SFT/CPT）是其子集——专门聚焦"CPT 什么时候做、怎么做"。</p>
+<p><a href="2026-08-20-后训练全景SFT-DPO-RLHF原理与实操.md">后训练全景SFT-DPO-RLHF原理与实操</a>：该篇覆盖 SFT/DPO/RLHF，本篇补充了它们之前的 CPT 环节——"打地基"阶段。</p>
+<h3 id="54">5.4 与航空领域的关联</h3>
+<p><a href="2026-08-25-航空垂域模型结构强度方向综合研判技术报告.md">航空垂域模型结构强度方向综合研判技术报告</a>：该篇研判航空结构领域的模型路线，本篇的 CPT 方法论是该研判的工程执行方案——航空术语密集（翼肋/翼梁/蒙皮/适航条款）正好命中"词表扩展"场景。</p>
+<p><a href="2026-08-19-飞机设计企业知识库落地八件套-FDE交付机制适配航空研制的详细要求与操作.md">飞机设计企业知识库落地八件套-FDE交付机制适配航空研制的详细要求与操作</a>：该篇的 FDE 交付机制中的"领域模型"环节可参考本篇的 CPT→SFT 链路。</p>
+<h3 id="55-autodl">5.5 与 AutoDL 训练经验的关联</h3>
+<p>本地 DUCK 训练在 AutoDL 上跑（4×A100 4080S），与本篇 CPT 的硬件需求同构——AutoDL 的按量计费模式适合 CPT 的 3-7 天训练周期。但 DUCK 是 RL 训练（rsl_rl），不是 CPT——两者的 GPU 利用模式不同（RL 是 env+policy 交替，CPT 是纯前向+反向）。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「CPT 解决"模型压根不知道"的问题（补知识），SFT 解决"模型知道但说不出来"的问题（学做事）。顺序不能颠倒，否则会出现"形式到位、内涵缺失"的尴尬局面。」</p>
+<p>「如果你在做垂域 LLM 落在，可以先用"通用模型+检索"验证八成问题能否解决，再决定是否上 CPT，这是最容易被忽视的省钱点。」</p>
+<p>「领域语料占比过高（&gt;50%），导致通用能力严重退化。」</p>
+<p>「训练末期把学习率降到极小，数据换成人工精选的高质量种子，模型收敛质量会明显跃升。」</p>
+<p>「只盯领域涨点是陷阱，通用基准不掉才算适配成功。」</p>
+<p>「一上来就烧算力做 CPT，结果领域语料并不大，通用模型加检索就能解决，纯属浪费。」</p>
+<p>「RAG 只能给片段，给不了"思维方式"。」</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>domain-llm-training 项目补全</strong>：本项目（docs/02_cpt_training.md）的 CPT 配置缺少退火阶段——补一个 cooldown 配置块（末期 lr 降至 1e-6，数据切换为人工精选高质量子集）。</li>
+<li><strong>词表扩展脚本</strong>：domain-llm-training 项目的 docs/01_data_pipeline.md 已提到词表扩展但未给代码——补一个 <code>code/00_tokenizer_extend.py</code> 脚本。</li>
+<li><strong>双轨评测脚本</strong>：domain-llm-training 项目的评估脚本（08_evaluate.py）只有领域考试——补通用基准评测（MMLU/C-Eval 子集），实现"双轨评测"。</li>
+<li><strong>RAG 先验证流程</strong>：在 CPT 之前加一个 RAG 验证阶段（用通用模型+向量库跑 100 道领域题，统计命中率），命中率 &gt;80% 则不启动 CPT——可做成 <code>code/00_rag_baseline_check.py</code>。</li>
+</ul>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<h3 id="81-cpt-sop">8.1 可落地为 CPT 决策 SOP</h3>
+<p>本篇的三条诊断路径 + 三方案对比表可直接作为组织内部"领域大模型立项"的评审 SOP：先 RAG 验证 → 评估命中率 → 决定是否上 CPT → 双轨评测验收。</p>
+<h3 id="82">8.2 可落地为退火阶段配置模板</h3>
+<p>退火阶段在 domain-llm-training 项目的 CPT 配置中缺失——本篇提供了理论依据，可补一个 <code>config/cpt_cooldown.yaml</code>（lr=1e-6, data=high_quality_seed.jsonl, epochs=1）。</p>
+<h3 id="83">8.3 可落地为航空领域词表扩展</h3>
+<p>航空术语密集（翼肋/翼梁/蒙皮/适航条款/CCAR），Qwen tokenizer 拆词问题严重——可用 domain-llm-training 的数据预处理流程统计高频 n-gram，扩词表后 CPT。</p>
+<h3 id="84-cpt-rag">8.4 可落地为 CPT 前置 RAG 基线检查</h3>
+<p>在投入 CPT 算力前，先跑 100 道领域题的 RAG 基线——命中率 &gt;80% 不启动 CPT，&lt;60% 才启动。这是最省钱的工程实践。</p>
+<hr />
+<h2 id="_9">九、指南分析</h2>
+<h3 id="91">9.1 原文质量评估</h3>
+<ul>
+<li><strong>决策框架清晰</strong>：三条诊断路径 + 三方案对比表 + 四大误区 = 完整的决策树——优秀。</li>
+<li><strong>退火阶段是亮点</strong>：其他 CPT 教程很少提退火，原文给出了"末期降学习率+换高质量种子"的可操作描述——高价值增量。</li>
+<li><strong>配比建议有争议</strong>：通用 ≥60% vs domain-llm-training 项目的 10-15%——差异来源未解释，需读者自行判断。</li>
+<li><strong>词表扩展点到但未深入</strong>：误区四提到词表扩展但未给操作步骤——需补充。</li>
+<li><strong>算力估算粗</strong>：7B/10B token 给了 4-7 天，但未区分 A100 40G vs 80G、是否用 Flash Attention 等——粗估可用。</li>
+<li><strong>局限</strong>：①千问生成内容，部分表述有 AI 痕迹 ②11 篇来源未列出具体文献 ③缺少代码级实操细节 ④退火阶段的具体超参未给数值。</li>
+</ul>
+<h3 id="92">9.2 与既有笔记体系的增量价值</h3>
+<p>本篇增量：①CPT 必要性判定决策树（先 RAG 再 CPT）——本地 41 篇微调笔记中缺少这一前置环节 ②退火阶段概念——本地微调笔记未提及 ③词表扩展的工程价值强调——本地仅 domain-llm-training 项目提过但未展开 ④通用/领域配比的争议性讨论（60% vs 15%）——引发对"固定配比"做法的反思。</p>
+<h3 id="93">9.3 后续研究建议</h3>
+<ul>
+<li><strong>P0</strong>：domain-llm-training 项目补退火配置 + 词表扩展脚本 + 双轨评测</li>
+<li><strong>P1</strong>：精读 arXiv 2311.08545《Efficient Continual Pre-training》获取配比的理论依据</li>
+<li><strong>P2</strong>：在 AutoDL 上跑一次 1.5B 小模型 CPT 验证（含退火 vs 不含退火的对比实验）</li>
+<li><strong>P2</strong>：统计航空领域文档的高频 n-gram，评估词表扩展收益</li>
+</ul>
+<h3 id="94">9.4 原文存档</h3>
+<ul>
+<li>原文全文：<code>/tmp/qianwen_cpt.txt</code>（3605 chars，CDP 渲染获取）</li>
+<li>配套项目：<code>~/uclaw/project/domain-llm-training/</code>（README + 5 docs + 5 代码脚本）</li>
+</ul>
+</body>
+</html>
