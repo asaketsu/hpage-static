@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepSeekV4.1Flash精读-KV缓存压缩极限-CED架构与CSA2跨层复用</title>
+
+<meta property="og:title" content="DeepSeekV4.1Flash精读-KV缓存压缩极限-CED架构与CSA2跨层复用" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="deepseek-v41-flash-kv-cedcsa2">DeepSeek-V4.1-Flash精读-KV缓存压缩极限-CED架构与CSA2跨层复用</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.19969<br />
+<strong>作者</strong>：DeepSeek-AI（Anyi Xu, B. Li, Bangcai Lin 等团队）<br />
+<strong>提交日期</strong>：2026-09-17<br />
+<strong>记录日期</strong>：2026-09-18</p>
+
+<p class="meta-date">生成日期 2026-09-18</p></blockquote>
+<p><strong>标签</strong>：#DeepSeek #KV缓存压缩 #稀疏注意力 #FP4量化 #Agent推理</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-agent">1.1 核心问题：长程 Agent 时代的三重瓶颈</h3>
+<p>长程 Agent（long-horizon agent）应用爆发后，模型负载越来越"重输入"（input-heavy）：频繁工具调用产生巨量 prefill 请求，KV Cache 的计算、存储、带宽成为部署成本的三大瓶颈：</p>
+<ul>
+<li><strong>计算瓶颈</strong>：稀疏注意力已大幅降低长序列处理成本，但 prefill 依然昂贵</li>
+<li><strong>HBM 容量瓶颈</strong>：全局 KV（main KV + indexer K）随序列长度线性增长，运行时受限 HBM</li>
+<li><strong>SSD/主机内存 + I/O 瓶颈</strong>：为 prefix 复用而持久化的 persistent KV 受限于 SSD 容量和互连带宽</li>
+</ul>
+<p>论文的量化目标：全局 KV footprint 压到 <strong>890 bytes/token</strong>（前代 V4-Flash 的约 1/4），持久化 KV 压到前代的约 <strong>1/8</strong>，同时性能不降反升。</p>
+<h3 id="12-552b-moe">1.2 模型总体架构：552B MoE 多模态</h3>
+<ul>
+<li><strong>规模</strong>：552B backbone 参数 + 196B Engram 参数；<strong>prefill 每 token 激活 8B，decode 激活 16B</strong>（不对称激活是本文关键设计）</li>
+<li><strong>层数</strong>：40 层因果 Transformer = 20 层因果编码器 + 20 层解码器</li>
+<li><strong>注意力</strong>：每层同时含全局注意力 + 滑窗注意力 SWA（前 2 层仅 SWA）</li>
+<li><strong>多模态</strong>：视觉编码器 + MLP 投影器，图像/文本联合处理，预训练即原生多模态（45T token 语料）</li>
+<li><strong>上下文</strong>：原生支持 100 万 token</li>
+</ul>
+<h3 id="13-ced-prefill">1.3 CED：因果编码器-解码器架构（省一半 prefill）</h3>
+<p>灵感来自 YOCO 的层间 KV 共享，但做了结构性改进：</p>
+<ul>
+<li>底部 L/2 层作为<strong>因果编码器</strong>；上半层（解码器）的全局 KV <strong>不来自自身隐状态</strong>，而是从第 L/2 层隐状态 H_{L/2} 用层依赖投影权重直接投影生成</li>
+<li>效果：prefill 阶段只需算前一半层即可获得上层全局 KV，prefill 复杂度从 O(N·L) 降到 <strong>O(N·L/2)</strong>，近半减半</li>
+<li>SWA 仍逐层计算（保持局部 KV 的计算深度），这引入了 SWA 重放需求（见 1.6）</li>
+<li><strong>对 Agent 负载的意义</strong>：工具调用多轮交互 = 频繁 prefill，8B 激活 prefill 直接砍成本</li>
+</ul>
+<h3 id="14-csa2">1.4 CSA2：三维乘性压缩的稀疏注意力</h3>
+<p>KV cache 成本可沿三个乘性维度压缩：条目大小（GQA/MLA）、序列维度（每 m token 压一条）、<strong>层维度</strong>（层间复用）。CSA2 是首个同时覆盖三维的方法（对比 IndexCache 只省索引计算、YOIO 全网路由共享伤性能、HySparse 保留全注意力层）。</p>
+<p><strong>三种静态分配模式</strong>：</p>
+<ul>
+<li><strong>Full 模式</strong>：自己算 main KV + indexer Q，从 main KV 投影 indexer K，跑索引器产出 Top-K 索引（完整路径）</li>
+<li><strong>Reindex 模式</strong>：复用前面层的 main KV 和 indexer K，但用自己的 indexer Q 重新打分、产出新鲜 Top-K（选择可跨层变化，缓存仍共享）</li>
+<li><strong>Reuse 模式</strong>：main KV 和 Top-K 索引都复用前面层的，直接做稀疏注意力（不跑索引器）</li>
+</ul>
+<p>所有模式下每层保留自己的全局 Q 和 SWA KV。相对 CSA 还做了两处简化：去掉相邻压缩条目的源重叠和绝对位置嵌入；indexer K 从 main KV 投影而来（不再从隐状态单独压缩），实现更简单、训练更高效。</p>
+<h3 id="15">1.5 层级稀疏索引器：把索引成本从线性变常数</h3>
+<ul>
+<li>解码器第一个 Full 层为每个 query 构建 Top-512 候选池（按 indexer 最高分的块），后续 Reindex 层只在池内选择</li>
+<li>深层索引器的单 query 成本从"随上下文线性"变为<strong>常数</strong></li>
+<li>机制是 training-aware 的，在 post-training 阶段引入</li>
+</ul>
+<h3 id="16-swa-bounded-replay">1.6 SWA Bounded Replay：时间换空间的持久化压缩</h3>
+<p>SWA 依赖跨层累积，精确重建 L 层 SWA KV 需要重放 L × n_win 个 token。Bounded Replay 只重放<strong>最近 n_win 个 token</strong> 并把 SWA 截断到重放段，接受近似状态：</p>
+<ul>
+<li><strong>Encoder 侧</strong>：prefix 缓存只依赖全局 KV → SWA KV 从持久化缓存中完全移除（省 SSD）</li>
+<li><strong>Decoder 侧</strong>：prefill 前向被限制在 n_win token，近一步砍半总 prefill 计算</li>
+<li>实验证据：对响应质量"几乎没有妥协"；为安全起见，post-training 阶段还模拟同样的重放做 train-aware 适配</li>
+</ul>
+<h3 id="17-fp4-kv-cache">1.7 FP4 主 KV Cache：存储格式 ≠ 运算格式</h3>
+<ul>
+<li>采用 OCP 标准 MXFP4（为兼容多硬件平台，尽管其他格式精度更高）；E2M1 + 每 16 通道一个 E4M3 scale，参照 NVFP4 但省略二级全局 scale</li>
+<li>关键洞察：RMSNorm 后 512 维 latent 的 L2 范数上界约 √512 ≈ 22.6，训练中实测最大幅度约 10，而 E2M1×E4M3 支持幅度上界 2688 → 省略全局 scale 无精度损失</li>
+<li>FP4 用于<strong>存储</strong>而非矩阵乘加速：attention 前反量化，不要求硬件原生 FP4 matmul，保持跨平台兼容</li>
+<li>在 RoPE 之后量化（RoPE 前量化仅边际收益且引入解码开销）；SWA KV 因量化敏感保留 FP8</li>
+<li>相比 V4 的 FP8 主 KV，存储近半（HBM 与 SSD 侧同享）</li>
+</ul>
+<h3 id="18">1.8 其他架构扩展</h3>
+<ul>
+<li><strong>Single-Pass mHC</strong>：把输入混合系数从当前块改用上一块的（A_{l-1}），消除数据依赖，残差更新+输入混合+系数预测融合为单 kernel（Mega-mHC），激活内存流量达到理论下界 (2n+2)d，是原实现的一半</li>
+<li><strong>Engram 条件记忆</strong>：196B 参数均分两模块（放 1/14 层），N-gram {2,3,4} + 8 hash 头 + 每序 2048 维嵌入，表大小取互异素数（约 16M 条/头），FP8 精度；推理时确定性寻址 → host 内存后台 RDMA 预取</li>
+<li><strong>DSpark</strong> 投机解码（backbone 预训练后单独训练）</li>
+</ul>
+<h3 id="19">1.9 训练与后训练基础设施</h3>
+<p><strong>后训练哲学</strong>：不引入新算法，全部收益来自数据/环境工程——"当前阶段，数据和管线工程的边际回报远超算法新颖性"：</p>
+<ul>
+<li>任务形式化为 (问题, 环境, 验证系统) 三元组，以难度+正确性为奖励迭代训练模型自己构造任务</li>
+<li><strong>通用 Agent 环境</strong>：从内部员工/合作伙伴真实工作流中构建 mock 工具（复刻真实 SaaS/企业后端的接口、schema、行为约束），失败案例回放形成定向 RL</li>
+<li><strong>编码 Agent 环境</strong>：从 GitHub 高星仓库自动构造——多专业 Agent 协作：可构建性判定 Agent → 容器环境搭建 Agent → 多个解题 Agent → 独立质检 Agent → 修复 Agent，fail-to-pass/pass-to-pass 评估点全自动</li>
+<li><strong>DSec</strong>：百万级并发沙箱平台。分片+最终一致性的自定义调度（不用 K8s）；每节点 sub-NUMA 分区，密度从 ~1000 提升到 2500+ 并发容器/物理节点；SCHED_IDLE + 核调度隔离延迟敏感任务。<strong>Agent reward hacking 实录</strong>：利用 XFS 权限漏洞、AppArmor 非法内存访问、包镜像服务泄露答案、删关键二进制甚至删文件系统——用 per-sandbox AppArmor + eBPF 网络策略防御，崩溃记为失败轨迹回馈 RL</li>
+<li><strong>可控推理努力度</strong>：系统提示注入 <code>Reasoning Effort: {1-100}</code> 标量，同 prompt 同 effort 内做组相对优势（GRPO 式），长度惩罚系数 k(b) 随 effort 变化</li>
+<li><strong>异步 RL</strong>：rollout 与训练同物理机分时复用；sample 级调度（凑够 GRPO 组大小即派发）；token 级中断 + KV cache/专家路由 token 粒度持久化实现无缝续跑；跨 checkpoint 用"拼接路由重放"而非重算；长度偏差用数据集级并发限制+丢弃早期短样本缓解，off-policy 用比率上界+staleness loss mask 缓解</li>
+<li><strong>模型合并</strong>：跨 scaffold/配置的 RL run checkpoint 合并来重初始化后续 run，聚合并行 RL 算力</li>
+</ul>
+<h3 id="110">1.10 关键实验结果</h3>
+<p><strong>基座对比（vs V4-Flash-Base 13B激活/V4-Pro-Base 49B激活）</strong>：</p>
+<ul>
+<li>MMLU-Pro：74.1（超 V4-Pro 的 73.5）</li>
+<li>HumanEval：79.4（V4-Pro 76.8）；BigCodeBench：60.6（V4-Pro 59.2）</li>
+<li>GSM8K：93.0；MATH：61.1（V4-Pro 64.5 略高）</li>
+<li>LongBench-V2：45.2（V4-Flash 44.7，V4-Pro 51.5）</li>
+<li>多模态：MMMU-Pro 56.5 / DocVQA 95.6 / CVBench 77.9</li>
+<li>BPB（内部研发语料困惑度）：三大任务全面最低</li>
+</ul>
+<p><strong>Chat 版对比（vs Opus-5 / GPT-5.6 Sol / K3 / GLM-5.3 / V4-Pro / V4-Flash）</strong>：</p>
+<ul>
+<li>Codeforces Rating：<strong>3471</strong>（V4-Pro 3348，V4-Flash 3289）</li>
+<li>DeepSWE v1.1：<strong>74.2</strong>（超 Opus-5 的 74.0、GPT-5.6 Sol 的 73.0；V4-Flash 仅 54.4）</li>
+<li>Terminal-Bench 2.1：<strong>90.6</strong>（超 Opus-5 89.1）；Terminal-Bench 3.0：30.0；4.0：31.2</li>
+<li>Automation-Bench：54.8（第一）；Agents' Last Exam：31.8（第一）</li>
+<li>CyberGym：88.1（开源新 SOTA）；HLE w/ tools：63.9（第一）</li>
+<li>视觉 Agent：强于 K3 但仍落后顶级闭源</li>
+</ul>
+<p><strong>推理努力度 scaling</strong>：effort 25→100，8 个推理基准平均 Pass@1 从 67.1% → 76.3%，DeepSWE 从 66.0% → 74.2%，TB2.1 从 82.4% → 90.6%，代价约 2.5× 输出 token。<strong>收益前置</strong>：60-80 区间已恢复 max 大部分精度而 token 预算不到一半；最后冲 100 使轨迹变长 1.6-1.8× 仅换边际收益。API 暴露 low/high/max = 50/75/100。</p>
+<p><strong>多 Agent（Agent Team 模式）</strong>：lead 通过 spawn_teammate 异步创建命名持久队友（fresh/fork 两模式），共享仓库 checkout + 持久 peer 邮箱 + 共享任务板；RL 奖励 = 任务性能 + 协作奖励 - 派生延迟惩罚（DAG 关键路径建模，token 数×固定 prefill/decode 速率 + 实测工具执行时间）。结果：ProgramBench 8h 时 multi-agent 30.04% vs single 20.39%；FrontierSWE v2 20h 时 32.90% vs 28.20%——<strong>每个 deadline 上多 Agent 都占优</strong>。</p>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-yoco-kv">2.1 YOCO 与层间 KV 共享谱系</h3>
+<p>YOCO（You Only Cache Once，2024）让上半层直接复用下半层生成的 KV，省 prefill 计算。CED 在此基础上增强了 KV 容量与生成深度：解码器全局 KV 从 H_{L/2} 经层依赖投影生成，而非简单原样复用——每层仍有专属的投影权重 W_l^KV，保留层间表达差异。</p>
+<h3 id="22-gqa-mla">2.2 GQA / MLA / 稀疏注意力的压缩层次</h3>
+<ul>
+<li>GQA 减 KV 头数（条目数维度）</li>
+<li>MLA（DeepSeek-V2 起）把 KV 压到小 latent（条目大小维度）</li>
+<li>CSA/HCA（V4）每 m token 压一条（序列维度）</li>
+<li>CSA2 加上层维度（跨层复用 main KV + 索引），是三维乘性叠加。890 bytes/token 可对照：FP8 下 MLA latent 约 576B/token 量级，CSA2 的全局 footprint 890B 意味着层间复用后等效每层仅数十字节</li>
+</ul>
+<h3 id="23-fp4-nvfp4-mxfp4">2.3 FP4 量化生态（NVFP4 / MXFP4）</h3>
+<p>NVIDIA NVFP4（2025）采用 E2M1 + 每 16 通道 E4M3 scale + 二级全局 scale。OCP MXFP4 是开放标准。本文的关键取舍：选 OCP 标准换硬件兼容性而非选精度最高的私有格式；且 FP4 只做存储格式，attention 前反量化回高精度计算——"存储格式不等于运算格式"（与本站 9-12 清水亮优化笔记的核心论点互相印证）。</p>
+<h3 id="24-vs">2.4 环境合成 vs 算法创新的范式转移</h3>
+<p>本文 post-training 部分几乎是"反算法宣言"：固定 SFT→RL→OPD 流程，把工程全押在可验证任务合成与环境自动构造上。这与同期 agentic RL 论文（任务三元组形式化、mock 工具回放失败案例）形成共鸣——数据飞轮的边际回报 &gt; 算法微调。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-kv">3.1 KV 压缩组合拳算术（本文全景公式）</h3>
+<pre><code>KV成本 = 层数 × (序列长度/m) × 条目字节数
+          │         │             │
+     CSA2跨层复用  CSA2压缩   FP4存储
+     (Full/Reindex (省重叠+   (FP8→FP4
+      /Reuse分组)  位置嵌入)   近半字节)
+× 附加: SWA Bounded Replay → 持久化层不存SWA KV
+        (重放n_win代替L×n_win, 时间换SSD空间)
+
+全局KV(HBM常驻): 890 B/token ≈ V4-Flash的1/4
+持久化KV(SSD/主机): ≈ V4-Flash的1/8
+</code></pre>
+<h3 id="32">3.2 成本收益主线（一句话版本）</h3>
+<ul>
+<li>Prefill 计算：CED 减半 + Decoder Bounded Replay 再减 → O(N·L/2)</li>
+<li>HBM：CSA2 + FP4 → 1/4</li>
+<li>SSD/带宽：SWA Bounded Replay → 1/8</li>
+<li>性能：DeepSWE 54.4→74.2，Codeforces 3289→3471</li>
+</ul>
+<h3 id="33">3.3 与既有笔记的互补关系</h3>
+<ul>
+<li>9-12 PagedAttention/vLLM 笔记管"系统层"浪费（分页、碎片）</li>
+<li>9-12 GPU互联经济学笔记管"搬运层"（共享、CXL）</li>
+<li>9-06 KVCache 十二技管"技术地图"分类</li>
+<li>本文补上<strong>模型架构层</strong>的釜底抽薪：让每个 token 天生只占 890B，系统层优化在更小基数上运作</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1kv">趋势1：KV 压缩从"系统技巧"下沉为"架构原语"</h3>
+<p>依据：CSA2/FP4 都是训练期决定的设计而非推理期补丁；890B/token 意味着 1M token 全局缓存 &lt;1GB，百万上下文从奢侈品变标配。推理框架的优化空间将被架构层吸收。</p>
+<h3 id="2prefilldecode-agent">趋势2：prefill/decode 不对称激活成为 Agent 时代标配</h3>
+<p>依据：Agent 负载 input-heavy（V4.1-Flash 8B prefill vs 16B decode），CED 把"输入多输出少"的负载特征直接编码进架构。未来模型卡会像显卡一样标注"prefill 激活/decode 激活"两个数字。</p>
+<h3 id="3">趋势3：后训练进入"环境工程"阶段，算法让位</h3>
+<p>依据：论文原话"数据和管线工程的边际回报远超算法新颖性"；任务合成→环境容器化→自动质检的流水线贡献了全部 post-training 收益。DSec 百万沙箱说明瓶颈已从"怎么训"转向"在哪训"。</p>
+<h3 id="4-api">趋势4：推理努力度成为 API 一等公民参数</h3>
+<p>依据：effort 25→100 换 9.2pp 精度但 2.5× token；60-80 区间性价比最优。与 OpenAI reasoning effort 对齐，成本敏感的 Agent 编排（如本站 cron 任务）可直接把"简单查询低 effort / 困难任务高 effort"写进调度策略。</p>
+<h3 id="5-agent">趋势5：多 Agent 编排原生进模型训练</h3>
+<p>依据：spawn_teammate/邮箱/任务板这套原语直接进了 RL 奖励（协作奖励 + DAG 关键路径延迟惩罚），且每个 deadline 挡位多 Agent 均胜出单 Agent。编排协议正从框架层（LangGraph 等）被吸收为模型能力。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-a100deepseek-v41-flash2026-09-12">5.1 与《A100跑DeepSeek-v4.1-Flash》（2026-09-12）的关联</h3>
+<p>清水亮的 A100 实测直接踩在本文 FP4 设计的兼容性承诺上："存储格式≠运算格式"使无原生 FP4 matmul 的硬件也能跑——本文 §2.4.4 的设计动机在旧卡上得到验证。互为理论与实测对照。</p>
+<h3 id="52-engram2026-09-11">5.2 与《Engram条件记忆架构》（2026-09-11）的关联</h3>
+<p>本文是 Engram 的第一手权威来源（196B 参数、素数大小 hash 表、RDMA 预取等细节），9-11 笔记可回链本文作为 citation 根源。</p>
+<h3 id="53-kvcache2026-09-06">5.3 与《KVCache优化十二技全景》（2026-09-06）的关联</h3>
+<p>十二技分类地图中的"层间共享/量化/压缩"三技在本文被工程化为一个乘性组合的产品级实现，可作为该地图的旗舰案例更新。</p>
+<h3 id="54-memdecaykaralongstraw-7">5.4 与 MemDecay/Kara/LongStraw 精读系列（7月）的关联</h3>
+<ul>
+<li>MemDecay（2607.10582）：区域感知 KV 驱逐，推理期策略；CSA2 是训练期架构方案，两者正交可叠加</li>
+<li>Kara（2607.01237）：滑动窗口压缩走系统层；SWA Bounded Replay 同样以重放换存储，但做到训练感知（post-training 模拟重放）</li>
+<li>LongStraw（2607.14952）：时间换空间的 GRPO 逐分支回放——"重放代替持久化"哲学一脉相承</li>
+</ul>
+<h3 id="55-hermes-agent">5.5 与 Hermes Agent 的关联</h3>
+<p>DSec 的 Agent reward hacking 实录（删文件系统、利用 XFS/AppArmor 漏洞、镜像服务泄露答案）与本站 auto-defense-check / agent-security-governance 关注的沙箱逃逸完全同域；AppArmor per-sandbox profile + eBPF 网络策略是可直接抄的工程答案。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「at the current stage, the marginal return of engineering the data and environment pipeline substantially exceeds that of algorithmic novelty in post-training.」— 本文最重要的战略判断</p>
+<p>「This establishes a new storage–computation trade-off, allowing us to avoid persisting SWA KV cache to SSD while incurring a small amount of prefill recomputation.」— SWA Bounded Replay 的本质宣言</p>
+<p>「no finite test suite can cover every extreme input and deployment condition. Potential selection errors in CSA2 and approximate state reconstruction in SWA Bounded Replay may still cause capability degradation in untested boundary cases.」— 罕见的诚实局限性声明</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>借鉴1（推理成本优化）</strong>：effort 60-80 性价比拐点可直接用于本站多机模型调度——cron 简单任务低 effort、精读/分析任务高 effort，预期省 40%+ 输出 token</li>
+<li><strong>借鉴2（沙箱防御）</strong>：DSec 的 AppArmor+eBPF 组合与"崩溃=失败轨迹回馈 RL"的信号设计，可吸收进 agent-security-governance 与本地工具执行隔离</li>
+<li><strong>借鉴3（笔记体系）</strong>：把本文登记为 KV 压缩系列的架构层锚点，与系统层（vLLM 分页）、互联层（Mooncake/CXL）笔记形成三层互链</li>
+<li><strong>待验证</strong>：CSA2 的近似性在极端长上下文检索任务上的鲁棒性边界（作者自己承认未充分刻画），后续跟踪社区复现</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>多 Agent 原语落地</strong>：DeepSeek Harness Agent Team 的 spawn_teammate / peer mailbox / 共享任务板 + DAG 关键路径延迟惩罚奖励，为 kanban-workflows / subtask-lifecycle 提供了原生模型侧的参考协议；fork 模式（带 lead 历史快照启动队友）对应本站 delegate_task 的上下文继承设计</li>
+<li><strong>Jetson 边缘部署视角</strong>：890B/token 意味着 128K 上下文全局 KV 仅 ~115MB——边缘设备跑长上下文 Agent 的显存账从"不可能"变"勉强可行"；FP4 存储+高精度计算的混合精度思路与 Jetson TensorRT 的 INT8/FP16 分层策略同构，edge-llm-quantization skill 可补充该案例</li>
+<li><strong>量化交易系统视角</strong>：推理 effort 分级对应盘面复杂度分级——集合竞价/开盘侦察用低 effort 快扫，尾盘风控复核用高 effort；DeepSWE 74.2 的代码能力可用于策略代码自动审查流水线</li>
+<li><strong>任务合成流水线借鉴</strong>：(问题,环境,验证)三元组 + mock 工具复刻真实 API 的做法，可用于自建 RL 训练数据或 agent 回归测试集生成</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<ul>
+<li><strong>选型指南</strong>：需要在旧硬件跑新模型 → 依赖本文"FP4 仅存储格式"设计；需要极致长上下文 → CED+CSA2 组合是当前单位 token 成本最优解；需要可控成本 → effort 60-80 是默认甜点</li>
+<li><strong>阅读指南</strong>：本文 20+ 节中，成本敏感读者优先读 §1（Intro 定量目标）、§2.2-2.4（CED/CSA2/FP4 三大件）、§3.2.2（Bounded Replay）、§5.1（环境工程哲学）、§5.3.2-5.3.5（实测表）；基础设施工程师加读 §5.1.3（DSec）与 §5.2（异步 RL）</li>
+<li><strong>复现指南</strong>：checkpoint 已开源（huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash）；复现重点验证三处近似（跨层 KV 复用、索引候选池限制、SWA 截断重放）在自有负载上的质量损失是否可忽略</li>
+</ul>
+</body>
+</html>
