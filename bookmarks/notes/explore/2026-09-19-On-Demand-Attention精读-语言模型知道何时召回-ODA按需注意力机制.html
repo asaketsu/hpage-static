@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>On-Demand-Attention精读-语言模型知道何时召回-ODA按需注意力机制</title>
+
+<meta property="og:title" content="On-Demand-Attention精读-语言模型知道何时召回-ODA按需注意力机制" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="on-demand-attention-oda">On-Demand Attention精读-语言模型知道何时召回-ODA按需注意力机制</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.20734<br />
+<strong>作者</strong>：Haibo Feng（南方科技大学）、Ruiqi Liang（北京大学）、Hanyang Peng（鹏城实验室）、Shiqi Yu（南方科技大学）<br />
+<strong>发布日期</strong>：2026-09-17<br />
+<strong>记录日期</strong>：2026-09-19</p>
+
+<p class="meta-date">生成日期 2026-09-19</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #长上下文推理 #KV缓存 #注意力优化 #边缘部署</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题：全注意力解码的浪费</h3>
+<p>推理型（reasoning）和智能体（agentic）工作负载越来越依赖长上下文推理。但全注意力（full attention）解码在<strong>每一个生成步</strong>都要读取不断增长的历史 KV 缓存，不管这次读取对下一个 token 的预测是否有益。随着上下文变长，注意力成为解码成本的主要来源。</p>
+<p>论文的关键洞察：<br />
+- 对远处信息的需求<strong>在生成步之间变化</strong>——并非每一步都需要回看全部历史<br />
+- 预训练模型在生成过程中形成的解码状态（decoding states）<strong>已经包含了预测"全局注意力收益"的信息</strong>，且这个信号在执行全局读取<strong>之前</strong>就可读取<br />
+- 只读出这个信号，同一个生成过程就能同时支持 next-token 预测和注意力分配决策</p>
+<h3 id="12-on-demand-attentionoda">1.2 方法核心：On-Demand Attention（ODA）</h3>
+<p>ODA 是一种"本地优先"（local-first）的解码方法，整体流程：</p>
+<ol>
+<li>每步先做 Local 计算（只 attend 前 s 个初始位置 + 最近 w 窗口，遵循 StreamingLLM 的 initial-token-plus-window 模式）</li>
+<li>轻量级 recall head（召回头）读三个可用状态，输出标量分数 q_t</li>
+<li>当 q_t &gt; θ 时，用 Full 注意力<strong>从相同的 pre-step 历史</strong>重新计算当前步（Recall）</li>
+<li>被选中分支（Local 或 Full）的当前位 KV 提交进保留历史</li>
+</ol>
+<p>关键设计约束：<br />
+- <strong>只训练 recall head</strong>（Qwen3-1.7B 头仅 28.3M 参数），预训练权重完全冻结<br />
+- <strong>完整历史 KV cache 始终保留</strong>（不做驱逐），Full 分支随时可访问全部历史<br />
+- 与 StreamingLLM 类方法的关键区别：StreamingLLM 丢弃中间历史，ODA 从不丢失信息，只是按需读取</p>
+<h3 id="13">1.3 监督信号构建：成对收益回归</h3>
+<p>训练时对每个位置做成对计算（同一 Full 历史起点）：<br />
+- 全局注意力的相对收益 g_t = NLL_Local(x_{t+1}) − NLL_Full(x_{t+1})，即两个分支对参考下一 token 的负对数似然之差<br />
+- 引入成本惩罚 λ：成本调整收益 d_t = g_t − λ，λ&gt;0 时要求 Full 的预测改进超过其计算成本<br />
+- 符号对数变换压缩大幅增益但保留符号和排序：y_t = sign(u)·log(1+|u|)<br />
+- 用 Huber 回归训练 recall head，只对"有合法参考 token 且 Local/Full 访问集不同"的位置计算损失</p>
+<p>recall head 的三个输入：前一已提交隐状态 h_{t-1}、当前 token 嵌入 E(x_t)、当前 Local 隐状态 h_t^L。</p>
+<h3 id="14">1.4 关键实验结果</h3>
+<p><strong>质量恢复（Table 1，RULER16K / LongBench v1 任务宏分数）</strong>：<br />
+- Qwen3-1.7B：ODA 81.17（Full 调用率 41.6%）vs Full 81.94 vs Local 19.23 —— 恢复 Full-Local 分数差的 98.8%；LongBench 36.82（70.6% Full 调用）恢复 92.2%<br />
+- Qwen3-8B：ODA 91.07（47.3%）vs Full 92.59 vs Local 25.43<br />
+- Qwen3.5-2B 混合架构：限制其 6 个全注意力层，ODA 94.08（44.3%）vs Full 94.35，其余 18 层保留 Gated DeltaNet<br />
+- Gemma-4-12B-it：95.27（57.8%）vs Full 96.61 —— 跨模型家族成立</p>
+<p><strong>"何时召回"比"召回多少"重要（Random 对照实验）</strong>：<br />
+- 零阈值下 ODA 得 88.96（Full 率 41.33%），Random 同预算仅 32.79±0.95（40.99%），Freshly Full 基线 88.63<br />
+- 质量鸿沟在全部 8 个测试预算下持续存在——同样调用频率，按状态分配 vs 随机分配是天壤之别</p>
+<p><strong>计算与速度（128K 输入 / 1K 输出 / 12.5% Full 调用率）</strong>：<br />
+- 主要解码 FLOPs 降至 Full 的 24.26%（降 75.74%，计算比 4.12×）<br />
+- vLLM 实测（A100-SXM4-80GB，batch=1，CUDA Graphs）：吞吐 75.54 → 149.52 tokens/s（1.98×）<br />
+- ⚠️ 短上下文反例：4K 时 ODA 反而慢 15.8%——避免的短程全局读取不足以抵消 Local 尝试 + 条件执行开销<br />
+- 训练资源：head 28.3M 参数，196,608 样本池，冻结主干做特征/标签计算</p>
+<p><strong>输入消融（Table 2，七个 head 变体，共享种子/容量/数据/1024 步预算）</strong>：<br />
+- H+E（前状态+嵌入）：81.94 分但 99.73% Full 调用（近似退化为 Full）<br />
+- H+E+L（全部三输入）：81.57 分，Full 调用率降到 76.22%——L 输入是把调用率打下来的关键<br />
+- 仅 E（嵌入）：87.32% Full 但只得 49.88 分<br />
+- H+L：67.96 分（21.86% Full）——去掉 E 后质量崩<br />
+- 结论：输入组合实质性地改变学到的访问策略</p>
+<h3 id="15-appendix-c">1.5 官方局限（Appendix C）</h3>
+<ul>
+<li>监督信号只预测<strong>即时参考 token 收益</strong>，但每个选中状态也影响未来预测；训练历史来自 Full trunk，部署跟随策略自身选择，实际 cache 演化下的评估至关重要</li>
+<li>完整 KV 保留需要线性存储，且不重构 Always-Full 轨迹</li>
+<li>延迟改善只在"避免的计算 &gt; Local 计算 + 重复主干工作 + 控制开销"时成立</li>
+<li>未来方向：学习一个包含有用远近信息的紧凑工作集（working set）；低精度注意力 + 分层 KV 存储降低召回成本；表示与访问策略联合训练——从"何时召回"走向"保留哪些信息可随时访问"</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-streamingllminitial-token-plus-window">2.1 StreamingLLM（initial-token-plus-window 模式）</h3>
+<p>Xiao et al. 2024 提出的 streaming 推理方案：注意力只覆盖最前面 s 个 token + 滑动窗口 w。ODA 的 Local 分支直接复用这个访问集定义，但本质区别是 StreamingLLM <strong>永久丢弃</strong>窗口外历史（KV 不保留），而 ODA <strong>完整保留</strong>历史 KV，只是选择性读取。前者是信息有损的截断，后者是计算有损但信息无损的按需读取。</p>
+<h3 id="22-qwen35-gated-deltanet">2.2 混合注意力骨干（Qwen3.5 Gated DeltaNet）</h3>
+<p>Qwen3.5-2B 采用线性注意力（Gated DeltaNet）与全注意力层混合的架构：24 层中 18 层用 Gated DeltaNet（固定状态、随序列 O(1) 更新），6 层全注意力负责长程检索。ODA 在这类骨干上只约束那 6 个全注意力层的访问，说明"按需全局读取"与"架构级效率改进"是<strong>正交互补</strong>关系——两层优化可以叠加。</p>
+<h3 id="23-flare-self-rag-probing-rag">2.3 FLARE / Self-RAG / Probing-RAG（模型引导信息获取系谱）</h3>
+<p>ODA 属于"model-guided information acquisition"脉络：FLARE 用草稿句中低置信 token 触发检索再生成；Self-RAG 学习反思 token 决定检索与批判；Probing-RAG 读隐状态决定是否需要更多文档检索。ODA 把"收益预测"引入<strong>保留序列内部的访问决策</strong>——不是向外检索新信息，而是决定是否为已缓存的历史付出全局注意力计算。</p>
+<h3 id="24">2.4 推测解码与自适应执行</h3>
+<p>CALM 按置信度自适应解码深度；语言模型级联学习何时升级到更贵模型；推测解码用目标模型验证便宜提议并保持采样分布。ODA 的区别：它对<strong>同一预训练模型的两个注意力范围</strong>做自适应执行，产出的是经验性的质量-成本权衡，而非分布保持的验证规则（Full 分支可能改变 top-1 token，如 MAPLE→ORCHID 的示例）。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-oda">3.1 ODA 决策流水线</h3>
+<pre><code>每步解码 t：
+  ┌─ 1. Local 计算（s=4 初始位 + w=2048 窗口）
+  │     └─ 产出 h_t^L（Local 隐状态）+ p_t^L（Local 分布）
+  ├─ 2. recall head 打分
+  │     q_t = R_ψ(h_{t-1}, E(x_t), h_t^L)   [28.3M 参数, 冻结主干]
+  ├─ 3. 阈值决策
+  │     q_t &gt; θ ？ ──否──→ 接受 Local 结果，提交 Local 的 KV_t
+  │       │是
+  │     └─ 4. Full 重算（同一 pre-step 历史）
+  │           └─ 产出 h_t^F + p_t^F，提交 Full 的 KV_t
+  └─ 5. 被选分支的 h_t → 冻结 LM head → next token
+</code></pre>
+<h3 id="32-kv">3.2 与主流 KV 优化路线的坐标系</h3>
+<ul>
+<li><strong>驱逐/压缩路线</strong>（MemDecay、VeriCache、CED）：改"存什么"——信息有损，收益换显存</li>
+<li><strong>复用路线</strong>（ReCache、C2KV）：改"谁来读"——跨请求共享已算 KV</li>
+<li><strong>调度路线</strong>（PagedAttention）：改"怎么放"——显存分页管理</li>
+<li><strong>ODA（访问路线）</strong>：改"何时读"——信息无损，收益换计算。KV 全保留，只对全局读取按需付费</li>
+<li>组合拳算术：ODA 可与驱逐/压缩/调度全部正交叠加（论文在混合骨干上已验证一例）</li>
+</ul>
+<h3 id="33">3.3 三条经验定律</h3>
+<ul>
+<li>定律一（分配律）：同样全局调用预算下，按解码状态分配 ≫ 随机分配（88.96 vs 32.79）</li>
+<li>定律二（规模律）：骨干越大，Local-Full 差距越大（1.7B 差 62.7 分，12B 差 66.5 分），但 ODA 恢复率都稳定在高位——收益预测信号跨规模稳健存在</li>
+<li>定律三（拐点律）：加速收益随上下文长度单调增长，4K 处为负（-15.8%），128K 处 +98%——存在明确的部署拐点</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：注意力从"固定计算图"走向"策略化资源"</h3>
+<p>依据：ODA 证明访问决策可以从解码状态中免费读出（Random 对照 56 分鸿沟）；结合 CALM 自适应深度、级联延迟，推理执行正全面策略化。未来 attention 本身会成为 RL/回归 head 的调度对象。</p>
+<h3 id="2-head">趋势2：冻结主干 + 外挂小 head 成为效率改造的主流范式</h3>
+<p>依据：ODA 只训 28.3M 参数（主干的 1.7%）就完成部署级改造，避免重训或蒸馏；此前 MemDecay、recall head 类工作同样走"主干不动、策略外挂"路线。对边缘设备的意义：模型资产可复用，效率补丁可热插拔。</p>
+<h3 id="3">趋势3：混合架构 + 访问策略的分层加速栈将成标配</h3>
+<p>依据：Qwen3.5（18 层 DeltaNet + 6 层 full）+ ODA（约束 6 层访问）已验证叠加有效。架构层减少"必须全局"的层，策略层减少"全局时的读取"，两层乘法效应。</p>
+<h3 id="4-flops">趋势4：长上下文成本核算从 FLOPs 转向"读取次数 × 每次成本"</h3>
+<p>依据：论文明确把 λ（召回成本惩罚）纳入训练目标，vLLM 实测把调用率换算成吞吐；KVCache 互联网愿景（2026-08-27 笔记）同样以"搬运次数"为计费单位。注意力读取正在成为可计量、可计价的资源。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-memdecay260710582">5.1 与 MemDecay（2607.10582 精读）的关联</h3>
+<p>两者同属"按需注意力"但方向相反：MemDecay 按<strong>区域重要性</strong>驱逐 KV（写时决策、信息有损），ODA 按<strong>步级收益</strong>选择读取（读时决策、信息无损）。MemDecay 的 attention refresh 概念 ≈ ODA 的 Full 重算触发。二者可组合：MemDecay 管"冷热分层存储"，ODA 管"热数据的读取时机"。</p>
+<h3 id="52-kvcache-2026-09-06">5.2 与 KVCache 优化十二技全景（2026-09-06 笔记）的关联</h3>
+<p>十二技按公式归因分类（重算/搬运/存储三维降本），ODA 属于其中"读取次数"维度的新成员——之前的技巧都在降"每次读取的代价"（量化/分块/共享），ODA 第一个系统性降"读取次数"本身且保持信息无损。可作为该分类地图的新增分支。</p>
+<h3 id="53-deepseekv41flash-ced-2026-09-18">5.3 与 DeepSeekV4.1Flash CED 架构（2026-09-18 精读）的关联</h3>
+<p>CED 做 KV 压缩（存得少），CSA2 做跨层复用（算得少），ODA 做按需读取（读得少）——三者正交。CED 的驱逐边界如果用 ODA 式收益预测 head 来决定（预测"这个块未来被读取的概率"），是明确的融合方向：从被动阈值驱逐升级为预测性驱逐。</p>
+<h3 id="54-hermes-agent">5.4 与 Hermes Agent 上下文管理的关联</h3>
+<p>Hermes 的 context-compressor（渐进式上下文压缩）当前用"重要性评分"决定压缩哪些历史消息——与 ODA 的 recall head 同构：都是"读取廉价信号预测未来收益"。ODA 的 Random 对照实验（同预算差 56 分）直接警示：压缩调度若不基于状态信号而基于固定规则，等于 Random 基线。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Language Models Know When to Recall」— 标题本身就是结论：预训练模型的解码状态里已经写着"这一步需不需要回看历史"，只是以前没人去读。</p>
+<p>「full-attention decoding reads the growing history at every step, regardless of its benefit to the next prediction」— 对全注意力浪费的最精准一句话描述，也是整篇论文的问题定义。</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li>启示1（Jetson 边缘部署）：ODA 的 1.98× 解码加速发生在 A100，但机制本身（少读历史）对带宽受限的 Jetson Orin 更友好——Orin 的内存带宽 102GB/s 远低于 A100 的 2TB/s，减少全局读取的收益占比更大。长上下文本地 Agent（8K+ 会话）可评估 vLLM 条件执行移植 llama.cpp</li>
+<li>行动1：在 nexa-local-inference 的 Ollama 长会话场景测量&gt;8K 上下文的解码耗时占比，评估 ODA 式 head 的可行性</li>
+<li>启示2（Hermion 上下文工程）：recall head 的"三输入打分"模式（前状态+当前输入+当前轻量结果）可直接移植为 Hermes 上下文压缩的调度器信号源</li>
+<li>行动2：给 context-compressor 增加"步级收益预测"实验分支，用消息重要性 head 的输出分布熵做召回触发信号</li>
+<li>启示3（量化交易 Agent）：长会话量化 Agent 的行情回看（历史 K 线上下文）同样存在"每步都读全部历史"的浪费，ODA 思路适用于工具调用上下文的按需注入</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ol>
+<li><strong>Jetson 长会话 Agent 加速</strong>：本地部署的 Hermes 语音/对话 Agent 在多轮长会话（&gt;8K token）中，解码延迟随历史增长而恶化。ODA 的条件执行在内存带宽受限平台收益更大，可作为 llama.cpp/vLLM-arm64 的补丁方向</li>
+<li><strong>RAG 检索触发降本</strong>：Probing-RAG + ODA 同系——用解码状态预测"这次生成是否需要检索"，对量化 Agent 的每日海量信息流（新闻/公告/行情）按需触发深度检索而非每条全处理</li>
+<li><strong>多 Agent 上下文按需广播</strong>：kanban 多 Agent 编排中，子 Agent 任务上下文的"按需注入父会话历史"可用同款收益预测 head 决定注入粒度，降低 delegate_task 的上下文膨胀</li>
+<li><strong>数据库/向量库的预测性预取</strong>：working set 学习（论文未来方向）与向量库缓存预热同构——预测"哪些历史块将被读取"提前加载，适合 ReCache 类 KV 复用系统</li>
+</ol>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>选型判断</strong>：何时该用 ODA 式按需注意力？<br />
+- 上下文长度 &gt;32K 且生成长（推理/Agent 工作负载）→ 收益显著（FLOPs -76%，吞吐 +98%）<br />
+- 上下文 &lt;8K → 不适用（4K 反例：慢 15.8%），直接全注意力<br />
+- 显存充裕、带宽受限 → 最优场景（KV 全保留策略吃显存但省带宽）<br />
+- 显存紧张 → 先上驱逐/压缩（MemDecay/CED），ODA 与它们正交可后叠加</p>
+<p><strong>实施要点</strong>：<br />
+- recall head 训练成本低（28.3M 参数 + 196K 样本 + 冻结主干特征提取），单一消费级 GPU 数小时量级<br />
+- λ（召回成本惩罚）是核心超参：调高→更少 Full 调用→更省算力但质量降；论文按部署配置分别报告（Appendix A.4）<br />
+- 阈值 θ 是运行时旋钮：零阈值即用（表 1 主结果），调 θ 可在线滑动质量-成本曲线<br />
+- 每个骨干需单独训 head（论文明确未测试 head 跨模型迁移）</p>
+<p><strong>验证方法</strong>：部署前先用 5 个 RULER 任务跑 Random 对照——如果自己的 head 打不过同预算 Random，说明监督信号没学到东西，回查 λ 设置和训练数据构成。</p>
+<p><strong>风险提示</strong>：成对监督（Local+Full 双算）在训练期需要 2× 前向计算；KV 全保留意味着显存 O(n) 增长没有缓解——超长会话（&gt;200K）仍需配合压缩路线。</p>
+</body>
+</html>
