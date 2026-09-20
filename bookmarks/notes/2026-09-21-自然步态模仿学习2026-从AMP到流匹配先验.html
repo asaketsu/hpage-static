@@ -445,58 +445,129 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 关联：DUCK 双足项目步态自然度验收 · H1X/H1W 训练路线</p>
 
 <p class="meta-date">生成日期 2026-09-21</p></blockquote>
-<h2 id="_1">为什么现在学这个</h2>
-<p>DUCK 项目的"完美版"验收标准里有一条从奖励工程角度最难满足：<strong>步态自然度</strong>。docs/86 已判死 velstand（给站立付费 → 趴地 farming），W1 现路线是"抄 H1YAW 配方（唯一实证能演）+ H1X 三件套（obs64/DR 宽域/slew 直挂）"。但 H1YAW 系（含四模型横评冠军）的步态本质仍是<strong>纯手工奖励堆出来的工程步态</strong>——用户已经给出负反馈："mlp 脖子和头太僵硬""看起来不机灵"。而 DUCK 硬件上没有动捕、没有参考动作库，这条路在文献里叫 motion-free natural locomotion，2026 年恰好有一批新解法。本笔记扫描该方向 2025-2026 最新文献，回答一个问题：<strong>不动捕、不 retarget，能不能让鸭子走出"看起来机灵"的步态？</strong></p>
-<h2 id="_2">方法谱系：三代先验技术</h2>
-<p>| 代际 | 代表方法 | 奖励形态 | 对参考数据的依赖 | 核心弱点 |<br />
-|---|---|---|---|----free|<br />
-| G1 (2021-2023) | AMP（Escontrela 等） | 判别器输出标量奖励 | 需要 mocap/retarget 数据集 | 支持集远离时判别器失效；奖励不可解释 |<br />
-| G2 (2023-2025) | Wasserstein 对抗模仿（HumanMimic）、选择性 AMP、多判别器路由 | 稳健化判别器 | 需要，但可用少量片段 | 仍是判别器，训练不稳 |<br />
-| G3 (2026) | FMP 流匹配先验、CMP 上下文感知先验、状态依赖门控 AMP | 标量奖励（AM 之外的新形态：OT 耦合 + FM 势函数） | FMP 只需短动作库；CMP 免标签适配 | 较新，复现成本 |<br />
-| 理论线 | Natural Locomotion Manifold (NLM) | 无奖励，能量交换原理 | <strong>完全零参考</strong> | 目前只在理想非完整系统上验证 |</p>
-<h2 id="_3">核心文献精读</h2>
-<h3 id="1-fmpflow-matched-motion-priorsarxiv2609156312026-09-14">1. FMP：Flow-Matched Motion Priors（arXiv:2609.15631，2026-09-14，一周内新作）</h3>
-<p><strong>问题</strong>：AMP 的判别器在策略分布与专家分布相距太远时会变得"无信息"——奖励信号失效，策略学不到东西。这正是 DUCK 冷启动阶段的真实处境：随机初始化策略的动作分布离任何"鸭子步"都很远。</p>
-<p><strong>做法</strong>：不再用判别器，改为在<strong>当前 rollout 与专家动作库之间连一条路径</strong>，用流匹配（flow matching）学一个神经势函数，输出在线标量奖励。熵正则 OT 提供耦合。</p>
-<p><strong>关键数字（Unitree G1，50M transitions 对比实验）</strong>：<br />
-- 从演示 reset 出发：稳定行走 0.727 m/s<br />
-- 从<strong>固定默认姿态</strong>（≈DUCK 归0位冷启动）出发：0.338 m/s，129 次摔倒（对比 endpoint-only 控制组 243 次）——摔炮率直降 47%<br />
-- 动态 FM 比静态 score-gradient teacher 少用 29% 离线拟合时间</p>
-<p><strong>对 DUCK 的意义</strong>：FMP 的固定姿态初始化实验设置与 DUCK "真机归0直腿冷启动"几乎同构（docs/70 已确认训练 reset 分布外是乱蹬根因之一）。129 vs 243 的摔炮对比说明：<strong>带路径引导的奖励比端点匹配奖励对"远分布冷启动"更友好</strong>。若 W1/W2 训出的步态仍僵硬，FMP 是下一代候选——只需自录一段"理想鸭子步"参考（哪怕在 sim 里手工调出来的好 episode），不需要动捕设备。</p>
-<h3 id="2-cmpcontext-aware-motion-priorsarxiv2608032342026-08-04">2. CMP：Context-Aware Motion Priors（arXiv:2608.03234，2026-08-04）</h3>
-<p><strong>问题</strong>：现有 motion prior 从整个参考数据集学一个全局先验，均匀作用于全部训练——无法区分"当前任务语境下哪段参考是相关的"。</p>
-<p><strong>做法</strong>：用高优势 rollout 学"语境-动作兼容度"，免技能标签、免数据集切分、免技能发现阶段，reweight 参考监督信号。即插即用：论文同时实例化在 AMP 和 Score-Matching Motion Priors 两种底座上，五个 humanoid 任务全部改善。</p>
-<p><strong>对 DUCK 的意义</strong>：DUCK 训练本身是多语境的（站立/行走/转向混合 cmd），如果引入任何参考信号，CMP 的思路是"让高优势 rollout 自己选参考"——与 DUCK 现有的"评测即杀、以实证为准"哲学一致。</p>
-<h3 id="3-amparxiv2605186112026-05-18unitree-g1">3. 状态依赖门控 AMP（arXiv:2605.18611，2026-05-18，Unitree G1 实机）</h3>
-<p><strong>做法</strong>：把全局参考分布换成状态依赖门控——用<strong>投影重力单阈值</strong>（|g_z+1|&gt;0.6，即倾斜约 37°）把每个 transition 路由到两个判别器之一：恢复判别器 / 速度条件化行走判别器。仅 3 段 LAFAN1 参考片段就能正则化完整行为集（走/跑/爬起）。</p>
-<p><strong>部署形态极其干净</strong>：单一冻结 ONNX 策略 50Hz 运行，<strong>部署时零模式切换逻辑</strong>，实机验证趴摔/仰摔都能爬起、走跑平滑过渡。</p>
-<p><strong>对 DUCK 的意义</strong>：这是与 DUCK 现有架构最兼容的方案——DUCK 已有 FELL 检测（0.5s 滑动均值 + 瞬时 tilt&gt;60° 双守卫），把阈值复用为判别器路由门控即可。且"趴下路由到恢复判别器"直接对应 DUCK 的 fallen_too_long 惩罚项，可以用数据驱动的方式替代手工惩罚。但注意它仍需 LAFAN1 参考片段，且是人形参考，鸭子形态 retarget 工作量未知。</p>
-<h3 id="4-natural-locomotion-manifoldarxiv2605282542026-05-27">4. Natural Locomotion Manifold（arXiv:2605.28254，2026-05-27，纯理论）</h3>
-<p><strong>核心命题</strong>：自然步态可以定义为<strong>能量交换原理</strong>——内部振子周期回归、机体位姿漂移、一个周期内平均 POE 功率（Propulsion-Oscillator Exchange power）为零。满足条件的解族构成 Natural Locomotion Manifold。约束不做外功、机械能守恒，零均值 POE 功率是环境介导推进通道的内部交换而非外部能量输入。</p>
-<p><strong>现状与局限</strong>：只在两个理想非完整无滑系统（Chaplygin 雪橇/摆驱动小车及其三体扩展）上验证，离足式机器人实机很远。但方向重要：它把"自然步态"从"像参考动作"重定义为"能量交换平衡"，<strong>完全不需要参考数据</strong>。</p>
-<p><strong>对 DUCK 的意义</strong>：DUCK 的奖惩项里已有 action_rate_l2（动作平滑）和能效相关项，NLM 视角下的改写是：把"惩罚抖动"升级为"奖励周期性能量交换平衡"。短期内不可用，但若走 motion-free 路线，这是唯一有定理支撑的奖励设计框架——值得跟踪其足式扩展。</p>
-<h3 id="5-recoverformerarxiv2604229112026-04-24unitree-g1mujoco">5. RecoverFormer（arXiv:2604.22911，2026-04-24，Unitree G1/MuJoCo）</h3>
-<p>端到端摔倒恢复策略：50 步观测历史上的因果 transformer + 两个头（潜在恢复模式 / 接触可供性头——预测哪些表面可用于扶稳）。开场地训练零样本迁移到有墙环境，100-300N 推扰下 100% 恢复；+25% 质量错配下仍有 75.5%，30ms 延迟下 89%。</p>
-<p><strong>对 DUCK 的意义</strong>：与 H1T2 部署脚本"摔倒自动重置禁 break"理念同源（把恢复当一等公民而非异常分支）。接触可供性头思路有趣：DUCK 生态里没有墙但地面接触面永远存在，"地面接触可供性"是个可迁移概念。DUCK 的 64 帧滑窗 + TRANS 架构与 RecoverFormer 的 50 步因果 transformer 高度同构——说明 DUCK 现有 TRANS 栈无需为恢复能力换架构，加头即可。</p>
-<h3 id="6-arxiv2606215622026-06-19">6. 观测历史蒸馏（arXiv:2606.21562，2026-06-19）</h3>
-<p>把全历史 transformer 的压缩策略蒸馏进循环 transformer（固定大小记忆），直接监督学生模型的记忆对齐教师瓶颈表征。线性时间复杂度下大幅缩小与全历史 transformer 的差距。</p>
-<p><strong>对 DUCK 的意义</strong>：DUCK 的 TRANS 用 64 帧 banded causal attention（span=W），pi5 侧 64 帧滑窗 np.roll 部署。若未来部署算力吃紧（pi5 CPU 上 inference 频率想超过 26Hz），此蒸馏范式可将 64 帧滑窗压缩为固定记忆 recurrent 变体——不动训练域，只动推理形态。</p>
-<h2 id="_4">横向洞察：三条主线收敛</h2>
+<h2 id="_1">查询拓展</h2>
+<p>DUCK"完美版"验收标准里最难的 一条是<strong>步态自然度</strong>：docs/86 已判死 velstand（给站立付费→趴地 farming），W1 现路线=抄 H1YAW 配方+H1X 三件套。但 H1YAW 系步态本质是纯手工奖励堆出的工程步态，用户已给负反馈："mlp 脖子和头太僵硬""看起来不机灵"。DUCK 硬件无动捕、无参考动作库。本笔记回答：<strong>motion-free 条件下，能不能让鸭子走出"看起来机灵"的步态？</strong> 衍生查询：模仿学习奖励有哪些不依赖判别器的形态？恢复行为如何不靠手工惩罚学出来？序列策略压缩有没有更便宜的方式？</p>
+<h2 id="_2">内容整理</h2>
+<h3 id="_3">方法谱系：三代先验技术</h3>
+<table>
+<thead>
+<tr>
+<th>代际</th>
+<th>代表方法</th>
+<th>奖励形态</th>
+<th>参考数据依赖</th>
+<th>核心弱点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>G1 (2021-2023)</td>
+<td>AMP（Escontrela 等）</td>
+<td>判别器标量奖励</td>
+<td>mocap/retarget 数据集</td>
+<td>支持集远离时判别器失效</td>
+</tr>
+<tr>
+<td>G2 (2023-2025)</td>
+<td>HumanMimic（Wasserstein）、选择性 AMP、多判别器路由</td>
+<td>稳健化判别器</td>
+<td>少量片段可用</td>
+<td>仍是判别器，训练不稳</td>
+</tr>
+<tr>
+<td>G3 (2026)</td>
+<td>FMP 流匹配先验、CMP 上下文先验、SD-AMP 状态门控</td>
+<td>OT 耦合+FM 势函数（非判别器）</td>
+<td>FMP 短动作库即可</td>
+<td>较新，复现成本</td>
+</tr>
+<tr>
+<td>理论线</td>
+<td>Natural Locomotion Manifold</td>
+<td>无奖励，能量交换原理</td>
+<td>完全零参考</td>
+<td>仅理想非完整系统验证</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">核心文献六篇</h3>
+<p><strong>1. FMP：Flow-Matched Motion Priors（arXiv:2609.15631，2026-09-14）</strong><br />
+AMP 判别器在策略分布与专家分布相距太远时奖励失效——正是 DUCK 冷启动的真实处境。FMP 改在当前 rollout 与专家动作库之间连路径，流匹配学神经势函数输出在线标量奖励，熵正则 OT 提供耦合。关键数字（Unitree G1，50M transitions）：演示 reset 出发稳定行走 0.727 m/s；<strong>固定默认姿态（≈DUCK 归0位冷启动）出发 0.338 m/s，129 次摔倒 vs endpoint-only 对照 243 次——摔炮率降 47%</strong>；动态 FM 比 static score-gradient teacher 少 29% 离线拟合时间。</p>
+<p><strong>2. CMP：Context-Aware Motion Priors（arXiv:2608.03234，2026-08-04）</strong><br />
+全局先验无法区分"当前语境下哪段参考相关"。CMP 用高优势 rollout 学语境-动作兼容度，免标签/免数据集切分/免技能发现，reweight 参考监督。即插即用：同时在 AMP 和 Score-Matching 两种底座上实例化，五个 humanoid 任务全改善。</p>
+<p><strong>3. SD-AMP 状态门控（arXiv:2605.18611，2026-05-18，Unitree G1 实机）</strong><br />
+投影重力单阈值（|g_z+1|&gt;0.6，倾斜约 37°）把 transition 路由到两个判别器：恢复判别器/速度条件化行走判别器。仅 3 段 LAFAN1 参考正则化完整行为集（走/跑/爬起）。部署形态极干净：单一冻结 ONNX 50Hz、<strong>部署端零模式切换逻辑</strong>，实机趴摔/仰摔都能爬起。</p>
+<p><strong>4. Natural Locomotion Manifold（arXiv:2605.28254，2026-05-27）</strong><br />
+自然步态=能量交换原理：内部振子周期回归、位姿漂移、周期平均 POE 功率（Propulsion-Oscillation Exchange）为零。约束不做外功、机械能守恒。只在 Chaplygin 雪橇/摆驱动小车等理想系统验证，离足式实机远，但把"自然步态"从"像参考动作"重定义为"能量交换平衡"——<strong>零参考数据的唯一有定理支撑的奖励设计框架</strong>。</p>
+<p><strong>5. RecoverFormer（arXiv:2604.22911，2026-04-24，G1/MuJoCo）</strong><br />
+50 步因果 transformer + 潜在恢复模式头 + 接触可供性头（预测哪些表面可扶稳）。开场地训练零样本迁移有墙环境，100-300N 推扰 100% 恢复；+25% 质量 75.5%、30ms 延迟 89%。与 DUCK"H1T2 摔倒自动重置禁 break"理念同源；其 50 步因果 transformer 与 DUCK 64 帧滑窗 TRANS 高度同构——<strong>恢复能力加头即可，无需换架构</strong>。</p>
+<p><strong>6. 观测历史蒸馏（arXiv:2606.21562，2026-06-19）</strong><br />
+全历史 transformer 的压缩策略蒸馏进循环 transformer（固定记忆），直接监督学生记忆对齐教师瓶颈表征。线性时间复杂度大幅缩小差距。对 DUCK：若 pi5 推理频率想超 26Hz，可将 64 帧滑窗压成固定记忆 recurrent 变体——不动训练域只动推理形态。</p>
+<h2 id="_5">归纳总结</h2>
 <ol>
-<li><strong>判别器正在退场，路径/耦合类奖励进场</strong>。FMP（OT+流匹配）、CMP（上下文重加权）都在绕开"判别器远分布失效"这一 AMP 硬伤。DUCK 若做 V2 仿真参考，优先 FMP 形态。</li>
-<li><strong>状态门控让单一策略吃下多行为</strong>。SD-AMP（投影重力阈值路由）、RecoverFormer（潜在模式头）殊途同归：不给部署端加模式切换逻辑，训练期内部消化。这与 DUCK「部署层保持哑播放器」的原则一致。</li>
-<li><strong>Motion-free 是开问题但已有两条腿</strong>：能量原理（NLM 理论线）与自生成参考（FMP 用 sim 里调好的 episode 做动作库）。DUCK 的"手工奖励+评测即杀"现路线在文献坐标里属于基线方法，天花板取决于奖励设计工时。</li>
+<li><strong>判别器正在退场，路径/耦合类奖励进场</strong>（FMP/CMP 都在绕开"判别器远分布失效"硬伤）——DUCK 若做 V2 仿真参考，优先 FMP 形态。</li>
+<li><strong>状态门控让单一策略吃下多行为</strong>（SD-AMP 阈值路由、RecoverFormer 模式头殊途同归）：训练期内部消化，部署端保持哑播放器——与 DUCK 部署原则一致。</li>
+<li><strong>Motion-free 有两条腿</strong>：能量原理（NLM 理论线）+ 自生成参考（FMP 用 sim 里调好的 episode 做动作库）。DUCK 现路线（手工奖励+评测即杀）在文献坐标里是基线方法，天花板受奖励设计工时限制。</li>
+<li><strong>DUCK 的冷启动痛点有直接文献对症</strong>：FMP 固定姿态初始化实验（129 vs 243 摔炮）与 docs/70"训练 reset 分布外=乱蹬根因"几乎同构。</li>
 </ol>
-<h2 id="duck">对 DUCK 现路线的落位判断</h2>
-<p>| 现有 DUCK 组件 | 文献对应 | 升级路径 |<br />
-|---|---|---白天<br />
-| velstand（已判死） | — | 已废弃，W 系接替 |<br />
-| H1YAW 手工奖励配方 | 基线 reward shaping | 天花板受限于奖励工时 |<br />
-| fallen_too_long 惩罚 | SD-AMP 恢复判别器 | 可用状态门控+恢复判别器数据驱动化 |<br />
-| 64 帧滑窗 TRANS | RecoverFormer 50 步因果 transformer | 同构，验证了架构选型正确 |<br />
-| mirror loss + env-sym | Beyond Topology 形态对称图 | 保留，正交可叠加 |</p>
-<p><strong>结论</strong>：W1/W2 训完之前不动现路线（评测即杀铁律）；若步态自然度验收再挂（用户目测"僵硬/不机灵"），下一代候选按优先级：① FMP（自建小动作库，固定姿态冷启动友好）→ ② SD-AMP 门控（复用 FELL 阈值路由恢复行为）→ ③ NLM 能量奖励（跟踪足式扩展，暂不落地）。</p>
-<h2 id="_5">来源</h2>
+<h2 id="_6">趋势判断</h2>
+<ul>
+<li>模仿先验的形态演化路径清晰：判别器（2021）→稳健判别器（2023-2025）→<strong>生成式路径奖励（2026）</strong>；下一步大概率是参考数据需求继续下降（自生成参考/零参考能量原理）。</li>
+<li>状态门控多行为单策略会成为 humanoid 标配（SD-AMP 已实机验证走跑爬起三合一）。</li>
+<li>对 DUCK：W1/W2 训完前不动现路线（评测即杀）；若步态自然度验收再挂，下一代候选优先级 <strong>①FMP（自建小动作库，冷启动友好）→②SD-AMP 门控（复用 FELL 阈值路由）→③NLM 能量奖励（跟踪足式扩展）</strong>。</li>
+</ul>
+<h2 id="_7">拓展应用推荐</h2>
+<ol>
+<li><strong>FMP 动作库自建方案</strong>：在 sim 里用 H1YAW 冠军模型跑出最自然的一段 episode（用户目测筛），存为动作库 → FMP 奖励重训。不需要动捕，只需要"自己最好的样子"。</li>
+<li><strong>SD-AMP 门控移植</strong>：DUCK 已有 FELL 双守卫（0.5s 滑动均值+瞬时 tilt&gt;60°），复用为判别器路由阈值成本极低；fallen_too_long 手工惩罚可被恢复判别器数据驱动替代。</li>
+<li><strong>头颈生命感的部署层修复</strong>（用户已有负面验收"死头"）继续有效：闲时随机 head 动画与任何先验方案正交。</li>
+<li><strong>TRANS 部署算力预案</strong>：观测历史蒸馏范式备用于 pi5 推理频率升级需求。</li>
+</ol>
+<h2 id="_8">指南分析</h2>
+<ul>
+<li><strong>证据边界</strong>：本笔记基于 arXiv 摘要级扫描，FMP/CMP 均为 2026 年 8-9 月新文，无第三方复现；数字（0.727 m/s、129 vs 243 falls）为论文自报。</li>
+<li><strong>DUCK 落位对照表</strong>：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>DUCK 现有组件</th>
+<th>文献对应</th>
+<th>升级路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>velstand（已判死）</td>
+<td>—</td>
+<td>已废弃，W 系接替</td>
+</tr>
+<tr>
+<td>H1YAW 手工奖励配方</td>
+<td>基线 reward shaping</td>
+<td>天花板=奖励工时</td>
+</tr>
+<tr>
+<td>fallen_too_long 惩罚</td>
+<td>SD-AMP 恢复判别器</td>
+<td>状态门控数据驱动化</td>
+</tr>
+<tr>
+<td>64 帧滑窗 TRANS</td>
+<td>RecoverFormer 50 步因果 transformer</td>
+<td>同构，架构选型已被验证</td>
+</tr>
+<tr>
+<td>mirror loss + env-sym</td>
+<td>Beyond Topology 形态对称图</td>
+<td>保留，正交可叠加</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>互链</strong>：docs/70（乱蹬根因：reset 分布外）、docs/86（velstand 判死+W 系方案）、《2026-09-19-熵保持强化学习与PPO熵坍缩修复.md》（同夜续篇：Transformer 策略稳定性）、《2026-09-20-足式机器人sim2real系统化辨识PACE框架.md》（执行域侧）。</li>
+</ul>
+<h2 id="_9">来源</h2>
 <ul>
 <li>FMP — arXiv:2609.15631 (2026-09-14)</li>
 <li>CMP — arXiv:2608.03234 (2026-08-04)</li>
@@ -504,7 +575,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <li>NLM — arXiv:2605.28254 (2026-05-27)</li>
 <li>RecoverFormer — arXiv:2604.22911 (2026-04-24)</li>
 <li>观测历史蒸馏 — arXiv:2606.21562 (2026-06-19)</li>
-<li>检索方式：arXiv API（Tavily/智谱搜索当夜双双故障，降级直连）</li>
+<li>检索方式：arXiv API 直连（Tavily/智谱搜索当夜双故障，降级链第三级）</li>
 </ul>
 </body>
 </html>

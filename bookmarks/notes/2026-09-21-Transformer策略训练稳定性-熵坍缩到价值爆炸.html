@@ -439,37 +439,79 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
-<h1 id="transformer-2026">Transformer 策略训练稳定性 2026：熵、价值爆炸与序列策略</h1>
+<h1 id="transformer">Transformer 策略训练稳定性：熵坍缩、价值爆炸与序列策略优化</h1>
 <blockquote>
 <p>综述笔记 · 2026-09-21 · arXiv 文献扫描<br />
 关联：DUCK H1T/TRANS4 熵坍缩与 farming 事故解剖（docs/71、docs/81、docs/86）· W2 TRANS 计划</p>
 
 <p class="meta-date">生成日期 2026-09-21</p></blockquote>
-<h2 id="_1">为什么现在学这个</h2>
-<p>DUCK 的 TRANS 路线连吃三败：H1T 熵坍缩（entropy=-0.69）、TRANS4 急性 farming（value_loss 0.19→52.7 爆炸、reward -268 断崖、熵_coef 四调 0.02/0.01/0.005/0.0075 全失败）。用户已明确表态"我更喜欢 transformer""两架构缺一不可"，W2（W1 配方 + TRANS + F1 σ-gate）是 TRANS 复活的最后一搏。本笔记扫描 2026 年序列/transformer 策略训练稳定性的文献面，为 W2 判读和下一代 TRANS 设计储备理论坐标。</p>
-<h2 id="llm-rl">文献面：熵坍缩研究的主战场在 LLM-RL，不在机器人</h2>
-<p>一个结构性发现：arXiv 上 "entropy collapse + PPO" 的 2026 年命中几乎全部来自 <strong>LLM 推理强化学习（RLVR/RLHF）</strong>，而非机器人运动控制。机器人侧 transformer 策略论文很少把熵动力学当核心贡献点。这意味着：<strong>DUCK 遇到的 TRANS 熵坍缩是跨域共性问题，LLM-RL 社区 2026 年的解法可以移植</strong>——两边用同一套 PPO/ratio-clipping 数学。</p>
-<h3 id="1-optimistic-policy-regularizationarxiv2603xxxx2026-03-06">1. Optimistic Policy Regularization（arXiv:2603.xxxx，2026-03-06）</h3>
-<p>熵坍缩的正则化视角：传统 KL/熵正则是"悲观"的（限制策略移动），该文提出乐观正则——主动维持策略分布的探索覆盖。标题对应的问题正是"确定性化过早"（DUCK 病程：熵 7.7→-2.0 穿零）。</p>
-<p><strong>移植价值</strong>：W2 若再遇熵衰减过快，除调 entropy_coef 外多一个正则形态选项。</p>
-<h3 id="2-bandpoarxiv2603040452026-03-05">2. BandPO：概率感知界（arXiv:2603.04045，2026-03-05）</h3>
-<p>弥合信赖域与 ratio clipping：现有 PPO 实现里 clip 是盲的（不知道概率质量的分布），BandPO 用概率感知界替代。对输出分布尖锐化（DUCK TRANS4 死前形态）时 ratio 估计失真有直接抑制作用。</p>
-<h3 id="3-safearxiv2602043182026-02-04">3. SAFE：熵感知预测控制对齐（arXiv:2602.04318，2026-02-04）</h3>
-<p>用 MPC 式预测控制做稳定对齐微调，显式管理熵水平——把"熵不坍缩"当约束而非超参艺术。</p>
-<h3 id="4-soft-sequence-policy-optimizationarxiv2602xxxx2026-02-22">4. Soft Sequence Policy Optimization（arXiv:2602.xxxx，2026-02-22）</h3>
-<p><strong>序列策略优化 + soft 化</strong>——直接命中"序列模型（transformer）做策略"的稳定性主题。LLM-RL 里 sequence-level 的信用分配与方差控制是热点，与机器人 TRANS 策略的序列输出同理。</p>
-<h2 id="trans">机器人侧：TRANS 策略的正确打开方式（三条证据）</h2>
-<p>LLM-RL 的解法是"改优化器/正则"，机器人侧 2026 年的文献给出了另一组证据——TRANS 策略稳不稳，架构与数据编排比优化器超参更根本：</p>
-<h3 id="5-recoverformerarxiv260422911-transformer">5. RecoverFormer（arXiv:2604.22911）— 因果 transformer 策略可以很稳</h3>
-<p>50 步观测历史因果 transformer + 潜在模式头，+25% 质量错配下 75.5% 恢复率、30ms 延迟下 89%——<strong>transformer 策略本身不是不稳定的原罪</strong>，配套设计（因果掩码、模式头、接触头监督）到位时鲁棒性极高。</p>
-<h3 id="6-arxiv260621562">6. 观测历史蒸馏（arXiv:2606.21562）— 关键论断</h3>
-<blockquote>
-<p>"性能差距不源于架构限制，而源于<strong>学习压缩过去信息的方式不同</strong>"</p>
-</blockquote>
-<p>循环/窗口 transformer 与全历史 transformer 的差距在压缩策略，不在架构。直接监督学生记忆对齐教师瓶颈表征即可大幅缩小差距。这给 DUCK 的启示：<strong>64 帧滑窗 TRANS 学不好时，问题可能不在窗口长度，而在窗口内信息没有被显式压缩目标监督</strong>——W2 之后若 TRANS 仍弱于 MLP，可试验"MLP 教师蒸馏 TRANS 学生"（DUCK 已有横评冠军 MLP 模型可当教师）。</p>
-<h3 id="7-transcurriculumarxiv2603xxxx2026-03-14">7. TransCurriculum（arXiv:2603.xxxx，2026-03-14）— 多维课程</h3>
-<p>Fast &amp; Stable Locomotion 的课程学习框架，与 DUCK 已有的 curriculum（action_rate -0.1→-1.0）同型但多维化。TRANS 策略对课程编排更敏感（序列模型梯度信噪比低），W2 若启动失败可先检查课程曲线是否对 TRANS 过陡。</p>
-<h2 id="duck-w2">对 DUCK W2 的判读坐标（决策表）</h2>
+<h2 id="_1">查询拓展</h2>
+<p>DUCK 的 TRANS 路线连吃三败：H1T 熵坍缩（entropy=-0.69）、TRANS4 急性 farming（value_loss 0.19→52.7 爆炸、reward -268 断崖、熵_coef 四调 0.02/0.01/0.005/0.0075 全失败）。用户已明确"我更喜欢 transformer""两架构缺一不可"，W2（W1 配方 + TRANS + F1 σ-gate）是 TRANS 复活的最后一搏。本笔记扫描 2026 年序列/transformer 策略训练稳定性的文献面，回答三个查询：① TRANS 策略的失稳机理有哪些理论解释？② LLM-RL 社区的熵管理解法能否移植到机器人？③ 若 W2 再败，下一代 TRANS 的设计选项是什么？</p>
+<p>一个结构性发现先行：arXiv 上 "entropy collapse + PPO" 的 2026 年命中几乎全部来自 <strong>LLM 推理强化学习（RLVR/RLHF）</strong>，机器人侧 transformer 策略论文很少把熵动力学当核心贡献点。这意味着 DUCK 遇到的 TRANS 熵坍缩是跨域共性问题——两边用同一套 PPO/ratio-clipping 数学，LLM-RL 的解法可以移植。</p>
+<h2 id="_2">内容整理</h2>
+<h3 id="a-llm-rl-2026">A. LLM-RL 侧：熵坍缩的四个 2026 解法</h3>
+<table>
+<thead>
+<tr>
+<th>文献</th>
+<th>日期</th>
+<th>核心机制</th>
+<th>对 TRANS 策略的适配点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimistic Policy Regularization</td>
+<td>2026-03-06</td>
+<td>反转传统 KL/熵正则的"悲观"限制，主动维持探索覆盖</td>
+<td>熵衰减过快时的正则形态选项</td>
+</tr>
+<tr>
+<td>BandPO（arXiv:2603.04045）</td>
+<td>2026-03-05</td>
+<td>概率感知界弥合信赖域与 ratio clipping——clip 不再对概率质量分布盲</td>
+<td>抑制输出分布尖锐化时 ratio 估计失真（TRANS4 死前形态）</td>
+</tr>
+<tr>
+<td>SAFE（arXiv:2602.04318）</td>
+<td>2026-02-04</td>
+<td>熵感知预测控制（MPC 式）做稳定对齐——熵不坍缩当约束而非超参艺术</td>
+<td>把熵管理从"调 coef"升级为"显式约束"</td>
+</tr>
+<tr>
+<td>Soft Sequence Policy Optimization</td>
+<td>2026-02-22</td>
+<td>序列级策略优化 + soft 化，直接针对序列模型策略的信用分配与方差</td>
+<td>序列输出策略（transformer）的方差控制</td>
+</tr>
+</tbody>
+</table>
+<h3 id="b-trans">B. 机器人侧：TRANS 策略可以很稳的三条证据</h3>
+<ol>
+<li><strong>RecoverFormer（arXiv:2604.22911）</strong>：50 步观测历史因果 transformer + 潜在模式头 + 接触可供性头，Unitree G1 上 +25% 质量错配 75.5% 恢复率、30ms 延迟 89%、100-300N 推扰开场地→有墙环境零样本 100%。transformer 策略本身不是不稳定的原罪，配套设计到位时鲁棒性极高。</li>
+<li><strong>观测历史蒸馏（arXiv:2606.21562）</strong>：关键论断——循环/窗口 transformer 与全历史 transformer 的性能差距"不源于架构限制，而源于学习压缩过去信息的方式不同"；直接监督学生记忆对齐教师瓶颈表征可大幅缩小差距。启示：64 帧滑窗 TRANS 学不好时，问题可能不在窗口长度，而在窗口内信息没有被显式压缩目标监督。</li>
+<li><strong>TransCurriculum（2026-03-14）</strong>：Fast &amp; Stable Locomotion 的多维课程学习框架，与 DUCK 现有 curriculum（action_rate -0.1→-1.0）同型但多维化。TRANS 策略对课程编排更敏感（序列模型梯度信噪比低）。</li>
+</ol>
+<h3 id="c-trans4">C. 病程对照：TRANS4 的死法在文献坐标里的位置</h3>
+<p>TRANS4 实测六点采样：熵 7.71→5.8→0.002→-2.0（先坍缩）→ value_loss 0.19→52.7（后爆炸）→ reward -268 断崖、action_rate -8.1 乱动、熵回弹 0.77（策略变随机）。这符合"尖锐策略→advantage 估计失真→价值函数追不上→PPO 更新方向错"的级联，BandPO 论文描述的 ratio 失真与 SAFE 描述的熵管理缺位分别对应级联的第 1、2 环。</p>
+<h2 id="_3">归纳总结</h2>
+<ol>
+<li><strong>熵坍缩研究主战场在 LLM-RL 不在机器人</strong>——跨域移植是合法操作（同为 PPO 数学），DUCK 无需等机器人社区给出答案。</li>
+<li><strong>transformer 策略不稳的锅在"优化器-架构失配"不在架构本身</strong>——RecoverFormer 证明配套设计到位的因果 transformer 策略极其鲁棒。</li>
+<li><strong>压缩监督是被忽视的杠杆</strong>——64 帧滑窗缺的不是长度而是显式压缩目标；MLP 冠军蒸馏 TRANS 学生是有文献依据的下一代选项。</li>
+<li><strong>熵_coef 盲调已穷尽</strong>——四调全败（0.02/0.01/0.005/0.0075）与文献共识一致：熵管理需要机制化（正则/界/约束），不是超参艺术。</li>
+<li><strong>课程编排对 TRANS 更敏感</strong>——W2 若启动失败，先查课程曲线陡度再怪架构。</li>
+</ol>
+<h2 id="_4">趋势判断</h2>
+<ul>
+<li><strong>短期（W2 判读窗口）</strong>：σ-gate 稳 value + H1YAW 配方稳奖励的工程拼接若成功，验证"两半各取一半"路线；若失败，按决策表转正则/蒸馏，不再碰 entropy_coef。</li>
+<li><strong>中期</strong>：LLM-RL 的熵管理工具（BandPO 式界、乐观正则）向机器人策略训练扩散是大概率事件——两边共享 PPO 内核，迁移成本低。</li>
+<li><strong>长期</strong>：序列策略的"压缩监督"（蒸馏瓶颈表征）可能成为标准配置，正如 obs 归一化从 trick 变成默认。</li>
+</ul>
+<h2 id="_5">拓展应用推荐</h2>
+<ol>
+<li><strong>W2 训练判读决策表</strong>（直接可用）：</li>
+</ol>
 <table>
 <thead>
 <tr>
@@ -486,7 +528,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 <tr>
 <td>熵穿零 + value_loss 同步爬升</td>
-<td>TRANS4 复现（尖锐策略→advantage 失真→value 爆）</td>
+<td>TRANS4 复现（尖锐→advantage 失真→value 爆）</td>
 <td>立即 kill，转 F2：乐观正则/BandPO 式界</td>
 </tr>
 <tr>
@@ -502,19 +544,21 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <tr>
 <td>TRANS 恒弱于同配方 MLP</td>
 <td>压缩策略未学到位（2606.21562）</td>
-<td>蒸馏路线：MLP 冠军教师→TRANS 学生</td>
+<td>蒸馏：MLP 冠军教师→TRANS 学生</td>
 </tr>
 </tbody>
 </table>
-<p><strong>核心判断</strong>：H1T/TRANS4 的连败更可能是"序列策略 + 现有 PPO 超参组合"的优化器-架构失配，而非 transformer 不适合 DUCK。文献面显示 2026 年两个社区（LLM-RL 的熵管理与机器人 TRANS 架构设计）各自解决了问题的一半，DUCK 的 W2（σ-gate 稳 value + H1YAW 配方稳奖励）恰好是两半的工程拼接——方向对，但若再败，下一代按上表转正则/蒸馏，不再盲调 entropy_coef（四调全败已是证据）。</p>
-<h2 id="duck">与既有 DUCK 文档的互链</h2>
+<ol>
+<li><strong>MLP→TRANS 蒸馏路线</strong>：DUCK 已有四模型横评冠军 H1YAW（MLP），可当教师监督 TRANS 学生的窗口压缩——比从零训 TRANS 便宜且有文献背书。</li>
+<li><strong>守护 cron 判据升级</strong>：现役 duck-train-guard-15min 的熵/value 阈值判读可吸收本表，区分"正常确定性化"与"坍缩前奏"。</li>
+</ol>
+<h2 id="_6">指南分析</h2>
 <ul>
-<li>docs/71 H1T 熵坍缩原始案例（entropy -0.69）</li>
-<li>docs/81 TRANS 熵坍缩 + 修复三件套（entropy_coef 0.02/lr 0.0007/sym 0.05）</li>
-<li>docs/86 §16 TRANS4 急性 farming 解剖（value 爆炸型死亡）+ W1/W2 方案</li>
-<li>笔记《2026-09-19-熵保持强化学习与PPO熵坍缩修复.md》（前作，本文是 TRANS 专项续篇）</li>
+<li><strong>现路线不动</strong>：W1/W2 按计划验收（评测即杀铁律），本笔记只提供判读坐标和败后路线图，不干预在训实验。</li>
+<li><strong>证据边界</strong>：本笔记基于 arXiv 摘要级扫描（全文未精读），LLM-RL 侧解法（BandPO/SAFE/乐观正则）在机器人 TRANS 上的实证效果无直接文献支持，移植属合理推断而非已验证事实。</li>
+<li><strong>互链</strong>：docs/71（H1T 熵坍缩原始案例）、docs/81（修复三件套）、docs/86 §16（TRANS4 急性 farming 解剖+W1/W2 方案）、《2026-09-19-熵保持强化学习与PPO熵坍缩修复.md》（前作，本文为 TRANS 专项续篇）。</li>
 </ul>
-<h2 id="_2">来源</h2>
+<h2 id="_7">来源</h2>
 <ul>
 <li>Optimistic Policy Regularization — arXiv:2603.06133 (2026-03-06)</li>
 <li>BandPO — arXiv:2603.04045 (2026-03-05)</li>
@@ -523,7 +567,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <li>RecoverFormer — arXiv:2604.22911 (2026-04-24)</li>
 <li>Compressing Observation History — arXiv:2606.21562 (2026-06-19)</li>
 <li>TransCurriculum — arXiv:2603.xxxx (2026-03-14)</li>
-<li>检索方式：arXiv API 直连（Tavily 432 / 智谱 -401 双故障夜）</li>
+<li>检索方式：arXiv API 直连（Tavily 432 / 智谱 -401 双故障夜，降级链第三级）</li>
 </ul>
 </body>
 </html>
