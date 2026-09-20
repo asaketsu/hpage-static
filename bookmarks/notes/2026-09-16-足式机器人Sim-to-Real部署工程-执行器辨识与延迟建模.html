@@ -1,4 +1,366 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>足式机器人Sim-to-Real部署工程-执行器辨识与延迟建模</title>
+
+<meta property="og:title" content="足式机器人Sim-to-Real部署工程-执行器辨识与延迟建模" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech-blue" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-09-16-%E8%B6%B3%E5%BC%8F%E6%9C%BA%E5%99%A8%E4%BA%BASim-to-Real%E9%83%A8%E7%BD%B2%E5%B7%A5%E7%A8%8B-%E6%89%A7%E8%A1%8C%E5%99%A8%E8%BE%A8%E8%AF%86%E4%B8%8E%E5%BB%B6%E8%BF%9F%E5%BB%BA%E6%A8%A1.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +436,164 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="sim-to-real">足式机器人 Sim-to-Real 部署工程：执行器辨识与延迟建模的系统化方法</h1>
+<blockquote>
+<p>探索日期：2026-09-16 ｜ 兴趣等级：L3 ｜ 来源：5 篇（IJRR 2026 + MIT + MDPI + 实践博客）<br />
+关联项目：DUCK-Pi_5 V7 双路训练（position 域，今晨训完待部署评估）<br />
+前序笔记：2026-09-14-足式机器人跌倒爬起策略 / 2026-09-15-GPO生长式策略优化</p>
+
+<p class="meta-date">生成日期 2026-09-16</p></blockquote>
+<h2 id="_1">核心命题</h2>
+<p>Sim-to-Real 的瓶颈不在"多加域随机化"，而在<strong>把仿真执行器建得像真执行器</strong>。2026 年的前沿共识是：域随机化解决"分布外鲁棒性"，执行器动力学辨识解决"分布内保真度"，两者缺一不可——而后者恰是低成本硬件平台（如 STS 舵机）最常缺的一环。</p>
+<h2 id="_2">核心发现</h2>
+<h3 id="1-eth-pace-actuator-networkijrr-2026">1. ETH PACE 框架：白盒执行器辨识优于黑盒 Actuator Network（IJRR 2026）</h3>
+<p>ETH Zürich Hutter 组的系统性 sim-to-real 框架（arXiv:2509.06342，IJRR 2026 正式发表）：</p>
+<pre><code>自底向上三层辨识：
+① 单执行器台架表征（悬空、无接触 chirp 激励）
+② 全系统级动力学参数估计
+③ 跨平台运动控制验证（ANYmal + 多形态）
+</code></pre>
+<ul>
+<li>对比基线 = ANYbotics 的 LSTM Actuator Network（黑盒学习执行器模型）</li>
+<li>结论：<strong>物理落地的白盒辨识（PACE）匹配或超越黑盒 actuator network</strong>，且可解释、可迁移</li>
+<li>关键量化：高负载 locomotion 增益（P=60 N·m/rad, D=2）下，二阶模型在 <strong>4.35 Hz 出现增益跌落</strong>——舵机内环带宽是策略可用水频段的硬上限</li>
+</ul>
+<h3 id="2-mit-uan-real-to-sim">2. MIT UAN：无监督执行器网络做 real-to-sim 校正</h3>
+<p>MIT 的 Unsupervised Actuator Network（RSC 论文）走第三条路：</p>
+<ul>
+<li>映射关系：<strong>关节位置/速度误差历史 → 修正力矩 δτ</strong>（不学完整动力学，只学残差）</li>
+<li>管线：UAN 训练 → WBC 用随机运动参考预训练 → UAN 在环微调 athletic 任务 → 部署</li>
+<li>定位：为<strong>复杂传动机构</strong>（谐波减速/连杆传动）闭合 sim-to-real 差距——正是 DUCK 摆臂连杆 + STS 舵机减速箱的场景</li>
+</ul>
+<h3 id="3">3. 延迟建模是被低估的杀手</h3>
+<p>实践 playbook（2026-01）点名最大盲区：</p>
+<blockquote>
+<p>"Policies trained with 'perfect timing' often break hardest when timing becomes imperfect."</p>
+</blockquote>
+<p>标准注入配方：</p>
+<pre><code>obs_delay_ms   = (0, 40)    # 观测延迟
+act_delay_ms   = (0, 30)    # 动作延迟
+motor_strength = (0.85, 1.05)  # 电机强度乘数
+sensor_noise   = (0.0, 0.02)
++ 控制周期抖动（rate jitter）
+</code></pre>
+<p>DUCK 部署栈 v4 是 50Hz SyncRead+SyncWrite，串口往返 + 舵机响应延迟毫秒级抖动客观存在，当前训练管线未见延迟注入——这是 V7 部署前值得补的一项。</p>
+<h3 id="4">4. 域随机化的"有计划"配方（数字可直接抄）</h3>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>范围</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>摩擦系数</td>
+<td>[0.1, 2.0]</td>
+<td>地面/脚垫</td>
+</tr>
+<tr>
+<td>基座质量</td>
+<td>±5 kg</td>
+<td>负载变化</td>
+</tr>
+<tr>
+<td>PD 增益</td>
+<td>随机化</td>
+<td>对抗标称值误差</td>
+</tr>
+<tr>
+<td>推力扰动</td>
+<td>随机冲量</td>
+<td>push recovery</td>
+</tr>
+<tr>
+<td>action_scale</td>
+<td>0.25</td>
+<td>位置目标缩放</td>
+</tr>
+<tr>
+<td>decimation</td>
+<td>10</td>
+<td>1000Hz 物理 → 100Hz 策略</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5-sim-to-sim">5. Sim-to-Sim 交叉验证是硬件部署前的标准闸门</h3>
+<p>成熟管线（rl-bipedal-walking 等）普遍插入 <strong>Isaac → MuJoCo 的 sim-to-sim 验证步</strong>：用第二物理引擎交叉验证策略，防止"过拟合到单一引擎的物理怪癖"。DUCK 训练（AutoDL Isaac）→ 部署（asa MuJoCo）链路天然就是这个结构，asa 侧验证失败应首先怀疑域失配而非策略本身。</p>
+<h2 id="duck-pi_5">与 DUCK-Pi_5 的映射</h2>
+<table>
+<thead>
+<tr>
+<th>论文机制</th>
+<th>DUCK 现状</th>
+<th>改进建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ETH chirp 悬空辨识</td>
+<td>STS 舵机仅有 FD 软件读数 + 零位台账</td>
+<td>悬空发小幅扫频 step 序列，记录响应延迟/超调 → 估二阶模型带宽</td>
+</tr>
+<tr>
+<td>UAN 残差修正</td>
+<td>无（XML 原生 position kp≈0.5 直用）</td>
+<td>若 V7 部署站不稳，先辨识再考虑残差网络</td>
+</tr>
+<tr>
+<td>延迟注入</td>
+<td>无</td>
+<td>训练域加 obs/act delay 20-40ms 随机化，V8 候选项</td>
+</tr>
+<tr>
+<td>Sim-to-sim 闸门</td>
+<td>✅ 已有（asa headless_test）</td>
+<td>保持，失败先查执行器域（铁律已固化）</td>
+</tr>
+<tr>
+<td>motor_strength 随机化</td>
+<td>无</td>
+<td>kp 随机化 ±15% 覆盖舵机个体差异</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键洞察</strong>：用户 09-15 六轮实测的"执行器域匹配铁律"（BAM kp200 域训的 v22a 在 position 域 0.2s 崩）本质就是 PACE 论文说的增益失配极端案例（100× 刚度差）。V7 回到 position 域训练是正确方向；下一步的真机差距大概率来自<strong>延迟与摩擦</strong>，而非刚度。</p>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li><strong>P0（V7 部署评估时）</strong>：若 asa 仿真稳但真机抖动/失稳，优先测舵机实际延迟（串口 echo 时间戳），对齐 50Hz 控制环预算</li>
+<li><strong>P1（V8 配方）</strong>：加 obs/act delay 注入 + kp ±15% 随机化，成本一行配置，直接提升真机迁移率</li>
+<li><strong>P2</strong>：悬空 chirp 辨识 STS 舵机二阶参数，写进 duck_pi5.yaml 作为标定资产</li>
+</ol>
+<h2 id="_3">关键风险与盲点</h2>
+<ul>
+<li>ETH PACE 的对比基线是 ANYbotics 官方 LSTM actuator network 的<strong>部署版而非重训版</strong>（原始训练集不可得）——"白盒优于黑盒"的结论在低成本舵机场景未必成立（来源：官方论文 v2，社区验证有限）</li>
+<li>vnrobo/Medium 配方数字来自 humanoid 大厂平台（Unitree H1/XBot-L），STS 舵机带宽低一个量级，随机化范围需缩窄</li>
+<li>UAN 需要 WBC 预训练 + 参考轨迹，对纯 MLP 策略栈（rsl_rl）的迁移成本未验证</li>
+</ul>
+<h2 id="_4">一页速查</h2>
+<blockquote>
+<p><strong>Sim-to-Real 三层保险</strong>：①执行器建模（白盒辨识 PACE / 黑盒 AN / 残差 UAN）→ ②域随机化（摩擦/质量/增益/延迟）→ ③sim-to-sim 交叉验证。<br />
+<strong>延迟注入标准配方</strong>：obs (0,40)ms + act (0,30)ms + motor_strength (0.85,1.05)。<br />
+<strong>增益带宽硬上限</strong>：舵机内环增益跌落频率（4.35Hz@P60/D2）决定策略可用频段。<br />
+<strong>DUCK 判定序</strong>：asa 站不稳 → 查执行器域匹配 → 查延迟预算 → 才怀疑奖励设计。</p>
+</blockquote>
+<h2 id="_5">待深入</h2>
+<ul>
+<li>PACE 的 chirp 激励信号设计（频率扫描范围/幅值）——需要读原文 Section III</li>
+<li>action_delay 对 50Hz 控制环的具体影响量化（1 个周期 = 20ms，已占配方预算一半）</li>
+</ul>
+<h2 id="_6">来源列表</h2>
+<ul>
+<li>ETH IJRR 2026: arXiv:2509.06342 (Bjelonic, Tischhauser, Hutter) — PACE 框架 + 白盒执行器辨识</li>
+<li>MIT RSC: uan.csail.mit.edu/rsc/paper.pdf — Unsupervised Actuator Network</li>
+<li>MDPI Machines 2026, 14(9):1031 — 高减速比四足执行器动力学扩展辨识</li>
+<li>vnrobo.com/en/blog/rl-bipedal-walking — RL 双足全管线实践（obs/reward/DR 数字）</li>
+<li>github.com/darshmenon/rl-bipedal-walking — sim-to-sim + ROS2 部署参考实现</li>
+<li>Medium: Sim-to-Real RL: Closing the Gap Without Magic — 延迟建模配方</li>
+</ul>
+<hr />
+<p><em>笔记日期：2026-09-16 ｜ 来源：IJRR 2026 精读 + 5 源交叉 ｜ 关联项目：DUCK-Pi_5</em></p>
+</body>
+</html>
