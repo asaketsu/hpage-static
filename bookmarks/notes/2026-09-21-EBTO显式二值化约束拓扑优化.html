@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EBTO显式二值化约束拓扑优化</title>
+
+<meta property="og:title" content="EBTO显式二值化约束拓扑优化" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="ebto">EBTO：把拓扑优化的"黑白化"写成显式约束</h1>
+<blockquote>
+<p>原文：微信公众号（力见万物——力学/材料/AI/Physical AI 论文解读）<br />
+URL_ID: mid=2247486146&amp;sn=8fd7415f14e75265155a29eadd93b178<br />
+论文：Tao Xu, Yi Min Xie, Jie Yang. A continuous topology optimization framework using an explicit binarization constraint. <strong>CMAME 452 (2026) 118724</strong>. DOI: 10.1016/j.cma.2025.118724<br />
+阅读日期：2026-09-21 | 评分：★★★★☆（4/5，方法论清晰，航空结构直接可用）<br />
+tag: #拓扑优化 #EBTO #二值化 #SIMP #柔顺机构 #应力最小化 #CMAME #结构设计</p>
+
+<p class="meta-date">生成日期 2026-09-21</p></blockquote>
+<h2 id="_1">一、核心问题与解法</h2>
+<p><strong>痛点</strong>：固定网格拓扑优化中连续变量方便梯度求解，但留下难制造、难解释的灰度单元；传统 SIMP 把二值化与材料惩罚绑定（惩罚系数调"灰"是隐式技巧）。</p>
+<p><strong>EBTO 核心变化</strong>：把全局灰度写成优化问题中的<strong>显式可微不等式约束</strong>，与材料模型解耦——弹性模量直接用线性插值 E(x)=xE₁，设计变量保持清晰的体积分数含义。</p>
+<p>灰度度量函数演进：<br />
+- 基础版：γ=4x(1−x)（x=0/1 时灰度为 0，x=0.5 最灰），但靠近 0/1 时推动力偏弱<br />
+- 可调版：<strong>有理二次函数 γ_rq</strong>，参数 κ 控制斜率——中间区域保留搜索自由，变量靠近边界时获得更强二值化推动<br />
+- 全局约束：所有单元灰度取平均得 Γ_rq ≤ 阈值（从宽松逐步收紧）</p>
+<h2 id="_2">二、三场框架与"收敛≠可用"的关键设计</h2>
+<p>设计场—滤波场—物理场三场结构：MMA 更新设计变量，距离滤波控制网格依赖与最小尺度，Heaviside 投影消除滤波模糊，<strong>真正压灰度的是显式约束</strong>（投影与二值化约束承担两件不同的事）。</p>
+<p>最有工程价值的一环——<strong>"平滑—重离散—验证"循环</strong>：<br />
+1. 收敛后从离散密度场提取平滑 0/1 边界<br />
+2. 投影回原有限元网格重新分析<br />
+3. 目标函数、约束值、设计差异三项都 &lt;1% 容差才接受最终结构，否则继续收紧阈值</p>
+<p>这一步把"数值收敛"与"最终几何性能"真正接了起来——数值收敛不等于可用结构。</p>
+<h2 id="_3">三、跨目标验证结果（论文核心证据链）</h2>
+<table>
+<thead>
+<tr>
+<th>算例</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2D half-MBB 梁</td>
+<td>平滑结构柔度比同后处理 SIMP 低 <strong>2.30%–4.52%</strong>；比同线性材料的 FPTO 低 1.19%–3.51%（全测试半径）</td>
+</tr>
+<tr>
+<td>3D 悬臂</td>
+<td>滤波半径增大，结构从薄壳/板状渐转桁架状——框架直接延伸三维</td>
+</tr>
+<tr>
+<td>柔顺夹持器</td>
+<td>水平输入转化为竖向夹持位移</td>
+</tr>
+<tr>
+<td>牛腿应力优化</td>
+<td>p=28 时最大 von Mises 应力从柔度最优方案的 333.22 MPa 降至 <strong>124.73 MPa（降幅 62.57%）</strong>；L 形支架同趋势</td>
+</tr>
+</tbody>
+</table>
+<p>论文真正要证明的不是单个算例"赢了"，而是<strong>显式二值化约束能跨目标函数重复工作</strong>。</p>
+<h2 id="_4">四、约束函数设计五原则（可复用的方法论）</h2>
+<ol>
+<li>0/1 端点必须为零、中间状态为正</li>
+<li>最好归一化，使阈值有直观尺度</li>
+<li>连续可微且边界梯度有限</li>
+<li>整体保持凹性——帮助 MMA 构造保守近似</li>
+<li>有参数控制二值化推动强度</li>
+</ol>
+<p>论文定位转变：<strong>二值化从"技巧"变成"原则"</strong>——从藏在惩罚/投影/参数经验里，变成可测量、可求导、可调节的数学约束。下一步方向：多材料、壳—填充、屈曲约束、微结构、多物理场。</p>
+<h2 id="_5">五、💡 对我们的价值分析</h2>
+<h3 id="_6">✅ 已在做的（印证方向）</h3>
+<ul>
+<li><strong>结构设计课题链</strong>：AI赋能结构设计/垂域LLM指导航空结构设计系列笔记已有拓扑优化综述语境，EBTO 是其中"二值化"分支的 2026 最新进展</li>
+<li><strong>验证门禁思想同构</strong>：论文"收敛≠可用，平滑-重离散-验证循环"与我们的验证门禁（数值指标≠功能指标，须 headless_eval+实机双验收）完全同构——DUCK 训练"ep_len/reward 收敛≠会走"与"拓扑收敛≠可制造"是同一个命题</li>
+</ul>
+<h3 id="_7">⚠️ 可改进的（差距）</h3>
+<ul>
+<li>航空结构拓扑优化落地的经典障碍（灰度单元→ manufacturability）正是 EBTO 靶向的问题——课题组若还在用纯 SIMP，这是升级契机</li>
+<li>"平滑—重离散—验证"循环在 CAD 落地侧对应"拓扑结果→CATIA 可编辑模型"的转换（与达索 BREP 转参数化同题）</li>
+</ul>
+<h3 id="_8">🔥 重点行动</h3>
+<ol>
+<li><strong>周论文选题候选</strong>：EBTO 可作为"显式约束化"范式的案例进周论文——命题已备好："把隐式技巧升级为显式数学约束"（与 ROSClaw 把隐性物理知识变成机器契约、达索把 AI 幻觉约束为物理推演，三篇同周阅读构成同一元趋势：<strong>工程知识的显式契约化</strong>）</li>
+<li><strong>课题申报引用</strong>：EBTO+柔度/应力双数据（62.57% 应力降幅）适合"国内外研究现状"章节的 2026 引用</li>
+<li>若做拓扑优化工具链调研：关注作者团队（RMIT 创新结构与材料中心 Xie YM 组——BESO 方法发源地）后续多材料/屈曲扩展</li>
+</ol>
+<h2 id="_9">六、内容整理（归纳总结与关联分析）</h2>
+<p><strong>归纳总结</strong>：EBTO = 灰度度量 γ_rq（κ 可调，近边界推动强）+ 全局灰度约束 Γ_rq ≤ 阈值（渐进收紧）+ 线性材料 E=xE₁ + 收敛后"平滑-重离散-验证"循环（&lt;1% 三项容差）。一句话：把拓扑优化的黑白化从惩罚技巧升格为显式数学约束，换来清晰物理意义+跨目标复用+可制造 0/1 结构。关键数字：SIMP 对比降柔度 2.3-4.5%、应力降 62.57%、容差 1%。</p>
+<p><strong>关联分析</strong>：本周三篇笔记（达索/ROSClaw/EBTO）呈现同一元趋势——<strong>把工程实践中依赖经验和隐性知识的环节（AI 黑盒/物理参数/二值化技巧）显式化为可验证的数学契约</strong>。达索用"物理世界模型"约束 AI，ROSClaw 用 digest/Verifier 约束 Agent，EBTO 用不等式约束灰度——三个领域独立收敛到同一范式，这本身是比单篇论文更强的信号，值得作为周综合的归纳命题。</p>
+<h2 id="_10">七、查询拓展</h2>
+<ul>
+<li>原文检索：DOI 10.1016/j.cma.2025.118724（CMAME 2026, 452:118724）</li>
+<li>对比方法链：SIMP（惩罚式）→ FPTO（线性材料+投影）→ EBTO（显式约束）的演化脉络</li>
+<li>Xie YM 组 BESO（双向进化结构优化）——同组的另一条技术路线，与 EBTO 的连续/离散分野</li>
+<li>跟踪：显式约束进入多材料/屈曲/微结构的后续论文（预计 2026-2027）</li>
+</ul>
+<h2 id="_11">八、趋势判断</h2>
+<ol>
+<li><strong>拓扑优化研究重心从"拓扑生成"移向"工程可用性"</strong>：灰度/可制造性/重离散验证这些"最后一公里"问题成为 CMAME 级论文的主战场——纯新算法空间收窄</li>
+<li><strong>"显式约束化"是结构优化领域对可解释/可控需求的回应</strong>：与 AI 领域 constraint-based generation（guided decoding/outlines）方法论同构</li>
+<li><strong>航空结构落地顺序预测</strong>：先静强度类问题（本文牛角/支架算例已证明），后屈曲/疲劳（需约束函数扩展），多材料最后</li>
+<li><strong>验证环节会成为标配</strong>：不提供"平滑-重离散-验证"闭环的拓扑优化论文将越来越难发——与 ML 领域 reproducibility checklist 的演化路径一致</li>
+</ol>
+<h2 id="_12">九、指南分析（怎么用这篇文章）</h2>
+<ul>
+<li>快速吃透方法：按"γ_rq 灰度函数→全局约束渐进收紧→三场分工→平滑验证循环"四步读，第二节是精髓</li>
+<li>引用进课题：直接用第三节数据表（MBB 柔度对比+62.57% 应力降幅）作现状综述素材</li>
+<li>方法论迁移：约束函数五原则（第四节）可迁移到任何"需要把软目标变成硬约束"的优化场景（含我们的训练 reward→constraint 设计）</li>
+</ul>
+<h2 id="_13">十、拓展应用推荐</h2>
+<ul>
+<li>与 [[2026-04-27-AI赋能结构设计研究现状与课题申报]]、[[2026-04-27-垂域LLM指导航空结构设计]] 并读——补 2026 拓扑优化最新分支</li>
+<li>与 [[2026-09-21-ROSClaw-Physical-AI-Harness-MuJoCo物理实验室]]、[[2026-09-21-达索全线AI化-LEO与CATIA虚拟伙伴]] 构成"工程知识显式契约化"三部曲——周综合归纳的现成命题</li>
+<li>每周论文计划：第五节行动 1 的选题思路已成型，可直接进转化队列</li>
+</ul>
+</body>
+</html>
