@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EPIG-Tree梯度效率树分支计算最优</title>
+
+<meta property="og:title" content="EPIG-Tree梯度效率树分支计算最优" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="epig-tree">EPIG-Tree：面向梯度效率的强化学习计算最优分支</h1>
+<blockquote>
+<p>深读笔记 · 2026-09-22 · arXiv 2609.20004<br />
+作者：Nikita Khomich, Leopold Hermansson, Ido Hakimi 等（Tzafon AI）<br />
+关联：DUCK TRANS4 熵坍缩诊断 · GRPO/PPO 信用分配 · 树 rollout 计算分配理论</p>
+
+<p class="meta-date">生成日期 2026-09-22</p></blockquote>
+<h1 id="_1">强化学习 #策略梯度 #树搜索 #信用分配 #计算最优</h1>
+<h2 id="_2">出处/来源</h2>
+<ul>
+<li>arXiv:2609.20004v1，2026-09-17 提交</li>
+<li>标题：EPIG-Tree: Compute-Optimal Branching for Gradient-Efficient Reinforcement Learning</li>
+<li>全文 HTML 直读（147KB，S1-S10 完整提取）</li>
+</ul>
+<h2 id="_3">查询拓展</h2>
+<p>DUCK TRANS4 死于"熵先坍缩→value 后爆→reward 断崖"级联，本质是 PPO 单标量优势估计在随机环境中的信用分配失真。本文给出这个问题最干净的理论框架：<strong>树 rollout 是估计策略梯度的实验装置，分支应该加在"每单位成本最大降低梯度估计误差"的地方——不是策略不确定的地方</strong>。这直接回答 DUCK 训练体系的一个悬而未决的问题：如果未来用树采样/多分支 rollout 加速 TRANS 训练（当前平坦 rollout），分支点怎么选？熵是不是好指标？本文结论：熵只是提案机制，不是分配目标。</p>
+<h2 id="_4">内容整理</h2>
+<h3 id="grpoppo-s1">GRPO/PPO 单标量优势的三个结构性失败模式（S1）</h3>
+<ol>
+<li><strong>恢复行为信用错配</strong>：轨迹中途犯错但后续动作正确而失败 → 整条轨迹组相对奖励为负 → 正确的恢复动作也被惩罚。反之侥幸成功的轨迹里坏动作被强化。恢复行为不是长视野信用分配的特例，而是"一条路径一个标量"的直接后果。</li>
+<li><strong>非确定性处理低效</strong>：随机环境中终端奖励是 Q(h,a)=E[Y|h,a] 的噪声观测。单轨迹把策略选择与环境随机性混在一起——环境随机毁掉好动作会被惩罚，随机救了坏动作会被强化。估计条件后继价值需要从同一状态重复采样反事实后缀。</li>
+<li><strong>rollout 数扩展性差</strong>：增加独立全轨迹只增加低重要性差异（格式/噪声），不提供学习信号。</li>
+</ol>
+<h3 id="s4proposition-1">核心理论：方差分解定理（S4，Proposition 1）</h3>
+<p>单样本局部梯度贡献 Z_h = μ_h·ψ_h(A)·Y 的方差按全方差律分解为两项：</p>
+<ul>
+<li><strong>决策不确定性</strong>（decision uncertainty）：μ²·Var_A[ψ_h(A)·Q_h(A)] —— 该在哪个动作上分支</li>
+<li><strong>后继不确定性</strong>（continuation uncertainty）：μ²·E_A[ψψᵀ·σ²_h(A)] —— 该在已有分支下加多少后缀样本</li>
+</ul>
+<p>对应两个计算动作：<strong>加新分支降前者；加后缀样本降后者</strong>。由此导出计算最优后缀分配律 n_e* ∝ w_e·‖∇log π(a_e|h_e)‖·σ_e/√c_e（占用权重×score 范数×价值标准差/成本平方根）。</p>
+<h3 id="epig-s6">EPIG 算法骨架（S6）</h3>
+<p>熵提案候选分支点（推理步边界/高熵 token 段）→ EPIG 分数分配分支预算（只加有正边际增益的分支）→ 按分配律配置后缀 rollout → 树内局部优势 Â(h,a)=V̂(child)−V̂(h) → PPO/GRPO 式裁剪更新（带动作 token/分支段掩码，优势只训练引发分支的 token）。</p>
+<h3 id="s7-s8">关键实验结果（S7-S8 实测）</h3>
+<ul>
+<li><strong>克隆态连续控制</strong>（Gym/MuJoCo 13 环境，分支预算 8，参考梯度 32 后缀/动作）：EPIG/价值信息法在 <strong>9/13 环境梯度 MSE 获胜</strong>（全部为稠密连续控制），恢复参考梯度方向余弦 0.998-1.000。熵指引分支在控制任务上系统性指错方向。</li>
+<li><strong>冻结 LLM 梯度校准</strong>（Qwen3-8B，64 prompt×3 seed，64 叶参考）：树梯度对齐提升、Wordle 价值 MSE 下降。</li>
+<li><strong>在线单轮数学</strong>（GSM8K-hard/MATH-small，Qwen 级模型）：树局部信用有帮助但<strong>分支放置不是瓶颈</strong>——token loss 掩码和优势构造主导。近饱和任务上 EPIG 与便宜基线打平。</li>
+<li><strong>在线多轮 Wordle</strong>：EPIG 分配优势重现——最终平台期更高，超过快饱和的平坦 GRPO 和所有基线。</li>
+<li>边界条件诚实标注：动作空间极小时均匀覆盖已近最优；稀疏奖励下纯价值信息分配过于剥削性；分支优势若作用到无关 token 拓扑无效。</li>
+</ul>
+<h2 id="_5">归纳总结</h2>
+<ol>
+<li><strong>熵≠分支目标</strong>：高熵但在奖励等价的措辞间选择，不值得分支；中熵但在高低价值动作间选择，可能是关键分叉点。熵只回答"分支能不能不同"，EPIG 回答"分支重不重要"。</li>
+<li><strong>树 rollout 的本质是梯度估计的实验设计</strong>——不是搜索更优动作，而是把算力花在梯度最难估计的地方。这是对"树=探索"直觉的修正。</li>
+<li><strong>平坦 GRPO 的信用分配噪声是结构性的</strong>——恢复动作继承无关终端事件的符号。DUCK TRANS4 "value 爆炸前先熵坍缩"的级联与此框架自洽：尖锐化策略 → 优势估计失真 → 价值函数追不上 → 更新方向错。</li>
+<li><strong>稠密奖励连续控制是树方法最受益的场景</strong>——恰好是 locomotion 的属性（稠密 shaping）。DUCK 若引入树采样，理论收益上限高于 LLM 数学场景。</li>
+<li><strong>边界条件意识</strong>：稀疏奖励+小动作空间+优势掩码错位三个条件下树方法退化为平基线——引入前先对照自查。</li>
+</ol>
+<h2 id="_6">趋势判断</h2>
+<ul>
+<li><strong>短期</strong>：DUCK 训练栈（rsl_rl PPO）不直接受益——树 rollout 需要框架级改造，当前 W5/h1xr 平坦 rollout 继续跑。但"分支点选择用价值信息不用熵"的原则可用于<strong>评估侧</strong>：变异策略评估时在价值分歧大的状态克隆重采样，比随机重采样检测力更强。</li>
+<li><strong>中期</strong>：RL 训练算力分配从"均匀撒 rollout"走向"按梯度估计难度分配"是清晰方向。机器人 RL 社区当前主流仍是平坦 rollout，树采样在 locomotion 的系统研究是空位。</li>
+<li><strong>长期</strong>：EPIG 的"熵提案+价值分配"两层结构可能成为树 RL 标准配置，类似 PPO clip 从 trick 变标配。</li>
+</ul>
+<h2 id="_7">拓展应用推荐</h2>
+<ol>
+<li><strong>P0·克隆态评估法引入 DUCK 评估脚本</strong>：当前策略评估是"整条轨迹从头跑"，可改为"在 FELL 前的关键状态（价值分歧大/姿态分歧大）克隆状态+多后缀重采样"，直接测策略的条件稳定性。工作量：评估脚本 +mjlab clone state API 查证（mjlab 支持以 state 为根重置）。收益：比轨迹级验收（倒/不倒）细一档，能定位"哪个状态是真正的分叉点"。</li>
+<li><strong>P1·TRANS 复活下下代选项</strong>：若 W2 TRANS 仍不稳，树采样+局部优势是文献依据的下一代选项——但需换训练框架（rsl_rl 不支持），成本高，排 MLP 蒸馏之后。</li>
+<li><strong>P2·熵监控语义修正</strong>：把守护脚本里"熵坍缩=坏事"的单义解读升级为"熵坍缩+价值分歧扩大=真坏事"双指标——熵低但价值分歧也小=收敛（好事），熵低但价值分歧大=坍缩（坏事）。工作量：守护脚本加 value divergence 指标（组内 value std）。</li>
+<li><strong>P3·论文转化候选</strong>：本文核心命题"树是梯度估计的实验装置"+ DUCK 实测"TRANS 熵坍缩级联"可合成周论文选题——「策略训练稳定性的信息论判据：从熵单指标到梯度不确定性分解」，新颖性足够（机器人侧无此框架）。</li>
+</ol>
+<h2 id="_8">指南分析</h2>
+<p>对 DUCK 训练体系的落地指南：<br />
+- <strong>可立即抄</strong>：占用加权（occupancy weighting）概念——评估变体时按状态占用频率加权指标，避免稀有前缀（如特定扰动后状态）主导评价。<br />
+- <strong>可立即抄</strong>：优势掩码思想——DUCK 若做蒸馏，只让"引发分叉的观测-动作对"承载蒸馏损失，不是全序列均匀蒸馏。<br />
+- <strong>需工程改造</strong>：树 rollout 需要框架支持（rsl_rl 无树采样），mjlab 的 state clone 能力需查证后才可实施 P0。<br />
+- <strong>不适用</strong>：EPIG 完整算法（含 Goodhart 修正项）对 DUCK 过重，平坦 PPO + 好的 DR 仍是当前最优性价比。</p>
+<h2 id="_9">关联</h2>
+<ul>
+<li>arXiv:2609.20004（本文）</li>
+<li>TreeRL（arXiv:2506.11902）——熵引导树 RL，EPIG 的对照基线</li>
+<li>TreePO（arXiv:2508.17445）——段级树建模+前缀摊销</li>
+<li>The entropy mechanism of RL for reasoning LMs（arXiv:2505.22617）——熵-性能权衡机理</li>
+<li>Beyond the 80/20 rule（arXiv:2506.01939）——高熵少数 token 承载 RLVR 更新信号</li>
+<li>2026-09-21 笔记《Transformer策略训练稳定性》——DUCK TRANS4 事故与 LLM-RL 熵管理解法综述，本文补理论层（为什么熵单指标不够）</li>
+<li>DUCK docs/81（TRANS 熵坍缩案例）、docs/86（W5 配方与守护判据）</li>
+</ul>
+</body>
+</html>
