@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RL策略部署稳定性-约束式平滑与动态EMA</title>
+
+<meta property="og:title" content="RL策略部署稳定性-约束式平滑与动态EMA" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<p class="tag-line"><span class="tag">#RL</span> <span class="tag">#机器人部署</span> <span class="tag">#约束强化学习</span></p>
+<h1 id="2026-09-23-rl-ema-reality-gap">2026-09-23 RL 策略部署稳定性：约束式平滑、动态 EMA 与 reality gap 定量</h1>
+<blockquote>
+<p>夜间自学习笔记（cron）。主题背景：DUCK W5R 系列连续三轮静站验收失败（R3/R4/R5），瓶颈判定为 train-inference gap（docs/99§六）——训练指标全绿但确定性推理+cmd=0 场景本征发散。本笔记定向检索 2026-09 最新文献，寻找部署稳定性的第三条路（前两条已试：standing_stages 加压续训、cmd 封顶课程）。</p>
+
+<p class="meta-date">生成日期 2026-09-23</p></blockquote>
+<h2 id="_1">内容整理</h2>
+<h3 id="1-decaparxiv2609245522026-09-21csro">1. DeCap：把平滑性从奖励项改成硬约束（arXiv:2609.24552，2026-09-21，cs.RO）</h3>
+<p><strong>核心命题</strong>：现有 RL 用辅助奖励项（action_rate 罚、acceleration 罚）实现平滑，奖励项与任务目标竞争、且把全身当均匀整体对待。DeCap（Decoupled Constraint-aware policy）改为<strong>约束强化学习（constrained RL）</strong>，把全身平滑性拆成两个独立约束组：</p>
+<ul>
+<li><strong>下半身</strong>：必须保持足够 reactive（快速响应扰动）</li>
+<li><strong>上半身</strong>：必须严格受约束（保稳定、保"生命感"外观）</li>
+</ul>
+<p>每个组的形式是对物理运动量（action rate、加速度）的<strong>显式约束</strong>，而非奖励软罚。</p>
+<p><strong>关键机制——有界屏障罚（bounded barrier penalty）</strong>：<br />
+- 传统 barrier function 在接近约束边界时趋于无穷（训练崩溃风险）<br />
+- DeCap 的屏障罚在接近极限时<strong>提前激活</strong>（proactive activation），但在约束边界处<strong>保持有界</strong>（remains bounded at the constraint limit）<br />
+- 效果：约束边界附近的可行域内也能稳定满足约束</p>
+<p><strong>实测数据</strong>（真机 humanoid 全身控制任务）：<br />
+- 上半身 action rate 降低 <strong>2.50×</strong><br />
+- 上半身加速度降低 <strong>2.18×</strong><br />
+- 同时下半身平滑性也改善（不是牺牲下半身换上半身）<br />
+- 瞬态运动（transient motion）减少<br />
+- <strong>一组固定平滑约束跨多种地形迁移</strong>，无需每地形重调奖励</p>
+<h3 id="2-desa-tta-ema-arxiv2609017952026-09-01cscv">2. DESA-TTA：动态 EMA 系数+源锚定治漂移（arXiv:2609.01795，2026-09-01，cs.CV）</h3>
+<p><strong>核心命题</strong>：mean-teacher 测试时自适应（TTA）对<strong>固定 EMA 系数</strong>极度敏感；带噪伪标签反复优化会造成<strong>学生模型累积漂移</strong>（cumulative student drift）。这两个病与 RL 部署端"EMA 快照 vs 在线策略"的分歧同构。</p>
+<p><strong>双机制</strong>：<br />
+1. <strong>Dynamic temporal averaging</strong>：从伪标签置信度和框密度估计 teacher 不确定性，按样本选择 EMA 系数，系数上下界由 teacher 参数漂移量决定<br />
+2. <strong>Source anchoring</strong>：把更新后的学生参数<strong>部分恢复向预训练值</strong>，锚定强度随学生漂移量增大而增大</p>
+<p><strong>实测数据</strong>：<br />
+- VOC-C 分布偏移下 AP50 比零样本推理提升 <strong>14.5 点</strong><br />
+- 推理吞吐量比此前 SOTA TTA（YOLO-World 场景）高 <strong>55%</strong><br />
+- 代码开源：github.com/imatif17/DESA-TTA</p>
+<h3 id="3-reality-gap-arxiv2609111212026-09-10eesssy">3. Reality Gap 定量方法论（arXiv:2609.11121，2026-09-10，eess.SY）</h3>
+<p><strong>核心命题</strong>：sim-to-real gap 不该停留在定性说"有 gap"，要形式化度量。该文在 RL UAV 部署场景定义了 4 个 gap 度量：</p>
+<table>
+<thead>
+<tr>
+<th>度量</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bias</td>
+<td>SNR 空间分布的系统性偏移</td>
+</tr>
+<tr>
+<td>RMSE</td>
+<td>整体误差</td>
+</tr>
+<tr>
+<td>Jensen-Shannon 散度</td>
+<td>分布形状差异</td>
+</tr>
+<tr>
+<td>optimum-deployment displacement</td>
+<td>最优部署点的空间位移</td>
+</tr>
+</tbody>
+</table>
+<p><strong>关键发现（方法论价值大于领域价值）</strong>：<br />
+- 28/140 GHz 下表面 bias 的 <strong>~70% 是 Monte-Carlo 欠采样</strong>造成的伪 gap（-5.6/-4.8 dB → 缓解后仅 -1.7/-1.5 dB）——<strong>先排除度量伪影再谈真实 gap</strong><br />
+- analytical-trained policy 线性域 regret ≥ 0.93：<strong>带偏训练的策略仍可接近最优</strong>，但偏差要显式报告</p>
+<h2 id="_2">归纳总结</h2>
+<ol>
+<li><strong>奖励罚 vs 硬约束的分水岭</strong>：DUCK 的 action_rate_l2（curriculum -0.1→-1.0）走的是奖励罚路线，DeCap 证明约束式在边界行为上有本质优势——奖励罚在极限附近梯度竞争，屏障罚在极限附近提前激活且有界。对应 DUCK 现象：站立时上身后仰/头部僵硬（上半身缺专门约束组）、下蹲起身踝关节过冲。</li>
+<li><strong>EMA 不是"拷贝权重"那么简单</strong>：DESA-TTA 的"动态系数+源锚定"组合直接适用于 stand_eval 的确定性推理方案——如果后续走 EMA 权重快照路线，必须配锚定机制防漂移，且 EMA 系数应随策略分歧度自适应而非固定 0.99。</li>
+<li><strong>Gap 三步定量法可移植</strong>：①先排除度量伪影（DUCK 教训：stand_eval 曾因 wrapper 4元组/5元组解包 bug 假绿）②分来源归因 gap（模型级/执行域/部署层三层）③报 regret 而非只报偏差。</li>
+<li><strong>DeCap 的"约束跨地形迁移"数据点</strong>暗示：一组按身体部位分组的物理约束（上半身严格/下半身反应）可能比按任务（standing/walking）调奖励更稳——与 DUCK "standing_stages 混训越加越不稳"的观察吻合。</li>
+</ol>
+<h2 id="_3">趋势判断</h2>
+<ul>
+<li><strong>2026 下半年约束式 RL 回潮</strong>：奖励工程走到极限后，显式约束组（分组、屏障罚）成为 smoothness/stability 类需求的新标准路线；预期 rsl_rl 生态会跟进 constrained 变体。</li>
+<li><strong>部署端自适应从"在线学习"转向"轻量正则"</strong>：DESA-TTA 类低开销 TTA（55% 吞吐提升说明计算预算可控）比全量 finetune 更贴近边缘部署现实——Jetson/pi5 类设备不可能跑反向传播。</li>
+<li><strong>Evaluation 方法学成为独立贡献点</strong>：Reality gap 4 度量、下文 EvoPathBench 的过程级评估——"怎么测"正在变成和"怎么训"同等重要的论文贡献。</li>
+</ul>
+<h2 id="_4">关联分析</h2>
+<table>
+<thead>
+<tr>
+<th>本笔记概念</th>
+<th>DUCK 现有资产</th>
+<th>可吸收点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeCap 上/下半身约束分组</td>
+<td>duck_p3_pilot 奖励项全为全身统一 action_rate 罚</td>
+<td>新 variant 可拆 upper=颈头 4 关节（严格约束）/lower=腿 10 关节（宽松）</td>
+</tr>
+<tr>
+<td>有界屏障罚</td>
+<td>无；只有线性 l2 罚</td>
+<td>边界附近行为改善，但需新机制=须请示用户（权限边界铁律）</td>
+</tr>
+<tr>
+<td>DESA-TTA 源锚定</td>
+<td>stand_eval.py 已是确定性 mean 推理</td>
+<td>EMA 快照若上马，锚定强度设计直接抄其"漂移越大锚越强"</td>
+</tr>
+<tr>
+<td>Gap 4 度量</td>
+<td>docs/99 三层验尸（模型/执行域/部署层）</td>
+<td>补"度量伪影排除"为第 0 层</td>
+</tr>
+<tr>
+<td>上半身平滑=外观生命感</td>
+<td>用户验收美学"僵硬的头/脖是负面项"（09-19）</td>
+<td>DeCap 2.18× 加速度降低正是"头颈不僵硬"的量化路径</td>
+</tr>
+</tbody>
+</table>
+<p>与 09-21《Transformer策略训练稳定性》笔记互补：那篇治训练期熵坍缩/价值爆炸，本篇治部署期稳定性；合起来覆盖 DUCK 策略质量全生命周期。</p>
+<h2 id="_5">查询拓展</h2>
+<ul>
+<li>DeCap 是否开源、屏障罚的具体公式（barrier 上界如何定）——待抓原文 §Method</li>
+<li>constrained RL 在 rsl_rl / legged gym 生态的现成实现（搜 "constrained" site:github.com legged_gym 派生库）</li>
+<li>EMA policy evaluation 在 PPO 的理论文献（"behavior policy ≠ target policy" 的 off-policy evaluation 视角）</li>
+<li>humanoid 静态站立专项：搜 "posture stability constraint humanoid" 是否有人把站立单独做成约束组</li>
+<li>DESA-TTA 的源锚定在 RL actor 上的迁移实验（无直接文献，需自验）</li>
+</ul>
+<h2 id="_6">拓展应用推荐</h2>
+<ol>
+<li><strong>【立即可做·零成本】stand_eval.py 加第 0 层</strong>：验收脚本头部加"度量伪影自检"（obs 通道数/wrapper 签名/normalizer std buffer 三项断言），docs/98 的三层验尸前移一层。</li>
+<li><strong>【W5R6 候选·须请示】上/下半身分组 action_rate</strong>：不动约束框架，仅在奖励里把 action_rate_l2 拆成 hip_yaw+颈头组（系数×2）与腿组（系数×1），观察上身僵硬与静站发散是否解耦——属奖励结构调整，按铁律须用户拍板。</li>
+<li><strong>【评估方法论】静站 gap 报告改用 regret 口径</strong>：报"stochastic 策略在 cmd=0 下与 survival=600 理想值的位移"，替代当前 UNSTABLE/STABLE 二值——连续量才能跨版本比趋势。</li>
+<li><strong>【间接价值】DeCap 引入追踪</strong>：把 arXiv:2609.24552 加入 sniff 队列，出 v2/代码开源时再评估屏障罚实现成本。</li>
+</ol>
+<h2 id="_7">指南分析</h2>
+<ul>
+<li><strong>适用边界</strong>：DeCap 的数据来自全身操作（locomotion+manipulation）任务，纯静态站立任务的约束式收益未验证；DUCK 若吸收应先做小规模对照（同配方 ±分组罚）而非直接切换。</li>
+<li><strong>成本评估</strong>：constrained RL 需要拉格朗日乘子或屏障项的实现改动，rsl_rl 无原生支持=自定义 runner，工程成本高于奖励项调整一个量级。</li>
+<li><strong>优先级判断</strong>：当前 DUCK 瓶颈是 train-inference gap（确定性发散），DeCap 治的是"动作毛糙"，两者相关但不等同——若 R5 静站仍 UNSTABLE，优先级仍是 EMA/确定性校准（docs/100 已列）&gt; DeCap 式约束。</li>
+<li><strong>反直觉提醒</strong>：DeCap"固定约束组跨地形迁移"如果成立，反过来说明 DUCK 按任务阶段（standing_stages）调压力的方向可能是次要轴——部位轴比任务轴更本质。这是假设，不是结论。</li>
+</ul>
+<h2 id="_8">出处</h2>
+<ul>
+<li>DeCap: arXiv:2609.24552 — "Smoothness as a Constraint for Stable Humanoid Locomotion" (2026-09-21, cs.RO)</li>
+<li>DESA-TTA: arXiv:2609.01795 — "DESA-TTA: Dynamic EMA and Source Anchoring for Test-Time Adaptation" (2026-09-01, cs.CV), github.com/imatif17/DESA-TTA</li>
+<li>Reality Gap: arXiv:2609.11121 — "Quantifying the Reality Gap for RL-Based UAV Placement at mmWave and Sub-THz" (2026-09-10, eess.SY)</li>
+<li>检索路径：Tavily 432 → arXiv Atom API 直搜（search-fallback-chain Layer 2.8），查询 <code>ti:policy+AND+abs:reinforcement+learning+AND+abs:locomotion</code> / <code>ti:humanoid+AND+abs:standing+stability</code> / <code>ti:EMA</code> 等</li>
+<li>项目内关联：DUCK-Pi_5 docs/98（静站门禁）、docs/99（R3 三轮失败+train-inference gap 判定）、docs/100（R5 自治链）</li>
+</ul>
+</body>
+</html>
