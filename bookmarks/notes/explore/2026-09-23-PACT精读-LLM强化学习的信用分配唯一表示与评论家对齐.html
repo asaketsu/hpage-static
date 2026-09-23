@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PACT精读-LLM强化学习的信用分配唯一表示与评论家对齐</title>
+
+<meta property="og:title" content="PACT精读-LLM强化学习的信用分配唯一表示与评论家对齐" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="pactllm">PACT精读：LLM强化学习的信用分配唯一表示与评论家对齐</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.LG / cs.AI)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.26355<br />
+<strong>作者</strong>：Jiayan Fu, Hang Xu, Yong Zhang, Zhaokai Luo, Yao Hu, Dongyan Zhao, Mu Chuan<br />
+<strong>提交日期</strong>：2026-09-22<br />
+<strong>记录日期</strong>：2026-09-23</p>
+
+<p class="meta-date">生成日期 2026-09-23</p></blockquote>
+<p><strong>标签</strong>：#强化学习 #信用分配 #GRPO #PPO #ActorCritic #LLM后训练</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题</h3>
+<p>LLM 后训练中 RL 已成核心组件（DeepSeek-R1、通用 Agent、coding agent），但存在一个根本性的<strong>粒度错配</strong>：训练信号是轨迹结束后才揭示的标量结果奖励（outcome reward），而优化更新发生在单个 token 级别。"最终结果应如何归因到轨迹中的 token"——这就是信用分配（credit assignment）问题。此前信用本身缺乏公认的数学刻画，各方法用各自算法相关的量来操作化。</p>
+<p>本文两阶段贡献：<br />
+- <strong>理论</strong>：三个正则条件唯一确定 token 级信用，统一解释 OPD/RLOO/GAE 现象<br />
+- <strong>方法</strong>：由理论动机推出 PACT（Policy Aligned Critic Training），数学推理 72.87%（超 GRPO 8.80pp），SWE-bench Verified 67.4%</p>
+<h3 id="12">1.2 形式化框架：奖励信息流</h3>
+<p>轨迹 Y = (q, T₁, O₁, T₂, O₂, …, T_τ, O_τ)，其中 Tᵢ 是策略生成的 token，Oᵢ 是环境返回的观察（工具响应/环境转移/用户反馈）。允许 Oᵢ=∅，此时退化为普通自回归生成。终端奖励 R = R(Y)。</p>
+<p>信息流用 σ-代数过滤刻画：F_i = σ(q, T₁, O₁, …, Tᵢ, Oᵢ)，条件奖励预测 V_i = E[R|F_i]。</p>
+<h3 id="13">1.3 三个正则条件与唯一表示定理</h3>
+<ul>
+<li><strong>完整性（Completeness）</strong>：Σ Cᵢ = R − E[R|F₀]，信用之和完全解释最终奖励对初始预测的偏离</li>
+<li><strong>前缀一致性（Prefix Consistency）</strong>：共享相同前缀的两条轨迹，其累计信用 Sᵢ 必须相等——前缀生成后信用即固定，未来实现不应修改历史信用</li>
+<li><strong>中性（Neutrality）</strong>：E[Cᵢ | F_{i-1}] = 0，下一 token 的期望信用为零，不系统性高估/低估</li>
+</ul>
+<p><strong>定理 1（唯一表示）</strong>：满足三条件的 token 级信用唯一存在，且为鞅差序列：Cᵢ = Vᵢ − V_{i-1} = E[R|Fᵢ] − E[R|F_{i-1}]。附录 C.2.3 证明三条件各自必要（去掉任一条都允许其他信用方案）。</p>
+<p><strong>推论 1</strong>：任意连续分段聚合得粗粒度信用 C^(k) = V_{b_k} − V_{a_k−1}，turn 级归因是特例。</p>
+<h3 id="14">1.4 用唯一表示重新解释现有算法</h3>
+<p><strong>定理 2（OPD 教师是隐式评论家）</strong>：定义理想教师 q*<em>t 为 KL 正则化奖励改进的最优分布 argmax E</em>{a~q}[Q_t^π(a)] − β·KL(q‖p_t)。则理想教师下 OPD 的更新方向 = (1/β) × 唯一信用诱导的策略梯度。教师通过 KL 目标提供信用，无需显式价值头。</p>
+<p><strong>定理 3（RLOO 梯度无偏）</strong>：RLOO 的响应级信号 (Rᵢ − R̄_{-i}) 虽是粗粒度，但期望下与 token 级信用诱导的梯度贡献相等。但仅期望相等≠统计效率相等：条件期望 V_t 是 MSE 最优预测器，而 RLOO 基线保留有限结果的随机性，长程场景波动可能淹没局部信用信号。</p>
+<p><strong>定理 4（近似信用稀疏性）</strong>：R∈[0,1] 时 E[Σ Cᵢ² | F₀] = Var(R|F₀) ≤ 1/4，超过 ε 的信用个数期望 ≤ 1/(4ε²)，与响应长度无关。<strong>长程生成中绝大多数 token 的信用极小</strong>。</p>
+<p><strong>GAE 误差分解</strong>（本文最实用的分析）：设评论家误差 V̂ᵢ = Vᵢ + εᵢ，TD 残差 δ̂ᵢ = Cᵢ + εᵢ − ε_{i-1}，则 GAE 优势：</p>
+<pre><code>Â_t^λ = Σᵢ λ^(i-t)·Cᵢ  −  ε_{t-1}  +  (1−λ)·Σᵢ λ^(i-t)·εᵢ
+        └── 真实信用累积 ──┘  └前缀误差┘  └── 中间评论家误差泄漏 ──┘
+</code></pre>
+<ul>
+<li>λ&lt;1 时中间评论家误差通过最后一项保留；由定理 4，真实信用信号很小 → 误差项可与真信号同量级甚至占主导</li>
+<li>λ=1 时中间误差项消失：Â_t¹ = R − V̂_{t-1}，只剩前缀误差</li>
+<li>这解释了 DeepSeek-R1 报告 PPO λ=1 优于 λ=0.95，以及 SAO 的长度自适应 λ→1 设计</li>
+<li>实验佐证：本文 PPO(λ=0.95) 直接训练崩溃（26.31%，低于基模 41.01%），PPO(λ=1.0) 恢复到 59.71%</li>
+</ul>
+<h3 id="15-pact">1.5 PACT 方法</h3>
+<p><strong>动机</strong>：PPO 式训练存在策略-评论家滞后——D_k ~ π_k 上计算优势的评论家值来自 π_{k-1} 训练的参数，评论家永远落后一个策略更新。当信用靠相邻条件值差分得到时，这个滞后尤其致命。</p>
+<p>两大组件：</p>
+<ul>
+<li><strong>概率化价值估计（BCE 评论家）</strong>：评论家参数化 V̂ = σ(z)，用软 BCE 损失替代 MSE。对 R∈[0,1] 两者最优解相同（都是 V^π），但 BCE 收敛显著更快、正负样本价值分离度 Δ± 更大。呼应 Farebrother et al. 2024 的分类式价值估计</li>
+<li><strong>离策略评论家同步（Actor-then-Critic）</strong>：每轮迭代先用当前评论家支持 actor 优化；actor 全部更新完成后，对同一 rollout 批做<strong>一次额外前向传播</strong>，配合更新前记录的 log 概率，得到更新前后策略的重要性比率 I_t；把评论家训练目标从 R 替换为 I_t·R（测度变换：V_{t-1}^π = E_μ[I_t·R|F_{t-1}]），使迭代结束时评论家对齐到<strong>已更新的</strong> actor</li>
+</ul>
+<p>工程细节：精确续接比率方差高，实践中用 detached 当前 token 重要性比率作代理，屏蔽比率超出 [ρ_min, ρ_max]=[0,6] 的 token 级评论家损失。只需一次额外前向传播，零额外 rollout，开销极低。</p>
+<h3 id="16">1.6 关键实验结果</h3>
+<p><strong>数学推理</strong>（Qwen3.5-4B，DAPO-Math-17k 子集 3200 题，优先选初始策略 pass@1 失败的题；OpenCode agentic harness；Dressage 框架；每轮 512 轨迹；上下文 128k；Avg@16 准确率）：</p>
+<ul>
+<li>Base：41.01%</li>
+<li>GRPO(ε_high=0.28)：64.07%</li>
+<li>PPO(λ=0.95)：26.31%（训练崩溃）</li>
+<li>PPO(λ=1.0)：59.71%</li>
+<li>SAO：51.14%</li>
+<li>PACT 去掉 IS 修正：67.74%</li>
+<li><strong>PACT：72.87%</strong>（AIME 2025 83.12 / AIME 2026 85.21 / BeyondAIME 51.69 / HMMT Nov. 2025 71.46）</li>
+</ul>
+<p><strong>Agentic 编码</strong>（Qwen3.6-35B-A3B，OpenSWE 环境，Codex agent + Harbor 框架，终端验证器奖励）SWE-bench Verified：</p>
+<ul>
+<li>Base 60.8% / GRPO 65.4% / PPO(λ=1) 65.0% / SAO 63.6% / <strong>PACT 67.4%</strong></li>
+</ul>
+<p><strong>消融</strong>：<br />
+- BCE vs MSE 评论家（固定 rollout 策略对照）：BCE 在两种模型规模上都同时取得更低 BCE+MSE 损失和更大价值分离<br />
+- 重要性采样修正：+5.13pp（67.74→72.87），四个基准全部提升，训练奖励曲线更稳定</p>
+<h3 id="17-f">1.7 局限性（作者自述，附录 F）</h3>
+<ul>
+<li>唯一性条件于三个正则条件——如同更换欧氏平行公理得到不同几何，换条件可能得到不同表示</li>
+<li>信用是统计性的而非因果性的：基于条件期望，不刻画替换单个 token 的反事实因果效应</li>
+<li>只刻画"信用应该是什么"，未解决实践中如何精确估计——高效估计器留作未来工作</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-gaegeneralized-advantage-estimation">2.1 GAE（Generalized Advantage Estimation）</h3>
+<p>Schulman 2015 提出的优势估计器，用 λ 指数加权 TD 残差在偏差（λ=0 即 TD(0)，依赖评论家）与方差（λ=1 即 Monte Carlo，依赖采样）间插值。传统 RL 观点认为 λ=0.95 是稳妥折中；本文的误差分解给出相反结论：<strong>当奖励只有终端信号且信用天然稀疏时，中间评论家误差是主要污染源，λ=1 反而更优</strong>——因为此时"方差"其实来自有限 rollout 的奖励随机性，而非信用本身。</p>
+<h3 id="22-rloo-grpo">2.2 RLOO 与 GRPO</h3>
+<p>RLOO（Ahmadian 2024）：同 prompt 采 G 条轨迹，用其余 G−1 条的平均奖励作 leave-one-out 基线，回归 REINFORCE 路线，避免训练价值模型。GRPO（DeepSeekMath）：组内归一化优势 + PPO 式裁剪，是当前 LLM 后训练主流。本文定理 3 为这类"免评论家"方法提供了理论合法性（期望梯度等价），同时指出其统计效率上限（响应级随机性）。</p>
+<h3 id="23-on-policy-distillationopd">2.3 On-Policy Distillation（OPD）</h3>
+<p>Lu 2025：在学生自采样轨迹上用教师的 token 级密集监督训练，已被代数化重构为 KL 约束的密集 RL（师生 log 密度比充当 token 级优势）。本文补上信用层面的缺口：理想教师（KL 正则化奖励改进者）诱导的梯度恰好正比于唯一信用诱导的梯度——<strong>教师就是不带价值头的评论家</strong>。</p>
+<h3 id="24-martingale-difference-sequence">2.4 鞅差序列（Martingale Difference Sequence）</h3>
+<p>公平博弈的数学模型：E[Cᵢ|F_{i-1}]=0 意味着在当前信息下无法预测下一步信用。定理 1 表明唯一信用天然是鞅差——这与量化金融中"价格是鞅、信息即时反映"的框架同构，Vᵢ 扮演条件期望价格，Cᵢ 是新信息冲击（innovation）。</p>
+<h3 id="25">2.5 分类式价值估计</h3>
+<p>Farebrother et al. 2024（HL-Gauss 等）：把回归目标离散化/二值化后用交叉熵训练，在 Atari/DMLab 上优于 MSE 回归。本文软 BCE 版本保留 [0,1] 连续语义（sigmoid 输出），论证最优解不变但优化景观更友好。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 论证主线框架</h3>
+<pre><code>粒度错配问题（标量终局奖励 vs token 级更新）
+        │
+        ▼
+三正则条件 ──定理1──► 唯一信用 = 鞅差 Vᵢ−V_{i-1}
+        │                        │
+        ▼                        ▼
+解释层（3个定理）           诊断层（定理4+GAE分解）
+├─ OPD教师=隐式评论家        ├─ 信用天然稀疏（≤1/4平方和界）
+├─ RLOO=期望梯度等价         └─ λ&lt;1时评论家误差主导信号
+└─ 粗粒度=token聚合               │
+        │                        ▼
+        └──────────► 方法层：PACT
+                     ├─ λ=1（消除中间误差）
+                     ├─ BCE评论家（更快收敛）
+                     └─ Actor-then-Critic + IS修正（消除策略滞后）
+                              │
+                              ▼
+                     72.87% 数学 / 67.4% SWE-bench
+</code></pre>
+<h3 id="32">3.2 方法对比要点</h3>
+<ul>
+<li>vs PPO：核心差异是更新顺序依赖关系。PPO 中 actor/critic 相互独立更新、评论家滞后一个策略；PACT 串行化（actor 完成后用 IS 修正目标训练评论家），额外成本仅一次前向传播</li>
+<li>vs GRPO/RLOO：保留评论家但让它"跟得上"，换取细粒度信心的统计效率；GRPO 省评论家但受响应级噪声限制</li>
+<li>vs SAO：SAO 靠长度自适应 λ 逼近 1 来缓解同一问题；PACT 直接 λ=1 并从源头（对齐 + BCE）提升评论家质量</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1llm-rl">趋势1：LLM RL 的"理论补课"阶段到来</h3>
+<p>依据：信用分配这类基础概念正被逐步公理化（本文三条件唯一性、此前 RUDDER/VinePPO/RLOO 各自的构造）。类似 2018-2020 年 RLHF 理论化浪潮，agentic RL 的成功实践正在倒逼数学根基重建。预计 12 个月内会出现更多"表示定理→算法改进"的论文范式。</p>
+<h3 id="21-llm">趋势2：λ=1 / 免中间评论家将成为 LLM 长程训练默认</h3>
+<p>依据：DeepSeek-R1 实证 + SAO 长度自适应 + 本文 GAE 分解三方汇聚。当奖励是稀疏终端信号时，传统 RL 的偏差-方差直觉（偏好 λ&lt;1）不成立，中间评论家误差是主要污染源。</p>
+<h3 id="3actor-critic-llm-rl">趋势3：Actor-Critic 在 LLM RL 中复活，但形态改变</h3>
+<p>依据：纯组基线方法（GRPO 系）统治两年后，PACT 显示"对齐良好的评论家"仍有 8.8pp 空间。趋势不是回到老 PPO，而是带同步机制的新型评论家（IS 修正、分类目标、概率化输出）。</p>
+<h3 id="4agentic-oi-rl">趋势4：agentic（含工具观察 Oᵢ）与纯生成 RL 理论统一</h3>
+<p>依据：本文框架原生支持 Oᵢ≠∅ 的交互轨迹，SWE-bench 实验验证理论在 agentic 场景成立。为后续 harness-aware RL（如 OpenForgeRL 路线）提供了统一的信用语言。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-regrpo">5.1 与 ReGRPO 精读笔记的关联</h3>
+<p>ReGRPO（2606.31392，2026-07-02 笔记）用结构化反思 schema 改进 GRPO 的信号质量；本文从理论侧解释了为什么 GRPO 的组基线"能用但有上限"（期望等价但统计效率受限）。两者互补：ReGRPO 改奖励端，PACT 改价值估计端。</p>
+<h3 id="52-longstraw">5.2 与 LongStraw 精读笔记的关联</h3>
+<p>LongStraw（2607.14952）的 GRPO 逐分支回放是时间换空间；本文 PACT 的 IS 修正目标 I_t·R 本质也是"用旧分布样本训练新策略下的价值"——同一个测度变换工具，一个用在轨迹回放，一个用在评论家目标。</p>
+<h3 id="53-microduckrsl-rl-jetson">5.3 与 microduck/RSL-RL 训练管线的关联（Jetson/机器人）</h3>
+<p>DP5/H1 等双足 RL 训练用 rsl_rl 的 GAE。机器人奖励多为密集塑形（存活 bonus、速度跟踪），信用不稀疏，λ=0.95 仍合理；但<strong>技能级稀疏终端奖励</strong>（如"站稳 10 秒"二值成功）训练变体应直接 λ=1，本文给出了理论依据。BCE 评论家技巧（奖励归一化到 [0,1] 后 sigmoid + 软 BCE）可作为 FastSAC/FastTD3 价值头的低成本实验项。</p>
+<h3 id="54">5.4 与量化交易的关联</h3>
+<p>鞅差框架与 Ornstein-Uhlenbeck 过程估计同属条件期望/信息流语言：Cᵢ 对应价格新息（innovation），Vᵢ 对应条件公允价。LLM 因子挖掘工作流（GRPO 式组相对奖励）可借鉴定理 3 的警示——响应级基线的统计效率上限，因子评估时应对单因子做组内多采样以压噪声。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Credit assignment therefore requires an additional characterization beyond the Markov formulation.」— 马尔可夫性只保证信息流的概率结构，不回答"功劳怎么分"。</p>
+<p>「Just as replacing Euclid's parallel postulate leads to different but internally consistent geometries, adopting different requirements for credit may lead to different representations.」— 理论谦逊的范本：唯一性是条件化的。</p>
+<p>「the critic error term can become comparable to, or even dominate, the true credit signal」— 长程稀疏奖励下 GAE λ&lt;1 的死因诊断。</p>
+</blockquote>
+<h2 id="_7">七、拓展应用推荐</h2>
+<h3 id="71-hermes-agent">7.1 对 Hermes Agent 生态</h3>
+<ul>
+<li>
+<p><strong>P1 · 借鉴点：Agent 轨迹的信用可视化诊断</strong><br />
+  Hermes 的 cron 任务/多步工具调用轨迹是天然的 (q, T, O) 序列。可离线计算 Vᵢ 代理（如用结果奖励回归每步状态特征），画出信用鞅差分布，定位"哪个工具调用环节贡献了成败"。工作量：中等（需轨迹记录 + 轻量回归）。已有 trajectory recording 中间件构想（OpenForgeRL 笔记 P0）可顺带支撑。</p>
+</li>
+<li>
+<p><strong>P2 · 借鉴点：子任务委派的 RLOO 式评估</strong><br />
+  delegate_task 多候选执行时，leave-one-out 组基线做相对评价在期望上等价于细粒度信用——为现有的 Best Effort 委派质量评估提供理论兜底。</p>
+</li>
+</ul>
+<h3 id="72-rl-microduck-dp5-h">7.2 对 RL 训练管线（microduck / DP5 / H 系列）</h3>
+<ul>
+<li>
+<p><strong>P0 · 可直接移植：稀疏终端奖励变体切 λ=1</strong><br />
+  rsl_rl 的 GAE lambda 配置一行改动。适用判定：奖励以二值成功/失败为主、塑形项弱的训练变体。配合本文的崩溃案例（PPO λ=0.95 直接 26%），建议站桩/行走类稀疏奖励变体优先实验。</p>
+</li>
+<li>
+<p><strong>P1 · 可实验：BCE 价值头</strong><br />
+  奖励归一化 [0,1] → critic 输出过 sigmoid → 软 BCE。改 rsl_rl 的 value loss 约 20 行。预期收益：critic 收敛加速、正负轨迹价值分离更大（更快出现判别性 reward shaping 信号）。</p>
+</li>
+<li>
+<p><strong>P2 · 需工程改造：Actor-then-Critic 同步</strong><br />
+  需要训练循环支持"actor 更新后回扫 rollout 批做一次前向 + IS 比率屏蔽"，rsl_rl 需改 minibatch 循环结构，工作量较大，收益上限 +5pp 级（论文消融 5.13pp）。</p>
+</li>
+</ul>
+<h3 id="73">7.3 对量化研究</h3>
+<ul>
+<li><strong>P2 · 方法借鉴：组内多采样压基线噪声</strong><br />
+  LLM 因子/策略生成评估时，同 prompt 多 rollout（G≥8）+ RLOO 基线，而非单次采样打分。理论依据：定理 3 期望等价 + 方差分析。</li>
+</ul>
+<h2 id="_8">八、指南分析</h2>
+<p>（作为日后动手时的操作指南浓缩）</p>
+<ol>
+<li><strong>何时该用本文结论</strong>：训练信号是终端稀疏奖励（数学对错、任务成败、SWE 通过与否）且响应/轨迹长（&gt;数千 token 或多轮工具交互）</li>
+<li><strong>λ 选择决策树</strong>：奖励密集塑形 → 维持 λ≈0.95；奖励二值终端 → 直接 λ=1，并监控是否出现本文所述 λ&lt;1 崩溃</li>
+<li><strong>PACT 复现要点</strong>：λ=1；critic 用 sigmoid+软BCE；actor 更新全部完成后单次前向回扫取 detached 当前 token IS 比率；屏蔽 [0,6] 区间外比率；actor 侧保持 DIS 裁剪（数学 [0.7,6.0] / 编码用 PPO clip）</li>
+<li><strong>评估纪律</strong>：数学类用 Avg@16 + 无污染基准（AIME/HMMT 当季、BeyondAIME）；编码类 SWE-bench Verified；必须含 PPO(λ=0.95) 崩溃对照以验证误差分解主张</li>
+<li><strong>阅读优先级建议</strong>：定理 4 + GAE 分解（3.3 节）&gt; PACT 方法（4 节）&gt; 唯一表示（2 节）； proofs 在附录 C，必要性证明（C.2.3）对理解三条件最有帮助</li>
+</ol>
+</body>
+</html>
