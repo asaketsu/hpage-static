@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sim2real执行域适配</title>
+
+<meta property="og:title" content="sim2real执行域适配" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="sim2real">Sim2Real 执行域适配：力矩观测对齐与参考指令在线自适应</h1>
+<p class="tag-line"><span class="tag">#机器人</span> <span class="tag">#强化学习</span> <span class="tag">#sim2real</span> <span class="tag">#双足机器人</span></p>
+<p class="note-date">生成日期 2026-09-26</p>
+
+<h2 id="_1">出处/来源</h2>
+<ul>
+<li>论文一：Simple Torque-Observation Alignment for Zero-Shot Sim-to-Real Grasping with a Direct-Drive Gripper（arXiv:2609.29031，2026-09-24）</li>
+<li>论文二：OSRAM: Online Sim-to-Real Adaptation via Closed-Loop System Modeling（arXiv:28878 → arXiv:2609.28878，2026-09-24）</li>
+<li>检索路径：arXiv API submittedDate 窗口 2026-09-19~09-26（Tavily 432 限流降级链）</li>
+</ul>
+<h2 id="_2">内容整理</h2>
+<h3 id="260929031">论文一：直驱关节力矩观测对齐（2609.29031）</h3>
+<p>核心问题：sim 与真实力矩观测存在尺度（scale）、偏置（bias）、噪声（noise）三重失配，导致 sim 训练策略在真机误读接触/负载信号。</p>
+<p>三步对齐法（全部显式、无需学习非线性映射）：</p>
+<ol>
+<li>测功机标定力矩常数 Kτ*：数据手册值 vs 实测标定值偏差巨大——GL60 KV25 手册 0.4500 Nm/A vs 实测 0.3260（高估 38.0%），GL40 KV70 手册 0.1500 vs 实测 0.1392（高估 7.8%）。两种电机误差不等，会扭曲跨关节相对力矩模式，必须分电机型号标定。</li>
+<li>时间差分消偏置：Δτt = τt − τt−1 作为策略输入，两域同用。恒定偏置完全消除（bt = bt−1 时残差为零），缓变偏置衰减，保留负载变化线索。</li>
+<li>回归残差定噪声：用测功机回归残差的 std 直接设仿真高斯噪声幅度（GL60: σ=0.009843 Nm，GL40: σ=0.002305 Nm）——噪声注入量有数据依据，非拍脑袋。</li>
+</ol>
+<p>结果：纯本体感觉（关节位置+力矩差分，无视觉无触觉）零样本 sim-to-real，9 个分布内物体 100% 成功，21 物体（含 12 个未见）总体 99%。训练侧：teacher（特权信息+PPO，lr 1e-3，24 steps/env，entropy 0.003）→ student（BC 蒸馏，lr 1e-4）。</p>
+<h3 id="osram-260928878">论文二：OSRAM 参考指令在线自适应（2609.28878）</h3>
+<p>核心洞察：策略在真机"功能正常但跟踪精度差"的残差 gap，不必改策略/不必辨识物理参数——把「机器人+策略」当成一个闭环系统，只学低维「指令→响应」映射，在线优化发给控制器的参考指令。</p>
+<p>方法链：</p>
+<ul>
+<li>闭环指令-响应模型：r̂t+1 = Fθ(r_real 历史, r_ref 历史)，维度=任务级变量数（速度等，远低于全状态）。</li>
+<li>Reptile 一阶元训练：仿真内随机化质量/摩擦/执行器动力学+激励信号注入，每个随机化配置一个 meta-task，学出可少量数据快速特化的初始化。</li>
+<li>部署后微调：30~70 步梯度更新（2Hz 训练器，batch 64），MPPI 50Hz 优化未来参考指令。</li>
+<li>关键：策略全程冻结，适配只走「参考指令接口」。</li>
+</ul>
+<p>技术栈同源度极高：mjlab + PPO 训练（与 DUCK 完全一致）、LimX Tron1 双足、ROS control 异构 MuJoCo 实时仿真、InEKF 估计基座速度、动捕提供全局位置。硬件实验还主动加大 gap（加配重+改控制增益）。</p>
+<p>硬数据（硬件 0.7 m/s 速度跟踪）：OSRAM E_mean −0.0827 / RMSE 0.2014，对比 RNN-Adapt（RMA 式）−0.1354 / 0.2109，Res-Adapt（残差策略）RMSE 0.1833~0.2062 区间；仿真 0.4/0.7/0.9 m/s 下 OSRAM RMSE 0.0733/0.0929/0.1560 全面低于两基线（RNN-Adapt 0.1415/0.1614/0.2082）。所有方法成功率均 100%——差距全在精度不在存活。</p>
+<h2 id="_3">查询拓展</h2>
+<ul>
+<li>RMA（Rapid Motor Adaptation）：观测历史→隐变量条件化策略，OSRAM 的主要对比对象，精度差于参考指令适配。</li>
+<li>UPOSI：通用策略+在线系统辨识，同属隐变量适配路线。</li>
+<li>Sym2Real：符号动力学+真实数据学残差修正。</li>
+<li>Zeng et al. 数据驱动参考转向（Data-driven reference steering）：OSRAM 的直接前身，但依赖近似线性闭环表示；OSRAM 升级为非线性+元学习。</li>
+<li>NARX/行为系统模型：输入输出辨识传统，跳过完整状态重构。</li>
+<li>局限（论文自认）：当前限低维指令空间；全身运动轨迹需先压缩到 latent 再适配；MPPI 采样优化对超参敏感，可微分模型可换梯度优化。</li>
+</ul>
+<h2 id="_4">归纳总结</h2>
+<p>两条路线共同指向一个结论：<strong>sim2real 的"执行域差距"不应该都塞给策略鲁棒性去扛</strong>。</p>
+<ul>
+<li>论文一的哲学：观测域失配（尺度/偏置/噪声）用物理标定+差分+数据驱动噪声注入在观测管线里显式消掉，比 DR 盲目加宽更精准——DR 范围窄了不够、宽了伤性能。</li>
+<li>论文二的哲学：策略冻结，适配外置。低维任务级「指令→响应」模型足以捕获残差失配，元训练保证少量真实数据即可特化。</li>
+<li>对 DUCK 的直接映射：pi5 位置伺服 vs asa BAM 力矩链的执行域差（同模型铁证：asa tilt≤3° 稳、pi5 直写 2.1s FELL），此前路线是 H1X-R slew 执行器课程（训练侧补）；OSRAM 提供了部署侧新选项——不动策略，在指令层学补偿。</li>
+<li>论文一的 Δτ 差分输入与 DUCK 的 IMU/电流观测处理直接可借：0x45 电流读数分辨率粗（1A/LSB），但差分后作为趋势信号仍然可用。</li>
+</ul>
+<h2 id="_5">趋势判断</h2>
+<ul>
+<li>sim2real 研究正从「训练侧堆鲁棒性」（DR/perturbation）转向「部署侧轻量适配」（参考指令适配/观测对齐/在线系统建模），2026 年这一分支密度明显上升。</li>
+<li>「策略冻结+外置适配器」成为工程友好范式：不需要重训、不需要改验证过的策略，风险可控——与航空构型管理里"已验证基线不轻易动"的哲学同构。</li>
+<li>双足平台工具链收敛：mjlab+PPO+ROS control+InEKF 正在成为事实标准栈（OSRAM 与 DUCK 撞栈是信号）。</li>
+<li>观测对齐的「数据驱动噪声定标」（用标定残差定仿真噪声幅度）会成为标准动作，取代手工猜噪声。</li>
+</ul>
+<h2 id="_6">关联分析</h2>
+<ul>
+<li>DUCK-Pi_5 项目：asa sim（BAM 力矩链）稳 vs pi5（位置伺服）2.1s 倒的执行域主矛盾，OSRAM 是对症的部署侧方案候选；力矩差分观测可用于 pi5 电流信号（0x45/0x43）的预处理。</li>
+<li>W5/H1X 系列训练：论文一的「测功机标定→噪声注入幅度」方法可移植到 STS3025 舵机的 sim 噪声建模（对舵机做静态/负载阶跃标定，回归残差定仿真噪声）。</li>
+<li>Hermes Agent 侧无直接关联，但 OSRAM 的「元训练=广谱先验+少样本特化」与 skill 系统的「通用 skill+场景 patch」模式同构。</li>
+<li>对比 H1X-R slew 课程：训练侧补执行域（改 env 动力学）vs OSRAM 部署侧补（改指令），两者不互斥，可叠加。</li>
+</ul>
+<h2 id="_7">拓展应用推荐</h2>
+<ol>
+<li>【P0·DUCK】pi5 部署链加「指令层自适应」实验：用现有 W5/S13T 策略，在 pi5 上录 30s 跟踪数据，拟合「目标角→实际角」闭环映射，指令前馈补偿。工作量：一个标定脚本+部署环小改。风险低（策略不动）。</li>
+<li>【P1·DUCK】舵机标定定噪声：对 STS3025 做 jvel/电流阶跃标定（现有 read_regs 基础设施可复用），回归残差定 sim 噪声幅度，替换 velocity_env_cfg 的手写噪声表（±1.5 jvel 等疫苗剂量虽方向正确但幅度无实测依据）。</li>
+<li>【P2】asa sim 域差研究：OSRAM 的闭环建模法可量化 pi5 位置伺服 vs BAM 的响应差异，输出「域差谱」文档，替代目前定性判断。</li>
+<li>【P3】跟踪 OSRAM 后续（latent 参考适配），若 DUCK 走全身步态参考轨迹时再引入。</li>
+</ol>
+<h2 id="_8">指南分析</h2>
+<p>落地 SOP（指令层自适应实验）：</p>
+<ol>
+<li>pi5 上以固定频率发正弦目标角（幅 5°~15°，频 0.5~2Hz）到 hip/knee/ankle 各关节，同步录目标角+实际角+时间戳（223Hz 环频）。</li>
+<li>拟合每关节「目标→实际」传递关系（先试线性增益+延迟，残差大再上 NARX 小网络）。</li>
+<li>部署时目标角经逆补偿后下发（前 2s 用 ramp 限幅防过冲）。</li>
+<li>验收：静态站桩 tilt 波动降幅、10s 存活率对比基线；失败回退=直接关补偿器（策略未动，零风险回退）。</li>
+</ol>
+<p>避坑：补偿器带宽勿超环频 1/10；差分信号注意舵机应答延迟（read 0.25ms 裸读但循环 50Hz 节流）；标定时段电池电压须 &gt;11V（低压下动态特性漂移会污染标定）。</p>
+</body>
+</html>
