@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IterSynth精读-深度搜索智能体的角色解耦迭代合成与RDPO训练</title>
+
+<meta property="og:title" content="IterSynth精读-深度搜索智能体的角色解耦迭代合成与RDPO训练" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="itersynth-rdpo">IterSynth精读-深度搜索智能体的角色解耦迭代合成与RDPO训练</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (Tencent)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.29444<br />
+<strong>代码</strong>：https://github.com/Tencent/IterSynth<br />
+<strong>作者</strong>：Xingyu Wu, Yuchen Yan, Yongliang Shen 等（浙江大学 + 腾讯）<br />
+<strong>记录日期</strong>：2026-09-25</p>
+
+<p class="meta-date">生成日期 2026-09-25</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #LLM智能体 #强化学习 #GRPO #深度搜索 #角色解耦</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-react">1.1 核心问题：ReAct 单策略深搜的两大顽疾</h3>
+<p>深度搜索（Deep Search）要求 LLM 智能体分解复杂查询、检索证据、合成有据答案。现有 ReAct 式开源智能体（SFT + outcome RL 流水线）存在两个结构性缺陷：</p>
+<ul>
+<li><strong>角色耦合（Role Coupling）</strong>：单一策略要同时承担规划、查询 formulate、证据过滤、缺口识别、冲突消解、最终合成六种异构能力。一个未分化的策略全包，导致过早终止、冗余搜索、浅层证据使用</li>
+<li><strong>上下文累积（Context Accumulation）</strong>：长程搜索不断堆叠检索段落、中间思考、部分结论，有用证据被淹没，早期错误传播到后续决策。实测（Appendix H）：即使 64K 上下文，BrowseComp 上 ReAct 轨迹 <strong>59% 以上在上下文耗尽前无法终止</strong></li>
+</ul>
+<p>现有解法的不足：<br />
+- <strong>多智能体方案</strong>（不同子任务分给不同模型）：降低单模型认知负担，但推理成本↑、部署复杂度↑、协调开销↑<br />
+- <strong>摘要式方案</strong>（IterResearch 每 step 重建工作区、AgentFold 主动折叠上下文、ReSum 周期性 summarize-and-reset）：部分缓解上下文累积，但探索与整合仍耦合同一决策流</p>
+<h3 id="12-itersynth">1.2 IterSynth 双角色迭代工作流</h3>
+<p>核心设计：<strong>同一策略参数 + 角色专属 prompt + 动作约束</strong>，交替执行 Planner 与 Synthesizer 两个子步。</p>
+<p><strong>Planner（规划者）— 控制搜索轨迹</strong><br />
+- 观测：原始问题 q + 当前全局摘要 M_t（<strong>不观测完整历史</strong>，只看紧凑状态）<br />
+- 动作空间：<code>search(q_t)</code> 发新查询 / <code>answer(â)</code> 终止并给最终答案<br />
+- 职责：识别缺失信息、formulate 可搜索子问题、决定终止时机</p>
+<p><strong>Synthesizer（合成者）— 维护持久记忆</strong><br />
+- 触发：Planner 选择 search 后，环境返回检索结果 TR_t<br />
+- 观测：当前状态 + Planner 决策 + 检索证据<br />
+- 动作：产出推理轨迹 + 更新后的全局摘要 M_{t+1}<br />
+- 约束：<strong>只能做记忆更新</strong>，不能发查询也不能给最终答案</p>
+<p>状态转移：<code>s_{t+1} = (q, M_{t+1})</code> — 检索历史被摘要替换，上下文始终紧凑。这是「summary as persistent state」的关键：搜索历史不进上下文，进摘要。</p>
+<h3 id="13">1.3 两阶段训练配方</h3>
+<p><strong>阶段一：冷启动 SFT（结构初始化）</strong><br />
+- 用 Qwen3.5-397B-A17B 在真实搜索环境中 rollout 双角色循环，合成多轮轨迹<br />
+- 过滤管线：修复无效工具调用、剔除幻觉推理步、只保留可验证正确答案的轨迹<br />
+- 产出 ~10K 高质量轨迹，展开为 per-turn 样本（每个 Planner/Synthesizer 响应都是独立监督目标）<br />
+- Qwen3-8B 全参 SFT</p>
+<p><strong>阶段二：RDPO（Role-Decoupled Policy Optimization）</strong></p>
+<p>三个关键机制：</p>
+<ol>
+<li><strong>多轮轨迹展开</strong>：每个查询 G 个 rollout，每条轨迹 T_i 轮迭代，产生 Σ T_i 个交互轮（而非仅 G 个轨迹级样本）</li>
+<li><strong>复合奖励</strong>：<code>r_{i,t}^ρ = r_acc,i + α · r_rubric,i,t^ρ</code></li>
+<li>终端精度奖励 r_acc ∈ {0,1}，均匀广播到轨迹所有轮</li>
+<li>LLM judge 对每个中间行为按 <strong>五维 rubric</strong> 打分，Planner 和 Synthesizer 各一套</li>
+<li><strong>角色解耦组优势</strong>：奖励按角色分成两个池，各自独立归一化</li>
+<li><code>A_{i,t}^ρ = (r_{i,t}^ρ - μ_q^ρ) / σ_q^ρ</code></li>
+<li>解耦优势直接插入标准 GRPO 目标，无其他算法修改</li>
+</ol>
+<p><strong>Rubric 构造（Appendix C，三阶段蒸馏）</strong>：<br />
+- Stage 1：SFT 策略在 held-out 查询上 rollout，收集 20 对正负对比轨迹（同查询，一对一错）<br />
+- Stage 2：Claude-4.6-Sonnet 独立分析每个对比对，分别给 Planner/Synthesizer 生成区分好坏行为的评价标准（规划侧：子查询精度、终止时机；合成侧：证据忠实度、离题信息抑制）<br />
+- Stage 3：合并语义重复项，每角色收敛为 <strong>恰好 5 条 rubric</strong>，冻结后用于整个 RL 阶段<br />
+- 训练时 judge 用 Gemini-2.5-flash-lite（成本与质量平衡），每轮调用两次（各评一个角色）</p>
+<h3 id="14">1.4 关键实验结果</h3>
+<p><strong>主实验（Table 1，五个基准：BrowseComp / BrowseComp-ZH / GAIA / xBench-DS-2505 / 2510）</strong></p>
+<ul>
+<li>IterSynth-8B 平均分 <strong>50.7</strong>，≤8B 组第一，超最强小智能体 MiroThinker-v1.0-8B <strong>+4.2 分</strong></li>
+<li>BrowseComp-ZH 提升最大：55.4 分，超小智能体基线 <strong>+15.2 分</strong>（探索密集型任务收益最高）</li>
+<li><strong>跨级别竞争力</strong>：8B 参数 surpass ReSum-30B、AgentFold-30B、OpenSeeker-30B-SFT，接近 IterResearch-30B 与 WebSailor-V2-30B（不到 1/3 参数预算）</li>
+<li>与基础模型+工具组对比：仍低于 GPT-5 High（69.8）等前沿闭源，但 GLM-4.7（64.1）以下的开源基础模型被全面超越</li>
+</ul>
+<p><strong>训练方法消融（Table 2）</strong></p>
+<ul>
+<li>IterSynth-SFT：44.1 → +outcome-only GRPO：48.9 → +RDPO：<strong>50.7</strong></li>
+<li>关键对照 <strong>w/o RD</strong>（同复合奖励但混合角色归一化）：<strong>47.2，甚至低于纯 GRPO</strong></li>
+<li>结论：仅加 turn-level rubric 奖励不够，密集的 Synthesizer 侧奖励与稀疏的 Planner 侧奖励<strong>共享单一基线会纠缠信用信号</strong>——解耦归一化才是增益来源</li>
+</ul>
+<p><strong>角色互换消融（Table 3，单角色替换回未训练 Qwen3-8B）</strong></p>
+<ul>
+<li>Synthesizer 替换：平均 <strong>-17.4</strong>（58.9 → 41.5）</li>
+<li>Planner 替换：平均 <strong>-41.1</strong>（58.9 → 17.8）</li>
+<li>解读：<strong>规划是更高需求的角色</strong>——弱 Planner 产出坏子查询污染全程证据收集，Synthesizer 无力回天；而弱 Synthesizer 场景下，训练过的 Planner 能通过针对性追查部分补偿</li>
+</ul>
+<p><strong>免训练 prompting 范式（Table 5.1）</strong></p>
+<ul>
+<li>IterSynth 作为纯 prompt 工作流直接用于前沿闭源模型：</li>
+<li>Claude-4.5-Opus：ReAct 60.6 → IterSynth <strong>66.1</strong>（+5.5）</li>
+<li>DeepSeek-V3.1：ReAct 43.4 → IterSynth <strong>47.9</strong>（+4.5）</li>
+<li>超过同样做迭代上下文重建的 IterResearch，证明「分离搜索控制与证据整合」是通用结构先验，不依赖特定模型行为</li>
+</ul>
+<p><strong>补充</strong>：Appendix J 显示轻量 not-attempted 重采样策略可将额外推理算力稳定转化为精度增益。</p>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-grpo">2.1 GRPO 与组相对优势</h3>
+<p>Group Relative Policy Optimization：同一 query 的 G 个 rollout 组内归一化优势（减组均值除组标准差），免 critic。IterSynth 的 RDPO 本质是<strong>把组维度从"轨迹"细化到"角色×轮次"</strong>——同一条轨迹里 Planner 子步和 Synthesizer 子步进入不同归一化池。这与此前精读的 GRPO 优势估计缺陷谱系（Spurious Advantage、Sign Balance）同属一个谱系：归一化基准选错，信用信号就被污染。</p>
+<h3 id="22">2.2 深搜智能体的上下文管理路线</h3>
+<ul>
+<li><strong>IterResearch</strong>：每步从演化报告重建聚焦工作区</li>
+<li><strong>AgentFold</strong>：主动折叠（proactive folding）维持紧凑工作记忆</li>
+<li><strong>ReSum</strong>：周期性 summarize-and-reset</li>
+<li><strong>IterSynth 的差异</strong>：不是"事后压缩"而是"结构性前置"——摘要不是上下文的压缩产物，而是<strong>唯一的持久状态</strong>，检索原文根本不进入后续轮次</li>
+<li>与 MemDecay（区域感知 KV 驱逐）、ODA（按需注意力读取）正交：那些在 token/KV 层做，IterSynth 在工作流层做</li>
+</ul>
+<h3 id="23-prompt-vs">2.3 角色 prompt 分离 vs 多智能体</h3>
+<p>IterSynth 强调「同一参数、不同 prompt」——角色特化通过 prompt + 信息访问 + 动作约束实现，不需要两个模型。这与 MeowBot 团队的四猫架构（共享一个模型，角色由 system prompt 定义）完全同构。论文的价值在于用 Role-swap 消融证明了这种 prompt 级角色分工经过 RL 后确实产生了<strong>功能性的角色能力</strong>（不是结构摆设）。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：双角色迭代合成</h3>
+<pre><code>        ┌─────────────────────────────────────────┐
+        │            原始问题 q（固定）              │
+        └──────────────────┬──────────────────────┘
+                           │
+        ┌──────────────────▼──────────────────────┐
+        │  Planner（每轮）                          │
+        │  输入: q + 全局摘要 M_t                    │
+        │  输出: search(q_t) 或 answer(â)           │
+        └───────┬─────────────────────────────────┘
+                │ search(q_t)
+                ▼
+        ┌─────────────────────────────────────────┐
+        │  环境 E → 返回检索结果 TR_t                │
+        └───────┬─────────────────────────────────┘
+                │ TR_t
+                ▼
+        ┌─────────────────────────────────────────┐
+        │  Synthesizer（每轮）                      │
+        │  输入: s_t + Planner决策 + TR_t           │
+        │  输出: 更新后摘要 M_{t+1}（仅记忆更新）      │
+        └───────┬─────────────────────────────────┘
+                │
+                ▼  s_{t+1} = (q, M_{t+1}) —— 历史被摘要替换
+</code></pre>
+<h3 id="32-rdpo">3.2 RDPO 信用分配链</h3>
+<pre><code>终端 r_acc（0/1，广播全轨迹）
+         │
+         ├── Planner 池: {r_acc + α·rubric^P} → 组内归一化 → A^P
+         │                                    （跨 rollout × 轮次聚合）
+         └── Synthesizer 池: {r_acc + α·rubric^S} → 组内归一化 → A^S
+                                              │
+                                              ▼
+                              标准 GRPO 策略更新（零算法改动）
+</code></pre>
+<h3 id="33">3.3 三层递进的增益来源</h3>
+<ul>
+<li>工作流层（SFT 44.1）：结构先验 = 角色分离 + 摘要状态</li>
+<li>RL 层（GRPO 48.9）：outcome 信号优化搜索行为</li>
+<li>信用层（RDPO 50.7）：角色池归一化解耦信用 —— 单独贡献 +1.8，且 w/o RD 反跌至 47.2 证明混合归一化是<strong>负贡献</strong></li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：深搜智能体的竞争焦点从"训练算法"转向"工作流×训练协同设计"</h3>
+<p>依据：论文结论原话「jointly designing agent workflows and role-aware optimization methods」。纯 outcome RL（GRPO）在同 workflow 下只加 4.8 分，而 workflow 换成 IterSynth 后免训练就+4.5~5.5。工作流是放大器，训练算法是精修器。</p>
+<h3 id="2-prompt">趋势2：单模型 + prompt 角色分工将挤压小规模多智能体系统</h3>
+<p>依据：多智能体的成本/协调开销 vs 同参数角色切换的零额外部署。IterSynth 8B 打 30B 多智能体方案（ReSum-30B 仅 33.3）。当 RL 能真正优化 prompt 定义的角色能力时（Table 3 证明），独立小模型分工的性价比下降。</p>
+<h3 id="3rubric">趋势3：过程奖励（rubric）的正确用法是"角色隔离"而非"直接混合"</h3>
+<p>依据：w/o RD 消融——同样的 rubric 奖励混合归一化后 47.2 &lt; 纯 GRPO 48.9。过程奖励的密度差异（Planner 稀疏/Synthesizer 密集）使共享基线成为毒药。预示后续工作会把"归一化分组粒度"当作一等公民超参。</p>
+<h3 id="4">趋势4：小模型 + 结构先验逼近大模型的路径确立</h3>
+<p>依据：8B 达到 30B 级性能（50.7 vs 56.8-58.3）。与 LFM2.5-2.6B 端侧 Agent（此前精读）同一趋势：结构红利 &gt; 参数红利。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-pact2026-09-23">5.1 与 PACT（2026-09-23 精读）的关联</h3>
+<p>PACT 解决 LLM RL 信用分配的唯一表示与评论家对齐；RDPO 是同一问题的另一解法——不建 critic，而是<strong>按角色分组归一化</strong>实现信用隔离。两者对照：PACT 在值函数层做对齐，RDPO 在优势归一化层做隔离。</p>
+<h3 id="52-grpo2026-09-06">5.2 与 GRPO优势估计缺陷谱系（2026-09-06）的关联</h3>
+<p>该笔记记录 Spurious Advantage 与 Sign Balance 修正。RDPO 的 w/o RD 消融（47.2 &lt; 48.9）是又一个"归一化基准污染信用"的实证案例，可加入缺陷谱系：<strong>角色异质性奖励混合归一化</strong>是第六类缺陷。</p>
+<h3 id="53-contextpilot2026-08-31-memdecay2026-07-15">5.3 与 ContextPilot（2026-08-31）及 MemDecay（2026-07-15）的关联</h3>
+<p>三者都在治"上下文累积"病：ContextPilot 用细粒度 RL 决定信息进出上下文；MemDecay 在 KV 层做区域感知驱逐；IterSynth 在工作流层让摘要成为唯一状态。三个正交层次可叠加——Hermes 的 context-compressor（渐进式压缩，工具输出落盘只留摘要）本质就是 IterSynth 的摘要状态思想在 Agent 工具层的应用。</p>
+<h3 id="54-meowbot">5.4 与 MeowBot 四猫架构的关联</h3>
+<p>Planner/Synthesizer 共享参数、prompt 分角色、动作空间隔离 —— 与四猫（Dev/OPM/Content/Data）"同一模型不同 system prompt"完全同构。Table 3 的角色互换消融给四猫架构提供了实证支持：角色分工需要"训练/沉淀"才能产生真实能力差异，仅靠 prompt 摆结构不够。</p>
+<h3 id="55-ecdysis2026-09-12">5.5 与 Ecdysis（2026-09-12）四角色拆解的关联</h3>
+<p>Ecdysis 的 FDCR 四角色（失败聚合与修复）与 IterSynth 双角色都属"harness 级结构修复优于模型特异迁就"流派。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「even with a 64K context, ReAct trajectories on BrowseComp fail to terminate before context exhaustion in over 59% of cases」— 上下文长度治标不治本的量化证据</p>
+<p>「dense Synthesizer-side rewards and sparser Planner-side rewards should not share a single baseline, as doing so entangles their credit signals」— RDPO 的核心洞察，一句话讲清消融结果</p>
+<p>「IterSynth provides the structural foundation, while RDPO converts this prior into stable long-horizon behavior」— 工作流与训练的关系定位</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>对 Hermes 深搜类 skill</strong>：analysis-pipeline / deep-analysis / arxiv-deep-research 可借鉴 Planner-Synthesizer 交替模式——每轮检索后立即让"合成者视角"产出/更新结构化摘要，后续检索决策只基于摘要而非累积原文，控制上下文膨胀</li>
+<li><strong>对多角色 Agent 评估</strong>：Table 3 的 role-swap 消融是低成本可复用的评估法——把某角色 prompt 换成空白基线，测性能跌幅即可量化每个角色的真实贡献</li>
+<li><strong>对 RL 训练实践</strong>：任何多角色/多阶段轨迹的 GRPO 训练，优势归一化必须按角色分组，混合归一化可能比不加过程奖励还差</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<h3 id="81-hermes-gateway-p0">8.1 Hermes Gateway 的角色感知上下文管理（P0 潜力）</h3>
+<p>IterSynth 的「摘要为唯一持久状态」可直接落地：长会话中工具输出（terminal/search 结果）已有 context-compressor 落盘机制，可升级为<strong>角色交替式摘要更新</strong>——每轮工具调用后由合成视角产出增量摘要替换原始输出，Planner 视角的下一步决策只读摘要。预计显著降低长 cron 任务（如 watchdog、集群巡检）的上下文占用。</p>
+<h3 id="82-hermes-jetson">8.2 借鉴点优先级评估（Hermes / Jetson / 量化）</h3>
+<ul>
+<li><strong>P0 — 摘要状态工作流</strong>：analysis-pipeline skill 的检索循环改造。增量价值：现有 skill 只做"分析完落盘"，不做"每轮摘要替换"。工作量：一个 cron 会话内可验证</li>
+<li><strong>P0 — Role-swap 消融评估法</strong>：用于验证四猫架构角色贡献。现有 skill 均未覆盖角色有效性量化。工作量：设计一个对比实验（某猫 prompt 置空 vs 完整）</li>
+<li><strong>P1 — 角色分组归一化</strong>：若未来做 Agent 轨迹 RL 训练（Agentic-RL 配方笔记方向），RDPO 的分组归一化是必选项。当前无 RL 训练管线，暂记入方法论库</li>
+<li><strong>P1 — 五维 rubric 蒸馏管线</strong>：正负对比轨迹 → LLM 归纳 → 收敛 5 条冻结。可迁移到 content-judge skill 的评分表自动构造（对比好坏输出蒸馏评分维度，替代手工评分表）</li>
+<li><strong>P2 — Jetson 端侧</strong>：8B 模型 + 结构先验打 30B 的结论支持端侧部署路线（nexa-local-inference），但搜索智能体场景在 Jetson 上暂无刚需</li>
+<li><strong>P3 — 量化交易</strong>：not-attempted 重采样（Appendix J）的"推理算力换精度"思想与 Best-of-N 采样同源，quant 领域已有 inference-time-scaling 覆盖</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<h3 id="91">9.1 本篇可作为的操作指南</h3>
+<ul>
+<li><strong>构建双角色工作流的规格</strong>：角色定义三要素（职责/信息访问/动作约束）+ 状态转移方程（s_{t+1} = (q, M_{t+1})）可直接照抄为任何"探索-整合"型 Agent 的设计模板</li>
+<li><strong>Rubric 蒸馏三步法</strong>：20 对正负轨迹 → 独立 prompt 归纳 → 合并冻结 5 条。这是可复用的奖励设计 SOP，适用于任何 LLM-as-judge 场景</li>
+<li><strong>消融实验设计范式</strong>：训练方法消融（SFT/GRPO/RDPO/w-o RD 四格）+ 角色互换消融（换基线模型）的双消融结构，是 Agent 论文实验章节的标杆模板</li>
+</ul>
+<h3 id="92">9.2 复现路径</h3>
+<p>代码已开源（github.com/Tencent/IterSynth）。复现门槛：Qwen3-8B 全参 SFT + RL 需多卡 GPU（论文未详述卡数，10K 轨迹合成依赖 Qwen3.5-397B-A17B API）。<strong>低成本复现替代</strong>：免训练 prompting 范式（Table 5.1）零训练成本，任何前沿模型可直接套 Planner/Synthesizer prompt 模板获得 +4~5 分。</p>
+<h3 id="93">9.3 批判性审视</h3>
+<ul>
+<li>BrowseComp 上 30.9 分实际低于 MiroThinker-v1.0-8B 的 31.1，主要增益来自中文基准 BrowseComp-ZH（+15.2）——角色解耦对中文长程搜索的收益是否存在基准特异性，需谨慎</li>
+<li>rubric 由 Claude-4.6-Sonnet 蒸馏、judge 用 Gemini-2.5-flash-lite，奖励模型与策略模型族不同，存在 judge 偏差风险（论文未讨论）</li>
+<li>59% 上下文耗尽失败率出自 Appendix H 的 ReAct 基线，可能低估了带上下文管理的 ReAct 变体</li>
+</ul>
+</body>
+</html>
