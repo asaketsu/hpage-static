@@ -518,13 +518,28 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 </tbody>
 </table>
-<h2 id="_4">查询拓展</h2>
+<h2 id="_4">趋势判断</h2>
+<p>Transformer 运动策略 2025-2026 的演进主线清晰：<strong>注意力从"堆时间窗"转向"用结构"</strong>。2023-2024 的做法是把滑窗越拉越长（Ours 64 帧、H1T-TRANS 同族），2025 后 top 工作转向按肢体切 token（ROLT）、按传感器通道掩码（MSTA）、按任务状态压缩（LF2WB delta-rule）。判断依据：三篇都不约而同回避了"更长窗口"，因为窗口长度与部署成本线性增长而收益边际递减；结构化注意力让同样的参数量获得更强的归纳偏置。对 DUCK 的预判：DuckTransformerModel 的 64 帧滑窗在站立/行走任务上够用，但若进入"记忆地形/跨任务"领域（三模型拼接后的上层任务），滑窗族会到天花板，届时 delta-rule 线性记忆是现成的下一格。</p>
+<h2 id="_5">拓展应用推荐</h2>
+<ul>
+<li><strong>ROLT body tokenization A/B 实验</strong>：DuckTransformerModel 改肢体 token 版（6 腿链 token + 头颈 token），与现 env 级 action_symmetry 奖励做同配方对照——验收=hip_yaw 共模偏差（28.5° 病理）与对称性和=0±4°门槛。若 token 化可替代对称奖励，训练配置更简洁且无 reward-hack 风险</li>
+<li><strong>MSTA 掩码训练增强 IMU 容错</strong>：在现有 obs 噪声注入基础上，加 10-20% episode 级一致性 IMU mask（借 ROLT consistent dropout 思想）——策略学会"IMU 不可信时靠关节本体感觉站"，对 pi5 双 IMU 污染问题（0x6B 头部 IMU 陷阱）是直接疫苗</li>
+<li><strong>LF2WB 双形态部署模式</strong>：借"训练并行扫描 + 部署循环状态"的实现模式改造 TRANS 导出链——滑窗模型的 ONNX 冷启动零帧问题（span=64 banded attention 修复）在循环状态模型下天然不存在，可作为下一代 DuckTransformer 的架构选型依据</li>
+</ul>
+<h2 id="_6">指南分析</h2>
+<p>给 DUCK 团队的操作指南：</p>
+<ol>
+<li><strong>优先级排序</strong>：MSTA 掩码训练（改 obs 配置即可，零架构改动）&gt; ROLT token 化（改模型结构，需重训）&gt; LF2WB 记忆（任务暂不需要）。当前 S 系主线在训，禁中途换架构——三个改动都应作为下一轮变体排队，不干扰现役线</li>
+<li><strong>与既有铁律的兼容性检查</strong>：ROLT token 化与 symmetry.py 的 obs 表硬编码 61 维 monkey-patch 冲突——token 化后 obs 维度语义变化，_OBS_PERM/_OBS_SIGN 需同步重推（H1X 加 base_lin_vel 时已踩过此坑）</li>
+<li><strong>掩码训练与"疫苗剂量"原则的关系</strong>：sim 噪声大于真机是故意的疫苗（imu_ang_vel ±0.2）；掩码是另一维度疫苗（通道级消失 vs 通道级污染），两者叠加时注意总噪声预算——建议先小规模 A/B 验证不伤主训指标再合入</li>
+</ol>
+<h2 id="_7">查询拓展</h2>
 <ul>
 <li>ROLT 的 body tokenization 与我们的 env 级 action_symmetry 奖励做 A/B：同一训练配方，分别用"token 化无对称奖励" vs "扁平输入+对称奖励"，比较共模偏差（hip_yaw 同向拧 28.5° 病理）治愈效果</li>
 <li>DuckTransformerModel 的 64 帧滑窗 vs delta-rule 线性记忆的参数量/推理延迟对比（Jetson Orin 侧部署预算）</li>
 <li>MSTA 的掩码训练是否与 obs 噪声注入（我们的"疫苗剂量"策略，sim 噪声大于真机）冲突——掩码是"通道级消失"，噪声注入是"通道级污染"，两者是否需要独立训练阶段</li>
 </ul>
-<h2 id="_5">一句话总结</h2>
+<h2 id="_8">一句话总结</h2>
 <p>Transformer 运动策略的 2025-2026 演进主线是"把注意力用在结构上而不是时间上"——肢体 token 共享（ROLT）、传感器通道掩码（MSTA）都比堆时序窗口更对症；对 DUCK 最直接的启发是 ROLT 的肢体 token 化可替代 env 级对称奖励，且与我们已踩过的 ONNX 冷启动坑（span=64）同属"注意力结构决定部署形态"一族。</p>
 <hr />
 <p><em>学习笔记 · 生成于 2026-09-27 04:47 · 夜间自学习 cron（Tavily 432 降级链：TinyFish → curl 直取）</em></p>

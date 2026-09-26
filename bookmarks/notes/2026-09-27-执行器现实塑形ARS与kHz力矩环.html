@@ -450,7 +450,8 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <li>检索路径：Tavily 432 限流 → TinyFish Search（Layer 1.5）→ curl 直取 arXiv abs 页（Layer 5.5）</li>
 <li>关联本地笔记：<a href="2026-09-26-sim2real执行域适配.md">2026-09-26 sim2real执行域适配</a>（力矩观测对齐 + OSRAM 参考指令自适应，方向相反的三种解法）</li>
 </ul>
-<h2 id="_2">核心命题</h2>
+<h2 id="_2">内容整理</h2>
+<h3 id="sim">核心命题：把 sim 匹配问题反转</h3>
 <p>Sim-to-real 执行域 gap 的所有主流解法——系统辨识、域随机化、学习型执行器模型——都在做同一件事：<strong>把仿真器改得更像真机</strong>。ARS 提出反转：<strong>把真机执行器的闭环行为塑形成仿真里那个理想二阶参考模型</strong>。训练侧完全不动，部署侧给每个关节套一个二自由度（2-DOF）前馈-反馈控制器，使真实关节的输入-响应逼近 sim 中的理想动力学。结果：只在"规定参考模型"上训练的策略零样本迁移真机，无需任务级微调、无需执行器建模。</p>
 <h3 id="duck">与 DUCK 项目的直接对照</h3>
 <p>STS3025BL 位置伺服困境（sim BAM 力矩语义 321°/s vs 真机实测 ~39°/s，同模型 asa BAM 链 tilt≤3° 稳站、pi5 位置伺服 2.1s 倒）本质就是"sim 执行器 ≠ 真机执行器"。此前已走的三条路在 ARS 框架下可重新定位：</p>
@@ -566,13 +567,28 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tbody>
 </table>
 <p><strong>最有可能的落地形态</strong>：q_des' = q_des + k_shape·(q_ref_model(t) − q_cur)，其中 q_ref_model(t) 是 sim 中理想执行器对 q_des 的响应（可离线预计算或查表）。与 h1xr 直通模式的区别仅在于多了一项基于实测位置的动态修正——增量改动小，可在现有 duck_run_v7 链上直接试验。</p>
-<h2 id="_5">查询拓展</h2>
+<h2 id="_5">趋势判断</h2>
+<p>执行域适配的范式钟摆正在从"sim 侧修补"摆向"部署侧兜底"：Figure kHz 力矩环（2025-03）→ OSRAM 参考指令在线自适应（2026-09）→ ARS 执行器塑形（2026-07）三个月内密集出现，共同信号是<strong>工业界不再信任"把 sim 做准"这条路的天花板</strong>，转而在真机上加一层策略看不见的高频控制兜底。对低成本舵机平台（STS 系），ARS 把这条路第一次延伸到了非定制执行器上——2-DOF 控制器是纯软件层，不需要 Figure 级自研关节。预判：未来一年会出现"执行器接口标准化"作为 sim-to-real 中间件的独立品类，RL 策略只对理想参考模型负责，硬件异构性由塑形层消化——这与编译器 ABI 的历史角色同构。</p>
+<h2 id="_6">拓展应用推荐</h2>
+<ul>
+<li><strong>DUCK pi5 部署链零硬件改动实验</strong>：在 duck_run_v7 基础上加一项 <code>q_des' = q_des + k_shape·(q_ref_model(t) − q_cur)</code>，q_ref_model 离线预计算（sim 理想执行器对阶跃的响应查表）。验收=同模型同增益下 10s 站立成功率对比（h1xr 直通模式为 baseline）</li>
+<li><strong>换算到 microduck 栈</strong>：mjlab BAM 执行器参数（vin_drop/friction budget/dof_invweight）可导出为 ARS 参考模型参数——asa 手动 MjSpec 与 mjlab 的域差（0925 实锤 1.1s 倒）本质上就是"参考模型不一致"，塑形层可直接复用这套参数做真机侧对齐</li>
+<li><strong>ASA 半物理仿真验证</strong>：塑形控制器先在 asa BAM 链上验证（域差已知 1.1s 倒），通过后再上 pi5 真机——三级验证链成本低</li>
+</ul>
+<h2 id="_7">指南分析</h2>
+<p>给 DUCK 团队的操作指南（按优先级）：</p>
+<ol>
+<li><strong>不要立即全链改造</strong>——ARS 在我们硬件上的带宽前提未验证：外层塑形环频率上限受 STS 内环 5-10Hz 制约，先做单关节阶跃实验（step_resp_test.py 已有）测"位置回读驱动修正"能否在 50Hz 控制环内收敛</li>
+<li><strong>与 S13T-STS 域适配线的关系是叠加不是替代</strong>——训练域适配（slew 收紧）让策略活在可给域内，塑形层让真机跟得更像 sim；两者组合可能把 act 饱和 1.5-3× 的问题从两头夹击</li>
+<li><strong>风险预案</strong>：若塑形环在 50Hz 下振荡（k_shape 增益过高），退化方案=纯前馈（只用理想模型响应做目标轨迹平滑），即"参考轨迹生成器"模式，仍有增益但失去抗扰能力</li>
+</ol>
+<h2 id="_8">查询拓展</h2>
 <ul>
 <li>ARS 开源实现：论文提及 project page（未在摘要给出代码链接），需跟进 GitHub</li>
 <li>类似思路检索词：reference model shaping / actuator interface standardization / two-degree-of-freedom control robot learning</li>
 <li>与 OSRAM（09-26 笔记）的组合：OSRAM 在指令层自适应、ARS 在执行器层塑形，两者理论上可叠加——OSRAM 的低维指令-响应模型甚至可以直接用 ARS 的理想参考模型当先验</li>
 </ul>
-<h2 id="_6">一句话总结</h2>
+<h2 id="_9">一句话总结</h2>
 <p>执行域 gap 三条路（改 sim、改指令、改执行器）中，ARS 证明了第三条在伺服关节上工程可行——对被位置伺服带宽卡住脖子的 DUCK 而言，"位置回读驱动的二阶参考模型塑形"是零硬件改动的下一格实验。</p>
 <hr />
 <p><em>学习笔记 · 生成于 2026-09-27 04:45 · 夜间自学习 cron（Tavily 432 降级链：TinyFish → curl 直取）</em></p>
