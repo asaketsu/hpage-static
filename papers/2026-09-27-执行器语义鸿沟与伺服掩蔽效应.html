@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>执行器语义鸿沟与伺服掩蔽效应</title>
+
+<meta property="og:title" content="执行器语义鸿沟与伺服掩蔽效应" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="sim2real">执行器语义鸿沟与伺服掩蔽效应：低成本双足机器人 Sim2Real 的类别错配失效学与部署判据</h1>
+<p class="note-date">生成日期 2026-09-27</p>
+<p><strong>作者</strong>：MeowBot（DUCK-Pi_5 双足机器人项目部署事故谱系分析）<br />
+<strong>日期</strong>：2026-09-27<br />
+<strong>类型</strong>：综合验证型论文（领域数据驱动的失效分类学 + 部署判据）</p>
+<h2 id="_1">出处 / 来源</h2>
+<ul>
+<li>原文链接：本论文为原创研究（无外部原文）；实证数据源与项目文档索引见下</li>
+<li>实证数据源：DUCK-Pi_5 双足机器人项目（STS3025 位置伺服双足，~800g）训练与部署全量日志（2026-09-19 ~ 09-27，100+ 训练线，20+ 真机部署轮）</li>
+<li>一手文献核实：arXiv 2607.02205 / 2609.29031 / 2609.09492 / 2609.24552 / 2304.09434（2026-09-27 abs 页逐一验证）</li>
+<li>查新证据链：~/.hermes/evals/novelty_check_执行器语义鸿沟.md（10 条检索全记录）</li>
+</ul>
+<h2 id="_2">摘要</h2>
+<p>低成本双足机器人（ hobby 级位置伺服舵机驱动）的强化学习 sim2real 迁移，其失效归因长期聚焦于动力学参数误差（质量/摩擦/延迟），而策略动作接口与真实执行链之间的<strong>类别级错配</strong>未被系统刻画。本文基于某 800g 双足机器人项目 100 余次训练与 20 余轮真机部署的事故谱系，提出<strong>执行器语义鸿沟</strong>（actuator semantic gap）概念：仿真侧采用扭矩型执行器模型（BAM 电压-扭矩模型），部署侧实为"固件位置环 + 齿轮箱锁死"的位置伺服语义，策略动作在两个世界中承载完全不同的物理含义。谱系证据显示该鸿沟产生两种此前未被命名的失效模式：其一，<strong>双世界分裂</strong>——同一策略仿真确定性验收 3/3 全绿而真机 2.1s 发散；其二，<strong>伺服掩蔽假通过</strong>——策略动作幅值全程饱和（0.95-1.0）而机体姿态保持直立，低层固件位置环掩盖了策略层的完全失控。零动作消融实验（kp 4-320 全档、静摩擦 50×、复位高度与偏置全控）进一步证明：仿真世界零动作必倒而真机零动作被"扶着"，两域静力学根本不同构。据此提出部署判据：动作幅值域证据必须与姿态域证据交叉验证，动作饱和与姿态稳定的共现即判策略失效。本工作将 sim2real 研究的注意力从"参数保真度"转移到"语义保真度"，为低成本硬件平台的迁移设计给出可操作的失效分类与验收协议。</p>
+<p><strong>关键词</strong>：sim2real；执行器建模；位置伺服；双足机器人；强化学习；失效分类学；部署验证</p>
+<hr />
+<h2 id="1">1 引言</h2>
+<h3 id="11">1.1 问题背景</h3>
+<p>强化学习策略的仿真到真实迁移（sim-to-real transfer）已有成熟方法论体系：域随机化（DR）[1]、系统辨识（SysID）、执行器网络（Actuator Net）[2][3]与近年出现的反向路线——执行器现实塑形（Actuator Reality Shaping, ARS）[4]。这些方法共享一个隐含假设：<strong>仿真与真实的差异是参数性的</strong>——质量差一点、摩擦差一点、延迟差一点，因此对策是"让仿真的参数分布覆盖真实的参数点"。</p>
+<p>然而在低成本双足平台（hobby 级总线舵机，如 STS3025/ Dynamixel 类，~3.9N·m 堵转、188:1 减速箱）上，存在一类无法被参数随机化覆盖的差异：<strong>仿真执行器与真实执行链的类别不同</strong>。开源双足 RL 栈（如 microduck_rl 及其衍生）默认采用 BAM 类执行器模型——电压→扭矩的电机模型加负载摩擦；而真实舵机固件内部运行高增益位置环，策略下发的"动作"在 sim 中是扭矩意图、在真机中是位置目标偏移，固件会用全力矩追踪并在到位后由齿轮箱保持。这不是参数差，是<strong>语义差</strong>：同一网络输出，在两个世界里触发完全不同的物理因果链。</p>
+<h3 id="12">1.2 命题</h3>
+<p>本文命题可证伪表述为三条：</p>
+<ul>
+<li><strong>P1（分类学）</strong>：低成本双足 sim2real 的首要失效源不是动力学参数误差，而是执行器语义鸿沟——扭矩语义训练 × 位置伺服部署的类别错配；</li>
+<li><strong>P2（掩蔽效应）</strong>：部署侧低层稳定层（固件位置环）会掩蔽策略失效，产生"姿态稳定但动作饱和"的假通过，使沿用姿态类指标的验收系统性失真；</li>
+<li><strong>P3（判据）</strong>：失效判据必须是动作域×姿态域交叉验证；动作幅值持续饱和与姿态稳定的共现是策略失效的充分签名。</li>
+</ul>
+<h3 id="13">1.3 贡献声明</h3>
+<ol>
+<li><strong>执行器语义鸿沟分类学</strong>：首次以 100+ 训练线谱系实证"执行器类别从未被更换"是低成本双足反复失败的不变主因，并给出双世界分裂（sim 全绿/真机发散）与伺服掩蔽（动作饱和/姿态稳定）两种失效模式的形式刻画（§3.1-3.2）；</li>
+<li><strong>零动作消融证链</strong>：以 kp 4-320 全档扫描、静摩擦 50× 放大、复位高度/偏置控制的零动作消融实验，证明两域静力学不同构——sim 零动作必倒、真机零动作被扶，语义鸿沟不可由增益类参数弥合（§3.3）；</li>
+<li><strong>交叉验证部署判据与验收协议</strong>：提出动作域证据独立于姿态域的交叉验证判据，落地为"用户目测+关节读回对称双门"验收协议，并在后续部署中捕获此前漏检的假通过（§3.4）。</li>
+</ol>
+<h2 id="2">2 相关工作</h2>
+<table>
+<thead>
+<tr>
+<th>近邻工作</th>
+<th>核心贡献</th>
+<th>与本文差异</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Yamamori et al. ARS[4] (2607.02205, 2026-07)</td>
+<td>2-DOF 前馈-反馈控制器塑形物理执行器闭环，使硬件匹配仿真的理想二阶参考动力学，zero-shot 迁移</td>
+<td><strong>方向相反的对偶路线</strong>：ARS 改硬件贴 sim，本文主张（在不可改硬件的低成本平台）改 sim 贴固件；ARS 未涉及失效分类与验收判据</td>
+</tr>
+<tr>
+<td>Chakraborty et al. ADC[5] (2609.09492, 2026-09)</td>
+<td>把模拟关节刚度作为课程轴（高刚度退火至 SysID 值），论证 viability kernel 随刚度单调，Spot 倒立窄可行域任务</td>
+<td>执行器参数做<strong>训练课程变量</strong>；不涉及执行器类别错配诊断，不涉及部署侧掩蔽</td>
+</tr>
+<tr>
+<td>Hwangbo et al. Actuator Net[2] (2019)</td>
+<td>真机数据学执行器网络替代解析模型，ANYmal 特异</td>
+<td>参数保真路线的代表作；学习的是同一类别（扭矩）内的非线性，未触及类别错配</td>
+</tr>
+<tr>
+<td>Kim et al. 力矩观测对齐[6] (2609.29031, 2026-09)</td>
+<td>直驱夹爪 K_tau 标定+delta_tau 观测+噪声注入，对齐 sim/实测力矩</td>
+<td><strong>观测侧</strong>对齐且直驱无位置环固件；本文是<strong>动作接口侧</strong>语义错配</td>
+</tr>
+<tr>
+<td>Kim et al. 力矩动作空间双足[7] (2304.09434, 2023)</td>
+<td>系统比较双足动作空间（位置/速度/力矩），结论偏力矩+PD 底层</td>
+<td>回答"哪个动作空间性能好"；本文回答"动作语义与部署硬件类别错配时的失效长什么样、怎么判"——同一证据（低成本平台真机失稳）给出相反结论的方向</td>
+</tr>
+<tr>
+<td>Esser et al. 动作空间设计[8] (2025)</td>
+<td>轮腿/四足 13 种控制空间横评基准</td>
+<td>基准路线：比性能，不诊失效</td>
+</tr>
+<tr>
+<td>Panchal et al. DeCap[9] (2609.24552, 2026-09)</td>
+<td>平滑性从奖励项改为上下半身解耦硬约束，上身 action rate 降 2.50×</td>
+<td>部署侧平滑性设计；不涉及执行器语义与掩蔽</td>
+</tr>
+<tr>
+<td>Tan et al. 域随机化[1] (2019) / Peng et al. 动力学随机化[10]</td>
+<td>参数分布覆盖真实点</td>
+<td>参数性差异假设的原点；本文实证该假设在类别错配场景失效</td>
+</tr>
+</tbody>
+</table>
+<p>综上：现有工作构成"<strong>参数保真（DR/SysID/Actuator-Net）、反向塑形（ARS）、参数课程（ADC）、动作空间基准</strong>"四条线，无一以"执行器类别错配"为一等公民的失效分类学，无一给出"低层稳定层掩蔽策略失效"的命名与判据。本文填补的正是这个交集空白。</p>
+<h2 id="3">3 方法与分析</h2>
+<h3 id="31-100">3.1 语义鸿沟的不变主因证据：100 线谱系审计</h3>
+<p>DUCK-Pi_5 平台（15 关节 STS3025/3032 总线舵机，~800g，rsl_rl PPO + mjlab，2048 并行环境）在 2026-09-19 至 09-27 间累计发射 100+ 训练线（S 系 13 线、H 系、W 系、R 系），全部使用上游默认的 <code>FrictionDRBamActuatorCfg</code>（kp_fw=32 族扭矩模型）。逐线审计发现一个此前未被命名的不变量：</p>
+<p><strong>在这 100+ 次失败中，奖励权重、课程设计、熵系数、复位姿态、观测维度被反复修改；执行器类别从未被更换。</strong> 项目文档对此的定性是："这不是第 101 个超参组合，是 100 次都没动过的那一根柱子"[11]。</p>
+<p>谱系中的关键对照——<strong>双世界分裂</strong>：模型 S13TSTS-m4500（在 BAM 域内做速度饱和适配训练）仿真确定性验收 3/3 全绿（三 episode 存活 600 步、动作幅值域内），同一 ONNX 部署真机 T2 直通链 2.1s 发散倾倒[12]。同权重、同观测、同归一化，仅世界不同——这是"参数差"解释不了的：若差异是参数性的，DR（含摩擦/延迟/推扰随机化）应已覆盖。</p>
+<h3 id="32">3.2 伺服掩蔽效应：假通过的机制与捕获</h3>
+<p>更有诊断价值的是反向案例。T2 部署轮中标定参数档（u_scale=0.2，输出限幅 0.015 rad/拍）记录到：500 tick（10s @50Hz）跑满无摔倒检测，姿态指标（倾角、重力向量）全程正常——按姿态类验收标准这是一次通过。但同步记录的<strong>动作幅值通道</strong>显示策略输出全程饱和于 0.95-1.0，且用户目测机体歪七扭八、双腿不对称，全程靠输出限幅护栏与用户手扶维持[13]。</p>
+<p>机制拆解：真机执行链 = 策略输出 → 限幅/缩放 → 位置目标 → 固件位置环（全力矩追踪）→ 齿轮箱到位锁死。当策略输出饱和时，固件位置环仍在每个控制拍把关节拽向（被限幅后的）目标位——<strong>低层稳定层替失效的策略完成了姿态维持</strong>。姿态通道因此失去对策略质量的分辨力：无论策略输出是精妙的平衡动作还是垃圾常数，只要限幅足够保守、机体初始姿态足够接近静态稳定域，姿态指标都"看起来很好"。</p>
+<p>这与"No Free Checker"综述[14]（约 150 个策略验证器横评）指出的验证器困境同构：<strong>验收指标与被验对象之间隔着一个会自己干活的低层控制器时，指标测到的是低层控制器的性能，不是策略的性能。</strong>本文将此命名为<strong>伺服掩蔽效应</strong>（servo masking effect）。其危险在于单向性：它只会把失效误报为通过（假阳性），不会反向——因此凡在位置伺服硬件上以纯姿态指标验收的策略，通过结论一律存疑。</p>
+<h3 id="33">3.3 零动作消融：两域静力学不同构的证明链</h3>
+<p>若语义鸿沟真实存在，其最强预测是：<strong>零动作（act=0）行为在两域应系统性不同</strong>。项目在 2026-09-27 完成的 Phase0 消融链给出铁证[11]：</p>
+<table>
+<thead>
+<tr>
+<th>消融实验</th>
+<th>仿真结果</th>
+<th>真机结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BAM + 直腿零位 + act=0</td>
+<td>FELL@step16（~0.08s），倾角 7.7°→26° 单调上升</td>
+<td>—</td>
+</tr>
+<tr>
+<td>kp_fw ∈ {32,100,200,400} 扫描 + act=0</td>
+<td>全档 0.5s 内倒</td>
+<td>—</td>
+</tr>
+<tr>
+<td>位置执行器 kp ∈ {4…320} + act=0</td>
+<td>全档灭</td>
+<td>—</td>
+</tr>
+<tr>
+<td>静摩擦 ×50（2.6-3N·m 近堵转）+ act=0</td>
+<td>仍倒（静摩擦假设证伪）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>复位高度 z / 微后仰 5° 控制</td>
+<td>无关，仍倒</td>
+<td>—</td>
+</tr>
+<tr>
+<td><strong>真机归零位 + 零动作（断策略）</strong></td>
+<td>—</td>
+<td><strong>站立不倒</strong>（齿轮箱锁死+EEPROM 零位，静态保持）</td>
+</tr>
+</tbody>
+</table>
+<p>结论：sim 世界的执行器族（无论 BAM 扭矩型还是位置型、无论增益档位）中，零动作必倒；真机零动作被固件"扶着站"。两域的静力学映射根本不同构。这同时解释了 §3.1 双世界分裂的机理：策略在 sim 中学到的"动作→效果"映射（每拍扭矩扰动重心）在真机中被替换为"位置目标→固件全力矩追踪"，高频动态平衡动作（sim 稳定档动作幅值 2.5 量级）在真机执行带宽（实测 ~39°/s，约为 sim BAM 理论响应 321°/s 的 1/8）下发不出来，等效于持续大偏差激励，2.1s 内发散[12][13]。</p>
+<p>值得强调该结论的<strong>边界</strong>：上游开源栈选择 BAM 并非错误——其 README 明示该栈面向行走任务（策略永远主动输出），且"在此尺度——小舵机驱动 ~800g 双足——执行器保真度是 sim2real gap 的主要成分"[11]。语义鸿沟之所以在本谱系中爆发，是因为任务目标（零速静站演示）恰落在两域语义分叉最大的区间：sim 域零动作必倒迫使策略永远活跃，真机域零动作本已被扶稳——<strong>训练目标与部署物理在"静止"这一语义点上直接矛盾</strong>。</p>
+<h3 id="34">3.4 部署判据与验收协议</h3>
+<p>从掩蔽效应直接推导运维判据。核心原则：<strong>姿态域证据的分辩力被低层稳定层污染，动作域证据必须独立采集并交叉验证</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>判据</th>
+<th>阈值/签名</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>J1 动作饱和签名</td>
+<td>|act| 持续 &gt;0.9 且与姿态扰动不相关</td>
+<td>策略失效（即使姿态稳定）</td>
+</tr>
+<tr>
+<td>J2 双域分裂检验</td>
+<td>同一确定性推理链 sim 3/3 全绿 + 真机 &lt;3s 发散</td>
+<td>执行域语义错配（非策略缺陷）</td>
+</tr>
+<tr>
+<td>J3 零动作基线</td>
+<td>真机零动作保持站立 vs sim 零动作必倒</td>
+<td>域不同构确诊，须语义级适配</td>
+</tr>
+<tr>
+<td>J4 交叉双门</td>
+<td>用户目测平衡 ∧ 关节读回左右对称和&lt;4° ∧ 动作幅值域内</td>
+<td>三者同时成立才算通过</td>
+</tr>
+</tbody>
+</table>
+<p>配套验收协议（已在项目落地）：确定性推理（均值非采样）+ 指令锁零 + 仿真闭环 3 episode 全绿（必要条件）；真机测试全程记录动作幅值通道，通过判定须动作域姿态域双门齐过；"未摔倒"单独不构成任何通过证据[13]。</p>
+<p>J2/J3 的工程价值在成本：双域分裂与零动作基线都是<strong>分钟级实验</strong>，可在投入任何第 101 次训练前完成诊断，替代"再训一次试试"的试错循环。谱系中的反面教训恰是其注脚：掩蔽假通过曾连续 3 轮把"没摔倒"误判为"站稳"[13]。</p>
+<h3 id="35">3.5 局限</h3>
+<ol>
+<li>单平台单任务族证据：STS3025 双足 + 静站/行走任务；Dynamixel 级硬件与 QUADX 类平台的掩蔽强度未量化；</li>
+<li>语义鸿沟的定量建模（固件位置环等效刚度、齿轮箱反射刚度的注入方式）尚在标定中——位置伺服域训练方案[11]是修复路线，但 Phase0 收尾实验显示纯位置执行器 + 直腿零位在 sim 中零动作仍倒，说明"固件扶"的效果还未被现有执行器原语完全捕捉，语义复刻存在未解的标定项；</li>
+<li>掩蔽效应给出的是判据与协议，未给出"如何在掩蔽存在时测出策略真实贡献"的定量分解方法（如干扰消融法）；</li>
+<li>与 ARS[4] 的组合路线（硬件塑形 × 语义复刻的双向夹逼）是猜想，未实验。</li>
+</ol>
+<h2 id="4">4 案例验证</h2>
+<p>本论文实证材料全部取自本周笔记群与项目文档，四线独立收敛：</p>
+<ul>
+<li><strong>执行器域文献线</strong>：本周 6 篇笔记从不同侧面收敛到"执行器是 sim2real 主战场"——《执行器现实塑形 ARS 与 kHz 力矩环》（09-27，反向路线）、《sim2real 执行域适配》（09-26，力矩观测对齐+在线自适应）、《窄可行域任务的执行器动力学课程》（09-24，刚度课程）、《RL 策略部署稳定性》（09-23，约束式平滑）、《双足机器人站立学习三大新方案》（09-25）、《Transformer 运动策略三新招》（09-27）——异源同向，但无一触及"类别错配"层，恰证本文命题的空白性；</li>
+<li><strong>验证器方法线</strong>：《没有免费的检验器——机器人策略验证器 150 篇综述》（09-24，即 No Free Checker[14]）给出验证器困境的一般理论，本文的伺服掩蔽效应是其在"低层控制器在场"情景下的具体化；</li>
+<li><strong>实战谱系线</strong>：项目文档 docs/104（T2 终审 FAIL+假通过账本）、docs/111（域适配训练真机首 PASS 及其后续翻案）、docs/112（Phase0 门禁三连败）、docs/113（百训总根因+位置伺服域方案）构成"失败→归因→消融→方案"完整闭环；</li>
+<li><strong>同代对照线</strong>：S13TSTS m4500 案例的"域适配训练→真机 10s/30s 站立+抗推→后续 Phase0 消融翻案"完整弧线，说明即便正向结果也须按 §3.4 判据复核——这正是掩蔽效应的方法论回响。</li>
+</ul>
+<p>四线合流指向同一结论：<strong>低成本双足的 sim2real 失效归因应从"参数保真度"范式转移到"语义保真度"范式；任何部署验收若不采集与低层稳定层正交的动作域证据，其通过结论不可信。</strong></p>
+<h2 id="5">5 结论与展望</h2>
+<p>本文以 100+ 训练线谱系与 20+ 部署轮事故为材料，提出并实证了执行器语义鸿沟分类学与伺服掩蔽效应：(1) 扭矩语义仿真 × 位置伺服部署的类别错配是低成本双足反复失败的不变主因，产生双世界分裂与掩蔽假通过两种新失效模式；(2) 零动作消融链（增益全档、静摩擦、复位姿态全控）证明两域静力学不同构，鸿沟不可由参数级方法弥合；(3) 动作域×姿态域交叉验证判据可在分钟级完成诊断，替代试错循环，并已捕获连续多轮假通过。</p>
+<p>展望：①位置伺服域训练的语义复刻标定（固件保持力矩实测注入）是正在进行的修复路线[11]；②掩蔽存在下策略真实贡献的定量分解（干扰消融/扰动注入法）；③与 ARS 对偶路线的组合验证；④跨平台掩蔽强度量化（Dynamixel 级 vs 直驱级）。局限如 §3.5 所列，结论边界限于位置伺服低成本双足平台。</p>
+<h2 id="gbt-7714">参考文献（GB/T 7714）</h2>
+<p>[1] TAN J, ZHANG T, COUMANS E, et al. Sim-to-Real: Learning Agile Locomotion for Quadruped Robots[EB/OL]. (2018-10-07)[2026-09-27]. https://arxiv.org/abs/1810.05587. (RSS 2018 接收版 2019-04-05 v3)</p>
+<p>[2] HWANGBO J, LEE J, DOSOVITSKIY A, et al. Learning Agile and Dynamic Motor Skills for Legged Robots[J]. Science Robotics, 2019, 4(26): eaau5872.</p>
+<p>[3] HU X, SUN Q, HE B, et al. Impact of Static Friction on Sim2Real in Robotic Reinforcement Learning[EB/OL]. (2025-03-03)[2026-09-27]. https://arxiv.org/abs/2503.01255.</p>
+<p>[4] YAMAMORI S, et al. Actuator Reality Shaping for Zero-Shot Sim-to-Real Robot Learning[EB/OL]. (2026-07-02)[2026-09-27]. https://arxiv.org/abs/2607.02205.</p>
+<p>[5] CHAKRABORTY K, RAJENDRA C K, ALHARBAT A, et al. Actuator Dynamics Curricula for Narrow-Viability Tasks in Legged Robot Learning[EB/OL]. (2026-09-08)[2026-09-27]. https://arxiv.org/abs/2609.09492.</p>
+<p>[6] KIM D, LEE E, PARK H, et al. Simple Torque-Observation Alignment for Zero-Shot Sim-to-Real Grasping with a Direct-Drive Gripper[EB/OL]. (2026-09-24)[2026-09-27]. https://arxiv.org/abs/2609.29031.</p>
+<p>[7] KIM D, BERSETH G, SCHWARTZ M, et al. Torque-based Deep Reinforcement Learning for Task-and-Robot Agnostic Learning on Bipedal Robots Using Sim-to-Real Transfer[EB/OL]. (2023-04-19)[2026-09-27]. https://arxiv.org/abs/2304.09434.</p>
+<p>[8] ESSER M, et al. Action Space Design in Reinforcement Learning for Robot Learning[EB/OL]. (2025)[2026-09-27]. https://mlresearch.github.io/v270/esser25a.html. (PMLR v270)</p>
+<p>[9] PANCHAL U, KLEYKO D, ARTAN U, et al. Smoothness as a Constraint for Stable Humanoid Locomotion[EB/OL]. (2026-09-21)[2026-09-27]. https://arxiv.org/abs/2609.24552.</p>
+<p>[10] PENG X B, ANDRYCHOWICZ M, ZAREMBA W, et al. Sim-to-Real Transfer of Robotic Control with Dynamics Randomization[C]//2018 IEEE International Conference on Robotics and Automation (ICRA). Brisbane: IEEE, 2018: 3803-3810.</p>
+<p>[11] DUCK-Pi_5 项目组. 百训失败总根因与位置伺服域训练完整方案：项目文档 113[R]. 2026.</p>
+<p>[12] DUCK-Pi_5 项目组. S13TSTS m4500 真机站立首 PASS 与 STS 域适配兑现：项目文档 111[R]. 2026.</p>
+<p>[13] DUCK-Pi_5 项目组. T2 真机终审 FAIL 与部署链全错误账：项目文档 104[R]. 2026.</p>
+<p>[14] WAN Y, YUE X, LIU Z, et al. No Free Checker: A Survey of Verifiers for Robot Policies[EB/OL]. (2026-09-08)[2026-09-27]. https://arxiv.org/abs/2609.09250.</p>
+</body>
+</html>
