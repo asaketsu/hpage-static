@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ICLR论文精读-当Agent何时能遗忘推理-长程上下文在线压缩与轨迹放大效应</title>
+
+<meta property="og:title" content="ICLR论文精读-当Agent何时能遗忘推理-长程上下文在线压缩与轨迹放大效应" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="iclr-agent-">ICLR论文精读-当Agent何时能遗忘推理-长程上下文在线压缩与轨迹放大效应</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.AI / cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.29875<br />
+<strong>作者</strong>：Mingxuan Wang, Fei Luo, Bo Wang, Guorun Yao, Yinglong Guo, Chao Ning, Hongyue Chen, Yanbiao Ma, Jungong Han<br />
+<strong>arXiv ID</strong>：2609.29875（v1，2026-09-24 提交）<br />
+<strong>记录日期</strong>：2026-09-28</p>
+
+<p class="meta-date">生成日期 2026-09-28</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #Agent上下文压缩 #推理遗忘 #LLM-Agent #轨迹放大效应</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 论文元信息与核心问题</h3>
+<ul>
+<li><strong>论文全称</strong>：When Can Agents Forget Their Reasoning? ICLR for Long-Horizon Agent Context Compression（Interaction Aware Compression for Long Horizon Reasoning）</li>
+<li><strong>发表时间</strong>：2026-09-24，30 页长文</li>
+<li><strong>研究领域</strong>：长程 LLM Agent 的上下文管理 / 推理压缩</li>
+<li><strong>核心问题</strong>：长程 Agent 不断累积推理历史（reasoning history），上下文长度和推理成本随之增长。一旦推理已经产生了动作、环境已返回反馈，<strong>这段推理是否还需要留在活跃上下文中？</strong></li>
+<li><strong>关键区别（与静态 CoT 压缩的本质不同）</strong>：</li>
+<li>静态 CoT 压缩：修改的是一条<strong>已完成的推理轨迹</strong>，评估对象是同一个最终答案</li>
+<li>在线 Agent 推理压缩：改变的是<strong>未来动作生成的状态</strong>。第 t 步删掉一段推理，可能改变下一个工具调用、下一个观察、以及之后的所有决策——这是<strong>闭环决策过程干预</strong>，不是文本编辑</li>
+</ul>
+<h3 id="12-iclr">1.2 方法核心：ICLR 三层设计</h3>
+<p><strong>整体流程</strong>：Agent 每完成一步交互（推理 R_t → 动作 A_t → 观察 O_t+1），ICLR 在下一次请求前压缩<strong>刚完成这一步</strong>的推理，保留动作、工具调用、观察的完整原文。压缩后的历史直接写回持久历史，不可恢复，后续所有调用都在被修改过的轨迹上运行。</p>
+<p><strong>（1）代理熵评分（Proxy Entropy）</strong><br />
+- 用一个<strong>冻结的</strong> Qwen3.5-9B 模型作评分器（acting agent 是 DeepSeek-V4-Flash）<br />
+- 对每个推理块计算 token 级预测熵的均值：低熵 = 高预测确定性 = 高冗余<br />
+- 分块规则：双换行符确定性切分，排除空块<br />
+- 42K token 输入上限：超出则该步跳过剪枝（绝不截断 acting agent 看到的历史）</p>
+<p><strong>（2）上下文条件化排名（Context-Conditioned Ranking）</strong><br />
+- 评分器不是孤立地看推理块，而是接收 system prompt + 工具定义 + 累积交互历史 + 当前完成步骤的<strong>原始因果序</strong>完整上下文<br />
+- 同一段推理文本在不同轨迹状态下得分不同——H(B_i | H_t) 是状态依赖量<br />
+- 这正是 Agent 场景的关键：新动作/观察会改变旧推理的相关性</p>
+<p><strong>（3）块选择（BottomK 删除）</strong><br />
+- 固定删除比例 ρ=0.8：每次删掉熵最低的 80% 推理块<br />
+- 被删块替换为 [SKIP] 占位符，保留块原文与顺序不变<br />
+- 用固定比例而非任务自适应阈值：为了跨轨迹一致干预，便于科学研究对比</p>
+<h3 id="13">1.3 关键实验结果</h3>
+<p><strong>主结果（WorkBuddyBench 260 任务全集）</strong><br />
+- 平均奖励：0.699 → 0.718（+1.9 分），同时 token 总量 2.69M → 2.19M（-18.5%）<br />
+- 分项 token：输入 -25.5%、输出 -14.4%、缓存读 -33.3%<br />
+- 胜/平/负：102/76/82<br />
+- 域级分化明显：Security 域 +22.9 分大涨，Code 域 -6.4 分、Office 域 -4.2 分小跌</p>
+<p><strong>与 12 个基线对比（Pilot40 子集，avg 分数 / 相对基线 token）</strong><br />
+- ICLR：70.3 / +6.9% token（唯一同时提分+省 token 不足的平衡方案中 avg 最高）<br />
+- 滑动窗口 K=5：56.4 / +56.3%（掉 11 分还费 token）<br />
+- Periodic Summary n=3：60.5 / +17.2%（总结式压缩掉分严重）<br />
+- PACE：58.4 / -41.6%（省 token 最多但掉 9.1 分）<br />
+- CoMem：44.2 / -59.5%（外部记忆方案在此基准上崩溃，Security 域仅 2.5 分）<br />
+- ACM（已发布策略）：33.7（-33.8 分，全面崩溃）</p>
+<p><strong>消融（80 任务固定集）</strong><br />
+- ICLR 0.738 vs Base 0.627（+11.09）<br />
+- Delete-All-Thinking（全删推理）：0.718（+9.11）——全删居然也涨分<br />
+- Step-Only-Entropy（无上下文条件化）：0.711（+8.47）<br />
+- Random 5%-40% 删除：0.676-0.678（+4.9 左右）——随机删也涨分但系统性低于熵方法<br />
+- 结论：推理历史确有大量冗余，但上下文条件化的熵排名提供了超出"单纯删减"的增量信息</p>
+<h3 id="14-trajectory-amplification">1.4 轨迹放大效应（Trajectory Amplification）——论文最重要的发现</h3>
+<ul>
+<li><strong>现象</strong>：本地删除率与最终系统级计算量<strong>不成比例、非单调</strong></li>
+<li>Random 10% 删除 → 总输入 -60.5%</li>
+<li>Random 20% 删除 → 总输入只 -44.0%（删得更多，反而省得更少）</li>
+<li>Delete-All → -63.6%（并非"全删=最大节省"的线性外推）</li>
+<li><strong>机制</strong>：对推理历史的局部修改 → 改变后续工具选择 → 改变观察内容 → 触发重复推理/恢复/重试 → 轨迹形状整体改变</li>
+<li><strong>含义</strong>：评估上下文压缩方法<strong>不能只看本地删了多少 token</strong>，必须看端到端轨迹级计算量。删 10% 可能比删 20% 省更多，因为前者不触发恢复循环</li>
+</ul>
+<h3 id="15-future-necessity-probing">1.5 未来必要性探测（Future Necessity Probing）</h3>
+<ul>
+<li>用冻结 Qwen3.5-9B 作表征传感器，线性探针预测"当前上下文边界的隐藏状态是否编码了稍后重推导/补充推理/重规划"的信号</li>
+<li>265 个压缩边界样本（31 任务、112 正例），严格任务级嵌套划分防泄漏</li>
+<li><strong>AUROC 0.844、AP 0.811、平衡准确率 0.760</strong>——"哪些推理稍后还会被用到"在当前状态中是可解码的</li>
+<li>激活修补（Activation Patching）互补证据：用全历史残差替换删除历史残差，KL 修复度随层深递增——层4=0.047、层20=0.459、层28=0.724、层31=0.978（中后层承载历史推理信息）</li>
+</ul>
+<h3 id="16-internalization-externalization-gap">1.6 内化-外化鸿沟（Internalization-Externalization Gap）——最具工程价值的发现</h3>
+<ul>
+<li>任务特定派生状态只存在于推理中时，未来行为风险率 <strong>67.3%</strong></li>
+<li>该状态已被外化（写入代码/文件/环境）后，风险率降至 <strong>36.2%</strong>（任务内 +19.8 个百分点）</li>
+<li>受控干预四连证据：</li>
+<li>只保留最新推理 → 保持满分规则分 0.872</li>
+<li>只删最新推理 → 降至 0.760</li>
+<li>相关代码写完后清空推理 → 最终分数不变</li>
+<li>隐藏环境反馈 → Agent 会通过额外交互重新获取同样信息</li>
+<li><strong>结论</strong>：历史推理的价值 = 它是否还是任务关键派生状态的<strong>唯一可靠载体</strong>。一旦状态外化，原推理即可弃</li>
+</ul>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-workbuddybench">2.1 WorkBuddyBench</h3>
+<p>论文的主实验基准。长程 Agent 任务集，260 任务覆盖四个域：Code（80）/ Office（50）/ Security（60）/ Web（70）。带官方任务奖励（reward）计分，并单独统计输入/输出/缓存读 token。消融用固定 80 任务子集（每域 20）。它是近期 Agent 上下文管理研究（PACE、SelfCompact、SWE-Pruner 等）的公共比较平台。</p>
+<h3 id="22-step-entropy">2.2 Step Entropy（熵引导压缩谱系）</h3>
+<p>ICLR 的代理熵直接继承自 Step Entropy 方法（论文引文 9）：对推理步骤按预测分布不确定性排名，数学推理中大量低熵步骤可删而保持最终答案精度。CONCISE、TokenSkip 同属"删低贡献推理"谱系。它们的共同局限是只在<strong>单次完成生成内部</strong>优化，而 ICLR 把熵准则搬进闭环交互循环。</p>
+<h3 id="23-agent">2.3 Agent 上下文管理方法谱系（基线全景）</h3>
+<ul>
+<li><strong>Token 级压缩</strong>：LLMLingua 系列、gist tokens</li>
+<li><strong>相关性与摘要</strong>：PACE（预测性自适应上下文提取）、ACON（优化长程 Agent 上下文压缩）、Periodic Summary</li>
+<li><strong>Agent 专属</strong>：SWE-Pruner、Self-Compact、Self-GC、Sculptor、SAM</li>
+<li><strong>外部记忆</strong>：MemGPT、CoMem、Mem1、ACM</li>
+<li>ICLR 的差异化主张：不动动作/工具调用/观察（外部交互记录），只动推理——保护"已进入环境的事实"</li>
+</ul>
+<h3 id="24-kv-cache-vs">2.4 KV Cache 视角 vs 转录本视角</h3>
+<p>ICLR 属于<strong>转录本层</strong>（改变 LLM 看到的历史文本）压缩，与 KV Cache 层压缩（MemDecay 的区域感知驱逐、Kara 滑动窗口）正交。注意 ICLR 的缓存读 token -33.3% 是转录本缩短的副产品。两层可叠加，也共享同一设计问题：删什么、何时删、删了之后闭环行为怎么变。</p>
+<h3 id="25-probing">2.5 表征 probing 与激活修补</h3>
+<p>线性探针读隐藏状态预测行为目标（Gurnee &amp; Tegmark 式表征分析）；激活修补做因果验证：把"删除历史"条件下的残差替换为"全历史"残差，看下一个 token 分布恢复多少（KL Repair）。这套神经可解释性工具被借来回答"历史推理在模型内部是否被真实使用"。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-iclr">3.1 核心框架图：ICLR 在线压缩循环</h3>
+<pre><code>任务开始
+   │
+   ▼
+┌─────────────────────────────────────────────┐
+│ Agent 步 t:  R_t(推理) → A_t(动作/工具调用) → O_t+1(观察) │
+└─────────────────────────────────────────────┘
+   │ 步骤完成
+   ▼
+┌─────────────────────────────────────────────┐
+│ ICLR 压缩（仅针对 R_t，不动 A/O）              │
+│ 1. 双换行切块: R_t = B1..BN                  │
+│ 2. 冻结 Qwen3.5-9B 对每块算上下文条件熵 H(Bi|Ht) │
+│ 3. BottomK 删 80% 最低熵块 → [SKIP]            │
+│ 4. 写回持久历史（不可恢复）                     │
+└─────────────────────────────────────────────┘
+   │
+   ▼
+下一次请求 ã── 被修改轨迹驱动未来的工具选择/观察/恢复
+   │              （轨迹放大效应在此发生）
+   ▼
+... 循环直至任务结束
+</code></pre>
+<h3 id="32">3.2 三大发现的因果链</h3>
+<ul>
+<li><strong>发现一（轨迹放大）</strong>：本地删除 ≠ 省钱。删除改变决策 → 决策改变轨迹长度与内容 → 端到端计算量非单调。评估必须轨迹级。</li>
+<li><strong>发现二（未来必要性可探测）</strong>：当前上下文边界的表征含"稍后是否重推导"信号（AUROC 0.844）→ 删除决策原理上可以前瞻，不必只靠熵事后排名。</li>
+<li><strong>发现三（内化-外化鸿沟）</strong>：推理的价值 = 唯一载体性。状态已外化 → 推理可弃；未外化 → 删除高风险（67.3% vs 36.2%）。</li>
+</ul>
+<h3 id="33">3.3 论文定位一句话</h3>
+<p>用冻结代理模型做训练无关的在线推理剪枝，并首次系统刻画了"Agent 在线压缩的闭环非单调性"，把'何时可以遗忘推理'归约为'任务状态是否已外化'的可操作判据。</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1agent">趋势1：Agent 上下文压缩从"摘要范式"转向"选择性保留范式"</h3>
+<p>依据：Periodic Summary 掉 7 分、CoMem/ACM 类方案在长程基准崩溃，而"只删推理、保留动作与观察"的 ICLR 及其消融变体全部涨分。摘要范式有损且不可控，选择性保留保住了外部记录的证据链。</p>
+<h3 id="2">趋势2：评估指标从"本地压缩率"走向"端到端轨迹计算量"</h3>
+<p>依据：轨迹放大效应表明删 10% 可能比删 20% 更省总 token。只报告压缩比的方法在闭环场景下失去意义，未来论文将被迫报告 wins/ties/losses + 全轨迹 token 计量。</p>
+<h3 id="3">趋势3：冻结小模型做评分器成为训练无关方法的标配架构</h3>
+<p>依据：ICLR 用冻结 Qwen3.5-9B 同时充当熵评分器与 probing 传感器，零训练成本。与 TMEM/Engram 类参数化记忆路线形成对照——"外挂冻结模型"是轻量化落地的主流路径。</p>
+<h3 id="4">趋势4：删除决策将从"事后熵排名"进化为"前瞻必要性预测"</h3>
+<p>依据：AUROC 0.844 的探针证明未来必要性可解码，但 ICLR 本身还没用它做删除决策。把 probe 变成策略（何时删、删哪块）是显然的下一代方法，也是开源复现的机会点。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-memdecay-260710582">5.1 与 MemDecay 精读（2607.10582）的关联</h3>
+<p>MemDecay 在 <strong>KV Cache 层</strong>做区域感知驱逐（system 区半衰期 10 倍于 scratchpad），ICLR 在<strong>转录本层</strong>做推理块删除。两者共同验证同一原则：上下文不同区域的可丢弃性差异巨大——MemDecay 用区域优先级，ICLR 用熵+载体状态。两层正交可叠加：转录本层先删推理减少输入，KV 层再做区域感知驱逐。</p>
+<h3 id="52-memory-compaction-260708032">5.2 与 Memory Compaction 率失真框架（2607.08032）的关联</h3>
+<p>率失真框架证明<strong>可逆压缩（0.95）远优于不可逆压缩（0.33-0.56）</strong>。ICLR 的 [SKIP] 替换是彻底不可逆删除，按该框架属高风险端；但其受控干预显示"代码写完后删推理无损"——因为信息已<strong>转移</strong>到外部载体，等效于可逆。两篇合读给出统一判据：删除安全性取决于信息是否有其他存活副本（外化载体或可重推导）。</p>
+<h3 id="53-skip-2026-09-16">5.3 与 SKIP 简洁推理精读（2026-09-16）的关联</h3>
+<p>SKIP 在<strong>训练时</strong>用偏好学习压缩单轮推理长度，ICLR 在<strong>推理时</strong>在线删除历史推理块。互补关系：训练期瘦身（SKIP）+ 运行期遗忘（ICLR）可组合。且 ICLR 的"低熵=可删"与 SKIP 的"自知识引导跳步"共享同一信息论直觉。</p>
+<h3 id="54-agent-2026-2026-09-07">5.4 与 Agent 记忆架构 2026 之争（2026-09-07）的关联</h3>
+<p>该笔记记录了"文件系统 74 分打脸专业记忆栈"的争论。ICLR 增添新证据：CoMem（外部记忆栈代表）在 WorkBuddyBench 上崩溃至 44.2 分，而最朴素的"保留外部交互记录"策略表现最稳。支持"环境本身就是记忆"的极简路线。</p>
+<h3 id="55-hermes-agent">5.5 与 Hermes Agent 自身的关联</h3>
+<p>Hermes 的会话历史管理与 context-compressor skill（大工具输出转存文件+摘要预览）正是 ICLR 研究的问题域。ICLR 的"保护动作/工具输出、只压推理"原则可直接对照 Hermes 的压缩策略设计。</p>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Local text removal is not equivalent to total computation saved.」— 轨迹放大效应的本质：省 token 要看端到端，不是看本地删了多少。</p>
+<p>「Historical reasoning is most valuable when it remains the only reliable carrier of task relevant derived state.」— 全文最凝练的结论：推理的价值在于唯一载体性。</p>
+<p>「Agent reasoning is dynamic working state whose value changes throughout interaction.」— 把推理从"资产"重新定义为"动态工作状态"。</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示（借鉴点与优先级评估）</h2>
+<h3 id="71-hermes-agent">7.1 对 Hermes Agent 的借鉴点</h3>
+<ul>
+<li><strong>P0 · 推理/动作分离压缩原则</strong>：Hermes context-compressor 目前对工具输出做转存压缩；可增加"只压 assistant 推理段、永不压工具输出与用户消息"的策略分层。ICLR 证据：保外部记录、删内部推理是唯一同时涨分+减 token 的方向。对照现有 skill：context-compressor 未区分消息类型，属增量价值高的改造。</li>
+<li><strong>P0 · 轨迹级成本观</strong>：Hermes 的 token 统计按调用计；长会话中应追踪"单次删除引发的后续重试/恢复增量"（轨迹放大检测），避免"删了 20% 反而更贵"。工作量：会话日志聚合脚本，约半天。</li>
+<li><strong>P1 · 外化优先原则</strong>：任务关键派生状态（计划、约束、中间结论）尽早写入文件/checkpoint（harness-checkpoint skill 已有雏形），随后即可安全压缩对应推理。ICLR 数据：外化后风险率 67.3%→36.2%。与 memory-write skill 的原子记忆点联动。</li>
+<li><strong>P2 · 低熵可删启发式</strong>：cron 会话的重复性推理（每日巡检等）可用轻量代理（本地小模型或 next-token 概率）识别低熵段批量跳过。Jetson 本地 9B 模型即可承担，无需训练。</li>
+<li><strong>P3 · 必要性探针</strong>：冻结模型线性探针预测"稍后是否重推导"（AUROC 0.844），用于删除决策前瞻。工程改造量大，暂观望。</li>
+</ul>
+<h3 id="72-jetson">7.2 对 Jetson 边缘部署的借鉴点</h3>
+<ul>
+<li><strong>P1 · 缓存读 -33.3% 的边缘意义</strong>：转录本缩短直接减少 KV cache 读流量，对 Jetson 内存带宽受限平台是双倍收益（省计算+省带宽）。长会话 Agent（如值班机器人）可按 ICLR 模式只保留动作/观察。</li>
+<li><strong>P2 · 冻结小评分器架构</strong>：Jetson 本地跑 9B 评分器对每步推理打熵分，边缘端零训练成本实现自适应压缩，与 nexa-local-inference 栈可组合。</li>
+</ul>
+<h3 id="73">7.3 对量化交易的借鉴点</h3>
+<ul>
+<li><strong>P3 · 盘口解读推理的外化</strong>：盯盘 Agent 的推理（支撑位计算、量能判断）应立即外化为结构化指标文件再入上下文，而非让原始推理持续膨胀。ICLR 的外化判据（唯一载体性）同样适用。</li>
+</ul>
+<h3 id="74">7.4 借鉴点分档总表</h3>
+<ul>
+<li>✅ 已部分实现（增量价值高）：推理/动作分离压缩 → context-compressor 增加. 消息类型分层</li>
+<li>🔨 可直接移植：外化优先原则 → harness-checkpoint + memory-write 组合，约 1 天</li>
+<li>🔨 可直接移植：轨迹级成本统计 → 会话日志聚合，约半天</li>
+<li>⚠️ 需工程改造：低熵代理评分 → 需本地模型常驻，Jetson 可行</li>
+<li>❌ 暂不适用：激活修补/KL 修复分析（纯研究工具）</li>
+</ul>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<ol>
+<li><strong>Hermes 长会话压缩策略升级</strong>：按 ICLR 原则改造 context-compressor——assistant 纯推理段可压缩，工具输出/用户消息永不压。配合外化优先，长 cron 会话可稳定控制上下文规模。</li>
+<li><strong>harness-checkpoint 强化</strong>：把"任务关键状态写入 checkpoint"从可选动作升级为压缩前置门禁——未外化的派生状态所在推理段标记为不可删。</li>
+<li><strong>Agent 成本可观测性</strong>：在 observability-dashboard 中增加轨迹放大指标（删除操作后的重试率/额外调用数），验证压缩策略的真实收益。</li>
+<li><strong>多机经验交换协议优化</strong>：exchange.jsonl 的经验条目遵循"结论外化+推理可弃"格式，减小交换体积。</li>
+<li><strong>重复主题增量研究</strong>：recurring-topic-incremental-research 已实践"只追新进展"——ICLR 为其提供理论支撑：历史推理的价值随外化递减。</li>
+</ol>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>适用对象</strong>：构建长程 Agent 系统、需要控制上下文成本的工程师与研究者。</p>
+<p><strong>核心操作指南提炼</strong>：<br />
+1. 永远不要压缩工具输出与用户消息——它们是外部交互记录，删除会破坏证据链<br />
+2. 推理段压缩前先问：其中的任务关键结论是否已有外部副本（文件/代码/环境状态）？没有则先外化再删<br />
+3. 评估任何压缩策略时，报告端到端轨迹 token 而非本地压缩率——轨迹放大会让本地数字失真<br />
+4. 冻结小模型 + token 熵是零训练成本的可行起点；固定删除比例比自适应阈值更利于对照实验<br />
+5. 域差异必须实测：ICLR 在 Security +22.9 而 Code -6.4，盲目移植有风险</p>
+<p><strong>与其他指南的冲突与调和</strong>：Memory Compaction 框架主张可逆压缩优先；ICLR 实操中用不可逆 [SKIP] 但靠外化补偿。调和方案：外化载体存在时不可逆删除等效可逆——实践中应先建外化层，再放开删除。</p>
+</body>
+</html>
