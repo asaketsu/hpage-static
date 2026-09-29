@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ActKV动作导向KV缓存压缩精读</title>
+
+<meta property="og:title" content="ActKV动作导向KV缓存压缩精读" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="actkv-agent-kv-25-985">ActKV 精读：动作导向的 Agent KV 缓存压缩，25% 显存保住 98.5% 任务精度</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (2609.31395)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.31395<br />
+<strong>作者</strong>：Zihan Wang, Cheng Tang, Lei Gong, Chao Wang, Wenqi Lou, Teng Wang, Xuehai Zhou（中国科学技术大学团队）<br />
+<strong>提交日期</strong>：2026-09-25<br />
+<strong>记录日期</strong>：2026-09-29</p>
+
+<p class="meta-date">生成日期 2026-09-29</p></blockquote>
+<p><strong>标签</strong>：#KV缓存压缩 #Agent推理 #LLM服务系统 #vLLM #边缘部署</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-agent-kv">1.1 核心问题：Agent 推理的 KV 缓存爆炸</h3>
+<p>ReAct 范式（观察-推理-行动循环）是现代 Agent（OpenClaw、Claude Code、Codex）的基础执行范式，但每轮循环产生的 token 会以 KV 条目形式持续累积：</p>
+<ul>
+<li>一个 WebShop 任务用 Qwen3-30B 跑：25 轮迭代、约 35K token、消耗 3.20 GB KV 缓存</li>
+<li>其中观察+推理条目占比超过 99%，动作条目只占不到 1%</li>
+<li>长序列还会稀释注意力、降低精度；批量服务下并发被显存卡死</li>
+</ul>
+<blockquote>
+<p><strong>关键洞察</strong>：用户真正关心的是动作驱动的任务进展，观察和推理 token 大多是"内部消耗"。但现有压缩方法（H2O/SnapKV/StreamingLLM）都按"整体输出质量"公平对待每个 token——这在 Agent 场景下是目标错配。</p>
+</blockquote>
+<h3 id="12-key-insight">1.2 三大实证发现（Key Insight 章节）</h3>
+<p><strong>发现一：动作偏好的 KV 条目独立且跨轮稳定</strong></p>
+<ul>
+<li>观察 token 主要注意局部扩展 prefill 上下文</li>
+<li>推理 token 对全部历史产生弥散注意力</li>
+<li>动作 token 聚焦于一小撮任务关键历史</li>
+<li>因此按观察/推理偏好驱逐的条目，恰恰可能丢掉动作关键条目——这解释了为什么通用长上下文压缩方法在 Agent 推理上失效</li>
+</ul>
+<p>可控实验：从 100 条 FullKV 正确轨迹中移除最后 3 轮 KV，把前缀压到 30%（分别用观察/推理/动作偏好评分），动作偏好保留的成功率最高。</p>
+<p><strong>发现二：模型置信度暴露 KV 预算是否充足</strong></p>
+<p>预算收紧 → 成功率与置信度同步下降、轨迹变长。检查生成文本发现：预算不足时模型出现 "wait"、"I guess"、"let me check" 等低置信度语言标记——模型在试图扩展推理来复述缺失上下文；但更长推理进一步挤压预算，导致反复复述、最终重探索或失败。<strong>置信度下降是预算不足的可靠在线信号</strong>。</p>
+<p><strong>发现三：压缩可标准化为三个原语</strong></p>
+<ul>
+<li>AttnScore ← CalAttn(target_q, KCache)</li>
+<li>KeepMask ← Eviction(AttnScore, Budget)</li>
+<li>KVCache ← Compaction(KVCache, KeepMask)</li>
+</ul>
+<p>H2O、SnapKV、R-KV、ActKV 等方法都可蒸馏进这个统一工作流，差异只在 target 选择和策略细节。</p>
+<h3 id="13-attention-aware-lrfu">1.3 组件一：动作导向驱逐（attention-aware LRFU）</h3>
+<p>用动作访问向量（AAV）量化条目稳定性：条目在每轮动作区域的注意力是否进 top-90%。三类模式：</p>
+<ul>
+<li>冷启动条目（前 0 后 1）：可忽略，说明当前动作偏好通常可从历史预测</li>
+<li>连续条目（无间断）：数量最多，但单次访问注意力贡献低</li>
+<li>间歇条目（中间有 0）：数量少但单次注意力贡献最强</li>
+</ul>
+<blockquote>
+<p><strong>教训</strong>：只按当前动作偏好驱逐会误删"暂时沉寂但后面会再变重要"的间歇条目。</p>
+</blockquote>
+<p>驱逐准则升级为时间效用：<strong>一个条目只有长期没有高注意力贡献后才该被驱逐</strong>。实现为 LRFU（Least Recently Frequently Used）保持分数：</p>
+<pre><code>KS_t(i) = λ·KS_{t-1}(i) + AttnScore_t(i)   （hit 时，即进 top-p=90%）
+KS_t(i) = λ·KS_{t-1}(i)                     （miss 时）
+保留 TopK(KS, k=B)，随后压实
+</code></pre>
+<ul>
+<li>λ=0 退化为纯近因：丢间歇条目</li>
+<li>λ=1 退化为纯频次：留陈旧连续条目</li>
+<li>0&lt;λ&lt;1 平衡：间歇条目熬过暂时沉寂，陈旧条目靠衰减出局</li>
+</ul>
+<p>触发时机：每轮 ORA 结束时。动作区域通过匹配 LLM 标准化输出模板（如 XGrammar 约束的工具调用格式）检测起止。</p>
+<h3 id="14">1.4 组件二：置信度驱动的自适应预算</h3>
+<p>三级置信度监测器（与推理并行、开销可忽略）：</p>
+<ul>
+<li><strong>token 级</strong>：top-k token 的负平均 log 概率，分布越尖越确定</li>
+<li><strong>轨迹级</strong>：滑窗（size w, stride s）最小值池化 → 只保留最低 b% 值——刻意放大低置信片段（复述/修复/恢复进展的信号）</li>
+<li><strong>趋势检测</strong>：对轨迹级序列做一阶最小二乘拟合，斜率 α&lt;0 说明置信度在下降 → 预算不足 → 扩大预算</li>
+</ul>
+<p>这解决了离线 profiling 预算（R-KV/Ada-KV 式）无法适应"任务类型×难度×轮次"动态需求的问题。</p>
+<h3 id="15">1.5 组件三：页感知压缩管理（两大定制内核）</h3>
+<p><strong>挑战</strong>：token 级驱逐与 vLLM/SGLang 的 block 级页管理天然错配。paged FlashAttention 不暴露完整注意力矩阵；标准注意力核需要把散落 KV 块 gather 到连续内存（拷贝开销吃掉压缩收益）。</p>
+<p><strong>内核一：恢复式注意力计算（Triton）</strong></p>
+<ul>
+<li>核心技巧：从 paged attention 副产品 softmax LSE（log-sum-exp）恢复注意力分数：A_ij = exp(s_ij − LSE_i)</li>
+<li>只需在每个页块内重算局部 q·k 点积，用现成 LSE 归一化，无需 gather、无需缓冲历史 query</li>
+<li>GQA 感知：组内 query head 取 max，动作 query 间增量均值；仅处理正在生成动作的请求，按请求×逻辑块×KV 头并行</li>
+</ul>
+<p><strong>内核二：原地压实</strong></p>
+<ul>
+<li>观察到驱逐后保留条目在页尾更密集 → 全部压进最后 X 个逻辑块（X = ⌈budget/block_size⌉）</li>
+<li>先做无冲突槽位规划：目的槽 = 尾区内被驱逐位置，源槽 = 尾区外的保留条目，二者不相交 → 一次性并行拷贝，零辅助缓冲</li>
+<li>压实后释放的块即时归还调度器复用</li>
+</ul>
+<h3 id="16">1.6 关键实验结果</h3>
+<ul>
+<li><strong>模型</strong>：Qwen3-30B-A3B-Thinking / Qwen3-235B-A22B-FP8 / GPT-OSS-20B / GPT-OSS-120B</li>
+<li><strong>基准</strong>：ALFWorld（平均轨迹 31K token）、HotpotQA-Web（8K）、WebShop（33K），各 1500 任务</li>
+<li><strong>硬件</strong>：8× RTX PRO 6000 Blackwell 96GB + 192 核 Xeon + 256GB 内存；实现于 vLLM v0.19.0 与 Transformers v5.3.0</li>
+<li><strong>基线</strong>：FullKV、R-KV（页化版）、SnapKV、StreamingLLM</li>
+</ul>
+<p>精度结果（离线固定预算，归一化到 FullKV）：</p>
+<ul>
+<li>对 R-KV / SnapKV / StreamingLLM 的平均增益：ALFWorld +27.64% / +27.06% / +54.59%；WebShop +32.86% / +31.88% / +71.08%；HotpotQA-Web +29.82% / +28.65% / +70.14%</li>
+<li>ALFWorld 预算 10% 时拿到 FullKV 的 81.34% 精度；WebShop 预算 25% 时拿到 101.41%——<strong>压缩后反而超过不压缩</strong>（WebShop +3.13%，ALFWorld 最高 +1.40%），因为选择性保留缓解了 FullKV 长轨迹中无关条目对注意力的稀释</li>
+</ul>
+<p>自适应预算结果：</p>
+<ul>
+<li>ALFWorld / HotpotQA-Web / WebShop 分别以 26.38% / 35.08% / 25.58% 峰值显存拿到 98.04% / 96.81% / 99.02% 的 FullKV 精度</li>
+<li>长轨迹任务平均：<strong>98.53% 精度 @ 25.98% 峰值显存</strong>，落在精度-显存 Pareto 前沿</li>
+<li>代价：轨迹长度增至 109.76% / 113.97% / 109.67%（轻微变长）</li>
+</ul>
+<p>内核与吞吐：</p>
+<ul>
+<li>对 paged R-KV 的单次压缩操作平均加速 <strong>10.41×</strong>（block_size=16, kv_heads=8, head_dim=128；1 请求 1K→0.5K 时最高 25.50×），零辅助 KV 存储</li>
+<li>端到端（单卡 Blackwell，1500 任务一次性提交）：token 吞吐 3.96× / 3.80× / 4.14×，任务吞吐 3.62× / 3.32× / 3.80×</li>
+<li>跨模型泛化：Qwen3-235B 上依然有效；GPT-OSS 增益较小，归因于其一半层用滑动窗口注意力（对进一步驱逐更敏感）</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-react-kv">2.1 ReAct 与 KV 缓存的耦合</h3>
+<p>ReAct（Yao et al. 2023）每轮把环境观察追加进 prompt，KV 缓存因此单调增长且不可收缩——这与普通对话的"一轮一清"完全不同。Agent 服务化的显存瓶颈不在权重而在 KV：30B 模型权重约 60GB（BF16），但并发 20 个长轨迹 Agent 各 35K token 就是 64GB 级 KV 开销。这是 vLLM PagedAttention 之后 Agent 时代的新一轮显存战争。</p>
+<h3 id="22-lrfu">2.2 LRFU 与经典缓存替换</h3>
+<p>LRFU（Least Recently/Frequently Used）是 2001 年提出的操作系统页替换算法，同时刻画近因与频次。ActKV 的贡献是把"访问"重新定义为"进入动作区域注意力 top-90%"，把注意力分数作为权重注入更新式——传统 LRFU 是 0/1 命中，这里是连续注意力加权，本质是把 OS 缓存理论搬进注意力服务系统。</p>
+<h3 id="23-lse">2.3 LSE 恢复注意力分数</h3>
+<p>FlashAttention 类核为省显存不落盘完整注意力矩阵，只在线归一化时产生 LSE（每 query 一个标量）。ActKV 的恢复式计算利用 softmax 的数学性质 A_ij = exp(s_ij − LSE_i)，只需重算块内点积即可精确还原概率——一次点积换取完整分数矩阵，是"免费搭车"式系统优化，思路可迁移到任何需要注意力分数但只有 paged 后端的场景。</p>
+<h3 id="24-memdecay-oda">2.4 与 MemDecay / ODA 的路线差异</h3>
+<ul>
+<li>MemDecay（2607.10582）：区域感知驱逐——按 system/scratchpad 等上下文区域设基础优先级+半衰期，区域标签是先验</li>
+<li>ODA（2609.20734）：按需注意力——冻结主干+训练 recall head 步级预测收益，KV 全保留零信息损失，走"读取"路线</li>
+<li>ActKV：动作导向驱逐——以"对动作生成的贡献"为唯一价值尺度，训练免费，走"驱逐"路线且做了 paged 内核工程化</li>
+</ul>
+<p>三者共同点：都承认"不是所有历史 token 同等重要"，差异在价值尺度的来源（区域先验 / 学习头 / 动作注意力）。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：以任务结果为锚的缓存价值重定义</h3>
+<pre><code>传统压缩:  价值(token) ∝ 对整体输出质量的贡献 → 公平对待
+ActKV:     价值(kv)   ∝ 对动作生成的贡献     → 结果导向
+
+观察token ─┐
+推理token ─┼─→ 驱逐候选（占99%，服务于内部状态）
+动作token ─┴─→ 价值锚点：决定环境变化与任务进展
+
+三大组件闭环:
+[动作导向LRFU驱逐] ←稳定动作访问模式─ [页感知内核]
+       ↑置信度反馈                    (LSE恢复+原地压实)
+[置信度监测器] ───预算不足信号──→ [自适应预算分配]
+</code></pre>
+<h3 id="32">3.2 方法论要点拆解</h3>
+<ul>
+<li><strong>价值锚点选择</strong>：Agent 系统的优化目标应从 token 级保真切换到任务结果级保真——这是全文最重要的视角转换</li>
+<li><strong>稳定性先于重要性</strong>：单次重要性（当前注意力）不可靠，跨轮稳定访问模式才是可依赖的驱逐依据（AAV 分析是证据链关键）</li>
+<li><strong>内省信号当传感器</strong>：不引入外部评估器，用模型自身的置信度分布做预算反馈回路——廉价的闭环控制</li>
+<li><strong>算法-系统协同设计</strong>：没有 LSE 恢复核与原地压实核，token 级驱逐在 paged 系统里只剩学术意义（paged R-KV 的 gather 开销就是前车之鉴）</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1agent-serving">趋势1：Agent 专用 serving 栈正在成形</h3>
+<p>依据：ActKV 明确区分"通用长文本压缩"与"Agent 推理压缩"，且直接实现进 vLLM。随着 OpenClaw/Claude Code 类产品的并发部署需求，LLM serving 系统将从"对话吞吐优化"转向"轨迹级显存治理"，Agent-aware 调度器会成为标配。</p>
+<h3 id="2">趋势2：置信度内省将成为系统级控制信号</h3>
+<p>依据：本文用置信度斜率控制预算；此前 Deep think with confidence 等工作已把置信度用于推理长度控制。模型内部信号（熵、置信度、惊讶度）正在从"研究分析对象"变成"serving 系统的控制平面输入"，形成软件工程式的反馈控制回路。</p>
+<h3 id="3kv">趋势3：KV 治理四路线将走向组合</h3>
+<p>依据：驱逐（ActKV/MemDecay）、压缩量化、复用（prefix cache）、读取控制（ODA）已各自成熟。ActKV 的三原语标准化（CalAttn/Eviction/Compaction）实际上为组合提供了接口层——预计一年内出现"驱逐+复用+按需读取"的叠加系统，各路线正交可组合。</p>
+<h3 id="4">趋势4：压缩反而提升精度的反直觉结果会被更多人利用</h3>
+<p>依据：WebShop 上 25% 预算拿到 101.41% 精度，说明注意力稀释是真实存在的性能税。上下文工程领域"塞得越多越好"的直觉将被系统性修正——这与人类笔记领域"压缩即理解"异曲同工。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-memdecay">5.1 与 MemDecay 笔记的关联</h3>
+<p><a href="2026-07-15-MemDecay.md">2026-07-15-MemDecay.md</a> 用"区域基础优先级+衰减率"做 KV 驱逐，system 区域半衰期是 scratchpad 的 10 倍；ActKV 则完全不看区域标签，只用动作注意力做价值尺度。两者是"先验派 vs 数据派"的经典对立：MemDecay 不需要动作模板检测，ActKV 不需要手工调区域参数。对 Hermes 这类结构化上下文系统，MemDecay 的区域先验更易落地；对工具调用密集型 Agent，ActKV 的动作锚点更精准。消融维度互补：MemDecay 揭示注意力项需幅度归一化，ActKV 揭示间歇条目需要时间效用保护。</p>
+<h3 id="52-oda">5.2 与 ODA 笔记的关联</h3>
+<p><a href="2026-09-19-On-Demand-Attention精读-语言模型知道何时召回-ODA按需注意力机制.md">2026-09-19-On-Demand-Attention精读-语言模型知道何时召回-ODA按需注意力机制.md</a> 的 ODA 走"读取"路线（28.3M recall head 预测步级收益，KV 全保留信息无损），ActKV 走"驱逐"路线（物理删除换显存与吞吐）。ODA 的 Random 对照实验证明"知道何时读"价值巨大；ActKV 则证明"知道删什么"同样有价值。两者在"按需注意力"坐标系中位于正交轴，理论上可叠加：驱逐控制常驻集，读取控制注意力范围。</p>
+<h3 id="53-hermes-agent">5.3 与 Hermes Agent 上下文管理的关联</h3>
+<p>Hermes 的长会话（cron 任务链、多轮工具调用）同样面临上下文单调膨胀——session 压缩、skills 索引、memory 分层本质上都是"上下文 KV 治理"的应用层投影。ActKV 的启示：Hermes 的上下文压缩价值尺度也应从"信息保真"转向"任务进展保真"——工具调用参数、用户原始指令、关键决策点是"动作关键条目"，而工具返回的海量原始输出是"观察噪音"。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Efficient agent serving should align memory management with task outcomes rather than token-level fidelity.」— 结论章，全文题眼：内存管理应对齐任务结果，而非 token 级保真。</p>
+<p>「Observation and reasoning remain largely internal within the agent, and are often hidden or useless to users, while what users care about is the task progress driven by actions.」— 对 Agent 价值结构的重新定义。</p>
+<p>「The model compensates by extending reasoning to recover missing context, which manifests as confidence degradation.」— 预算不足的失败链：压缩→信息缺失→推理变长→预算更紧→复述循环。这个正反馈死锁描述对 Agent 上下文管理极具警示价值。</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>启示一（上下文工程）</strong>：对 Hermes 会话压缩引入"动作锚点"——压缩历史轮次时，保 tool call 结构与参数、保用户指令原文、保决策结论，激进裁剪工具返回的原始长输出。对应 skill：context-compressor。</li>
+<li><strong>启示二（失败模式识别）</strong>：「wait / let me check / I guess」式复述螺旋是上下文不足的可观测信号。Hermes 长任务中出现连续复述时，应触发上下文补充或预算扩容，而非继续压缩。</li>
+<li><strong>启示三（工程化标准）</strong>：三原语（CalAttn/Eviction/Compaction）抽象值得在自建推理服务时沿用——任何新驱逐策略只需实现 Eviction 一个函数即可插入系统。</li>
+<li><strong>启示四（评估纪律）</strong>：ActKV 的"预算按轨迹而非数据集平均长度分配"提醒：评估压缩方法必须控制轨迹长度方差，否则对比不公平。</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<h3 id="81-jetson-agent">8.1 Jetson 边缘 Agent 部署</h3>
+<ul>
+<li>Orin Nano 8-16GB 统一内存下，本地跑 Qwen3 类模型 + 多轮工具调用轨迹，KV 缓存是第一个撞墙的资源。ActKV 的"25.98% 峰值显存 @ 98.53% 精度"如果能在边缘复现，等于显存预算直接除以四</li>
+<li>但注意：ActKV 内核面向数据中心 Blackwell + vLLM；Jetson 上需评估 Triton 内核在 Tegra 架构的兼容性，LRFU 驱逐策略本身（纯算法层）可先行移植</li>
+<li>落地路径：先用 Transformers 实现（论文已支持）验证精度，再考虑内核优化</li>
+</ul>
+<h3 id="82-hermes-gateway">8.2 Hermes Gateway 长会话治理</h3>
+<ul>
+<li>多轮 cron 链与看板任务产生的会话历史，可借鉴"动作访问稳定性"思想：哪些历史片段被后续工具调用反复引用，哪些引用一次后沉寂——后者是压缩首选</li>
+<li>置信度监测器的滑窗最小值池化+线性拟合斜率，可直接用于 Hermes 会话健康度检测（复述螺旋告警）</li>
+</ul>
+<h3 id="83-agent">8.3 量化交易 Agent</h3>
+<ul>
+<li>交易 Agent 的 ReAct 轨迹（行情观察→分析→下单动作）与本文场景同构："下单动作关键条目"= 持仓约束/风控规则/用户指令，行情快照是可压缩观察</li>
+<li>低置信度标记（"wait, let me check"）在交易场景应升级为硬风控信号：置信度斜率连续为负 → 暂停开仓、要求补充数据</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<h3 id="91">9.1 选文与阅读指南</h3>
+<p>本文适合作为"Agent 推理服务化"方向的入门+进阶双用材料：S3 的三大发现（动作条目稳定性/置信度-预算相关性/三原语）是独立的可复用知识；S7 的两个内核是 CUDA/Triton 系统工程绝佳案例。阅读顺序建议 S1→S3（动机与洞察）→S5-6（算法）→S8（实验）→S7（内核，系统背景弱可跳）。</p>
+<h3 id="92">9.2 复现与验证指南</h3>
+<ul>
+<li>论文支持 vLLM v0.19.0 与 Transformers v5.3.0 双栈，硬件门槛高（实验用 8×96GB Blackwell），但算法部分（LRFU+置信度监测）可在单卡复现</li>
+<li>复现关键超参：top-p 命中阈值 90%、block_size=16、预算从 5% 起扫到 50% 观察置信度斜率响应</li>
+<li>验证指标不要只看精度：必须同时报峰值显存、轨迹长度比（本文承认自适应模式轨迹+10%~14%，这是隐性 token 成本）</li>
+</ul>
+<h3 id="93">9.3 批判性阅读要点</h3>
+<ul>
+<li>动作区域检测依赖标准化输出模板（工具调用格式），对自由文本输出的 Agent 不直接适用——需要先上 structured output</li>
+<li>"压缩后精度反超 FullKV"只在长轨迹任务出现，短上下文任务不会有这个红利</li>
+<li>GPT-OSS 增益打折提示：滑动窗口注意力模型对 KV 驱逐天生敏感，选型时需注意模型架构与压缩方法的交互</li>
+<li>评测全部为离线 ReAct 域（ALFWorld/WebShop/HotpotQA-Web），开放域长程 Agent（如软件工程任务）的轨迹分布更不规则，泛化性待验证</li>
+</ul>
+</body>
+</html>
