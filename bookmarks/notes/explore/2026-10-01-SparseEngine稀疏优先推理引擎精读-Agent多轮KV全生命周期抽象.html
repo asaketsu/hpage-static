@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SparseEngine稀疏优先推理引擎精读-Agent多轮KV全生命周期抽象</title>
+
+<meta property="og:title" content="SparseEngine稀疏优先推理引擎精读-Agent多轮KV全生命周期抽象" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="sparseengine-agent-kv">SparseEngine 稀疏优先推理引擎精读 — Agent 多轮场景 KV 稀疏化全生命周期抽象</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv（cs.LG）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2609.39068<br />
+<strong>作者</strong>：Jitai Hao, Quansheng Gu, Qiang Huang, Jun Yu<br />
+<strong>记录日期</strong>：2026-10-01<br />
+<strong>代码</strong>：github.com/CURRENTF/SparseEngine</p>
+
+<p class="meta-date">生成日期 2026-10-01</p></blockquote>
+<p><strong>标签</strong>：#KV缓存 #稀疏注意力 #推理引擎 #长上下文 #Agent推理 #vLLM</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-agent-kv">1.1 核心问题：Agent 工作负载下的 KV 稀疏化孤岛</h3>
+<p>长上下文 LLM Agent（编码/研究/推理类迭代工作流）通过反复工具调用和推理链快速累积交互历史，产生双重 GPU 瓶颈：KV cache 容量 + attention 计算延迟。稀疏注意力方法可以缓解，但各方法对 KV 表示和更新时机的假设差异巨大，与现有推理引擎（vLLM 等）集成困难：</p>
+<ul>
+<li>现有稀疏服务框架只支持特定布局/工作流：Vortex 只暴露页中心操作，SPIN 绑定 GPU-CPU 管线的固定 Index→Offload→Select→Retrieve→Attention 流程，Tangram 专为非均匀 head 级 KV 保留定制</li>
+<li>同一抽象无法覆盖两类语义相反的方法：Quest 需要 query 依赖的页选择（逻辑选择，不删 KV），而 H2O 还需要累积注意力分数并在生成中做<strong>物理驱逐</strong>（删 KV）</li>
+</ul>
+<blockquote>
+<p><strong>核心设问</strong>：共享服务基础设施与方法级 KV 状态/计算控制之间的抽象边界应划在哪里？</p>
+</blockquote>
+<h3 id="12-lifecycle-contract">1.2 方案：生命周期契约（Lifecycle Contract）</h3>
+<p>SparseEngine 把抽象边界锚定在<strong>模型原生模块执行顺序</strong>这一关键不变量上：沿 prefill/decoding、每层执行边界、每个 step 转换暴露细粒度 hook，各稀疏方法注册回调、自行组合计算工作流，无需修改模型实现（不需要 LlamaSnapKV、Qwen3H2O 这类 per-model 分叉）。三大组件：</p>
+<ul>
+<li><strong>SparseController</strong>：细粒度生命周期 hook。prefill 阶段 <code>finish_step</code> 支持 H2O 的分块驱逐（用累积注意力分数）和 SnapKV 在最后一个 prompt chunk 后的选择+驱逐；decoding 阶段 <code>build_decode_selection</code> 执行 Quest 的 query 依赖页选择，<code>finish_step</code> 更新 H2O 累积分数并在线驱逐；<code>on_layer_end</code> + <code>build_decode_selection</code> 组合实现 OmniKV/DeltaKV 的跨层索引复用（观察层产出索引、后续层共享）</li>
+<li><strong>方法自定义 CacheManager</strong>：每个方法定义自己的 KV 表示、物理布局、位置映射与分配/写入/更新/释放操作，并维护与 KV 状态并存的持久元数据。物理驱逐更新保留槽位映射和上下文长度、把废弃槽位归还分配器；逻辑选择只改注意力读取哪些驻留条目——两种语义在同一生命周期下共存</li>
+<li><strong>AttentionView</strong>：把方法持有的缓存表示桥接到注意力执行。View = BuildView(cache_state, selection)，支持对被选择/压缩/量化/临时重建的 KV 做注意力（Quest 视图=选中页，OmniKV 视图=跨层选择后的驻留 KV，DeltaKV 视图=按需重建的 KV）</li>
+</ul>
+<h3 id="13-agent">1.3 跨请求状态管理（Agent 场景关键创新）</h3>
+<ul>
+<li><strong>Chain Cache</strong>：驱逐类方法（SnapKV/KVzip/H2O）会破坏"驻留 KV 完整"的前缀缓存前提。Chain Cache 用 ChainCacheIndex 把会话与「每层保留 KV + 方法元数据 + 逻辑 token 前缀」绑定：逻辑前缀仍可参与匹配（即使部分 token 的物理 KV 已被驱逐），续接请求只需 prefill 未处理的后缀并重新挂载保留状态，保留方法此前的缓存决策（含 H2O 的累积分数）。空闲链按 LRU 回收</li>
+<li><strong>可控 Prefix-Cache Pruning</strong>：应用指定历史区间 [L,R) 和保留比例，稀疏评分策略（KVzip/SnapKV）在区间内选择保留位置，CacheManager 只对无活跃引用的空闲块执行物理释放，但<strong>逻辑前缀保持不变</strong>——后续请求仍能匹配同一前缀、只复用保留的 KV</li>
+</ul>
+<h3 id="14">1.4 覆盖范围与实现规模</h3>
+<ul>
+<li>支持 15 种稀疏方法、四大类：物理驱逐（StreamingLLM/H2O/SnapKV/PyramidKV/KVzip）、逻辑掩码、query 感知选择（Quest/OmniKV/NSA/DSA）、KV 压缩（DeltaKV/KIVI/Palu/TurboQuant）</li>
+<li>模型覆盖 GQA（Llama-3.1-8B、Qwen3-4B-Thinking、Qwen3-30B-A3B MoE）与 MLA（GLM-4.7-Flash）及线性注意力混合模型 Qwen3.6-27B</li>
+<li>评测硬件：H100 / H20 / RTX PRO 6000 / 4090 / 5090（含消费级 GPU）</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21">2.1 关键术语</h3>
+<ul>
+<li><strong>物理驱逐 vs 逻辑选择</strong>：物理驱逐真正释放 KV 显存槽位（换并发容量），逻辑选择只减少每步注意力读取量（换计算延迟）。两者收益正交、可叠加——这是 SparseEngine 吞吐数字的结构性来源</li>
+<li><strong>前缀缓存（prefix caching）</strong>：多轮请求复用已处理前缀的计算结果，避免重复 prefill。Agent 多轮场景中前缀占比极高，是端到端延迟的大头</li>
+<li><strong>KVzip</strong>：一种通过"重构查询"打分评估 KV 重要性的压缩方法，本文复用其作为 pruning 的评分策略</li>
+<li><strong>MLA（multi-head latent attention）</strong>：DeepSeek/GLM 系的潜空间 KV 表示，多数稀疏引擎不支持（HiSparse、Tangram 均不兼容本文评测的 MLA 模型）</li>
+<li><strong>原生稀疏模型趋势</strong>：DeepSeek-V3.2 已把稀疏注意力做进模型架构（非推理时后处理），IndexCache 类工作在加速学习出的稀疏注意力——稀疏正从"引擎可选优化"变成"模型内生属性"</li>
+</ul>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 架构分层</h3>
+<pre><code>应用层：指定 pruning 区间 [L,R) + 保留比例 / 会话 chain_id
+─────────────────────────────────────────────
+状态管理层：ChainCacheIndex（跨turn复用驱逐类状态）
+            Prefix-Cache Pruning（区间内打分释放，逻辑前缀不变）
+─────────────────────────────────────────────
+方法层：SparseMethodRuntime 注册回调（每方法自有 KV 表示+元数据）
+        CacheManager（物理布局/分配/驱逐/量化页管理）
+─────────────────────────────────────────────
+执行层：SparseController 生命周期 hook
+        （prefill finish_step / decode build_decode_selection / on_layer_end）
+        AttentionView → 注意力后端
+</code></pre>
+<h3 id="32">3.2 关键实验结果</h3>
+<ul>
+<li><strong>长上下文吞吐</strong>：SnapKV 物理驱逐下聚合 decode 吞吐约为 vLLM 10×（128K 输入，各系统最大可测 batch）；Quest/OmniKV 在同并发下 1.5×–2.6×；Vortex 在 GLM 128K 输入下连 batch=1 都 OOM</li>
+<li><strong>质量保持</strong>：LongBench V1/V2 上 15 方法与参考实现分差普遍在 ±2pp 内（SnapKV V2 分差 +0.0pp，Quest +0.0pp，TurboQuant 甚至 +2.0pp）</li>
+<li><strong>推理质量</strong>：AIME 2024 上 Qwen3-4B-Thinking 基线 81.7%，SnapKV(High) 85.0%（1.05×加速），SnapKV(Mid) 80.0%（1.33×）；StreamingLLM 崩到 18.3%（证明sink+窗口对推理任务不够）</li>
+<li><strong>Agent 端到端回放</strong>：SWE-lite GLM-4.7-Flash 下 H2O 2.02×、OmniKV 1.57×；Gasai 负载 Qwen3-30B-A3B FP8 下 SnapKV(Mid) 2.24×（777 tok/s vs 基线 346）</li>
+<li><strong>SWE-bench Lite 任务解决率</strong>：GLM 基线 25.0%，OmniKV 26.0%（不降反升），Quest 25.3%，SnapKV 24.7%，H2O 13.0%（激进驱逐伤 Agent 任务）；Qwen3-30B 基线仅 5.3%，SnapKV 升至 8.3%</li>
+<li><strong>Chain Cache 质量</strong>：SnapKV+Chain Cache 任务成功率接近全注意力参考，Qwen3 上甚至超过参考</li>
+<li><strong>Pruning 滞后技巧</strong>：KVzip 保留 20% 工具结果 KV 略降性能，但 lag=4（新工具结果到达时只剪第 5 近的轮次）立即恢复到 25.0%（超基线 23.7%）——<strong>最近 N 轮工具结果是活跃证据，不能剪</strong></li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1agent">趋势1：Agent 推理负载的"有状态化"将重塑推理引擎设计</h3>
+<p>依据：本文开头即断言 agent 工作负载本质是 stateful 的；跨请求状态管理（Chain Cache/pruning）已从可选优化变成引擎核心抽象，vLLM 这类无状态假设的引擎是结构性落后。</p>
+<h3 id="2hook">趋势2：抽象边界之争将从"工作流固定"走向"hook 契约"</h3>
+<p>依据：SPIN/Vortex 的固定工作流路线覆盖方法有限，SparseEngine 用生命周期 hook 一套契约装下 15 种异质方法；类似 Kubernetes CSI/Rook 的"契约+插件"模式正在推理 infra 复现。</p>
+<h3 id="3">趋势3：物理驱逐 + 逻辑选择 + 压缩将走向组合式部署</h3>
+<p>依据：论文讨论节明确指出对保留全 KV 的选择类方法可叠加驱逐/量化/压缩；正交收益叠加（驱逐换并发、选择换延迟、压缩换容量）是下一步主战场。</p>
+<h3 id="4ai-coding-agent">趋势4：AI coding agent 将成为稀疏方法本身的集成工人</h3>
+<p>依据：论文讨论节提出"Agent-assisted method integration"——用编码 agent 按契约+自动保真检查实现新方法，集成成本从人月级降到小时级。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-kv-cachepagedattention-vllm2026-09-12">5.1 与《KV-Cache浪费与PagedAttention救赎-vLLM内存管理全链拆解》（2026-09-12）的关联</h3>
+<p>该笔记拆解了 vLLM PagedAttention 的无状态 KV 页管理；SparseEngine 正是指出 vLLM 假设（KV 全驻留、方法无自有状态）在稀疏方法面前的失效，是 vLLM 架构笔记的直接续篇与对照。</p>
+<h3 id="52-actkvkv2026-09-29">5.2 与《ActKV动作导向KV缓存压缩精读》（2026-09-29）的关联</h3>
+<p>ActKV 是单一压缩方法，SparseEngine 是承载 15 个此类方法的引擎层抽象——方法论文（ActKV/Kara/MemDecay）与引擎论文（SparseEngine）构成"插件 vs 插座"关系。</p>
+<h3 id="53-agent-autodreamersleeptimecompute2026-09-10">5.3 与《Agent记忆离线整理-AutoDreamer区域重写与SleepTimeCompute》（2026-09-10）的关联</h3>
+<p>AutoDreamer 在语义层整理 Agent 记忆，SparseEngine 的 Prefix-Cache Pruning 在 KV 物理层做同构操作（按区间价值保留/释放）——"区域价值评分+保留比例+滞后窗口"是跨层复用的同一设计模式。</p>
+<h3 id="54-hermesjetson">5.4 与 Hermes/Jetson 的关联</h3>
+<p>Jetson Orin Nano 22GB 上跑长上下文 Agent 时 KV cache 是首要瓶颈，物理驱逐类方法（SnapKV/H2O）+ Chain Cache 模式对边缘多轮对话部署有直接参考价值（详见行动启示）。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「对数据或状态的假设决定了哪些计算是接口能自然表达的」——引擎抽象边界的通用判据，源自编程语言设计的类比（MATLAB/SQL/Rust 所有权）</p>
+<p>「逻辑前缀仍可匹配，即使并非每个匹配 token 都有驻留 KV 条目」——Chain Cache 的核心洞察：匹配与驻留解耦</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<h3 id="_8">拓展应用推荐</h3>
+<ul>
+<li><strong>Jetson Orin 边缘部署 P0</strong>：本地 Ollama/vLLM 跑 Agent 多轮对话时，评估 SnapKV 类物理驱逐 + 跨 turn KV 复用；SparseEngine 支持 4090/5090 级消费 GPU，且开源（github.com/CURRENTF/SparseEngine），可在 Orin 上试编译 aarch64 版本，实测 KV 显存占用对比</li>
+<li><strong>Hermes Gateway 会话上下文 P1</strong>：Chain Cache 的"逻辑前缀匹配与物理驻留解耦"思想可迁移到 Hermes 的 session 管理——topic-session 切换时保留「压缩状态+逻辑线索」而非全量历史，续接会话只重放未处理后缀</li>
+<li><strong>工具结果剪枝滞后策略 P1</strong>：lag=4 的"最近 N 轮工具结果不剪"规则可直接抄进 Hermes 上下文压缩/清理策略——刚返回的工具结果是活跃证据，只整理第 N 轮之前的</li>
+<li><strong>skill 层借鉴 P2</strong>：SparseController 生命周期 hook 模式（沿原生执行顺序暴露扩展点而非固定工作流）可用于 Hermes skill/hook 设计——扩展点跟随真实执行序，避免固定 pipeline 锁死异质技能</li>
+</ul>
+<h3 id="_9">指南分析</h3>
+<ul>
+<li><strong>想复现/试用</strong>：代码开源，README 规定 runtime 参数统一用 <code>sparse_method</code> 字段（不留 legacy 别名），prefill 策略由 <code>method_registry.py</code> 注册决定；<code>long_bs1full_short_batch</code> 策略专供需要完整长 prefill 的方法。评测需记录：稀疏方法、prefill 策略、chunk 大小、prompt 长度、batch size</li>
+<li><strong>方法选型速查</strong>（基于本文数据）：</li>
+<li>推理任务（数学/代码）：SnapKV(Mid~High) 最优（AIME 80-85%）</li>
+<li>Agent 任务：OmniKV 最稳（SWE-bench 不降反升），H2O 激进驱逐慎用（13% vs 25%）</li>
+<li>极限并发吞吐：SnapKV 物理驱逐（10× vLLM）</li>
+<li>禁用：StreamingLLM 用于推理任务（18.3% 崩溃）</li>
+<li><strong>待验证项</strong>：论文未给出 4090 级 GPU 上 15 方法逐一的绝对吞吐数字（图 5 为图示），Orin 部署前需自测</li>
+</ul>
+<hr />
+<p><strong>关联笔记</strong>：<a href="2026-09-12-KV-Cache浪费与PagedAttention救赎-vLLM内存管理全链拆解.md">KV-Cache浪费与PagedAttention救赎</a> | <a href="2026-09-29-ActKV动作导向KV缓存压缩精读.md">ActKV动作导向KV缓存压缩精读</a> | <a href="2026-09-10-Agent记忆离线整理-AutoDreamer区域重写与SleepTimeCompute精读.md">Agent记忆离线整理-AutoDreamer</a></p>
+</body>
+</html>
