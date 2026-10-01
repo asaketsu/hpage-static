@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harness内模型路由-LangChain降本64%实录</title>
+
+<meta property="og:title" content="Harness内模型路由-LangChain降本64%实录" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="harness-langchain-open-swe-64">Harness 内模型路由：LangChain Open SWE 的 64% 降本实录</h1>
+<blockquote>
+<p>原文：Sydney Runkle（LangChain）《How to Build a Model Router in the Harness》(X Article, 2026-10-02, 43.6K views/120 赞)<br />
+URL: https://x.com/sydneyrunkle/status/2105704739585565066<br />
+阅读日期：2026-10-02 | 评分：★★★★★（5/5，路由工程全流程实录：任务画像→模型选档→harness 落地→A/B 验证，数字完整可复算）<br />
+tag: #模型路由 #Harness #降本 #A/B测试 #Jev #LangChain #OpenSWE</p>
+
+<p class="meta-date">生成日期 2026-10-02</p></blockquote>
+<h2 id="harness">一、核心论断：路由决策属于 harness，不属于网关</h2>
+<p>前沿模型贵，而大多数 agent 任务不需要前沿智能（Anthropic 官方指南也承认 Haiku 起步常是最优）。好 agent = <strong>model-harness-task fit</strong>（对的任务配对的模型+上下文）。<br />
+<strong>路由决策该在 harness 不在通用网关</strong>——因为选对模型需要的领域/任务上下文，harness 已经组装好了，网关天然看不到。（评论区共鸣："这必须说——一堆公司还在推销 AI 网关来'省成本'"）</p>
+<p>战绩：Open SWE（开源编码 agent）加路由器 vs 恒定顶级模型，<strong>中位成本降 64%，质量无可测差异</strong>。</p>
+<h2 id="_1">二、四步法（全流程）</h2>
+<p><strong>Step 1 摸任务</strong>：从 LangSmith trace 拉一周 thread 级数据，LLM 分类器打任务类型标签。分布：新功能 22%/bug 修复 17%/测试或 no-op 16%……特征工作调查类 thread 更长更贵，测试发布类短而便宜。复杂度双信号：总成本（大任务多 token）+调用次数（<strong>高次数=更难，或模型需要多轮追问才搞定</strong>——两个含义要区分）。</p>
+<p><strong>Step 2 摸模型</strong>：Artificial Analysis 智能指数画"智能-成本"曲线取 Pareto 前沿，选三档：<br />
+- Fast：<strong>GLM-5.3-Flash (xhigh)</strong>（开放模型站上 Pareto 前沿——"开放模型跨过门槛的又一标志"）<br />
+- Balanced：GPT-5.6 Sol (medium)<br />
+- Performance：GPT-6 Astra (low)<br />
+模型无关接口，换模型=一行改动。</p>
+<p><strong>Step 3 harness 里建路由器</strong>（thread 首条人类消息时三选一）：base prompt（告诉分类器"挑最便宜的可能完成任务的模型"）+ 每档平语言判据（<strong>判据来自两源：自己的任务分析 × 厂商模型指南</strong>）+ 分类器模型。初版 LLM 结构化输出，<strong>现跑在 Jev 决策模型上——快了近 50 倍</strong>。判据深度耦合 Open SWE 任务集——这正是"属于 harness"的又一理由。</p>
+<p><strong>Step 4 追踪结果</strong>（路由前先埋好测量）：离线 eval（难点=数据集要像真实流量且按用户在乎的分级）vs A/B（真实流量但用户暴露于次优路由）。两信号：<strong>Merged PR 率</strong>（主指标，每 thread 可测）+ 用户 👍👎（稀疏但能抓路由错误）。</p>
+<h2 id="_2">三、实验数字（可复算级完整）</h2>
+<p><strong>A/B-1（vs 恒定 GPT-6 Astra，973 threads）</strong>：<br />
+- 质量：merged PR <strong>29.2% vs 27.3%</strong>（p=0.49），开 PR 率 38.9% vs 39.6%（p=0.82）——无可测差异<br />
+- 成本：<strong>中位 $0.94 vs $2.61（-64%）</strong>，均值 -42%，p90 -37%（不是少数便宜离群撑起来的）<br />
+- 路由分布：balanced 56%/fast 34%/<strong>performance 仅 10%</strong>——多数请求不需要最强模型<br />
+- 档间成本差 30 倍：fast $0.097/balanced $1.50/performance $2.88（中位）<br />
+- 用户反馈直接点名 overspend："这查询太贵了""这请求不该路由到 performance"</p>
+<p><strong>A/B-2（vs 恒定 fast）</strong>：一天内紧急终止——工程师立刻抱怨 fast-only 质量拖生产力，"没等到统计显著就结束了"。</p>
+<h2 id="whats-next">四、What's next（诚实边界）</h2>
+<p>①DeepSWE 等受控基准补 A/B ②子 agent 的模型选择也路由（现在子 agent 独立选）③<strong>mid-thread 重路由</strong>：话题变了换模型可能值——代价是 prompt cache 作废（异步 agent 的 cache 本来就常过期，代价常可忽略）④trace 挖用户情绪（挫败 thread=可能需要更强模型）。</p>
+<h2 id="_3">五、💡 对我们的价值分析</h2>
+<h3 id="_4">✅ 已在做的</h3>
+<ul>
+<li>GLM-5.3-Flash 做 fast 档 = 我们免费模型链的主力（智谱）——<strong>LangChain 官方认证它站上 Pareto 前沿</strong>，选型背书到位</li>
+<li>cron-execution-metrics/质量反馈闭环的雏形=Step 4 的对应物</li>
+</ul>
+<h3 id="_5">⚠️ 可改进的（差距=机会）</h3>
+<ul>
+<li><strong>我们的 cron 模型是硬编码</strong>（每 job 固定模型），无路由判据——fast 档跑巡检/performance 档跑分析完全可自动</li>
+<li>无任务画像：没做过"一周 cron 任务分布"分析（Step 1 的缺失）</li>
+<li>子任务路由：delegate_task 的子代理模型未按任务难度分档</li>
+</ul>
+<h3 id="_6">🔥 重点行动</h3>
+<ol>
+<li><strong>Hermes 版三档路由表</strong>：巡检/格式化/摘要→Flash 档；笔记/分析→balanced 档；架构决策/复杂 debug→performance 档——判据写在 cron prompt 模板里（Step 3 三件套直接抄）</li>
+<li><strong>先跑 Step 1</strong>：用 cron-execution-metrics 拉一周任务分布+成本，看我们的"performance 仅 10%"是否成立</li>
+<li><strong>Jev 决策层试点就此闭环</strong>：LangChain 官方已把路由判据跑在 Jev 上（50×提速）——我们的决策契约试点方向被生产验证</li>
+</ol>
+<h2 id="_7">六、内容整理（归纳总结与关联分析）</h2>
+<p><strong>归纳总结</strong>：路由属于 harness 不属于网关（任务上下文在 harness 手里）。四步：摸任务（trace 分类+成本/次数双复杂度信号）→摸模型（Pareto 前沿取三档）→harness 建路由（base prompt+平语言判据+Jev 分类器 50×快）→追踪结果（merged PR 主指标+用户反馈）。973 threads A/B：质量平（p=0.49）、中位成本-64%、仅 10% 任务真需要 performance、档间 30×价差。反向 A/B 一天杀（fast-only 拖生产力）。边界：mid-thread 重路由/子 agent 路由/情绪信号待做。</p>
+<p><strong>关联分析</strong>：与 Replit《解放模型》构成<strong>路由问题的双子星</strong>——Replit 说"拿掉 router 让模型自决"（核心循环自选 effort/委派），LangChain 说"router 要建在 harness"（判据+分类器）。表面矛盾，实际分层：<strong>Replit 反对的是"网关式外置 router"（弱模型替强模型决策），LangChain 建的是"harness 内路由"（领域判据+决策模型）——两者共同杀死的是无上下文的通用网关</strong>（评论区"kizuno18"的 harness 路由+本地 $0 工具混跑与我们 Jetson 本地推理路线同构）。Jev 在此完成生态闭环：LangGraph 编排（09-29 篇）→Replit 委派→<strong>本篇路由判据</strong>——决策模型三类落点（转移函数/委派原语/路由判据）全部出现在生产系统。GLM-5.3-Flash 上 Pareto 前沿=我们免费链的权威背书。</p>
+<h2 id="_8">七、查询拓展</h2>
+<ul>
+<li>Model routing middleware with Jev（LangChain 新发的中间件，可直接用）</li>
+<li>Artificial Analysis Intelligence Index（智能-成本曲线数据源）</li>
+<li>Building a Harness with Jev（判据写法细节）</li>
+<li>Open SWE on GitHub（trace 结构与 merged PR 记录方式）</li>
+</ul>
+<h2 id="_9">八、趋势判断</h2>
+<ol>
+<li><strong>AI 网关创业窗口关闭</strong>：harness 内路由（有任务上下文）对网关路由（只有请求）是降维打击——通用网关退化为计费/限流基础设施</li>
+<li><strong>决策模型（Jev 类）成为路由层标配</strong>：50× 提速让"每 thread 首消息即路由"零成本——LLM 分类器路由会被淘汰</li>
+<li><strong>"仅 10% 需要 performance"成为普遍分布</strong>：多数 agent 任务画像会复现这个比例——默认顶级模型=系统性 overspend</li>
+<li><strong>mid-thread 重路由+cache 代价权衡成新课题</strong>：换模型弃 cache 的成本模型（TTL 5min 场景常可忽略）会进框架层</li>
+</ol>
+<h2 id="_10">九、指南分析（怎么用这篇文章）</h2>
+<ul>
+<li>立刻可抄：四步法当 checklist；三档判据写法（任务分析×厂商指南）直接套我们的 cron 模板</li>
+<li>测量先行：没有 merged PR 类主指标就别开路由（Step 4 是前置不是事后）</li>
+<li>引用注意：64% 是中位数且对照=最贵模型；引用时带"均值-42%/p90-37%"防夸大</li>
+</ul>
+<h2 id="_11">十、拓展应用推荐</h2>
+<ul>
+<li>与 [[2026-09-30-解放模型-Replit薄Harness与自主委派]] 对读（路由双子星：自决 vs harness 判据，共同点=杀死网关）</li>
+<li>与 [[2026-09-29-Jev与LangGraph构建生产系统]] 串联（Jev 生态三落点闭环）</li>
+<li>Hermes 落地：第五节三行动（三档路由表/任务画像/Jev 试点确认）</li>
+<li>免费模型链维护：GLM-5.3-Flash 前沿地位=继续做 fast 档主力的依据</li>
+</ul>
+</body>
+</html>
