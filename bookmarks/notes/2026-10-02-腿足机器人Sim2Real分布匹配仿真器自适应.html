@@ -444,10 +444,8 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <p>学习日期：2026-10-02 ｜ 类型：夜间自学习 ｜ 来源：arXiv:2604.11090（Oregon State, Go2 实验平台）</p>
 
 <p class="meta-date">生成日期 2026-10-02</p></blockquote>
-<h2 id="_1">一、核心结论</h2>
-<p>对 DUCK 这类"sim 训练 → 真机部署"的腿足机器人项目，这篇论文给出了一条与 DR（Dynamics Randomization）和 RMA（在线适应）都不同的第三条路：<strong>不追求让策略鲁棒于 gap，也不在测试时在线估参数，而是用真机 5 分钟数据直接"改造仿真器"，让仿真器逼近真机动力学，再在改造后的仿真器里微调策略</strong>。核心技巧是把"sim-real 差距"从轨迹级点对点比较（需要动捕+时间对齐+特权状态）降维成<strong>本体感觉分布比较</strong>（1D Wasserstein 距离逐关节平均，只要关节角/速度/动作三类信号），在腿足机器人上首次做到免动捕、免时间对齐的仿真器自适应。</p>
-<h2 id="_2">二、方法拆解</h2>
-<h3 id="21">2.1 三条既有路线的边界（论文相关工作梳理）</h3>
+<h2 id="_1">内容整理：方法拆解与实验数据</h2>
+<h3 id="1">1. 三条既有路线的边界</h3>
 <table>
 <thead>
 <tr>
@@ -466,48 +464,61 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 <tr>
 <td>在线适应</td>
-<td>RMA / teacher-student / 潜变量估计</td>
+<td>RMA / teacher-student</td>
 <td>测试时估计动力学参数喂给策略</td>
-<td>策略本身不变，鲁棒性上限=训练分布</td>
+<td>策略本身不变，上限=训练分布</td>
 </tr>
 <tr>
 <td>离线微调（本文）</td>
 <td>Simulator Adaptation</td>
 <td>用真机数据改仿真器</td>
-<td>需要真机数据采集协议</td>
+<td>需真机数据采集协议</td>
 </tr>
 </tbody>
 </table>
-<p><strong>关键论点</strong>：在线适应方法（RMA 类）"本质上只是从训练分布里挑最合适的动力学模型"——策略没变，能力上限被训练时的 DR 范围锁死。这正是 E20 疫苗路线的理论天花板描述。</p>
-<h3 id="22">2.2 分布匹配度量（核心创新）</h3>
+<p><strong>关键论点</strong>：在线适应方法（RMA 类）"本质上只是从训练分布里挑最合适的动力学模型"——策略没变，能力上限被 DR 范围锁死。这正是 E20 疫苗路线的理论天花板描述。</p>
+<h3 id="2">2. 分布匹配度量（核心创新）</h3>
 <ul>
 <li>轨迹不当轨迹看，当<strong>平稳分布的样本</strong>看：时间序信息丢弃，但步态统计/接触统计/执行器滞后/阻尼效应全编码在分布形状里</li>
-<li>度量 = <strong>1D Wasserstein 距离逐维平均</strong>（关节位置+关节速度+策略动作三类特征求和）：</li>
-<li>多维 Wasserstein 要解最优传输，贵；1D 有闭式解（排序后比较），O(n log n)</li>
-<li>理由③最硬：仿真器修改参数主要影响各维边际分布，跨关节相关性强由形态学+闭环控制决定，对参数不敏感——<strong>匹配边际就够了</strong></li>
+<li>度量 = <strong>1D Wasserstein 距离逐维平均</strong>（关节位置+关节速度+策略动作三类特征求和）：多维 Wasserstein 要解最优传输（贵）；1D 有闭式解（排序后比较），O(n log n)</li>
+<li>理由③最硬：仿真器修改参数主要影响各维<strong>边际分布</strong>，跨关节相关性由形态学+闭环控制决定，对参数不敏感——匹配边际就够</li>
 <li>归一化到 [0,1]，硬件数据定 scale/shift，全程固定</li>
 <li>加速度特征试过：sim 和硬件都太噪，不可靠，弃用</li>
 </ul>
-<h3 id="23">2.3 三种仿真器修改方式（表达力递增）</h3>
+<h3 id="3">3. 三种仿真器修改方式（表达力递增）</h3>
 <ol>
 <li><strong>静态参数</strong>（FricArm）：调 joint friction / armature 等</li>
 <li><strong>动作残差模型</strong>（ActionDelta）：2 层 MLP，输入过去 3 步关节位置+速度，输出残差位置目标（policy 频率 50Hz）</li>
 <li><strong>执行器残差模型</strong>（ResidAct）：2 层 MLP 残差<strong>力矩</strong>，直接加在 PD 控制器输出上（仿真频率 1KHz）——表达力最强，效果最好</li>
 </ol>
-<h3 id="24">2.4 优化器</h3>
-<p>CMA-ES 黑盒优化（仿真不可微）；每次评估 = 64 条 4 秒轨迹重新 rollout。</p>
-<h2 id="_3">三、关键实验数据</h2>
-<h3 id="_4">噪声鲁棒性（对比特权基线）</h3>
-<p>注入高斯力矩噪声 + 0.02-0.1s 随机时间偏移模拟真实硬件：<br />
-- <strong>最高噪声档</strong>：Wass 平均参数误差 ~18.7% vs MatchO（无特权逐点比较）86.3%——分布匹配完胜<br />
-- vs MatchS（特权+动捕级信息）：低噪声时 MatchS 略好，<strong>高噪声时 Wass 反超</strong>——免动捕方法在真实条件下更稳<br />
-- 理想无噪声条件：三种度量都能精确恢复参数（Wass 误差可忽略）</p>
-<h3 id="_5">真机结果</h3>
+<h3 id="4">4. 优化器与噪声鲁棒性数据</h3>
 <ul>
-<li><strong>&lt;5 分钟真机数据</strong>优化出 ResidAct 模型，微调后大幅降低真机漂移——含挑战性的双足行走任务（Go2 后腿站立行走）</li>
-<li>参数恢复精度（理想条件）：真值 friction 0.2/0.15/0.1 → Wass 恢复 0.21/0.153/0.116</li>
+<li>CMA-ES 黑盒优化（仿真不可微）；每次评估 = 64 条 4 秒轨迹重新 rollout</li>
+<li>注入高斯力矩噪声 + 0.02-0.1s 随机时间偏移模拟真实硬件：</li>
+<li><strong>最高噪声档</strong>：Wass 平均参数误差 ~18.7% vs MatchO（无特权逐点比较）86.3%——分布匹配完胜</li>
+<li>vs MatchS（特权+动捕级信息）：低噪声时 MatchS 略好，<strong>高噪声时 Wass 反超</strong>——免动捕方法在真实条件下更稳</li>
+<li>真机结果：<strong>&lt;5 分钟真机数据</strong>优化出 ResidAct 模型，微调后大幅降低真机漂移（含 Go2 双足行走挑战任务）</li>
 </ul>
-<h2 id="duck-e20d">四、对 DUCK 项目的直接映射（E20D 之后的路线图）</h2>
+<h2 id="_2">查询拓展：三个待验证的开放问题</h2>
+<ol>
+<li>DUCK 位置控制 STS 舵机（非力矩控制）走 ActionDelta 变体是否够——还是需要建模 STS 内部 PD 环后再上残差？</li>
+<li>论文真机验证只报 drift reduction（具体百分比在截断部分），双足行走的绝对性能提升幅度待查 PDF 附录？</li>
+<li>IMU pitch/tilt 分布作为第四类特征加入匹配——会不会比纯关节信号对站立稳定性更敏感（DUCK 的 S 系验证器最关心 tilt 分布）？</li>
+</ol>
+<h2 id="_3">归纳总结</h2>
+<ul>
+<li><strong>方法论定位</strong>：不追求让策略鲁棒于 gap（DR），也不在测试时在线估参数（RMA），而是用真机数据直接"改造仿真器"——第三条路</li>
+<li>免动捕、免时间对齐、免特权状态：本体感觉（关节角/速度/动作）分布比较就够了，1D Wasserstein 逐关节平均是便宜且稳的 gap 度量</li>
+<li>"边际分布就够"的论证有普适价值：任何 sim-to-real 项目的第一步可以先用 30 行 numpy 算 gap 在哪些关节最大</li>
+<li>与 E20 疫苗路线<strong>正交可叠加</strong>：疫苗解决"分布内鲁棒"，本文解决"仿真器本身失真"</li>
+</ul>
+<h2 id="_4">趋势判断</h2>
+<ul>
+<li>2026 sim-to-real 的主战场从"更宽的 DR"转向"真机数据回灌仿真器"：5 分钟数据 &gt; 无限宽随机化</li>
+<li>分布级（非轨迹级）比较会成为腿足机器人系统辨识的默认范式——对初始条件敏感的双足尤其如此（DUCK 直接受益）</li>
+<li>DUCK 是双足（bipedal），论文恰好做了 Go2 双足行走场景——参考价值比一般四足论文高</li>
+</ul>
+<h2 id="duck-pi_5-hermes">关联分析（与 DUCK-Pi_5 / Hermes 的落地映射）</h2>
 <table>
 <thead>
 <tr>
@@ -519,8 +530,8 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <tbody>
 <tr>
 <td>本体感觉轨迹</td>
-<td>e4_sop/e13/e20d 部署链已全程记录关节角+jvel（jsonl 落盘）</td>
-<td><strong>数据源现成</strong>——duck_run_e20d_v*.py 的日志即采集协议</td>
+<td>e4_sop/e13/e20d 部署链已全程 jsonl 落盘关节角+jvel</td>
+<td><strong>数据源现成</strong>——duck_run_e20d_v*.py 日志即采集协议</td>
 </tr>
 <tr>
 <td>1D Wasserstein 逐关节</td>
@@ -529,8 +540,8 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 <tr>
 <td>ResidAct 残差力矩模型</td>
-<td>STS 舵机 48 号转矩上限已知、力矩不可直接读</td>
-<td>走 ActionDelta 变体（残差加在 action 上）更贴合现有 obs/action 契约</td>
+<td>STS 舵机力矩不可直接读</td>
+<td>走 ActionDelta 变体（残差加 action 上）更贴合现有 obs/action 契约</td>
 </tr>
 <tr>
 <td>CMA-ES</td>
@@ -544,22 +555,34 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 </tbody>
 </table>
-<p><strong>具体可执行路径</strong>（若 E20D m7000 真机测试仍存 gap）：<br />
+<p><strong>可执行路径</strong>（若 E20D m7000 真机测试仍存 gap）：<br />
 1. 用现有部署日志（e13 v25b 43.8s / e20d m6500 118s 存活记录）作为 D_real<br />
-2. 同策略在本地 MuJoCo rollout 得 D_sim<br />
-3. 逐关节算 1D Wass 距离 → CMA-ES 优化 armature/friction/阻尼参数（先走静态参数版）<br />
-4. AutoDL 在改造后仿真器微调 → 真机对比 118s 基线<br />
-- 与 E20 疫苗路线<strong>正交可叠加</strong>：疫苗解决"分布内鲁棒"，本文解决"仿真器本身失真"——两者不冲突</p>
-<h2 id="_6">五、冷静判断（可信度标注）</h2>
-<ul>
-<li>✅ 方法论可靠：Oregon State（RL 重镇），Go2+IsaacLab+PPO 标准栈，消融三轴（场景×度量×修改方式）设计干净</li>
-<li>✅ "边际分布就够了"的论证有实操价值：给所有做 sim-to-real 的项目一个便宜且稳的 gap 度量</li>
-<li>⚠️ 40% 之类数字没有出现在本文（那是 ACP 论文的）——本文的真机验证是"drift reduction"，具体百分比正文被截断，细节数字待查 PDF</li>
-<li>⚠️ DUCK 是位置控制 STS 舵机（非力矩控制），ResidAct 残差力矩路线需改造为位置域；且 DUCK 真机数据含 IMU，可比论文多一类特征（论文没用 IMU，DUCK 可以加 pitch 分布匹配——正好对应 S 系验证器最关心的 tilt 分布）</li>
-</ul>
-<h2 id="_7">六、来源</h2>
+2. 同策略本地 MuJoCo rollout 得 D_sim<br />
+3. 逐关节算 1D Wass 距离 → CMA-ES 优化 armature/friction/阻尼（先走静态参数版）<br />
+4. AutoDL 在改造后仿真器微调 → 真机对比 118s 基线</p>
+<h2 id="_5">拓展应用推荐</h2>
 <ol>
-<li>arXiv:2604.11090 — Simulator Adaptation for Sim-to-Real Learning of Legged Locomotion via Proprioceptive Distribution Matching（Oregon State, Jeremy Dao &amp; Alan Fern）</li>
+<li><strong>Wass gap 诊断脚本</strong>（本地零成本，先做）：读 e20d 真机日志+同策略 sim rollout，输出 14 关节各自的 1D Wasserstein 距离表——定位 gap 最大的关节，直接指导下一轮 DR 参数选择</li>
+<li>若 gap 集中在 hip/膝（E4 真机抖动主诉区），针对性 CMA-ES 优化这几个关节的 armature/friction</li>
+<li>按新训练方法立项模式（09-28 用户明令）：若决定采用，写成 docs/NN 提案（分阶段+放弃条件+拍板点）排队，不直接改 E20 现役链路</li>
+</ol>
+<h2 id="_6">指南分析：方法速查（下次直接抄）</h2>
+<ul>
+<li>论文：arXiv:2604.11090，Oregon State（Jeremy Dao &amp; Alan Fern），Go2+IsaacLab+PPO</li>
+<li>核心公式：cost = Σ_features mean_joints W1(D_sim^j, D_real^j)，特征=关节位置+关节速度+动作（加速度弃用）</li>
+<li>1D Wasserstein 闭式解：两样本集各自排序，逐位差的绝对值均值</li>
+<li>修改方式优先级：ResidAct（1KHz 力矩残差）&gt; ActionDelta（50Hz 位置残差）&gt; 静态参数</li>
+<li>优化器：CMA-ES（cmaes pip 包），评估预算 64 条 4s 轨迹/次</li>
+<li>真机数据需求：&lt;5 分钟</li>
+</ul>
+<h2 id="_7">相关笔记</h2>
+<ul>
+<li>2026-10-01-Sim2Real执行器建模四层联立模型与低成本足式迁移（同方向前置：执行器建模）</li>
+<li>2026-10-02-A2A协议一周年与ACP联邦编排（同日另一主题：软件 Agent 互操作）</li>
+</ul>
+<h2 id="_8">来源</h2>
+<ol>
+<li>arXiv:2604.11090 — Simulator Adaptation for Sim-to-Real Learning of Legged Locomotion via Proprioceptive Distribution Matching</li>
 <li>对照：RMA arXiv:2107.04034（Kumar/Fu/Pathak/Malik, RSS 2021）</li>
 <li>对照：A Walk in the Park arXiv:2208.07860（20 分钟真机在线 RL）</li>
 </ol>
