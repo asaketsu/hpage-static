@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>两阶段RL坐立控制框架-动作发现与精炼</title>
+
+<meta property="og:title" content="两阶段RL坐立控制框架-动作发现与精炼" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rl">两阶段RL坐立控制框架 — 从动作发现到可部署策略</h1>
+<blockquote>
+<p>来源：A Two-Stage Reinforcement Learning Framework for Humanoid Robot Sitting and Standing-Up (MDPI Biomimetics, 2025-11, doi:10.3390/biomimetics10110783)<br />
+平台：1.7m 成人尺寸人形 X02（绳驱），PPO + 课程学习，零样本 Sim2Real 真机通过（坐椅子/起身/地形变化/外力扰动）</p>
+
+<p class="meta-date">生成日期 2026-10-04</p></blockquote>
+<h2 id="_1">核心命题</h2>
+<p>坐立（sit-to-stand）与典型运动控制任务有<strong>三点本质差异</strong>，导致直接套用行走 RL 配方必败：</p>
+<ol>
+<li><strong>非周期行为</strong>：行走有左右腿交替周期，坐立没有稳定周期模式——行走控制常用的"相位耦合"技巧（左右腿同步）完全失效</li>
+<li><strong>多接触模式</strong>：不只脚，身体多部位（臀/背/大腿）都可能与椅子/地面接触，行走任务的常见简化（冻结上身、粗碰撞建模、大仿真步长）全部不可用</li>
+<li><strong>奖励稀疏</strong>：速度跟踪类任务几十步就有稠密反馈；坐立初期动作常"看似负分"（躯干要先下压几秒才能抬起），信号稀疏且延迟</li>
+</ol>
+<h2 id="_2">两阶段框架（核心贡献）</h2>
+<p><strong>Stage 1 = 动作发现（Discovery）</strong>：简化环境（无噪声、无域随机、弱正则），唯一目标是找到一条可行坐立轨迹。辅助垂直力 F 作用于躯干（受婴儿借助外部支撑发展运动技能启发），随机器人能自主维持目标高度而逐步撤除——<strong>这是治奖励稀疏的关键课程机制</strong>。</p>
+<p><strong>Stage 2 = 动作精炼（Refinement）</strong>：把 Stage 1 发现的轨迹<strong>时间上放慢插值</strong>成参考轨迹，训练带轨迹跟踪的部署策略。加强动作平滑/关节速度/力矩惩罚，注入噪声+域随机化（姿态随机化对齐真机零点偏移、外力扰动、质心变化）。</p>
+<blockquote>
+<p>关键洞察：Stage 1 学出的坐起动作可能极快（&lt;1s）但不安全，Stage 2 用"时间放慢的自身轨迹"当参考，把速度和安全性解耦。</p>
+</blockquote>
+<h2 id="_3">奖励设计细节</h2>
+<ul>
+<li>任务奖励：头部高度接近目标（坐）/ 重力投影在基座 z 轴接近 1（朝上姿态）/ 基座高度持续降低</li>
+<li>正则奖励：<strong>对称运动奖励加速策略探索</strong> / 惩罚 hip roll-yaw 大角度 / 惩罚膝大角度 / 惩罚双脚距离过大 / 鼓励小腿垂直地面</li>
+<li>跟踪奖励（仅 Stage 2）：指数形式 r=exp(-x²/σ²)，σ 用<strong>双层优化</strong>自动求解——最优跟踪系数 σ* = 最优跟踪误差序列的均值，替代人工迭代调参</li>
+<li>按基座高度分档激活不同奖励项，所有奖励统一高斯整形保证梯度平滑</li>
+<li>obs 含<strong>过去 5 帧历史状态</strong>——用隐式方式注入接触信息（接触感知），不显式检测接触</li>
+</ul>
+<h2 id="ducke28">对 DUCK/E28 的可移植配方</h2>
+<table>
+<thead>
+<tr>
+<th>论文要素</th>
+<th>DUCK 现状</th>
+<th>可移植动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>两阶段解耦（发现→精炼）</td>
+<td>E28 单阶段冷启动，前 2000iter 混沌</td>
+<td>E28 若 m3000 生死线不过：拆两阶段，先弱约束找轨迹再精炼</td>
+</tr>
+<tr>
+<td>辅助垂直力课程</td>
+<td>无</td>
+<td>蹲起任务奖励稀疏同构：躯干加垂直辅助力随高度能力撤除，治探索难</td>
+</tr>
+<tr>
+<td>5 帧历史 obs</td>
+<td>单帧 obs</td>
+<td>低成本增强接触感知，obs 61→61+历史堆叠</td>
+</tr>
+<tr>
+<td>时间放慢自身轨迹做参考</td>
+<td>无参考轨迹</td>
+<td>E28 完训后如动作过激：录黄金档轨迹→放慢→跟踪微调</td>
+</tr>
+<tr>
+<td>姿态随机化对齐零点偏移</td>
+<td>有 delay/slew DR</td>
+<td>补姿态随机化，与 STS 舵机零点漂移问题同构</td>
+</tr>
+<tr>
+<td>双层优化定 σ</td>
+<td>手调</td>
+<td>跟踪类奖励系数可用"最优误差序列均值"公式直出，省调参轮次</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">局限与判读</h2>
+<ul>
+<li>论文未报告跨平台数字（X02 是绳驱人形），不可直接对标 DUCK（质量域差异 2.48×）</li>
+<li>非周期+多接触+稀疏奖励三判据同样适用于蹲起/跌倒恢复，判断"哪些任务能直接抄行走配方"的先验工具</li>
+<li>零样本 Sim2Real 依赖真机零点偏移被姿态随机化覆盖，DUCK 的 STS 舵机零点漂移（断电漂移恢复后先重读位置）说明该随机化是刚需不是可选项</li>
+</ul>
+<h2 id="_5">行动项</h2>
+<ol>
+<li>E28 m3000 生死线若 FAIL → 按"两阶段+辅助力"重构 E29 variant（队列候选，不自动发射）</li>
+<li>E28 黄金档若动作过激 → "自身轨迹放慢+跟踪精炼"作为 E29 备选路径</li>
+<li>5 帧历史 obs 堆叠试验 → 与 E24 头颈解锁同队列，低成本先试</li>
+</ol>
+</body>
+</html>
