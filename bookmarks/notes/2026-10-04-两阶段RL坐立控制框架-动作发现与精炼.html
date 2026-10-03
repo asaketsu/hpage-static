@@ -440,25 +440,24 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
 <h1 id="rl">两阶段RL坐立控制框架 — 从动作发现到可部署策略</h1>
-<blockquote>
-<p>来源：A Two-Stage Reinforcement Learning Framework for Humanoid Robot Sitting and Standing-Up (MDPI Biomimetics, 2025-11, doi:10.3390/biomimetics10110783)<br />
-平台：1.7m 成人尺寸人形 X02（绳驱），PPO + 课程学习，零样本 Sim2Real 真机通过（坐椅子/起身/地形变化/外力扰动）</p>
-
-<p class="meta-date">生成日期 2026-10-04</p></blockquote>
-<h2 id="_1">核心命题</h2>
-<p>坐立（sit-to-stand）与典型运动控制任务有<strong>三点本质差异</strong>，导致直接套用行走 RL 配方必败：</p>
+<h2 id="_1">一、文章概要</h2>
+<p>来源：A Two-Stage Reinforcement Learning Framework for Humanoid Robot Sitting and Standing-Up (MDPI Biomimetics, 2025-11, doi:10.3390/biomimetics10110783)。平台：1.7m 成人尺寸人形 X02（绳驱），PPO + 课程学习，零样本 Sim2Real 真机通过（坐椅子/起身/地形变化/外力扰动）。</p>
+<h2 id="_2">二、内容整理</h2>
+<h3 id="_3">坐立任务与行走任务的三点本质差异</h3>
+<p>直接套用行走 RL 配方必败的原因：</p>
 <ol>
 <li><strong>非周期行为</strong>：行走有左右腿交替周期，坐立没有稳定周期模式——行走控制常用的"相位耦合"技巧（左右腿同步）完全失效</li>
 <li><strong>多接触模式</strong>：不只脚，身体多部位（臀/背/大腿）都可能与椅子/地面接触，行走任务的常见简化（冻结上身、粗碰撞建模、大仿真步长）全部不可用</li>
 <li><strong>奖励稀疏</strong>：速度跟踪类任务几十步就有稠密反馈；坐立初期动作常"看似负分"（躯干要先下压几秒才能抬起），信号稀疏且延迟</li>
 </ol>
-<h2 id="_2">两阶段框架（核心贡献）</h2>
+<h2 id="_4">两阶段框架（核心贡献）</h2>
 <p><strong>Stage 1 = 动作发现（Discovery）</strong>：简化环境（无噪声、无域随机、弱正则），唯一目标是找到一条可行坐立轨迹。辅助垂直力 F 作用于躯干（受婴儿借助外部支撑发展运动技能启发），随机器人能自主维持目标高度而逐步撤除——<strong>这是治奖励稀疏的关键课程机制</strong>。</p>
 <p><strong>Stage 2 = 动作精炼（Refinement）</strong>：把 Stage 1 发现的轨迹<strong>时间上放慢插值</strong>成参考轨迹，训练带轨迹跟踪的部署策略。加强动作平滑/关节速度/力矩惩罚，注入噪声+域随机化（姿态随机化对齐真机零点偏移、外力扰动、质心变化）。</p>
 <blockquote>
 <p>关键洞察：Stage 1 学出的坐起动作可能极快（&lt;1s）但不安全，Stage 2 用"时间放慢的自身轨迹"当参考，把速度和安全性解耦。</p>
-</blockquote>
-<h2 id="_3">奖励设计细节</h2>
+
+<p class="meta-date">生成日期 2026-10-04</p></blockquote>
+<h2 id="_5">奖励设计细节</h2>
 <ul>
 <li>任务奖励：头部高度接近目标（坐）/ 重力投影在基座 z 轴接近 1（朝上姿态）/ 基座高度持续降低</li>
 <li>正则奖励：<strong>对称运动奖励加速策略探索</strong> / 惩罚 hip roll-yaw 大角度 / 惩罚膝大角度 / 惩罚双脚距离过大 / 鼓励小腿垂直地面</li>
@@ -466,7 +465,25 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <li>按基座高度分档激活不同奖励项，所有奖励统一高斯整形保证梯度平滑</li>
 <li>obs 含<strong>过去 5 帧历史状态</strong>——用隐式方式注入接触信息（接触感知），不显式检测接触</li>
 </ul>
-<h2 id="ducke28">对 DUCK/E28 的可移植配方</h2>
+<h2 id="_6">三、查询拓展</h2>
+<ul>
+<li><strong>辅助力课程（assistive force curriculum）</strong>：受婴儿运动发展启发的探索辅助，在跌倒恢复/起身类任务中是通用手段——DUCK 五段起身链的"分阶段+守卫救援"本质上就是人工版辅助课程</li>
+<li><strong>时间放慢自身轨迹做参考</strong>：区别于依赖动捕数据的模仿学习，"自我轨迹蒸馏"不需要外部数据——与 RL 领域的自我模仿（self-imitation）思想同源</li>
+<li><strong>双层优化（bi-level optimization）自动调参</strong>：内层优化策略、外层优化超参（跟踪系数 σ），解析解 σ*=最优误差序列均值——超参自动化的轻量路径</li>
+<li><strong>姿态随机化对齐零点偏移</strong>：真机舵机零点漂移用 reset 姿态随机化覆盖，与 DUCK STS 舵机断电漂移问题（恢复后先重读位置）同构</li>
+</ul>
+<h2 id="_7">四、归纳总结</h2>
+<p><strong>核心方法论：把"发现可行解"与"精炼成部署品"解耦</strong>。Stage 1 弱约束+辅助力解决探索难（奖励稀疏），Stage 2 强正则+域随机化解决部署质量（平滑/鲁棒）——两阶段各自优化目标不同，混在一阶段会互相拖累（DUCK E 系四连败的"短预算热启加疫苗必塌缩"正是混阶段的实例）。</p>
+<p><strong>安全性设计贯穿</strong>：Stage 1 可能学出 &lt;1s 的极快但不安全的动作，用"时间放慢的自身轨迹"当参考既保留可行性又压速度——速度与可行性解耦是关键一招。</p>
+<h2 id="_8">五、趋势判断</h2>
+<ol>
+<li><strong>非周期多接触任务（坐立/跌倒恢复/起身）是人形 RL 的下一波</strong>——行走已充分解决，日常场景的姿势转换是实用化必经之路</li>
+<li><strong>两阶段课程成为标配范式</strong>——"先探索后精炼"与 LLM 领域"先 SFT 后 RLHF"结构同构，跨领域收敛</li>
+<li><strong>零样本 Sim2Real 依赖域随机化全覆盖</strong>——姿态/外力/质心三类随机化缺一不可，DUCK 的 delay/slew 疫苗是同一思想的子集</li>
+<li>** obs 历史堆叠替代显式接触检测**——5 帧历史隐式注入接触信息的做法低成本高收益，正在成为接触密集任务的标准配置</li>
+</ol>
+<h2 id="_9">六、关联分析</h2>
+<h3 id="ducke28">与 DUCK/E28 的可移植配方</h3>
 <table>
 <thead>
 <tr>
@@ -508,17 +525,29 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 </tbody>
 </table>
-<h2 id="_4">局限与判读</h2>
+<h2 id="_10">局限与判读</h2>
 <ul>
 <li>论文未报告跨平台数字（X02 是绳驱人形），不可直接对标 DUCK（质量域差异 2.48×）</li>
 <li>非周期+多接触+稀疏奖励三判据同样适用于蹲起/跌倒恢复，判断"哪些任务能直接抄行走配方"的先验工具</li>
 <li>零样本 Sim2Real 依赖真机零点偏移被姿态随机化覆盖，DUCK 的 STS 舵机零点漂移（断电漂移恢复后先重读位置）说明该随机化是刚需不是可选项</li>
 </ul>
-<h2 id="_5">行动项</h2>
+<h2 id="_11">五、拓展应用推荐</h2>
 <ol>
-<li>E28 m3000 生死线若 FAIL → 按"两阶段+辅助力"重构 E29 variant（队列候选，不自动发射）</li>
-<li>E28 黄金档若动作过激 → "自身轨迹放慢+跟踪精炼"作为 E29 备选路径</li>
-<li>5 帧历史 obs 堆叠试验 → 与 E24 头颈解锁同队列，低成本先试</li>
+<li><strong>E28 m3000 生死线 FAIL 时的 E29 重构方向</strong>：按"两阶段+辅助垂直力课程"重建 variant——Stage1 弱约束找轨迹、Stage2 放慢跟踪精炼，治蹲起探索难（队列候选，需用户拍板发射）</li>
+<li><strong>黄金档动作过激的通用解法</strong>："自身轨迹放慢+跟踪精炼"不依赖外部动捕，任何 RL 策略完训后动作过激（如 E22 act_absmax 8.0）都可套用</li>
+<li><strong>5 帧历史 obs 堆叠</strong>：低成本接触感知增强，与 E24 头颈解锁同队列先试</li>
 </ol>
+<h2 id="_12">六、指南分析</h2>
+<ul>
+<li><strong>判断"能否直接抄行走配方"的三先验</strong>：任务是否非周期/多接触/奖励稀疏——三条中任何一条命中，行走类稠密速度跟踪配方直接搬用风险高</li>
+<li><strong>奖励稀疏的通用处置序</strong>：先考虑辅助力课程（物理先验，零奖励设计成本）→ 再考虑奖励塑形 → 最后才是两阶段拆分（成本最高）</li>
+<li><strong>跟踪系数 σ<em> 公式（σ</em> = 最优误差序列均值）可复用</strong>：任何需要跟踪参考的任务（轨迹跟踪/姿态保持）都可用双层优化自动定参，省人工迭代</li>
+<li><strong>跨平台纪律</strong>：论文数字（绳驱人形 X02）不可直接对标 DUCK（质量域 2.48×），只吸收配方结构不吸收数字——与既有"吸收原则不吸收数字"铁律一致</li>
+</ul>
+<h2 id="_13">相关笔记</h2>
+<ul>
+<li>2026-06-24-隐式建模与3D打印轻量化设计（物理仿真约束同类）</li>
+<li>DUCK docs/122（BLG 官方基线配方分析）</li>
+</ul>
 </body>
 </html>
