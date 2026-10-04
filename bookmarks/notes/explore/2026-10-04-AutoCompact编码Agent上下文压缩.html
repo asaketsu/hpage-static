@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AutoCompact编码Agent上下文压缩</title>
+
+<meta property="og:title" content="AutoCompact编码Agent上下文压缩" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="autocompactagent">AutoCompact：训练编码Agent学习何时压缩上下文</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2610.02163<br />
+<strong>作者</strong>：Xuan Zhang, Longtao Zheng, Cunxiao Du, Bo An, Xin Dong<br />
+<strong>发布日期</strong>：2026-10-01<br />
+<strong>记录日期</strong>：2026-10-04</p>
+
+<p class="meta-date">生成日期 2026-10-04</p></blockquote>
+<p><strong>标签</strong>：#LLM-Agent #上下文压缩 #编码Agent #强化学习 #上下文管理</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题</h3>
+<p>编码 Agent 在处理仓库级软件工程任务时，轨迹会积累大量代码片段、工具输出和中间发现。随着任务推进，早期探索信息（如过时的假设、失败的尝试、冗长的工具输出）变成"陈旧上下文"，填充 context window 但当前阶段并不需要。</p>
+<p>现有上下文管理方法只解决了部分问题：<br />
+- <strong>长度触发式</strong>（如 CompactionRL）：仅在剩余 context 预算低于固定阈值时压缩，将压缩与上下文长度而非任务进度绑定——陈旧探索累积到阈值才触发，压缩可能发生在仍需证据的未解决阶段中间<br />
+- <strong>主动式</strong>（如 SelfCompact/SWE-Compressor）：让 Agent 自行决定何时压缩，但仅解决"何时"问题，未处理"压缩后工作状态是否准确"和"压缩后如何继续执行"两类失败</p>
+<p>AutoCompact 的核心主张：有效上下文管理需要 Agent 同时学会三件事——何时压缩、保留什么工作状态、如何从压缩状态继续执行。</p>
+<h3 id="12-autocompact">1.2 方法论：AutoCompact 三阶段训练</h3>
+<p><strong>阶段 0：compact() 动作注入</strong></p>
+<p>Agent 被赋予一个 <code>compact()</code> 动作，可在执行过程中主动调用。当 Agent 判定当前阶段已充分解决、累积历史可以摘要时，可在到达 context 限制前主动调用。压缩将早期交互历史替换为模型生成的工作状态摘要（标题为 <code># Auto Context Summary</code>），保留原始任务不变。摘要旨在保留已确立的发现、相关代码与工作区状态、剩余动作，省略先前探索的不必要细节。</p>
+<p>关键设计：压缩是模型决策而非仅对 context window 压力的响应。</p>
+<p><strong>阶段 1：Judge-Guided 在线数据收集 + SFT</strong></p>
+<p>直接 prompt 无法诱导主动压缩——基础模型在 context 限制前极少调用 <code>compact()</code>。因此需要收集带 judge 纠正的训练轨迹：</p>
+<ul>
+<li>在软件工程任务上 rollout 基础策略</li>
+<li>Judge（GPT-5.5-Codex）在每步审查策略提案，仅使用当前执行历史</li>
+<li>三类纠正对应三大失败模式：</li>
+<li><strong>触发纠正</strong>（Trigger correction）：检查当前点是否适合压缩——当前阶段已充分解决时应压缩，中间证据仍需要时应继续探索</li>
+<li><strong>工作状态纠正</strong>（Working-state correction）：检查 <code># Auto Context Summary</code> 是否准确保留后续执行所需信息，包括相关结论、代码与工作区状态、剩余动作</li>
+<li>
+<p><strong>续接纠正</strong>（Continuation correction）：检查压缩后首批动作是否遵循工作状态，而非重复已完成探索或忽略预期下一步</p>
+</li>
+<li>
+<p>纠正在执行前应用——Judge 写出纠正后的输出，环境执行纠正版本而非原始版本，策略从纠正后的历史生成后续动作。这与事后标注（post-hoc annotation）本质不同，后者纠正不影响后续状态。</p>
+</li>
+<li>收集 1,052 条 judge 纠正轨迹（24% 监督压缩触发，53% 监督工作状态构建，23% 监督压缩后续接），训练 2 个 epoch，学习率 5×10⁻⁷，batch size 8</li>
+</ul>
+<p><strong>阶段 2：联合 RL 优化编码与压缩</strong></p>
+<p>从 SFT checkpoint 出发，在 SWE-Gym 上用端到端多轮 RL（GRPO）进一步训练。每个任务采样 8 条轨迹，分配二元结果奖励——最终 patch 是否通过任务测试套件。RL 学习率 1×10⁻⁶，batch size 64，rollout 上限 50 个环境步骤和 32K token。</p>
+<p>核心设计：RL 不使用压缩专用奖励，仅用任务成功作为唯一奖励信号，但奖励通过压缩后的续接动作传导回压缩决策。</p>
+<h3 id="13">1.3 关键实验结果</h3>
+<p><strong>主实验（Table 1）— SWE-bench Verified + SWE-PolyBench Verified 全量通过率</strong></p>
+<ul>
+<li>AutoCompact（SFT→RL）：SWE-bench 39.6%，SWE-PolyBench 24.5%</li>
+<li>Base（无压缩）：SWE-bench 30.4%，SWE-PolyBench 19.5%</li>
+<li>绝对提升：SWE-bench +9.2%，SWE-PolyBench +5.0%</li>
+<li>AutoCompact-SFT（仅SFT）：SWE-bench 32.2%，SWE-PolyBench 21.7%</li>
+<li>CompactionRL（长度触发+RL）：SWE-bench 32.7%，SWE-PolyBench 19.8%</li>
+<li>SelfCompact（推理时rubric）：SWE-bench 31.7%，SWE-PolyBench 20.6%</li>
+<li>SWE-Compressor（离线SFT）：SWE-bench 31.0%，SWE-PolyBench 20.1%</li>
+<li>Fixed Compaction（固定阈值）：SWE-bench 28.8%（低于Base），SWE-PolyBench 18.6%</li>
+</ul>
+<p><strong>成本效率（Figure 3）— 六档推理预算 $0.10 至 $4.00</strong></p>
+<ul>
+<li>256K context（无轨迹触及强制压缩阈值）：AutoCompact-SFT 在所有预算上超越 Base，证明即使全历史能放入 context window，保留完整交互历史也不是最优选择</li>
+<li>16K context（共享强制压缩 fallback）：AutoCompact 在所有预算上超越 Base，证明学习式主动压缩与长度触发 fallback 组合仍然有效</li>
+<li>SFT→RL 增量：RL 在低预算区间增益最大——低预算截断 rollout，更大增益说明 RL 使 Agent 更具成本效率而非依赖更长轨迹</li>
+<li>压缩执行本身的贡献：同一训练 checkpoint，执行压缩 vs 跳过压缩（Summary-ignored），执行版本在 $0.10 预算下高 19.9%，$4.00 预算下高 1.9%</li>
+</ul>
+<p><strong>压缩行为分析（Figure 4）</strong></p>
+<ul>
+<li>Base 极少主动调用 <code>compact()</code></li>
+<li>AutoCompact-SFT：44.3% 任务调用 <code>compact()</code></li>
+<li>AutoCompact（RL后）：58.5% 任务调用 <code>compact()</code></li>
+<li>关键状态遗漏：SFT 3.1% → RL 0.2%</li>
+<li>下一步动作遗漏：SFT 8.2% → RL 2.2%</li>
+<li>两个趋势互补：压缩使用更广泛，同时摘要质量更高</li>
+</ul>
+<p><strong>摘要自洽性案例（Figure 5）— SWE-bench task django-13809</strong></p>
+<ul>
+<li>AutoCompact-SFT 摘要：记录了未解决的语法错误，但仍提议"完成无需进一步动作"——状态与提议的动作不自洽，最终评估失败（SyntaxError）</li>
+<li>AutoCompact（RL后）摘要：报告参数和条件逻辑修改已完成，提议提交前验证——状态与提议自洽，最终通过测试</li>
+<li>根因分析：SFT 模仿已演示摘要，不保证记录的状态约束下一步动作；RL 仅通过后续动作的成功奖励摘要，天然鼓励自洽性</li>
+</ul>
+<h3 id="14">1.4 核心发现总结</h3>
+<ul>
+<li><strong>主动压缩在 context 溢出前就有收益</strong>：即使 256K 全历史能放入，用简洁工作状态替换陈旧历史也能提升性能</li>
+<li><strong>在线 judge 纠正优于离线插入</strong>：AutoCompact-SFT 比 SWE-Compressor 高 1.2%/1.6%，因为纠正后的轨迹是实际执行的（纠正影响后续状态），而非事后插入到已完成轨迹</li>
+<li><strong>RL 在低预算区间增益最大</strong>：任务成功奖励通过压缩后续接动作传导回压缩决策，使 Agent 更具成本效率</li>
+<li><strong>压缩执行本身有独立贡献</strong>：同一 checkpoint 执行 vs 跳过压缩，执行版本收益不来自训练改善而是来自运行时压缩</li>
+<li><strong>摘要自洽性是被 RL 隐式学到的关键质量维度</strong>：超越信息覆盖率的指标，SFT 无法保证</li>
+</ul>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-swe-bench-verified">2.1 SWE-bench Verified</h3>
+<p>SWE-bench 的子集，由 OpenAI 人工验证。包含 GitHub 上真实 Python 仓库的 issue 解决任务，要求 Agent 生成能通过测试套件的 patch。SWE-bench Verified 是评估编码 Agent 的标准基准，满分通过率目前顶尖系统约 40-50%。AutoCompact 以 Qwen3-Coder-30B-A3B 达到 39.6%，接近最强水平。</p>
+<h3 id="22-swe-gym">2.2 SWE-Gym</h3>
+<p>SWE-Gym 是 SWE-bench 的训练环境扩展，提供可执行的任务环境用于 Agent 训练。与 SWE-bench 的评估任务不同，SWE-Gym 任务用于 RL rollout 采样，Agent 在环境中执行代码检查、编辑、测试，获得二元成功信号。AutoCompact 在 SWE-Gym 上做 GRPO 训练。</p>
+<h3 id="23-grpogroup-relative-policy-optimization">2.3 GRPO（Group Relative Policy Optimization）</h3>
+<p>DeepSeek 提出的 RL 算法，通过对同一 prompt 采样一组（group）轨迹，用组内相对优势作为 baseline 计算 advantage。相比 PPO 无需训练 value function，减少计算开销。AutoCompact 用 GRPO 的二元结果奖励（patch 是否通过测试）训练，每任务采样 8 条轨迹。</p>
+<h3 id="24-model-harness-co-design">2.4 Model-Harness Co-design</h3>
+<p>论文提出的核心概念：harness（脚手架）提供压缩机制（<code>compact()</code> 动作），模型学习何时调用、保留什么、如何续接。这与"分离式压缩模块"不同——压缩不是独立的后处理，而是模型策略的有机组成部分。类似 Codex 和 Claude Code 目前用长度触发自动压缩，论文建议可结合学习式主动压缩进一步改进。</p>
+<h3 id="25-summary-self-consistency">2.5 Summary Self-Consistency</h3>
+<p>论文定义的新概念：摘要不仅要保留相关信息（覆盖率指标）和提议下一步动作，还需保证记录的状态约束提议的动作。SFT 模仿演示摘要但不保证这种约束关系；RL 通过后续动作成功与否奖励摘要，天然鼓励自洽性。这是超越信息覆盖率的摘要质量维度。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 三大失败模式 × 三类纠正映射框架</h3>
+<p>AutoCompact 的核心贡献是将"上下文压缩"拆解为三个正交子问题，每个对应一类失败模式和一类纠正：</p>
+<ul>
+<li><strong>何时压缩</strong>（When）→ 触发纠正：当前阶段是否充分解决</li>
+<li><strong>保留什么</strong>（What）→ 工作状态纠正：摘要是否准确保留关键信息</li>
+<li><strong>如何续接</strong>（How）→ 续接纠正：压缩后首批动作是否遵循工作状态</li>
+</ul>
+<p>这三者是因果链——错误的触发时机导致压缩在证据仍需时发生；错误的工作状态导致后续执行基于错误信息；错误的续接导致重复探索或忽略意图。</p>
+<h3 id="32">3.2 训练范式分层</h3>
+<pre><code>Level 0: Prompt-only（无训练）
+  └→ 基础模型极少主动压缩（仅 context 溢出时被动触发）
+
+Level 1: SFT（监督模仿）
+  └→ 学会基本压缩行为（44.3% 任务主动调用）
+  └→ 但不保证摘要自洽性（状态不约束动作）
+
+Level 2: RL（结果优化）
+  └→ 压缩使用更广（58.5%）+ 质量更高（遗漏率骤降）
+  └→ 隐式学到摘要自洽性（通过任务成功传导）
+  └→ 低预算区间增益最大（成本效率而非更长轨迹）
+</code></pre>
+<h3 id="33">3.3 对比基线的定位</h3>
+<ul>
+<li>Fixed Compaction（固定阈值）→ 负效果（-1.6%），证明纯长度触发有害</li>
+<li>CompactionRL（长度触发+RL）→ 有限增益，因触发时机绑定长度而非进度</li>
+<li>SelfCompact（推理rubric）→ 有增益，但无训练信号无法改善摘要质量</li>
+<li>SWE-Compressor（离线SFT）→ 有增益，但离线插入不纠正后续动作</li>
+<li>AutoCompact（在线纠正+RL）→ 最高增益，因为纠正影响后续状态+RL 优化最终效果</li>
+</ul>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1agent">趋势1：Agent 上下文管理从"被动溢出处理"转向"主动策略决策"</h3>
+<p>依据：论文证明即使 256K context 能放入全历史，主动压缩仍有收益。这意味着上下文管理的价值不在于防止溢出，而在于减少干扰。未来 Agent 的 context management 将像人类工作记忆一样——主动遗忘过时信息是认知效率的核心。</p>
+<h3 id="2judge-guided-sft">趋势2：Judge-Guided 在线纠正成为 SFT 数据构建新范式</h3>
+<p>依据：AutoCompact-SFT 比 SWE-Compressor 高 1.2-1.6%，核心差异是"纠正后轨迹实际执行"vs"离线插入到已完成轨迹"。在线纠正使每个纠正塑造后续轨迹，产生因果连贯的训练信号。这预示 SFT 数据构建从静态标注转向动态在线纠正。</p>
+<h3 id="3rl">趋势3：RL 隐式学到训练目标中未显式定义的质量维度</h3>
+<p>依据：论文发现 RL 学到了"摘要自洽性"——一个 SFT 无法保证、训练目标（二元任务成功）中未显式提及的维度。RL 通过奖励的因果传导（摘要→续接动作→任务成功），隐式优化了中间步骤质量。这预示未来 RL 训练可依赖更少的显式奖励工程。</p>
+<h3 id="4model-harness-co-design-agent">趋势4：Model-Harness Co-design 成为 Agent 架构主流</h3>
+<p>依据：论文明确将"harness 提供 compact() 动作 + 模型学习调用策略"定义为 co-design。这与当前主流（harness 和模型分离、压缩由 harness 硬编码）不同。未来 Agent 系统中，harness 将暴露更多模型可调用的元操作（compact/retrieve/branch），模型策略将涵盖这些元操作的使用。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-hermes-agent">5.1 与 Hermes Agent 上下文管理的关联</h3>
+<p>Hermes Agent 的 context-engineering-patterns skill 定义了"对话历史管理"和"工具输出修剪"两大支柱。AutoCompact 的三大失败模式（何时/保留什么/如何续接）直接映射：<br />
+- Hermes 的 <code>context-compressor</code> skill 做"渐进式上下文压缩"——对应 AutoCompact 的"何时"问题<br />
+- Hermes 的 <code>harness-checkpoint</code> skill 做"任务检查点机制"——对应"保留什么"问题<br />
+- Hermes 的 <code>session-boot</code> skill 做"会话启动检查恢复上下文"——对应"如何续接"问题</p>
+<p>AutoCompact 的贡献在于证明这三者应作为<strong>统一策略</strong>训练而非分离处理。</p>
+<h3 id="52-memdecay-memory-compaction">5.2 与 MemDecay / Memory Compaction 系列论文的关联</h3>
+<p>此前精读的 MemDecay（2607.10582）和 Memory Compaction Rate-Distortion（2607.08032）都从记忆系统角度处理上下文压缩。AutoCompact 的差异：<br />
+- MemDecay 关注 KV cache 层面的区域感知驱逐（系统层）<br />
+- Memory Compaction 提供率失真理论框架（理论层）<br />
+- AutoCompact 关注 Agent 策略层面的压缩决策（策略层）</p>
+<p>三者构成"系统→理论→策略"的完整栈。AutoCompact 补齐了策略层的空白——如何训练模型做压缩决策。</p>
+<h3 id="53-beyond-the-leaderboard260705775agent">5.3 与 Beyond the Leaderboard（2607.05775）Agent 失败模式分类法的关联</h3>
+<p>此前精读的 Beyond the Leaderboard 定义了 Agent 六大失败模式。AutoCompact 的三大失败模式可映射：<br />
+- 触发错误 → "脚手架边际递减"失败模式（压缩在错误时机触发）<br />
+- 工作状态错误 → "组合性鸿沟"失败模式（摘要丢失关键组合信息）<br />
+- 续接错误 → "非线性复合"失败模式（压缩后行为与状态不一致导致级联失败）</p>
+<hr />
+<h2 id="_6">六、拓展应用推荐</h2>
+<h3 id="61-p0hermes-gateway">6.1 P0：Hermes Gateway 主动压缩决策门禁</h3>
+<p><strong>借鉴点</strong>：AutoCompact 证明主动压缩在 context 溢出前就有收益。Hermes Agent 当前依赖长度触发式压缩（context-compressor skill 在接近窗口限制时触发）。</p>
+<p><strong>可执行改进</strong>：在 Hermes Gateway 层面增加"任务阶段感知"压缩触发器——当检测到任务阶段切换（如从"探索"切换到"实现"、从"调试"切换到"验证"）时，主动建议压缩。无需训练模型，先用规则式触发器（类似 SelfCompact 的 rubric），评估收益后考虑 SFT。</p>
+<p><strong>优先级</strong>：P0（收益高 × 可行性高，规则式触发器可立即实现）</p>
+<h3 id="62-p1hermes">6.2 P1：Hermes 工具输出修剪增加"工作状态摘要"模板</h3>
+<p><strong>借鉴点</strong>：AutoCompact 的 <code># Auto Context Summary</code> 格式——压缩后保留"已确立发现 + 相关代码与工作区状态 + 剩余动作"三段式。</p>
+<p><strong>可执行改进</strong>：Hermes 的 context-compressor skill 当前做"渐进式压缩"（大工具输出存文件+摘要预览），但摘要格式不统一。增加 <code># Auto Context Summary</code> 模板，明确要求三段式结构，特别是"剩余动作"——这是 AutoCompact 证明最影响续接质量的部分。</p>
+<p><strong>优先级</strong>：P1（收益中 × 可行性高，修改 skill 模板即可）</p>
+<h3 id="63-p1hermes-skill">6.3 P1：Hermes Skill 审查增加"摘要自洽性"检查</h3>
+<p><strong>借鉴点</strong>：AutoCompact 定义并验证了"摘要自洽性"——记录的状态必须约束提议的下一步动作。SFT 无法保证，但可用程序化检查。</p>
+<p><strong>可执行改进</strong>：在 Hermes 的 harness-checkpoint skill 中增加检查点摘要的自洽性校验——如果检查点记录了"未解决问题"，提议的下一步动作必须与解决该问题相关；如果记录了"已完成"，下一步必须是验证或新任务。</p>
+<p><strong>优先级</strong>：P1（收益高 × 可行性中，需要实现校验逻辑）</p>
+<h3 id="64-p2-hermes-agent">6.4 P2：考虑 Hermes Agent 轨迹的在线纠正数据收集</h3>
+<p><strong>借鉴点</strong>：AutoCompact 的 Judge-Guided 在线纠正——纠正后的输出被环境执行，塑造后续轨迹，产生因果连贯的训练数据。</p>
+<p><strong>可执行改进</strong>：Hermes Agent 的 evolver skill 当前做"错误模式分析→规则沉淀"，但分析是事后的。可在关键 cron job（如 defense-check）中增加"在线纠正"模式——Judge（更强的模型）审查每步输出，纠正后执行，收集纠正轨迹用于未来优化。</p>
+<p><strong>优先级</strong>：P2（收益高 × 可行性低，需要第二模型做 judge + 执行环境改造）</p>
+<hr />
+<h2 id="_7">七、指南分析</h2>
+<h3 id="71">7.1 适用场景判定</h3>
+<p>AutoCompact 的方法直接适用于：<br />
+- ✅ 长程编码 Agent 任务（&gt;20步轨迹）——压缩收益最显著<br />
+- ✅ 有限推理预算场景——低预算区间增益最大<br />
+- ✅ 多阶段任务（探索→实现→验证）——阶段切换是自然压缩点<br />
+- ⚠️ 通用对话 Agent——需要适配"任务阶段"概念<br />
+- ❌ 短程单步任务——压缩开销可能超过收益</p>
+<h3 id="72">7.2 实施路径建议</h3>
+<p>对于想要借鉴 AutoCompact 的团队：<br />
+1. <strong>先实现规则式主动压缩</strong>（类似 SelfCompact 的 rubric）——零训练成本，验证收益<br />
+2. <strong>收集压缩决策日志</strong>——记录何时压缩、摘要内容、续接动作、任务结果<br />
+3. <strong>用更强模型做离线 judge</strong>——对日志做三类纠正标注<br />
+4. <strong>SFT 训练</strong>——用纠正轨迹微调<br />
+5. <strong>GRPO 训练</strong>——用任务成功奖励做 RL</p>
+<h3 id="73">7.3 关键陷阱警告</h3>
+<ul>
+<li><strong>不要只训练"何时压缩"</strong>：AutoCompact 的核心发现是三大失败模式需要同时监督。仅训练触发时机（如 SWE-Compressor 的离线插入）会忽略摘要质量和续接行为</li>
+<li><strong>不要依赖纯 SFT</strong>：SFT 无法保证摘要自洽性。RL（即使是二元奖励）通过因果传导隐式学到此质量维度</li>
+<li><strong>不要忽略压缩执行本身</strong>：同一 checkpoint 执行 vs 跳过压缩有显著差异（$0.10 预算下 19.9%），收益部分来自运行时压缩而非仅训练改善</li>
+<li><strong>RL 序列长度限制可接受</strong>：论文 RL 用 32K 序列训练但评估用 256K，增益仍跨预算有效。不必等长训练序列</li>
+</ul>
+<h3 id="74">7.4 技术成熟度评估</h3>
+<ul>
+<li><strong>理论贡献</strong>：三大失败模式拆解 + 摘要自洽性概念——高价值理论框架</li>
+<li><strong>实验严谨度</strong>：双基准 + 六档预算 + 多基线 + 消融——充分</li>
+<li><strong>可复现性</strong>：使用 Qwen3-Coder-30B-A3B + SWE-Gym + GRPO，组件均开源，judge 用 GPT-5.5-Codex</li>
+<li><strong>实用就绪度</strong>：方法需要训练流程，非即插即用。但核心思想（规则式主动压缩 + 工作状态摘要模板）可立即落地</li>
+</ul>
+<hr />
+<h2 id="_8">八、关联论文</h2>
+<ul>
+<li><strong>MemDecay (2607.10582)</strong>：区域感知 KV cache 驱逐，系统层压缩。与本论文互补——MemDecay 管系统层，AutoCompact 管策略层</li>
+<li><strong>Memory Compaction Rate-Distortion (2607.08032)</strong>：四层记忆压缩率失真框架，理论层。AutoCompact 的三大失败模式可映射到该框架的可逆/不可逆压缩</li>
+<li><strong>Beyond the Leaderboard (2607.05775)</strong>：Agent 六大失败模式分类法。AutoCompact 的三大失败模式是其子集</li>
+<li><strong>CompactionRL (Li et al., 2026b)</strong>：长度触发 + RL 联合训练，AutoCompact 的直接对比基线</li>
+<li><strong>SelfCompact (Li et al., 2026a)</strong>：推理时 rubric 引导压缩，AutoCompact 的 SFT 前置基线</li>
+<li><strong>SWE-Compressor (Liu et al., 2026)</strong>：离线 SFT 插入压缩调用，AutoCompact 的 SFT 对比基线</li>
+<li><strong>SPORK (2607.03333)</strong>：自推测 fork 加速 Agent 工具调用，与 AutoCompact 都关注 Agent 执行效率但角度不同</li>
+</ul>
+</body>
+</html>
