@@ -1,4 +1,369 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jev式LLM单token概率传感器</title>
+
+<meta property="og:title" content="Jev式LLM单token概率传感器" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +439,87 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="jev-llm-token-prompt-logprobs">Jev 式 LLM 单 token 概率传感器：一个 prompt + logprobs 代替专用分类器</h1>
+<blockquote>
+<p>来源：@yibie 推文（x.com/yibie/status/2104024011692753228）+ Allan Riordan Boll 博客（allanrbo.blogspot.com，2026-09-25）<br />
+URL: https://allanrbo.blogspot.com/2026/09/a-jev-like-wrapper-for-llms-including.html<br />
+阅读日期：2026-09-27 | 评分：★★★★☆（4/5，小而美的技术技巧，对 Hermes 传感器体系有直接可抄性）<br />
+tag: #LLM #logprobs #Jev #传感器 #不确定性量化 #vision #llama.cpp #提示工程</p>
+
+<p class="meta-date">生成日期 2026-09-27</p></blockquote>
+<h2 id="prompt-api">一、核心技巧（一个 prompt 模板 + 三个 API 参数）</h2>
+<p>把"判断题"变成单 token 生成，再读 LLM 的 token 概率分布——<strong>一个通用 LLM 顶一排专用分类器</strong>：</p>
+<pre><code>State: 我的订单到货时损坏了，我想退款。
+Question: 应该哪个团队处理？
+[A] billing
+[B] shipping
+[C] returns
+Answer with the letter of the best option only.
+</code></pre>
+<p>API 参数：<code>max_completion_tokens: 1</code> + <code>logprobs: true</code> + <code>top_logprobs: 20</code>。返回最优字母的同时附上各候选 token 的对数概率——<strong>不仅知道答案，还知道模型的置信度分布</strong>。</p>
+<p>三种题型统一收敛为字母选项：<br />
+| 题型 | 选项形态 | 输出 |<br />
+|------|----------|------|<br />
+| choice（多选一） | criteria 字典 → 字母 | 胜选项 + 全概率分布 |<br />
+| noul（布尔/是非） | true/false | P(true) 百分比 |<br />
+| score（序数评分） | criteria 列表 → 编号 | 期望分值（概率加权） |</p>
+<h2 id="_1">二、工程细节（正文代码的精华）</h2>
+<ol>
+<li><strong>单 token 生成的经济学</strong>：只生成 1 token 避免长回答，快；但输入处理仍花时间——<strong>多问题共享 state 前缀可 KV-cache</strong>（后端支持时）</li>
+<li><strong>视觉也通</strong>：作者给 Jev 格式加了 <code>attachments</code> 字段（base64 JPEG），vision 模型同样读 logprobs——摄像头帧→"有人吗/室内外/亮度"三连问</li>
+<li><strong>性能实测</strong>：Gemma 4 12B QAT @ RTX 3090 + llama.cpp ≈ <strong>1 FPS</strong>（每帧 3 问）；OpenAI gpt-6-luna ≈ 0.2 FPS（没做连接复用，每问每帧新连接）</li>
+<li><strong>API 分叉</strong>：llama.cpp 走 Chat Completions（top_logprobs 1024），OpenAI 走 Responses API + <code>top_p=1</code>（防剪枝掉候选）</li>
+<li><strong>缺失选项的守门逻辑</strong>：被 API 省略的 token 不能反超已返回的最末候选——缺失项合并概率 ≥1e-6 就报错拒绝输出，防"假完整分布"</li>
+<li><strong>温度 0 + reasoning_effort none</strong>：要的是分布读数不是创作</li>
+</ol>
+<h2 id="_2">三、评论区最重要的一条（比正文更值钱）</h2>
+<p>Anonymous 09-26 评论：<strong>"当前 transformer 只 attend 过去 token——把选项放输入之前，state 的每个词就能带着选项上下文被处理；这样还能关掉 reasoning 省时省钱，结果可能根本性改善。"</strong></p>
+<p>这是对 prompt 结构的因果性修正：选项后置 = 模型读 state 时还不知道要判断什么（信息浪费）；选项前置 = 每个词的表征都朝判断任务对齐。<strong>作者的模板（State→Question→Options→Answer）在这点上可能次优。</strong></p>
+<h2 id="_3">四、💡 对我们的价值分析</h2>
+<h3 id="_4">✅ 已在做的（印证方向）</h3>
+<ul>
+<li><strong>Hermes 传感器体系</strong>（sensor-grid/proactive-sensor 五类传感器）都是"代码采集"型——本技巧给了"LLM 判断型"传感器的最廉价实现路径</li>
+<li><strong>content-judge</strong>（LLM-as-Judge 评分卡）与本技巧同构，但走的是完整生成路径——本方案单 token + logprobs 快一个数量级</li>
+</ul>
+<h3 id="_5">⚠️ 可改进的（差距）</h3>
+<ul>
+<li>我们的判断类调用（新闻筛选/内容评分/异常判读）全部生成完整文本再解析，<strong>既慢又丢掉了置信度信息</strong>——重大升级点</li>
+<li>飞书推送决策、error-case 分诊、笔记质量门禁，都可以改成"字母选项+概率分布"形态</li>
+</ul>
+<h3 id="_6">🔥 重点行动</h3>
+<ol>
+<li><strong>Hermes 传感器 LLM 化试点</strong>：挑一个高频判断场景（如 error-log 分诊 HIGH/MEDIUM/LOW），用 choice+logprobs 重写——本地 nexa/Ollama（Jetson 已有）即可跑，每条日志 1 token 出分诊+置信度</li>
+<li><strong>不确定性显性化</strong>：P(最佳) &lt; 0.6 时降级人工/追问——把"模型拿不准"从隐性变显性，正好补 content-judge 的软肋</li>
+<li><strong>选项前置 A/B</strong>：按评论区建议做两组模板对照（选项前置 vs 后置），实测分布质量差异——顺手产出一条可复用 prompt 模板进 skill</li>
+</ol>
+<h2 id="_7">五、内容整理（归纳总结与关联分析）</h2>
+<p><strong>归纳总结</strong>：Jev 式 wrapper = 单 token 生成 + logprobs 读取 + 字母化选项统一三类判断题（choice/noul/score），一个通用 LLM（含 vision）替代一排专用分类器，且自带置信度分布。关键数字：3090 本地 1 FPS、缺失选项合并概率 1e-6 守门、llama.cpp top_logprobs 1024 vs OpenAI Responses API。</p>
+<p><strong>关联分析</strong>：与 [[2026-05-18-Agent元认知-LLM不确定性感知]] 直接接力——那篇讲"为什么需要不确定性感知"，本篇给出最轻的实现（logprobs 即免费的不确定性信号）；与 sensor-grid 的关系是"物理传感器→LLM 语义传感器"的补全；与 ROSClaw 笔记（09-21）呼应：Verifier 谓词返回"测量值+阈值+为什么"，logprobs 概率分布正是 LLM 侧的同类证据链——不是 true/false 而是带置信度的可审计判断。</p>
+<h2 id="_8">六、查询拓展</h2>
+<ul>
+<li>Jev / OpenJev / SemIf 项目本体（自托管 LLM 状态-问题格式的源头）</li>
+<li>OpenAI logprobs cookbook（官方单 token 技巧集）</li>
+<li>guidance/outlines（结构化生成的另一条路：语法约束 vs 概率读取）</li>
+<li>校准（calibration）：logprobs 的概率分布准不准？温度缩放/isotonic regression 校准方法</li>
+</ul>
+<h2 id="_9">七、趋势判断</h2>
+<ol>
+<li><strong>LLM 用法从"生成"向"感知"扩散</strong>：单 token + logprobs 让 LLM 成为通用语义传感器——成本结构与专用小模型重合（1 token ≈ 分类头），但改条件只需改一句话</li>
+<li><strong>置信度将成为 Agent 判断的标配输出</strong>：裸答案（"是 HIGH"）会被带分布的答案（"HIGH 0.72/MEDIUM 0.21"）取代——下游才有降级/追问的依据</li>
+<li><strong>prompt 结构的因果性优化会被系统性研究</strong>：评论区"选项前置"这类 attention 因果分析，是 prompt engineering 走向 prompt science 的信号</li>
+<li><strong>本地小模型 + 传感器化 = 端侧 Agent 基建</strong>：Jetson 类设备跑 12B 判 1 FPS 视觉问答，机器人/家庭助理的"环境理解层"门槛大降</li>
+</ol>
+<h2 id="_10">八、指南分析（怎么用这篇文章）</h2>
+<ul>
+<li>直接抄模板：第一节 prompt + 第二节 API 参数（注意 llama.cpp 与 OpenAI 的端点分叉）</li>
+<li>落地顺序：先文本判断场景（日志分诊）后视觉场景（摄像头帧），本地 llama.cpp 起步零成本</li>
+<li>避坑：缺失选项守门逻辑（1e-6）必须保留，否则分布是假的；温度 0 + 关 reasoning</li>
+</ul>
+<h2 id="_11">九、拓展应用推荐</h2>
+<ul>
+<li>与 [[2026-05-18-Agent元认知-LLM不确定性感知]] 并读（理论→实现闭环）</li>
+<li>Hermes 行动项：error-log 分诊 LLM 化试点（第四节行动 1），可挂进 sensor-grid 体系</li>
+<li>DUCK 项目：训练曲线异常判读（reward 骤降/熵坍缩的分诊）也可字母化——六类异常各占一字母，巡检 cron 每 token 出判读+置信度</li>
+</ul>
+</body>
+</html>
