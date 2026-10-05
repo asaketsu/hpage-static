@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>步态条件奖励路由-多姿态单策略RL</title>
+
+<meta property="og:title" content="步态条件奖励路由-多姿态单策略RL" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rl">步态条件奖励路由：多姿态单策略 RL 的去干扰训练法</h1>
+<blockquote>
+<p>来源：arXiv 2505.20619 (UCL, Unitree G1 真机验证) + npj Robotics 自动跌倒恢复 + DUCK E28/E30 失败根因对照<br />
+日期：2026-10-06 · 领域：足式机器人 RL · 对现有训练线直接可用度：★★★★★</p>
+
+<p class="meta-date">生成日期 2026-10-06</p></blockquote>
+<h2 id="duck-e28">一、为什么这篇论文直击 DUCK E28 病根</h2>
+<p>E28（sit_flag 条件双态站/蹲）终裁 FAIL 的尸检结论：站组 z 落点 0.055-0.119 与蹲组 0.056-0.118 <strong>完全交叉</strong>，分离度 0.0177 &lt; 0.02 门槛；E30 进一步确认「重技能在混合域被信号稀释」（趴 35% env 的混合训练里 recovery 悬赏全程到账 0.000-0.001 从未被吃，standup 专域同预算爬到 67%）。<strong>这两个失败共享同一个教科书级病名：reward interference（奖励干扰）</strong>——多姿态混训时，一个姿态的奖励梯度把另一个姿态的策略往回拉。</p>
+<p>UCL 这篇论文的解法恰好就是这个问题的对症药：<strong>gait-conditioned reward routing（步态条件奖励路由）</strong>，在 Unitree G1 人形上单 recurrent 策略学会站立/行走/跑步/双向转换并真机落地。</p>
+<h2 id="_1">二、核心机制拆解（可复制的三件套）</h2>
+<h3 id="21">2.1 奖励路由：每步只让相关奖励项进梯度</h3>
+<ul>
+<li>完整奖励向量分两类：<strong>共享项</strong>（任务级 tracking + 调节项，如速度跟踪/能耗）+ <strong>模式专属项</strong>（站立用静止奖励/足对称，跑步用 push-off/短触地时长）。</li>
+<li>训练时按当前步的 gait ID 施加 <strong>gait mask</strong>，把无关奖励项从学习目标中过滤掉——站立步不给跑步项梯度，反之亦然。</li>
+<li>转换步态（walk-to-stand）可<strong>继承或插值</strong>相邻两个模式的奖励，行为平滑过渡不突变。</li>
+<li>论文原文定位：<em>"each locomotion behavior is optimized independently while coexisting within a single recurrent policy"</em> ——单策略共享主干 + 独立信用分配，两头兼得。</li>
+</ul>
+<h3 id="22-one-hot-gait-id-obs">2.2 观测设计：one-hot gait ID 进 obs</h3>
+<ul>
+<li>obs 含 sin-cos 步态相位编码 + <strong>one-hot gait ID</strong>（站/走/跑/转换），同时喂 actor 和 critic——策略网络显式知道「我现在被要求做什么模式」。</li>
+<li>这正是 E28 sit_flag 想做而没做到的事：sit_flag 在 obs[48:51] command 段里，但<strong>没有配套的奖励路由</strong>，sit/stand 两套 z 目标在标量总奖励里互相抵消，策略学到「趴中间值」的最优解。</li>
+</ul>
+<h3 id="23">2.3 课程：姿态渐进引入而非同时开训</h3>
+<p>三阶段课程（仿人类运动发育）：Phase1 低速行走（-~0.x m/s，节奏/足间隙/膝姿态）→ Phase2 加站立+走转站（双支撑/姿态稳定）→ Phase3 跑步（push-off/腾空相/短触地）。同时从三个维度渐进：姿态复杂度、指令速度范围、协调机制启用（路由/转换混合/减速平滑逐步打开）。</p>
+<p>论文明确指出动机：<strong>"Training all gaits simultaneously often leads to reward conflict and unstable exploration"</strong>——这就是 E28 从第 0 步就 sit/stand 各 50% 混采的死因。</p>
+<h3 id="24">2.4 架构细节</h3>
+<ul>
+<li>LSTM + MLP 的 recurrent actor-critic，<strong>非对称结构</strong>：actor 只看本体感受（可部署性），critic 额外拿特权信息（足接触状态/地面反力/摩擦系数/外扰力及其作用点）稳定价值估计。</li>
+<li>输出 23 维关节位置偏移，PD 控制器固定增益跟踪——与 DUCK 的 offset 动作空间同构。</li>
+<li>人类启发奖励（无需 MoCap）：直膝支撑、反相摆臂（对消腿引起的角动量）、残差角动量显式惩罚。</li>
+</ul>
+<h2 id="_2">三、周边文献锚点</h2>
+<table>
+<thead>
+<tr>
+<th>文献</th>
+<th>关键数字/结论</th>
+<th>与 DUCK 关联</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>npj Robotics s44182-025-00043-2 (2025-08)</td>
+<td>四足后腿双足走 + <strong>自动跌倒恢复</strong>内建于同一 PPO 策略；1024 并行 env，RTX 3060 笔记本 GPU 训 2h</td>
+<td>恢复能力可与行走共生，不必单独拆策略——前提是奖励不互斥</td>
+</tr>
+<tr>
+<td>PMC11048123 动态跌倒恢复</td>
+<td>学习式状态估计网络 + 本体感受历史策略；3 m/s 跌倒速度下真机恢复平衡</td>
+<td>高速跌倒恢复可行，历史 obs 是关键输入</td>
+</tr>
+<tr>
+<td>MultiCritic Actor Learning (ICLR'22)</td>
+<td>单 actor + 每任务独立 critic head，多任务 RL 稳定性显著提升</td>
+<td>E31 备选方案：值函数解耦，不动奖励</td>
+</tr>
+<tr>
+<td>GPO Growing Policy Optimization (arXiv 2601.20668, 2026-01)</td>
+<td>课程「生长」式策略优化的最新集成</td>
+<td>里程碑式任务（起身）的渐进训练框架</td>
+</tr>
+</tbody>
+</table>
+<h2 id="e31-duck">四、E31 处方：把奖励路由移植到 DUCK 双态线</h2>
+<p>按本篇论文机制重开 E31（E28 换配方，不是补丁）：</p>
+<ol>
+<li><strong>obs 改造</strong>：sit_flag 从 command 段析出为独立 one-hot 2 维段（[1,0]=站 [0,1]=蹲），与 cmd 并列。</li>
+<li><strong>奖励路由</strong>：站姿奖励（upright_while_tall@0.082 带单侧截止）只在 mask=站 时进总奖励；蹲姿奖励（z@0.046 带）只在 mask=蹲 时进；共享项（存活/action_rate/关节限位罚）恒开。</li>
+<li><strong>课程渐进</strong>：Phase1 纯站（复用 E20D/E23b 成熟配方 3000iter）→ Phase2 加蹲域（sit_prob 0.3→0.7 渐进）→ Phase3 混采+转换段。</li>
+<li><strong>放弃条件</strong>（沿用提案纪律）：m6000 时双态分离 &lt;0.02 即停线，回退三件套架构（已定案，不推翻）。</li>
+<li><strong>风险预算</strong>：约 8000-10000iter（6-7h GPU），对齐 E20D 冷启动成功档位；禁热启 E28 ckpt（其条件响应从未建立，热启=继承病灶）。</li>
+</ol>
+<p>与已定案架构的关系：三件套（E23b 站走推静 + E29 m12000 翻身 + 五段 skill 蹲起）是<strong>已交付的保底</strong>；E31 是「单模型双态」路线的最后一次对症尝试——若 reward routing 也救不动，则彻底坐实「DUCK 上分策略优于单策略」的结构性结论，反而把三件套从「权宜」升级为「终局架构」。</p>
+<h2 id="_3">五、一句话结论</h2>
+<p>E28 死于奖励干扰而非表达能力：gait ID 进 obs 只解决「策略知道要做什么」，<strong>reward mask 才解决「梯度只奖励做对了的事」</strong>——两者必须配套，缺一即回到信号稀释老路。</p>
+<hr />
+<ul>
+<li><a href="https://arxiv.org/html/2505.20619v2">arXiv 2505.20619 原文</a></li>
+<li><a href="https://www.nature.com/articles/s44182-025-00043-2">npj Robotics 自动恢复</a></li>
+<li><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC11048123">PMC 动态跌倒恢复</a></li>
+</ul>
+</body>
+</html>
