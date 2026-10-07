@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画</title>
+
+<meta property="og:title" content="EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="edgereasoning-jetsonorin">EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2511.01866（EdgeReasoning: Characterizing Reasoning LLM Deployment on Edge GPUs）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2511.01866<br />
+<strong>记录日期</strong>：2026-10-08</p>
+
+<p class="meta-date">生成日期 2026-10-08</p></blockquote>
+<p><strong>标签</strong>：#LLM推理优化 #边缘计算 #JetsonOrin #量化 #推理模型 #实测刻画</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-gpu-">1.1 核心问题：推理模型上边缘 GPU 的延迟-精度权衡全景图</h3>
+<p>在 Jetson AGX Orin 64GB（2048 CUDA 核 / 64 Tensor 核 / 275 INT8 TOPS / 64GB LPDDR5 @204.8GB/s / 15-60W）上系统刻画 DeepSeek-R1 蒸馏系（1.5B/8B/14B）推理模型的部署特性。这张表直接回答"我们这台 Jetson 能跑什么推理模型、跑多快、费多少电"。</p>
+<h3 id="12-vs-20">1.2 推理模型 vs 非推理模型：20 倍延迟代价</h3>
+<p>MMLU-Redux 准确率 / 延迟 / 能耗实测（vLLM 引擎，FP32 单批）：</p>
+<ul>
+<li>DSR1-Qwen-14B：80.6% / 207s / 2599 J/题</li>
+<li>DSR1-LLama-8B：61.7% / 143s / 4206 J/题</li>
+<li>DSR1-Qwen-1.5B：38.3% / 45s / 404 J/题</li>
+<li>对照非推理：qwen2.5-7B 60.8% / 0.6s / 26J；llama3.1-8B 58.3% / 2.5s / 78J</li>
+</ul>
+<blockquote>
+<p><strong>核心数字：同规模（7-8B）下推理模型准确率只高 7%，但延迟和能耗高 20 倍以上。推理链是延迟的主体，不是模型参数。</strong></p>
+</blockquote>
+<h3 id="13-decode-995">1.3 Decode 主导：99.5% 的时间在解码</h3>
+<ul>
+<li>token 比例 prefill:decode = 1:7.3（Qwen 系更啰嗦），但延迟比例 1:521（1.5B）、1:192（8B）、1:569（14B）</li>
+<li>解码占比 &gt;99.5% —— 边缘部署优化只该砸在 decode 上</li>
+<li>TBT（token 间延迟）几乎不随上下文增长：8B 从 1k 到 4k 输入只涨 3.1%</li>
+<li>实测 TBT：1.5B = 0.024s（41 tok/s）、8B = 0.10s（10 tok/s）、14B = 0.186s（5.4 tok/s）</li>
+</ul>
+<h3 id="14-mape-2">1.4 解析性能模型（MAPE &lt; 2%）</h3>
+<ul>
+<li>Prefill：L = a·I_pad² + b·I_pad + c，I_pad 按 128 对齐（CUTLASS/Tensor Core padding 效应，实测呈台阶状）</li>
+<li>Decode：L = nO + m(IO + O(O-1)/2)，m 极小 ≈ TBT 恒定</li>
+<li>功率：短输入恒定（低利用率），长输入对数增长（1.5B 仅 6W，8B/14B 4k 输入超 20W）</li>
+<li>能耗/token：约 300 token 处最低（权重复用最优），之后进入 attention 主导的平台期</li>
+<li>模型价值：14B 全量 MMLU 实测要 8 天，解析模型秒级出结果——<strong>先建模后实测</strong>是大规模扫参的正路</li>
+</ul>
+<h3 id="15-vs">1.5 边缘 vs 云的成本账</h3>
+<p>DeepScaleR-1.5B（RL 微调数学推理模型）在 Orin 上：</p>
+<ul>
+<li>单批 FP32：$0.302/百万 token（电 $0.024 + 硬件摊销 $0.278）</li>
+<li>batch 30：$0.027/百万 token —— <strong>比 OpenAI o1-preview（$60）低三个数量级，AIME2024 准确率 43.1% vs 40.0% 反超</strong></li>
+<li>结论：小推理模型+RL 微调+边缘部署 = 准确率可比云端大模型，成本低 100-2000 倍</li>
+</ul>
+<h3 id="16">1.6 量化与测试时扩展</h3>
+<ul>
+<li>W4A16（LLM Compressor AWQ）在 Orin 上回退 INT8 执行（Ampere 架构不支持 INT4 kernel）——量化收益打折的硬件级根因</li>
+<li>并行 test-time scaling（多路推理+投票）在不增加延迟的前提下提精度，前提是硬件利用率未饱和</li>
+<li>序贯扩展（更长推理链）线性增加延迟，实时任务禁用</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-decode">2.1 为什么 decode 在边缘是带宽瓶颈</h3>
+<p>Orin 的 FP16 FLOPs:bytes ≈ 1375，远高于 batch=1 GEMV 的算术强度——单批解码是纯带宽受限。这解释了为什么 14B（权重更大）TBT 是 1.5B 的 8 倍：每 token 都要把全部权重从 204.8GB/s 的 LPDDR5 搬一遍。边缘 SoC 与数据中心卡的差距主要在带宽而非算力。</p>
+<h3 id="22-nvidia-jetson">2.2 与 NVIDIA 官方 Jetson 优化路径的关系</h3>
+<p>NVIDIA 技术博客（Frontier Reasoning Reaches the Edge）给出 NVFP4+推测解码在 Jetson 上最高 6.28× decode 吞吐提升，但 NVFP4 需 Blackwell 级硬件；Orin（Ampere）的现实选项是 FP8/INT8+推测解码。两篇对照读：官方给上限，本文给 Orin 实测下限。</p>
+<h3 id="23-deepscaler">2.3 DeepScaleR 路线</h3>
+<p>纯 RL（无蒸馏）微调 1.5B 底座在数学任务上追平 o1-preview，是"小模型+RL 微调"路线的代表作。与我们关注的"Agent 即策略模型"同源：任务特化的小策略网络 &gt; 通用大网络。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-orin">3.1 Orin 部署决策框架</h3>
+<pre><code>延迟预算 → 模型尺寸选择（解析模型反解）:
+  ≤10s 级任务   → 1.5B 推理模型 (41 tok/s) 或 7-8B 非推理
+  30-60s 任务   → 8B 推理模型 (10 tok/s), W4 量化提吞吐
+  离线/批量     → 14B + batch (精度 80.6% 值得等)
+
+优化杠杆优先级（边缘 decode 主导场景）:
+  1. 砍推理链长度（prompt 控制/预算指令）→ 直线降延迟
+  2. 量化 W4A16（Orin 实际 INT8 执行）
+  3. 并行 TTS 多路投票（不增延迟, 硬件未饱和时免费提精度）
+  4. 推测解码（草稿模型 draft 1.5B 服务 14B）
+</code></pre>
+<h3 id="32">3.2 三个反直觉发现</h3>
+<ul>
+<li><strong>上下文长度对 TBT 几乎无影响</strong>（4k 才 3.1%）：不必为长上下文焦虑延迟恶化</li>
+<li><strong>能耗/token 在 300 token 处最优</strong>：超长 prompt 的边际能耗是平台期而非恶化</li>
+<li><strong>小模型能效比是数量级优势</strong>：1.5B 每 token 能耗是 14B 的 1/7，批量场景小模型+RL 微调完胜</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1rl">趋势1：边缘推理模型进入"RL 微调小模型"时代</h3>
+<p>依据：DeepScaleR 1.5B 用 RL 微调追平 o1-preview（43.1% vs 40.0% AIME）而成本低三个数量级。蒸馏大模型（DSR1 系列）不再是小推理模型唯一来源。</p>
+<h3 id="2">趋势2：性能解析模型将成为部署标配前置步骤</h3>
+<p>依据：本文 MAPE&lt;2% 的拟合模型把 8 天实测压缩到秒级；DUCK 的黄金档扫描、eval 门禁共享同一逻辑——先解析模型粗筛再定点实测。</p>
+<h3 id="3decode">趋势3：decode 带宽墙推动边缘专用注意力优化</h3>
+<p>依据：99.5% 时间在 decode + GEMV 带宽受限，量化只解决权重搬运量（且 Orin 上 INT4 回退 INT8），结构性出路在推测解码与稀疏注意力。</p>
+<h3 id="4">趋势4：机器人端侧推理的成本闭环成立</h3>
+<p>依据：$0.027/百万 token（batch）让"每台机器人本地跑推理"比云端 API 经济上可持续，与 EdgeReasoning 开篇的自主系统叙事闭合。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-jbot-jetson">5.1 与本机环境（jbot = Jetson 或同级）的关联</h3>
+<ul>
+<li>本机 luxtts-daemon、nexa-local-inference（Ollama on Jetson）当前都跑非推理模型；若引入本地推理模型做复杂任务规划，TBT 表（41/10/5.4 tok/s @1.5/8/14B）就是直接选型依据</li>
+<li>jbot 作为 Hermes Gateway 主机，其 20:35 OOM 事件（可用内存 290MB）说明内存预算紧张——1.5B FP16 约 3GB、W4 后约 1GB，部署前必须留 Gateway 余量</li>
+<li>推理模型 20× 延迟对交互式 Agent 不可接受，但对夜间自学习（本 cron 任务）完全可行——<strong>夜间本地深度推理、白天轻量响应</strong>的分时架构有了数据支撑</li>
+</ul>
+<h3 id="52">5.2 与既有笔记/技能的关联</h3>
+<ul>
+<li><a href="2026-10-07-HuggingFace详细教程-从调用模型到微调与部署.md">HuggingFace详细教程-从调用模型到微调与部署</a>：LoRA 微调+Spaces 部署的下一步就是本地推理模型部署，本文提供 Orin 实测基准</li>
+<li>llm-inference-optimization skill（PagedAttention/量化/推测解码/连续批处理）：本文是这些技术在边缘端的实测校准——PagedAttention 在边缘单用户场景收益有限，量化+推测解码才是边缘主角</li>
+<li>edge-llm-quantization skill（GGUF/TensorRT-LLM）：Orin 上 INT4 量化回退 INT8 的坑（Ampere 无 INT4 kernel）应补进该 skill 的硬件兼容性清单</li>
+<li><a href="2026-10-06-Agent记忆2026-自进化与基准.md">Agent记忆2026-自进化与基准</a>：夜间自学习 cron 与推理模型的延迟特性天然匹配</li>
+</ul>
+<h3 id="53-duck">5.3 与 DUCK 项目的关联</h3>
+<p>DUCK 真机 54ms/拍的策略推理循环要求 &lt;20ms 模型前向；本文方法（解析延迟模型先拟合再扫参）可直接迁移到"策略网络尺寸×控制频率"的可行性预算表——与 jetson-tensorrt-deploy 的 INT8 转换实测互补。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Reasoning models incur over 20× higher inference latency than non-reasoning models.」——推理能力的价格是 20 倍延迟，先想清楚要不要付</p>
+<p>「Decode dominating over 99.5% of total inference time.」——边缘优化只该砸在 decode，prefill 优化是伪需求</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>edge-llm-quantization skill 增补</strong>：Orin（Ampere）上 W4A16 回退 INT8 执行的硬件兼容性条目——这是部署前必须知道的算力打折</li>
+<li><strong>本机部署决策</strong>：jbot 若跑本地推理模型，选 1.5B 级（41 tok/s 可交互）；8B+ 只适合后台批量任务</li>
+<li><strong>夜间学习管线</strong>：本 cron 任务的深度分析环节可考虑本地推理模型承担（延迟不敏感），白天交互保持轻量</li>
+<li><strong>解析模型先行</strong>：任何"尺寸-延迟"决策先用本文公式族拟合本地实测 3-5 点，再外推全域——避免 8 天级实测</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ol>
+<li><strong>Hermes 推理路由层</strong>：按任务延迟敏感度分流——交互用 1.5B/云端，夜间批量用本地 8B+，与 adaptive-inference-routing skill 的预算自适应路由直接对接</li>
+<li><strong>DUCK 上位机推理预算表</strong>：策略前向 &lt;20ms 硬约束下，用 TBT 模型反推最大可行网络尺寸，写入 duck-h1-deployment 的部署前检查</li>
+<li><strong>成本看板</strong>：把 $0.027-0.302/百万 token 的边缘成本账加进 observability-dashboard，与云端 API 成本对照展示</li>
+</ol>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>方法论价值</strong>：实测刻画→解析建模→模型加速扫参的三段式，是所有"设计空间大而实测贵"问题的通用解法。DUCK 的黄金档扫描（全档 12ep 验收太贵→中间档抽查）已是同构实践。</p>
+<p><strong>可复用的实验设计</strong>：<br />
+- 拟合验证用 50 个 held-out 问题、MAPE&lt;2% 才可信——比"看着像"的曲线 eyeballing 严格<br />
+- 功率/能耗分 prefill/decode 单独建模，与延迟模型解耦——避免单一指标掩盖两阶段的不同物理瓶颈</p>
+<p><strong>局限与保留</strong>：单硬件平台（Orin 64GB MAXN 模式）、单引擎（vLLM）、DSR1 蒸馏系模型——数字不可直接外推到 Thor/其他引擎/其他模型系；W4A16 的 INT8 回退是 vLLM+CUTLASS 组合行为，TensorRT-LLM 路径可能不同。MMLU-Redux 准确率与数学类基准的排序不完全一致。</p>
+</body>
+</html>

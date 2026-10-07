@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LocoFormer通用运动模型-长上下文跨试次适应</title>
+
+<meta property="og:title" content="LocoFormer通用运动模型-长上下文跨试次适应" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="locoformer-">LocoFormer通用运动模型-长上下文跨试次适应</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2509.23745（CoRL 2025，CMU，Min Liu / Deepak Pathak / Ananye Agarwal）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2509.23745<br />
+<strong>项目主页</strong>：https://generalist-locomotion.github.io<br />
+<strong>记录日期</strong>：2026-10-08</p>
+
+<p class="meta-date">生成日期 2026-10-08</p></blockquote>
+<p><strong>标签</strong>：#足式机器人 #强化学习 #通用策略 #Transformer-XL #跨形态迁移 #DUCK项目</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心命题：一个模型控制所有机器人</h3>
+<p>LocoFormer 是一个 omni-bodied（全形态）通用运动策略，能零样本控制<strong>从未见过的腿式和轮式机器人</strong>，且不需要精确的运动学参数。这直接挑战了当前"每个机器人单独调一个专用控制器"的范式。</p>
+<ul>
+<li>训练分布：程序化生成 <strong>10 万个机器人</strong>（双足/四足/轮式变体），随机化关节数量、关节序列、质量、质心、控制增益、关节限位</li>
+<li>不用市场在售机器人的精确参数，只用形态设计原则</li>
+<li>统一关节空间：取当代腿式机器人关节的超集拼接，策略在超集内输出目标关节位置，各机器人取自己那部分</li>
+</ul>
+<h3 id="12">1.2 两大关键选择</h3>
+<blockquote>
+<p><strong>作者的核心洞察：现有策略"近视"（myopic）——只有几百毫秒的历史上下文，这对窄任务分布够用，但在巨大任务分布下，短历史里根本不含足够信息来做适应。</strong></p>
+</blockquote>
+<ul>
+<li><strong>选择一：大规模 RL + 激进域随机化</strong>。策略面对巨大任务多样性时被迫学习"先做任务识别、再适配控制"的通用策略——类比 LLM 网络级预训练带来 in-context 学习</li>
+<li><strong>选择二：上下文长度提升几个数量级，跨越试次边界</strong>。episode 内含 k 个 trial，记忆跨 trial 保留，优化整个 episode 的累计回报</li>
+</ul>
+<h3 id="13-transformer-xl">1.3 架构：Transformer-XL 策略骨干</h3>
+<ul>
+<li>观测经 MLP 编码为 token，送入 TXL；actor/critic 各一个 MLP 头解码</li>
+<li>段级循环（segment recurrence）：缓存前一段的 hidden states 计算 K/V，但不回传梯度（stop-gradient）</li>
+<li>有效上下文 = O(N×L)：6 层 × 段长 128 = 896 步 ≈ <strong>50Hz 控制下 18 秒记忆</strong>，比先前工作长两个数量级</li>
+<li>推理用 KV-cache 把复杂度从平方降到线性；部署时只保留最近 2L-1 步</li>
+<li>段可以跨 episode 边界，attention mask 保证注意力不跨边界</li>
+</ul>
+<h3 id="14">1.4 训练与部署</h3>
+<ul>
+<li>PPO 大规模仿真训练，两阶段课程：先短 trial + 小适应预算 U 优先学适应行为，再拉长准备真机部署</li>
+<li>适应时间预算 u ~ Uniform(0, U)，策略在预算内自由试错后进入最终 trial</li>
+<li>零样本（u=0）：几秒内适应未见形态；少样本：利用前几次 trial 的经验渐进提升</li>
+</ul>
+<h3 id="15">1.5 结果：专用策略级表现 + 涌现适应</h3>
+<p>仿真（10 个未见机器人，1000 个随机环境）：</p>
+<ul>
+<li>Ours zero-shot 平均 <strong>0.96</strong>，few-shot（5 秒适应）<strong>0.98</strong></li>
+<li>GRU 基线（同训练设定）平均只有 <strong>0.37</strong> —— 架构选择是跨形态泛化的生死线</li>
+<li>Conditioning 基线（喂特权运动学信息但上下文只有 64）0.78 —— 短上下文即使给精确参数也不够</li>
+<li>Expert（目标形态直训上界）0.99 —— LocoFormer 几乎追平</li>
+</ul>
+<p>真机涌现案例（全部零样本部署在 Unitree G1/H1/Go2/Go2-W）：</p>
+<ul>
+<li><strong>锁膝变三足</strong>：行走中程序锁死一个膝关节，Go2 先前倾失稳，2-3 秒内学会把重心后移到三角支撑面并恢复行走——三足机器人在训练分布外</li>
+<li><strong>跨试次学习</strong>：无踝电机双足（单点支撑极不稳定）第一次 trial 必摔，但摔倒轨迹保留在 TXL 缓存里被后续 trial 注意，第三次 trial 稳定行走且能抗推加载重</li>
+<li><strong>轮子中途锁死</strong>：Go2-W 行进中软件锁轮，策略检测到"发指令没反应"的差异后切换步态；解锁后自动切回低能耗滚动</li>
+<li><strong>踩高跷</strong>：腿长比训练分布上限还长，几步不稳后调整步时序和落足点稳定行走</li>
+<li><strong>切掉小腿</strong>：砍掉 4 个自由度，先原地踏步 7-8 秒后发现需要大腿大幅摆动才能走</li>
+</ul>
+<h3 id="16">1.6 算力账</h3>
+<ul>
+<li>通用模型算力 ≈ 专用策略的 500 倍，但覆盖 10 万个机器人 → <strong>摊销每机器人成本 1 天 vs 0.005 天</strong></li>
+<li>低算力变体也表现出明显的适应和跨形态泛化迹象（性能-算力有利的 trade-off 曲线）</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-transformer-xltxl">2.1 Transformer-XL（TXL）</h3>
+<p>Dai et al. 2019 提出的长序列语言模型，核心是段级循环机制：当前段注意缓存的前段 K/V，梯度不穿过段边界。这让有效上下文随层数线性增长（每层多"看到"一个前段）。LocoFormer 是 TXL 在机器人控制里的标杆应用——把"语言的长程依赖"变成"运动控制的跨试次记忆"。</p>
+<h3 id="22-cross-emodiment">2.2 与 Cross-Emodiment 学习谱系的差异</h3>
+<ul>
+<li>图网络/注意力掩码路线（GNN message passing、morphology attention）：给架构加结构偏置</li>
+<li>Bohlinger et al.：策略条件在精确运动学潜变量上——需要系统辨识，磨损后失准</li>
+<li>Feng et al.：程序化四足单控制器，最接近本工作，但规模小、只有四足、无轮式</li>
+<li>LocoFormer 的差异：<strong>不给形态描述，让策略从长上下文里自己辨识</strong>——这是"Agent 即策略模型"思路在运动控制上的实例</li>
+</ul>
+<h3 id="23-in-context-rl">2.3 In-context RL 与跨试次记忆</h3>
+<p>把 RL 的 trial 序列当作 LLM 的 in-context 样本序列处理，episode 级回报最大化驱动策略学会"从失败中学习"。与我们关注的 Jev 决策层（logprobs 置信度、决策契约化）共享同一个底层命题：<strong>策略网络本身可以承载元学习</strong>。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 范式对比框架</h3>
+<pre><code>专用策略范式（当前 DUCK E 系所在）:
+  单形态 + 窄域随机化 + 短上下文(50ms级)
+  → in-distribution 性能最优, 域外即灾难失配
+  → 换硬件/改结构 = 从零重训 (rl-policy-transfer 已验证的耦合)
+
+通用策略范式（LocoFormer）:
+  10万形态 + 激进随机化 + 18s 跨试次上下文
+  → 单形态性能 ≈ 专用(0.98 vs 0.99)
+  → 域外变化(锁关节/砍腿/载重) = 在线适应几秒恢复
+  → 代价: 训练算力 ×500, 摊销后每形态成本 ÷200
+</code></pre>
+<h3 id="32">3.2 三要素依赖链</h3>
+<ul>
+<li>长上下文是必要条件：GRU 同数据 0.37、短上下文+特权信息 0.78，都不及格</li>
+<li>大规模形态多样性是适应能力的来源：逼策略学"任务识别→适配"而非背答案</li>
+<li>跨试次记忆是涌现适应的载体：摔倒信息留在缓存里 = 免费的经验回放</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：运动控制从"专用微调"转向"通用底座+秒级适应"</h3>
+<p>依据：LocoFormer 零样本已追平专用策略上界（0.96 vs 0.99），且真机适应案例覆盖了"结构性损伤"这类专用策略完全无解的场景。与 LLM 领域"预训练底座+下游适应"的收敛路径同构。</p>
+<h3 id="2-rl">趋势2：上下文长度成为 RL 策略的新设计轴</h3>
+<p>依据：此前策略设计轴是 obs 编码/奖励/课程；本文实证"上下文长度提升两个数量级"本身就解锁了新能力（跨试次学习），且 TXL+KV-cache 让长上下文在 50Hz 控制下实时可行。</p>
+<h3 id="3">趋势3：程序化生成任务空间将取代真实机器人数据集</h3>
+<p>依据：10 万机器人全部程序化生成，不依赖任何在售机型参数，却能在真机零样本工作。数据飞轮从"采集真机数据"转向"扩大生成分布"。</p>
+<h3 id="4">趋势4：摊销算力逻辑会改变团队级训练决策</h3>
+<p>依据：500× 算力 ÷ 10 万形态 = 每形态 0.005 天。对多机器人产品线，通用底座的边际成本远低于逐形态调优，重演"大模型 API vs 小模型自训"的经济学。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-duck">5.1 与 DUCK 项目的关联（最直接）</h3>
+<ul>
+<li><strong>E 系谱系的根本张力</strong>：我们 25+ 个变体（E11→E23b）本质是在"单形态窄分布"里追性能，每次真机结构变化（1002 换头配重导致模型失配摔、E29 几何改动）都要重训或热启——正是 LocoFormer 批判的"myopic 专用策略"路径。真机观察"模型-硬件失配非模型坏"（E23b 复测两锚双摔）就是短上下文策略无法适应分布外变化的直接证据</li>
+<li><strong>E24 头颈 DR ±15° + 初始姿态 DR 是向通用性的小步</strong>，但与 LocoFormer 的形态级随机化差三个数量级</li>
+<li><strong>可借鉴的具体件</strong>：跨试次记忆（DUCK 摔倒后 TXL 缓存保留→下一次接管更稳，治"每次接管从零开始"）；适应时间预算 u~Uniform(0,U) 的课程设计；统一关节超集（14 关节超集天然适合 DUCK 双足+未来构型）</li>
+</ul>
+<h3 id="52">5.2 与既有笔记的关联</h3>
+<ul>
+<li><a href="2026-10-06-步态条件奖励路由-多姿态单策略RL.md">步态条件奖励路由-多姿态单策略RL</a>：多姿态单策略是"任务分布内"的泛化，LocoFormer 把分布扩到形态空间——两级泛化阶梯</li>
+<li><a href="2026-10-03-CRA-Loco对比蒸馏与自适应步态钟.md">CRA-Loco对比蒸馏与自适应步态钟</a>：CRA 用蒸馏压动作平滑，LocoFormer 用惩罚项+TXL，两条路线都指向"策略要能感知自身动力学变化"</li>
+<li><a href="2026-10-06-Agent记忆2026-自进化与基准.md">Agent记忆2026-自进化与基准</a>：TXL 缓存=策略级记忆，与 Agent 记忆系统（符号级）是互补层——一个记"怎么动"，一个记"做什么"</li>
+</ul>
+<h3 id="53">5.3 与用户研究命题的关联</h3>
+<p>用户周论文候选命题"软件 Agent 与物理 Agent 的策略改进同构性"获得新弹药：LocoFormer 的跨试次 in-context 适应 ≈ 软件 Agent 的 Reflexion/经验回放，且都依赖"长上下文+大任务分布"这对组合。EXPO 编辑策略（E1）与跨试次记忆（LocoFormer）是同一命题的两种实现。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Myopic policies fail to adapt to wider task distributions, leading to lower performance... This design choice favors in-distribution performance over generality.」——专用策略的 in-distribution 最优是用泛化性换来的</p>
+<p>「LocoFormer learns from falls in early episodes to improve control strategies in later ones.」——摔倒不是失败，是被保留的训练信号</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>短期（E25 候选设计输入）</strong>：在现有 MLP 策略上不可行，但可把"适应时间预算课程"（先短 trial 学适应再拉长）借到起身/蹲下训练；把"跨 trial 保留失败轨迹"思想用于 eval——连续多次接管测适应趋势而非单次</li>
+<li><strong>中期</strong>：DUCK 换 Transformer 策略骨干的可行性评估（rl-policy-architecture-selection skill 已有选型框架，TXL 应加入候选），obs 61 维不变，重点评估 50Hz 实时性（KV-cache 后线性复杂度）</li>
+<li><strong>登记到 DUCK docs 提案排队</strong>：按新训练方法立项模式，"跨试次长上下文运动策略"符合"与在训方案正交、治不同问题"的立项标准（治的是换硬件即失配，非站立质量）</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ol>
+<li><strong>DUCK 真机接管链</strong>：现在每次策略接管都从 STAND2 冷启动，若引入跨接管记忆缓存，"第二次接管比第一次稳"可成为可测量指标（对照 118s 存活首测的多次大扰动自恢复）</li>
+<li><strong>多机器人产线经济学</strong>：摊销算力账（1 vs 0.005 天/形态）可直接套用到用户的机器人 BOM 选型决策——选通用底座兼容的构型比逐构型定制便宜两个数量级</li>
+<li><strong>Agent 架构研究</strong>：TXL 段级循环 + stop-gradient 是"记忆与学习解耦"的干净实现，可借鉴到 Hermes 的会话记忆分层（L2 短期记忆 = 缓存段，L3 = 不回传梯度的长程）</li>
+</ol>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>方法论价值</strong>：本文示范了"简单配方 × 大规模执行"的研究范式——没有新算法，只有三个已知件（程序化生成、PPO、TXL）的极致组合。对我们设计 E 系变体的启示：优先把已知件推到极限，而非发明新奖励项。</p>
+<p><strong>可复用的实验设计</strong>：<br />
+- 三基线对照（同数据 GRU / 短上下文+特权信息 / 专用上界）干净地分离了"架构、上下文长度、分布"三个变量——DUCK 下次消融应仿此结构<br />
+- 表征动力学分析（追踪第二层输出随时间分化）提供了"策略如何内部建模形态"的可视化探针，可迁移到 DUCK 的 obs_normalizer 健康度审计</p>
+<p><strong>局限与保留</strong>：500× 算力对个人项目不可及（AutoDL 单卡 8000-15000 iter 预算 vs 本文 10 万机器人）；真机案例是展示性视频而非统计验收，需注意与其 12ep 门禁口径的区别。</p>
+</body>
+</html>
