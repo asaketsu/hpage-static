@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>形态对称图MS-PPO-机器人策略对称性从软罚到硬构造</title>
+
+<meta property="og:title" content="形态对称图MS-PPO-机器人策略对称性从软罚到硬构造" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="ms-ppo-">形态对称图MS-PPO-机器人策略对称性从软罚到硬构造</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2512.00727（Beyond Topology: A Morphological Symmetry Graph Representation for Locomotion Policy Learning）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2512.00727<br />
+<strong>记录日期</strong>：2026-10-09</p>
+
+<p class="meta-date">生成日期 2026-10-09</p></blockquote>
+<p><strong>标签</strong>：#强化学习 #足式机器人 #对称性约束 #图策略网络 #Sim2Real #PPO #策略架构</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题：对称性该"奖励出来"还是"构造出来"</h3>
+<p>现有对称 RL 三条路（镜像数据增强 / reward shaping / 全局等变网络）要么软约束只能近似，要么把单一群表示强加在扁平 obs-action 空间上、脱离机器人运动学拓扑。本文提出<strong>形态对称图表示</strong>：在拓扑图上补全形态对称诱导的<strong>置换+符号变换</strong>，一步到位实例化 MS-PPO。</p>
+<h3 id="12">1.2 两种群动作的分离（表示层核心设计）</h3>
+<ul>
+<li><strong>形态动作</strong>（作用在物理信号上）：置换对称肢体 + 镜像关节坐标系诱导的符号翻转（如 sagittal 反射下 base 重力/指令的侧向与偏航分量翻号）</li>
+<li><strong>图动作</strong>（作用在图索引特征上）：按对称轨道重索引节点</li>
+<li>图决定信息<strong>流向哪里</strong>，形态动作决定物理量<strong>如何变换</strong>——两者缺一即不完备</li>
+</ul>
+<h3 id="13-actor-critic">1.3 等变 Actor + 不变 Critic（构造而非正则）</h3>
+<ul>
+<li><strong>Equivariant Actor</strong>：M(o) = l(z_G(h(o)))——镜像观测产生镜像动作（policy equivariance）</li>
+<li><strong>Invariant Critic</strong>：对称轨道上做 sum pooling + disparity 项（|z−gz| 与 (z−gz)²）→ 形态对称状态同值（value invariance）</li>
+<li>对称性由架构<strong>by construction</strong>保证，不再靠 reward 罚或数据增强软化逼近</li>
+</ul>
+<h3 id="14-go2-g1">1.4 实验结果（Go2 四足 + G1 人形）</h3>
+<p><strong>walk-figure-8 任务</strong>（对称轨迹跟踪）：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>Lin.TE↓</th>
+<th>Ang.TE↓</th>
+<th>奖励↑</th>
+<th>参数量</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PPO</td>
+<td>0.049</td>
+<td>0.274</td>
+<td>11.35</td>
+<td>2,113,945</td>
+</tr>
+<tr>
+<td>PPO-EMLP</td>
+<td>0.672</td>
+<td>0.937</td>
+<td>3.55</td>
+<td>1,056,979</td>
+</tr>
+<tr>
+<td>PPO-Aug</td>
+<td><strong>0.031</strong></td>
+<td>0.246</td>
+<td>11.95</td>
+<td>2,113,945</td>
+</tr>
+<tr>
+<td>MI-PPO</td>
+<td>0.037</td>
+<td>0.237</td>
+<td>12.17</td>
+<td>864,142</td>
+</tr>
+<tr>
+<td><strong>MS-PPO</strong></td>
+<td>0.036</td>
+<td><strong>0.198</strong></td>
+<td><strong>13.14</strong></td>
+<td><strong>732,046</strong></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>MS-PPO 用 <strong>PPO 34.6% 的参数</strong>拿最高奖励与最佳角跟踪</li>
+<li><strong>关节零力矩故障容忍</strong>（30% 概率随机单关节失效）：MS-PPO hip/calf 故障下奖励最佳（8.36/3.33 vs PPO 5.88/1.76）</li>
+<li><strong>G1 人形零样本 sim-to-real</strong>：MS-PPO 速度 MSE 0.567 最优；<strong>PPO 与 MI-PPO 根本无法在真机上稳定行走</strong>——图连接不够，对称性要嵌进图里才 transfer</li>
+</ul>
+<h3 id="15">1.5 硬等变的失败模式（对我们最有价值）</h3>
+<p>PPO-EMLP（扁平硬等变）在<strong>对称破缺扰动</strong>（单关节失效）下崩溃：训练时须放松为成对关节同时失效、仍 3 seed 只活 1 个；测试单关节失效时 Lin.TE 0.672（差 PPO 13 倍）。<strong>全局扁平等变把左右腿锁死成木偶</strong>，无法做非对称补偿。MS-PPO 的图局部性让故障留在节点局部、经拓扑传播，同时对称映射只共享镜像故障案例间的补偿策略。</p>
+<h3 id="16">1.6 消融（架构细节）</h3>
+<ul>
+<li>shortcut 边（base→thigh/knee 直连）+ 4 层消息传递最优（figure-8 奖励 13.24 vs 无 shortcut 11.28）</li>
+<li>6/8 层不升反降（过深消息传递过平滑）；shortcut 让 base 状态与指令直达末端关节，不必沿运动链逐跳</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-e27bt1-mirror">2.1 与 E27b（T1 mirror 对称罚）的直接对照</h3>
+<p>E27 的 T1 = q+a 镜像和软罚（-0.3 权重），属本文分类的"reward shaping"软路线。MS-PPO 证明软路线的天花板之上还有硬构造路线，但<strong>硬全局等变（EMLP 式）在对称破缺场景（单腿弱、关节故障、载荷不对称）必翻车</strong>——这给 E27 划了安全边界：软罚路线选对了，不必升级成硬等变。</p>
+<h3 id="22">2.2 头颈对称与"结构权威"的关系</h3>
+<p>用户 09-17 拍板 mirror-loss 必须保留（不能训出歪头鸭子）。本文为该决策提供了理论背书：对称性是生物步态的底层结构，by-construction 编码优于事后惩罚。但 DUCK 头颈是"非对称载荷"（头部质心偏置 5.3°），属对称破缺项——正确做法恰是 MS-PPO 式：头颈不入对称轨道、只做姿态保持罚。</p>
+<h3 id="23-rsl-rl-recurrenttransformer">2.3 与 rsl-rl recurrent/Transformer 对称约束被拒案例的呼应</h3>
+<p>记忆里有"rsl_rl recurrent/Transformer 策略加对称约束被拒、env 级奖励绕开"的先例。MS-PPO 给出了第三条路：不改 rsl_rl 优化器，换函数空间（图+对称 encoder）——与我们"零侵入注入自定义策略网络"的 skill 同思路。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-rl">3.1 对称 RL 三路线能力对照</h3>
+<pre><code>数据增强(软)  : 近似等变,零架构改动,采样翻倍
+reward罚(软)  : 近似等变,权重难调,与主奖励打架   ← E27 T1 在此
+硬等变EMLP(硬): 严格等变,对称破缺场景崩溃       ← 禁用于故障容忍
+图+对称(本文) : 严格等变+拓扑局部性,参数-65%    ← 需换网络架构
+</code></pre>
+<h3 id="32">3.2 三个关键洞察</h3>
+<ul>
+<li><strong>对称破缺是硬等变的死穴</strong>：单关节失效让 EMLP 的全局 C2 等变结构性失配——机器人只要可能带伤作战，软对称或图局部对称是唯一选择</li>
+<li><strong>参数效率来自结构先验</strong>：34.6% 参数 + 更高奖励，先验编码比堆容量便宜</li>
+<li><strong>图连接 ≠ 对称性</strong>：MI-PPO（纯图无对称）在 G1 真机 transfer 失败——拓扑与形态变换必须联合编码</li>
+</ul>
+<h3 id="33-duck">3.3 对 DUCK 训练线的判定</h3>
+<ul>
+<li>E27b 的 T1 软罚路线<strong>正确</strong>，无需改硬等变（DUCK 左右舵机个体差异=真实对称破缺，硬等变会放大它）</li>
+<li>若 E27 之后仍残留左脚主导，下一步不是加重软罚（S21T 教训：过重罚塌缩），而是图结构化策略网络（MS-PPO 式）——但这是架构级重训，须走 docs 提案排队</li>
+<li>E27 验收加"左右动作幅度差"指标与本文 reward 表的对称轨道 disparity 项同源，可再加镜像 obs 一致性测试</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1-mlp">趋势1：策略网络从"扁平 MLP"走向"物理对齐函数空间"</h3>
+<p>依据：Body Transformer/MetaMorph/EAT/MS-PPO 一脉相承，2025-2026 密集产出；物理结构先验换来参数效率与 transfer 鲁棒性双赢。</p>
+<h3 id="2">趋势2：对称性编码从训练技巧升级为表示设计问题</h3>
+<p>依据：本文把对称性从"损失函数里的罚项"提为"图表示的坐标变换"，且证明软路线天花板明显低于构造路线。</p>
+<h3 id="3-locomotion">趋势3：故障容忍成为 locomotion 策略的新验收维度</h3>
+<p>依据：30% 单关节零力矩课程 + 双机协同拖拽实验；机器人量产时代带伤作战能力比峰值性能更值钱——与 DUCK"舵机个体差异是常态"的实践吻合。</p>
+<h3 id="4sim2real">趋势4：Sim2Real 成败的分水岭在表示而非数据</h3>
+<p>依据：同一 PPO 算法，MLP/纯图在 G1 真机全灭、图+对称零样本 transfer 成功——表示对齐物理是 transfer 的第一因。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-duck-e27b">5.1 与 DUCK E27b 的直接对接</h3>
+<p>E27 = E24c 热启 + T1 对称罚 + T2 失衡步幅奖 + T3 动作率罚。本文判决：T1 软罚是安全路线（硬等变会在左右舵机差异下翻车）；若 12ep 验收中左右幅度差指标不达标，升级路径=图对称架构（新提案）而非加重罚。<strong>E27b 验收时同步记录镜像 obs 测试</strong>：把 obs 做 sagittal 反射喂策略，量化输出对称度——低成本引入本文的评估视角。</p>
+<h3 id="52">5.2 与既有笔记/技能的关联</h3>
+<ul>
+<li><a href="./2026-10-08-LocoFormer通用运动模型-长上下文跨试次适应.md">LocoFormer通用运动模型</a>：同为策略表示创新（时序 vs 结构先验），正交互补</li>
+<li>bipedal-rl-sim2real skill：对称约束条目应增补"硬等变在对称破缺下崩溃"的边界</li>
+<li>rl-policy-architecture-selection skill：MLP/LSTM/Transformer 选型表应加第四行"对称图网络（故障容忍/参数敏感场景）"</li>
+<li>09-17 mirror-loss 铁律：本文是该铁律的学术背书</li>
+</ul>
+<h3 id="53-agent">5.3 与 Agent 架构层的同构</h3>
+<p>等变 actor/不变 critic 的分离，与 Agent 层"策略输出须对输入扰动等变、价值评估须对等价状态不变"的契约化思想同构——Kev 决策契约化的机器人版。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Enforcing the desired policy and value constraints by construction rather than through reward shaping or data augmentation.」——约束的最高形态是构造，不是惩罚</p>
+<p>「Topology alone is incomplete, and symmetry alone is too coarse.」——图缺对称不完整，对称离图太粗糙</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>E27b 验收增项</strong>（零成本）：镜像 obs 一致性测试——sagittal 反射 obs 喂策略，量左右动作对称度，作为"左右幅度差降 50%"的补充证据</li>
+<li><strong>rl-policy-architecture-selection skill 增补</strong>：对称图网络条目 + 硬等变死穴（对称破缺崩溃）</li>
+<li><strong>docs 提案储备</strong>：若 E27 系仍不对称，"MS-PPO 式图对称策略"作为架构级新提案排队（含 G1 零样本 transfer 证据）</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ol>
+<li><strong>DUCK 故障容忍课程</strong>：30% 单关节零力矩训练——直接治"左脚主导"（本质是左右执行差异），量产鸭鲁棒性刚需</li>
+<li><strong>舵机个体差异的对齐策略</strong>：左右舵机 P/I 增益差异是天然对称破缺，图局部性让策略学到"每条腿自己的补偿"而非全局镜像死锁</li>
+<li><strong>Agent 契约化借鉴</strong>：等变/不变分离的函数空间设计思想迁移到 Agent 决策契约——输出对无关扰动等变、评估对等价输入不变</li>
+</ol>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>方法论价值</strong>：把"想要的约束"从损失函数搬进函数空间——表示设计 &gt; 训练技巧的完整论证。任何"reward 罚压不住的行为缺陷"都应先问：能否在架构层 by-construction。</p>
+<p><strong>可复用的实验设计</strong>：<br />
+- 基线梯度设计（PPO→+硬等变→+增强→+图→+图对称）逐层隔离贡献——消融的黄金标准<br />
+- 单关节零力矩作为对称破缺探针——比随机推扰更精准地测对称策略的真实柔性</p>
+<p><strong>局限与保留</strong>：仅验证双边 C2 对称（Go2/G1），K4 四足/旋转对称未测；图与轨道仍手工指定非自动学习；G1 实验锁上肢只测下肢；0.567 vs 0.811 的 MSE 优势基于 3 seed，置信度中等；未报训练墙钟成本（图网络消息传递的开销可能吃掉参数节省）。</p>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="./2026-10-08-LocoFormer通用运动模型-长上下文跨试次适应.md">LocoFormer通用运动模型-长上下文跨试次适应</a> — 时序先验 vs 结构先验的正交对照</li>
+<li><a href="./2026-10-09-VLA跨XPU部署实测-OnRobot推理CET权衡.md">VLA跨XPU部署实测-OnRobot推理CET权衡</a> — 策略表示与部署约束的两端</li>
+<li><a href="./2026-10-08-EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画.md">EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画</a> — 边缘推理全景的 LLM 半边</li>
+</ul>
+</body>
+</html>

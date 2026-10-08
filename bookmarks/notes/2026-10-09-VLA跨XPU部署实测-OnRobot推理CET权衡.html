@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VLA跨XPU部署实测-OnRobot推理CET权衡</title>
+
+<meta property="og:title" content="VLA跨XPU部署实测-OnRobot推理CET权衡" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="vlaxpu-onrobotcet">VLA跨XPU部署实测-OnRobot推理CET权衡</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2604.24447（Characterizing Vision-Language-Action Models across XPUs: Constraints and Acceleration for On-Robot Deployment，上海交大）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2604.24447<br />
+<strong>记录日期</strong>：2026-10-09</p>
+
+<p class="meta-date">生成日期 2026-10-09</p></blockquote>
+<p><strong>标签</strong>：#VLA #机器人基础模型 #边缘部署 #JetsonOrin #CET权衡 #推理加速 #DualSystem架构</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-vla-xpu">1.1 核心问题：VLA 模型部署在哪种 XPU 上才"合身"</h3>
+<p>此前 VLA 评测几乎全在 RTX 4090 上做，掩盖了边缘加速器（GPU/NPU/XPU）的真实权衡。本文对 π0/SmolVLA/Gr00t/OpenVLA/Diffusion Policy 做<strong>模型-硬件协同刻画</strong>，横跨 6 平台：RTX 4090、Jetson Thor、AGX Orin、Ascend 310B/310P、Intel B60 Pro、i7-11700 CPU。用 <strong>CET 三维</strong>（Cost 成本 / Energy 能耗 / Time 延迟）替代单一延迟指标做排行榜。</p>
+<h3 id="12-0-libero-86">1.2 π0 六平台实测榜（LIBERO 86 分固定）</h3>
+<table>
+<thead>
+<tr>
+<th>硬件</th>
+<th>显存</th>
+<th>带宽</th>
+<th>成本$</th>
+<th>能耗kJ</th>
+<th>延迟ms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RTX 4090</td>
+<td>24GB</td>
+<td>1000GB/s</td>
+<td>3500</td>
+<td>2.398</td>
+<td><strong>102.3</strong></td>
+</tr>
+<tr>
+<td>Jetson Thor</td>
+<td>128GB</td>
+<td>273GB/s</td>
+<td>3400</td>
+<td><strong>1.282</strong></td>
+<td>246.0</td>
+</tr>
+<tr>
+<td>AGX Orin</td>
+<td>64GB</td>
+<td>204GB/s</td>
+<td>1999</td>
+<td>1.866</td>
+<td>920.6</td>
+</tr>
+<tr>
+<td>Intel B60 Pro</td>
+<td>24GB</td>
+<td>456GB/s</td>
+<td><strong>599</strong></td>
+<td>6.363</td>
+<td>306.5</td>
+</tr>
+<tr>
+<td>Ascend 310P</td>
+<td>48GB</td>
+<td>204.8GB/s</td>
+<td>1030</td>
+<td>2.618</td>
+<td>818.0</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>延迟优先</strong>（动态任务）→ 4090 最快，Thor 备选</li>
+<li><strong>成本优先</strong>（规模化部署）→ B60 Pro 最便宜，310P 备选</li>
+<li><strong>能耗优先</strong>（电池机器人）→ <strong>Thor 第一，AGX Orin 第二</strong>——这个结论对我们 Jetson 系边缘机器人选型直接可用</li>
+</ul>
+<h3 id="13-finding-1">1.3 Finding #1：模型大小不能预测推理频率（反直觉）</h3>
+<p>Diffusion Policy（小模型）推理频率<strong>低于</strong> π0（大模型）——因为 Small Consumer 要跑 <strong>100 步串行去噪</strong>，而 π0 的 Action Expert 只需 4 步 flow matching。<strong>迭代步数 &gt; 参数量</strong>，是延迟的第一决定因素。</p>
+<h3 id="14-finding-3">1.4 Finding #3：双相位计算失衡（最重要的系统洞察）</h3>
+<p>Nsight Systems 剖析 π0 三阶段（vision / VLM backbone / Action Expert）：</p>
+<ul>
+<li><strong>VLM backbone</strong>：SM 利用率 &gt;90%，compute-bound，但延迟占比小</li>
+<li><strong>Action Expert</strong>：SM 利用率仅 20-40%，<strong>memory-bound</strong>，却占 2× 于 VLM 的延迟</li>
+<li>Roofline 分界：4090 ridge point = 330 FLOPs/Byte；Action Expert 的算术强度远低于此 → 带宽受限</li>
+</ul>
+<p>推论：单一平台很难同时喂饱两个相位——旗舰卡在 Action Expert 相位大量空转，这解释了"峰值吞吐规格 ≠ 实测控制频率"的落差。<strong>与 EdgeReasoning 的 decode 带宽墙同构：机器人控制的最后一公里都是带宽问题</strong>。</p>
+<h3 id="15">1.5 两个免训练加速方法</h3>
+<ul>
+<li><strong>DP-Cache</strong>：缓存迭代去噪过程中跨步不变的中间特征，π0@4090 提速 1.29×，成功率仅掉 0.6%（62.6%→62.0%）</li>
+<li><strong>V-AEFusion</strong>：VLM 与 Action Expert 异步流水线并行，掩盖低利用率相位延迟</li>
+<li>组合效果：GPU 上最高 <strong>2.9×</strong>、边缘 NPU 上最高 <strong>6×</strong>，任务成功率仅边际退化</li>
+</ul>
+<h3 id="16-a1">1.6 硬件规格速查（附录 A.1）</h3>
+<table>
+<thead>
+<tr>
+<th>硬件</th>
+<th>BF16/FP16</th>
+<th>显存</th>
+<th>带宽</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ascend 310B</td>
+<td>10 TFLOPS</td>
+<td>12GB</td>
+<td>51.2GB/s</td>
+</tr>
+<tr>
+<td>Ascend 310P</td>
+<td>88 TFLOPS</td>
+<td>48GB</td>
+<td>204.8GB/s</td>
+</tr>
+<tr>
+<td>Intel B60 Pro</td>
+<td>90 TFLOPS</td>
+<td>24GB</td>
+<td>456GB/s</td>
+</tr>
+<tr>
+<td>AGX Orin</td>
+<td>42 TFLOPS</td>
+<td>64GB</td>
+<td>204GB/s</td>
+</tr>
+<tr>
+<td>RTX 4090</td>
+<td>330 TFLOPS</td>
+<td>24GB</td>
+<td>1000GB/s</td>
+</tr>
+<tr>
+<td>Jetson Thor</td>
+<td>258 TFLOPS</td>
+<td>128GB</td>
+<td>273GB/s</td>
+</tr>
+</tbody>
+</table>
+<p>真机 Franka 臂验证：约 5Hz 可行平台（4090/Thor/B60）中 <strong>Thor 端到端能效最优</strong>，4090 任务完成时间最短。</p>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-edgereasoningorin-llm">2.1 与 EdgeReasoning（Orin 上 LLM 推理刻画）的互补关系</h3>
+<p>两篇构成"边缘机器人推理"姊妹篇：EdgeReasoning 管 LLM 推理模型（decode 带宽墙、20× 延迟代价），本文管 VLA 策略模型（双相位失衡、CET 选型）。共同结论：<strong>边缘瓶颈是内存带宽不是算力峰值</strong>——Orin 204GB/s vs 4090 1000GB/s 的 5 倍差距，直接映射到 Action Expert 相位的延迟惩罚（102→920ms）。</p>
+<h3 id="22">2.2 双系统架构趋势确认</h3>
+<p>领域正从单体自回归动作 token 转向双系统管线（Hi-robot/π0/Gr00t）：高频控制与低频感知推理解耦。这与 DUCK 的"分层决策（策略网络 20Hz + 未来上位规划）"及 Agent 决策层升级路径（logprobs→决策契约化）同构。</p>
+<h3 id="23">2.3 加速方法四族谱系（可当检索地图）</h3>
+<p>冗余削减（Cache-VLA/Deer/SparseVLM）/ 架构压缩蒸馏（RoboMamba/TinyVLA/一致性模型）/ 推测推理（Spec-VLA/TS-DP）/ 系统流水线（Real-Time Chunking/SmolVLA）。选型先看瓶颈相位再选族。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 部署选型三步法（论文给出的可复用流程）</h3>
+<pre><code>① 选模型 → 查 leaderboard 拿全平台剖析
+② 可行性过滤 → VRAM 硬约束（装不下直接淘汰）+ 控制频率门槛
+③ 按场景排序 → 延迟优先/成本优先/能耗优先三档不同答案
+</code></pre>
+<h3 id="32">3.2 三个反直觉发现</h3>
+<ul>
+<li><strong>小模型更慢</strong>：100 步去噪的 Diffusion Policy 比 3B+ 的 π0 慢——迭代结构 &gt; 参数规模</li>
+<li><strong>旗舰卡不是默认答案</strong>：CET 联合排序下 4090 只在 π0+延迟优先场景胜出；SmolVLA 的 CET 最优解是 Thor</li>
+<li><strong>7B OpenVLA 塞 CPU 会跌破 1Hz</strong>：swap 内存盘 IO 停摆——VRAM 是硬可行性约束不是软偏好</li>
+</ul>
+<h3 id="33-jetson">3.3 对我们 Jetson 线的定位</h3>
+<ul>
+<li>AGX Orin 跑 π0 要 920ms/步（约 1Hz）→ <strong>当前 Orin 只够跑 Small Consumer（SmolVLA 级）或自训 MLP 策略</strong></li>
+<li>Thor 是 VLA 时代的目标硬件（273GB/s 带宽 + 128GB 显存 + 能效第一），预算允许时的升级路径</li>
+<li>B60 Pro（599$）是成本敏感批量的黑马，但生态成熟度需验证</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1vla-cet">趋势1：VLA 部署评测从"延迟单指标"转向 CET 三维</h3>
+<p>依据：电池机器人（人形已降到 $10k 级）的成本/能耗约束与延迟同为一级指标；论文 leaderboard 已开源可交互。</p>
+<h3 id="2">趋势2：双相位失衡将催生"异构配对"硬件设计</h3>
+<p>依据：compute-bound VLM + memory-bound Action Expert 串行，单芯片两头不讨好；V-AEFusion 式流水线是软件补丁，硬件侧异构配对（大小核/NPU+DRAM 旁路）是下一步。</p>
+<h3 id="3-vla">趋势3：边缘 VLA 加速进入"免训练"时代</h3>
+<p>依据：DP-Cache/V-AEFusion 均不改权重，NPU 上 6× 加速对部署侧零门槛——与 LLM 侧 PagedAttention/推测解码的"系统工程红利"路径一致。</p>
+<h3 id="4right-sized">趋势4：right-sized 边缘设备经济性反转旗舰卡</h3>
+<p>依据：Thor 能效最优 + B60 成本最优 + 4090 仅赢绝对延迟；当控制频率门槛（5Hz）满足后，多付 6 倍电费买不回边际收益。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51">5.1 与本机环境的关联</h3>
+<ul>
+<li>jbot = AGX Orin：π0 级 VLA 在本机 920ms/步不可用（&lt;2Hz）；<strong>本机现实选项 = SmolVLA 级小 VLA 或继续 MLP 策略 + 规则层</strong>。若做 VLA 实验须借 Thor 级设备或云端推理</li>
+<li>luxtts/nexa-local-inference 与 VLA 抢 64GB 统一内存，部署前须做内存预算表（VRAM 硬约束先行的三步法直接适用）</li>
+</ul>
+<h3 id="52">5.2 与既有笔记/技能的关联</h3>
+<ul>
+<li><a href="./2026-10-08-EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画.md">EdgeReasoning边缘推理实测</a>：姊妹篇，LLM 与 VLA 两半拼齐"边缘推理全景"</li>
+<li><a href="./2026-10-07-MiniCPM-Robot-1.5B-VLA开源.md">MiniCPM-Robot-1.5B-VLA开源</a>：1.5B VLA 属 Small Consumer，本文给出其在 Orin 上的可行性判断框架</li>
+<li><a href="./2026-10-08-LocoFormer通用运动模型-长上下文跨试次适应.md">LocoFormer通用运动模型</a>：策略模型侧的前沿，本文是部署侧的约束</li>
+<li>edge-llm-quantization / jetson-tensorrt-deploy skill：Orin 204GB/s 带宽墙条目应补充进硬件清单</li>
+</ul>
+<h3 id="53-duck">5.3 与 DUCK 项目的关联</h3>
+<p>DUCK 20Hz 控制循环 = 50ms/步预算，π0@Orin 的 920ms 差 18 倍——<strong>证实当前"小 MLP 策略 + 分层架构"路线在 Orin 上是唯一可行解</strong>；若未来上 VLA 决策层，只能放低频环（1Hz 规划→高频 MLP 执行），恰是双系统架构的分工方式。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「"Right-sized" edge devices can be more cost-/energy-efficient than flagship GPUs while meeting control-rate constraints.」——合身比旗舰重要</p>
+<p>「A compute-bound VLM backbone followed by a memory-bound Action Expert.」——机器人推理的最后一公里是带宽，不是算力</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>edge-llm-quantization skill 增补</strong>：六平台带宽/算力规格表 + "迭代步数&gt;参数量决定延迟"条目</li>
+<li><strong>DUCK 上位机预算表</strong>：把 CET 三步法写进未来 VLA 选型评审——先 VRAM 过滤再频率门槛最后能耗排序</li>
+<li><strong>本机 VLA 实验</strong>：MiniCPM-Robot 1.5B 若上 jbot，先测 Action Expert 段延迟（本文证明它是隐藏瓶颈）</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ol>
+<li><strong>Hermes 边缘推理路由</strong>：交互任务路由 1.5B 级、夜间批量路由 8B+ 的既有结论，可加 VLA 段（Orin 只接 Small Consumer）</li>
+<li><strong>机器人选购决策卡</strong>：Thor（能耗优先）/B60（成本优先）/4090（延迟优先）三档写进 robotics-bom-selection skill 的主控选型维度</li>
+<li><strong>DP-Cache 思路迁移</strong>：DUCK 的 MPC/滚动优化若有迭代结构，跨步不变量缓存是同款免训练加速</li>
+</ol>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>方法论价值</strong>：模型-硬件协同刻画 + roofline 定位瓶颈相位 + 免训练优化闭环——"先剖析再优化"的教科书示范，避免在错误的相位上烧优化预算。</p>
+<p><strong>可复用的实验设计</strong>：<br />
+- 控制变量法拆相位（vision/VLM/ActionExpert 分别计时+利用率）——任何端侧管线性能分析都可套用<br />
+- 能耗用物理功率计实测而非 TDP 估算——CET 排行榜的可信度基础</p>
+<p><strong>局限与保留</strong>：π0 系为主，Gr00t/SmolVLA 数据在 leaderboard 网站但论文正文覆盖浅；Ascend 生态（torch.npu）成熟度与复现成本未讨论；LIBERO 仿真成功率≠真机成功率；Thor 的 BF16 算力是 INT8 TOPS 减半估算值非官方规格。</p>
+<h2 id="_10">相关笔记</h2>
+<ul>
+<li><a href="./2026-10-08-EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画.md">EdgeReasoning边缘推理实测-JetsonOrin推理模型部署刻画</a> — LLM 侧姊妹篇，共同拼齐边缘推理带宽墙</li>
+<li><a href="./2026-10-07-MiniCPM-Robot-1.5B-VLA开源.md">MiniCPM-Robot 1.5B VLA 开源</a> — Small Consumer 级 VLA 实例</li>
+<li><a href="./2026-10-08-LocoFormer通用运动模型-长上下文跨试次适应.md">LocoFormer通用运动模型-长上下文跨试次适应</a> — 策略模型侧前沿对照</li>
+<li><a href="./2026-10-07-HuggingFace详细教程-从调用模型到微调与部署.md">HuggingFace详细教程-从调用模型到微调与部署</a> — 部署管线上游</li>
+</ul>
+</body>
+</html>
