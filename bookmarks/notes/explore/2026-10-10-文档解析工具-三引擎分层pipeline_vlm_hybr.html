@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文档解析工具-三引擎分层pipeline_vlm_hybr</title>
+
+<meta property="og:title" content="文档解析工具-三引擎分层pipeline_vlm_hybr" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="2026-pipelinevlmhybrid">文档解析工具 2026：三引擎分层与 pipeline/VLM/hybrid 融合</h1>
+<blockquote>
+<p>探索日期: 2026-10-10 | 兴趣等级: L2 | 来源数量: 5 | 前序笔记: 2026-05-16-MinerU-开源文档解析基座 / 2026-08-30-DocumentAI路线分岔-EVIE视觉检索vsPaddleOCR-VL文档解析</p>
+
+<p class="meta-date">生成日期 2026-10-10</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>2026 年文档解析领域的核心叙事：<strong>经典三层架构（文本层→布局检测→内容识别）的后两层正在坍缩进单一 VLM</strong>。MinerU 3.4 确立了 pipeline / hybrid / vlm 三后端并存的行业标准形态——pipeline 走 DocLayout-YOLO+PP-OCRv6 纯 CPU 路线，VLM 走 1.2B MinerU2.5 端到端路线，hybrid 用"布局检测+VLM 推理+原生文本提取"取两者之长。选型不再是"谁最准"，而是按硬件、许可证、文档类型三轴决策。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1-2026">1. 三层坍缩：2026 年的主架构变迁</h3>
+<pre><code>经典三层 (2024)              2026 现状
+┌─────────────────┐         ┌─────────────────┐
+│ 1. 文本层 (PyMuPDF) │───────→│ 保留: born-digital │
+│    近乎免费但无阅读序 │         │ 依然是零成本首选   │
+├─────────────────┤         ├─────────────────┤
+│ 2. 布局检测 (YOLO)  │──坍缩──→│ 单一 VLM 吸收 2+3 │
+│ 3. 识别层 (OCR/公式/表) │──────→│ Marker→Surya2 650M │
+└─────────────────┘         │ MinerU→2.5 1.2B   │
+  模块化栈 = CPU fallback      │ Docling→Granite 258M│
+                            └─────────────────┘
+</code></pre>
+<ul>
+<li>Marker 2：布局/OCR/公式全走 Surya 2（650M VLM）</li>
+<li>Docling：新增 <code>--pipeline vlm</code> 路径（Granite-Docling-258M，Apache-2.0）</li>
+<li>MinerU：三后端并存，pipeline 从"默认"退为"CPU 降级选项"</li>
+<li>模块化栈没有消失——PDF-Extract-Kit 仍是可拆换组件库，但 2024-10 后实质冻结</li>
+</ul>
+<h3 id="2-mineru25">2. MinerU2.5 的"以小胜大"机理：解耦式粗到细</h3>
+<ul>
+<li>Stage 1：低分辨率缩略图做布局分析（便宜）</li>
+<li>Stage 2：仅对识别出的关键区域做原生分辨率裁剪识别（精准）</li>
+<li>1.2B 参数在 OmniDocBench 打败数倍体积的模型，靠的是<strong>分辨率预算分配</strong>而非参数堆叠</li>
+<li>推理基于 vLLM：异步后端批处理 + 两阶段解耦独立部署，压端到端延迟</li>
+</ul>
+<h3 id="3-hybrid">3. Hybrid 的定位：论文解析的最佳平衡点</h3>
+<p>来自 MinerU 官方 Discussion #5155 的实测结论：</p>
+<ul>
+<li>纯 VLM 对<strong>简单中英混排文档不总是优于 pipeline</strong>——过度处理反而出错（多位用户复现）</li>
+<li>Pipeline 零幻觉（不"编造"原文不存在的字），简单英文正文最可靠</li>
+<li>Hybrid ≈95% 准确率，用原生文本提取+布局约束压幻觉，被社区推为学术论文解析首选</li>
+<li>3.3/3.4 版本给 hybrid 加了 effort 参数（速度/质量可调）</li>
+</ul>
+<h3 id="4-2">4. 基准真相：自报数字系统性虚高约 2 分</h3>
+<p>OmniDocBench v1.6 公共榜单 vs 厂商自报：</p>
+<ul>
+<li>PaddleOCR-VL：榜单 94.18 / 自报 96.33</li>
+<li>MinerU2.5：榜单 93.04 / 自报 95.26-95.39</li>
+<li>v1.5 与 v1.6 是不同套件<strong>不可直接对比</strong>（MinerU 90.67→95.69 的跳升含 bench 版本变更因素）</li>
+<li>olmOCR-Bench 侧：Chandra 2 85.8 / Surya 2 standalone 83.3 / MinerU 3.4 pipeline 72.7 / Docling 50.3</li>
+<li>Docling 的 50.3 不是能力差——born-digital 限制下 64.0，它目标是稳定 schema 的 typed document 而非 OCR 榜单</li>
+</ul>
+<h3 id="5-license">5. License 是隐形决策轴（先于精度）</h3>
+<ul>
+<li>Docling：MIT + Linux Foundation 治理，企业可自由用</li>
+<li>Marker：GPL-3.0 代码 + RAIL-M 权重许可（~$2M 收入门槛），中大型公司商用直接出局</li>
+<li>MinerU：Apache-2.0 基础上的宽松许可，附加条件需法务过目</li>
+</ul>
+<h3 id="6-2026">6. 硬件/吞吐分档（2026 实测）</h3>
+<ul>
+<li>Marker 2 批量：H100 约 122 pages/s（吞吐王）</li>
+<li>MinerU2.5 VLM：A100-80G 约 2.1 pages/s（精度王，8GB VRAM 起步）</li>
+<li>MinerU 3.4 pipeline：0.54 pages/s（慢但 4GB VRAM/CPU 可跑）</li>
+<li>MinerU 3.4.0（2026-06）：pipeline 接入 PP-OCRv6，OCR 精度 +11%、速度 +100%</li>
+<li>MinerU pipeline 独有：跨页表格合并 + 自动页眉页脚去除——长报告检索质量的关键加分项</li>
+</ul>
+<h2 id="_3">与现有工作的关联</h2>
+<ul>
+<li><strong>本机适配（Jetson Orin）</strong>：MinerU pipeline 模式 4GB VRAM 即可跑，本机 67 TOPS 完全覆盖；hybrid 需 8GB VRAM，Orin 的统一内存可尝试。现有 pdf/officecli skills 处理标准文档够用，扫描版+复杂表格场景可引入 MinerU 作为增强层。</li>
+<li><strong>适航文档场景</strong>：用户飞机设计企业背景（CCAR 适航/构型管理/型号资料），适航文档多为 born-digital PDF+复杂表格（条款号嵌套/多栏），MinerU 的表格 HTML 输出（保 rowspan/colspan）比纯文本提取更适合条款结构化。</li>
+<li><strong>对 Skill 改进建议</strong>：</li>
+<li>P1：<code>pdf</code> skill 可补一节"何时升级到 MinerU"的决策指引（扫描件/复杂表格/CJK 混排触发条件）</li>
+<li>P2：RAG 铁律吸收——按结构 chunk 而非 token 窗口、表格原子不切分、标题路径进 metadata（笔记系统未来做全库语义检索时直接适用）</li>
+</ul>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li>遇到扫描版 PDF/复杂表格文档时，<code>uv pip install -U "mineru[all]"</code> + <code>mineru -p &lt;input&gt; -o &lt;output&gt; -b pipeline</code> 可在 CPU/低 VRAM 下获得质量提升</li>
+<li>评估文档解析工具时，用 200 页自有语料双跑 diff，比信任何榜单数字可靠（自报系统性虚高 ~2 分）</li>
+<li>选型顺序：先过滤 license → 再按硬件分档 → 最后才比精度</li>
+<li>中英混排简单文档优先 pipeline（零幻觉），复杂布局/公式/CJK 才上 VLM，拿不准用 hybrid</li>
+</ol>
+<h2 id="_4">关键风险与盲点</h2>
+<ul>
+<li>厂商自报基准 vs 公共榜单差异未收敛（社区复现 vs 官方验证）</li>
+<li>Marker 许可门槛数字（~$2M）来自第三方转述，商用前需查 RAIL-M 原文（社区复现级别）</li>
+<li>MinerU 吞吐低（0.54 pages/s）在大规模批量场景是真实瓶颈，官方数字多来自 A100/H200</li>
+<li>三工具从未在同一语料上被干净对比过——所有横评表都是拼接数字</li>
+</ul>
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<ul>
+<li>三后端：pipeline（CPU/零幻觉/慢）→ hybrid（~95%/论文首选/8GB）→ vlm（复杂文档最强/GPU）</li>
+<li>精度王 MinerU2.5（1.2B，粗到细两阶段）；吞吐王 Marker 2（H100 122p/s）；自由王 Docling（MIT/全格式/CPU）</li>
+<li>2026 变迁：布局检测+识别层坍缩进 VLM；模块化栈退为 CPU fallback</li>
+<li>决策：license 先行 → 硬件分档 → 自有语料 200 页实测</li>
+<li>RAG 铁律：结构化 chunk、表格不切、标题路径入 metadata</li>
+</ul>
+</blockquote>
+<h2 id="_6">待深入</h2>
+<ul>
+<li>MinerU2.5 两阶段解耦在 vLLM 上的部署细节（Stage I/II 独立服务化）</li>
+<li>DeepSeek-OCR 2（OmniDocBench 90.25@3B）与 dots.ocr（90.77）的架构对比</li>
+<li>本机 Orin 实测 MinerU hybrid 后端可行性（统一内存 vs 独立 VRAM 差异）</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ol>
+<li><a href="https://builderai.tools/blog/pdf-parsing-for-rag-mineru-docling-marker-compared">PDF Parsing for RAG in 2026: MinerU, Docling, Marker Compared — BuilderAI</a></li>
+<li><a href="https://adityamangal98.medium.com/docling-vs-marker-vs-mineru-the-ultimate-open-source-pdf-parser-benchmark-2026-which-is-best-a36ecbb6c6b1">Docling vs Marker vs MinerU: The Ultimate Open-Source PDF Parser Benchmark (2026) — Medium/Aditya Mangal</a></li>
+<li><a href="https://cloud.tencent.com/developer/article/2702772">MinerU 近期更新速览：Hybrid 解析提速，pipeline OCR 接入 PP-OCRv6 — 腾讯云开发者社区</a></li>
+<li><a href="https://github.com/opendatalab/MinerU/discussions/5155">MinerU Discussion #5155：vlm 与 pipeline 模式区别 — GitHub</a></li>
+<li><a href="https://explainx.ai/blog/mineru-3-4-document-parsing-rag-agents-2026">MinerU 3.4 Guide — explainx.ai</a></li>
+</ol>
+</body>
+</html>
