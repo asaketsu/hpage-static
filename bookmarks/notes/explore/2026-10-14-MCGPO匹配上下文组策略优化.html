@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCGPO匹配上下文组策略优化</title>
+
+<meta property="og:title" content="MCGPO匹配上下文组策略优化" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="mcgpo">MCGPO：匹配上下文组策略优化——从已采集轨迹中构造带证据权重的动作偏好</h1>
+<p class="tag-line"><span class="tag">#强化学习</span> <span class="tag">#LLM-Agent</span> <span class="tag">#信用分配</span> <span class="tag">#GRPO</span></p>
+<p class="note-date">生成日期 2026-10-14</p>
+
+<h2 id="_1">元数据</h2>
+<ul>
+<li>标题：Matched-Context Group Policy Optimization for LLM Agent Training</li>
+<li>作者：Chenxu Zhang, Yaorui Shi, Wenlong Zhang, Jianchao Tan, Zihan Wang, Yiming Cheng</li>
+<li>提交日期：2026-10-09（arXiv 列表 2026-10-13 展示）</li>
+<li>arXiv ID：2610.13755</li>
+<li>领域：cs.AI / cs.CL（LLM Agent 强化学习训练）</li>
+<li>出处/来源：https://arxiv.org/abs/2610.13755</li>
+</ul>
+<h2 id="_2">核心问题与研究动机</h2>
+<p>长时程 LLM Agent 的 RL 训练面临信用分配难题：稀疏的终端奖励必须指导中间决策。组相对强化学习（GRPO/RLOO/DAPO）靠组内比较免 critic 更新，GiGPO/GraphGPO 等把比较局部化到重复出现的锚状态。但<strong>按重复状态分组会混合"先验进度"与"当前动作贡献"</strong>——同一个粗状态摘要（页面/位置/背包）可能对应完全不同的剩余决策问题。论文用 ALFWorld 实例说明：两次空手到同一台面的访问共享同一粗状态键，但其中一次发生在已取得并搬移目标物体之后，先决条件满足度完全不同。</p>
+<p>另一面是<strong>证据支撑问题</strong>：更丰富的上下文能区分决策，但也会让某个动作缺乏对照证据——大的结果差距可能只来自极少数轨迹。核心研究问题：<strong>有限的一组已采集 rollout，如何为策略学习供给"有支撑的局部动作偏好"？</strong></p>
+<h2 id="matchlabellearn">内容整理：方法论（Match–Label–Learn 三段式）</h2>
+<p>MCGPO 在 GraphGPO 共享任务目标之上叠加辅助成对偏好目标，从每个任务的 8 条兄弟轨迹（固定分成两折 I0/I1，各 4 条）中构造监督：</p>
+<p><strong>1. Match（任务条件化匹配）</strong><br />
+- 比较上下文 g = (h(s), C, F)：前置动作状态摘要 h(s) + rubric 进度通道 C（有限正的先验状态）+ F（任务规则注记的"由前置动作激活的未激活判据"）<br />
+- 匹配规则有序两级：exact → coarse（coarse 抽象掉身份字段、保留 rubric 进度与依赖坐标），先试 exact，两动作都有证据才用，否则降级 coarse<br />
+- 两动作支撑数 n<em> = min(n_a, n_b)，选第一个满足 n</em> ≥ 1 的层级；无支撑规则的对直接丢弃（这个门在结果检验<strong>之前</strong>——支持性 exact 匹配即使后续对比弱也保留该分辨率）</p>
+<p><strong>2. Label（跨 rollout 偏好标注）</strong><br />
+- 偏好方向由<strong>对折</strong>（opposite fold）的终端成功率差 û = p̂(a) − p̂(b) 决定，与候选决策所在折分离——避免"用自己给自己打分"<br />
+- 证据权重 c_p = |û| × n<em>/(n</em>+κ) × q_ℓ：对比幅度 × 支撑收缩因子 × 匹配分辨率折扣，三因子相乘<br />
+- 只保留 |û| ≥ ε 的对比；每折最多两个偏好、每条决策行只用一次（不相交分配器），控制偏好总量</p>
+<p><strong>3. Learn（证据加权策略学习）</strong><br />
+- 长度归一化对数概率变化 d_θ，辅助损失 L_pair = Σ c_{+,−}·softplus(−[d_θ(+) − d_θ(−)])，与共享 GraphGPO 任务目标联训<br />
+- critic-free 保持不变，每条 response 保留原始 token 历史</p>
+<p>关键设计取向：<strong>偏好标签是"rollout 策略下的观测性结果对比"，权重控制每对进入优化的贡献</strong>——这是观测证据而非反事实因果断言。</p>
+<h2 id="_3">关键实验结果与数据</h2>
+<p><strong>主实验（Table 1，三种子均值，ALFWorld All / WebShop Succ.）</strong><br />
+- Qwen2.5-1.5B：GraphGPO 92.60 / 77.03 → MCGPO 93.65 / 78.13（+1.05 / +1.10）<br />
+- Qwen2.5-7B：GraphGPO ~92-93 / 高位基线 → MCGPO 继续提升（在 ALFWorld 已 92%+ 的基线上仍 +0.47~+1.46pp）<br />
+- 对照梯度（1.5B ALFWorld All）：Prompt 4.1 → ReAct 12.8 → Reflexion 21.8 → PPO 54.4 → GRPO 72.8 → GiGPO 86.7 → GraphGPO 92.6 → MCGPO 93.65</p>
+<p><strong>消融（Table 2a，1.5B 单跑）</strong><br />
+- 洗牌 Rubric（破坏进度对齐）：WebShop −2.34 / ALFWorld −0.63<br />
+- 候选进度标签替代对折终端结果：−1.41 / −3.13<br />
+- 去掉成对损失：−1.41 / −0.78<br />
+- GraphGPO+Rubric shaping（把 rubric 当奖励塑形用而非偏好证据）：−8.28 / −2.66 —— <strong>同样的评分器信息，作"证据"用远胜作"奖励"用</strong></p>
+<p><strong>2×2 因子控制（Table 2b，Qwen3-4B/WebShop 三种子）</strong><br />
+- 完整版 82.14 vs 同折标签 79.79 vs 均匀权重 80.52 vs 同折+均匀 78.13<br />
+- 对折证据贡献 +2.34~2.40pp，证据加权贡献 +1.61~1.67pp，四个对比全部种子同号</p>
+<p><strong>Qwen3 扩展（Table 3）</strong>：4B 78.18→82.14（+3.96），8B 79.69→84.84（+5.16），六组配对全正</p>
+<p><strong>偏好供给诊断（RQ3，WebShop/1.5B，750 updates）</strong><br />
+- 1990 个接受偏好中 90.70% 用 coarse 匹配；77.74% 的对里弱支撑动作只有 1 条证据轨迹——印证"动作证据天然稀疏"<br />
+- 对折偏好方向与候选折结果一致性 74.35%（并列记半分）；平均绝对结果对比 0.781，折算平均证据权重 0.208<br />
+- 辅助损失在 68.13% 的训练更新中激活</p>
+<p><strong>表示控制</strong>：联合 state–rubric 条件化在全部四设置中三种子均值最高，比 State-only 高 3.96–9.90pp，比 Rubric-only 高 5.15–9.01pp。</p>
+<h2 id="_4">查询拓展：方法谱系定位</h2>
+<ul>
+<li>组内比较线：GRPO/RLOO/DAPO（轨迹级）→ GiGPO（锚状态分组）→ HGPO（多历史深度）→ SALT（近期交互历史匹配）→ GraphGPO/RTMC/G²PO（转移图/共享状态树）</li>
+<li>任务结构监督线：rubric 奖励（RubricEM/GEAR/SRaR/TRCA/DRACO）、里程碑信用（BEACON/MileGPO）</li>
+<li>过程/偏好监督线：DPO/SimPO/Step-DPO（响应或步级偏好）、VinePPO/OmegaPRM（搜索取中间证据）</li>
+<li>MCGPO 的差异化位置：<strong>不新增 rollout、不训 critic、不搜树</strong>，纯粹"榨干已有 8 条兄弟轨迹的组内证据"——用匹配分辨率自适应换证据量，用对折换标签独立性</li>
+</ul>
+<h2 id="_5">归纳总结：创新点分析</h2>
+<ol>
+<li><strong>两动作支撑门 + 有序匹配规则</strong>：exact→coarse 的降级链把"上下文精度 vs 证据量"的张力变成显式可操作的机制，而非固定粒度的两难</li>
+<li><strong>对折证据分离</strong>：候选决策与结果证据分属不同折，标签独立性有结构保证（同折变体消融实证掉 2.3pp）</li>
+<li><strong>证据权重三因子</strong>：幅度×支撑收缩×分辨率折扣，把"这个偏好值多少学习信号"量化进损失</li>
+<li><strong>同信息两种用法的对照</strong>：rubric 信息作偏好证据 vs 作奖励塑形，差 8.28pp——对"信息如何进入学习"这个问题的干净回答</li>
+<li><strong>诚实的方法论声明</strong>：论文明示标签是观测性对比（受 rollout 策略后续动作混淆），不是因果效应——这在此类工作中少见</li>
+</ol>
+<h2 id="_6">趋势判断：局限性与未来方向</h2>
+<ul>
+<li>增益量级偏小（0.5~5pp），主要建立在 GraphGPO/GiGPO 已很强的高基线上；对全新任务的迁移未验证</li>
+<li>ALFWorld/WebShop 均为文本环境，horizon 50/15 turn，与真实工具调用 Agent（数百步、结构化工具输出）的 gap 未探</li>
+<li>依赖任务规则提供的 rubric 通道（WebShop 用了 goal scorer 的结构化信息）——<strong>rubric 提取器本身是人工先验</strong>，换域成本未讨论</li>
+<li>每组 8 rollout 固定两折的设计对 rollout 预算敏感；n*=1 的"一票证据"在 77.74% 的对中出现，统计稳健性存疑</li>
+<li>未来方向：偏好构造与树搜索/树扩展（VinePPO 系）结合、rubric 自动归纳、跨任务偏好迁移</li>
+</ul>
+<h2 id="_7">拓展应用推荐</h2>
+<p>对 Hermes Agent 生态的借鉴点评估：</p>
+<ul>
+<li>🔨 P1｜<strong>零额外 rollout 的组内复盘</strong>：MCGPO 思路可移植到 Agent 任务失败复盘——同任务多次执行（如 cron 重试、多 seed 跑批）时，按"状态+进度"匹配决策点，用对侧执行结果标注哪一步动作更优，形成结构化经验卡片（experience-bank 的自动对拍层）。工作量：中，需要状态摘要与进度通道的 schema 化</li>
+<li>🔨 P2｜<strong>证据权重思想用于 cron 结果聚合</strong>：多次执行同一 job 的结果合并时，按支撑数收缩（n/(n+κ)）加权，避免 1-2 次偶发成功/失败被过度解读——与现有 evolution-gate 的"确定性→轨迹→回滚史"证据分层互补</li>
+<li>⚠️ P3｜<strong>偏好对训练小模型</strong>：若未来用 GRPO 系方法微调本地小模型（Jetson 端），MCGPO 的 Match-Label-Learn 可作为 aux loss 参考，但需要先有组采样基础设施，当前不满足</li>
+</ul>
+<p>对量化交易的借鉴：</p>
+<ul>
+<li>⚠️ P2｜<strong>同状态对拍选股决策</strong>：把"相同市场状态摘要（趋势阶段+仓位进度）下不同操作的后续结果对比"作为交易复盘的结构化框架，与 Wyckoff 阶段判断天然契合（rubric=阶段完成度）。障碍：市场非平稳，观测性对比的混淆比 Agent 环境更重</li>
+</ul>
+<h2 id="_8">指南分析：可操作的实践要点</h2>
+<ol>
+<li>构造动作比较时，先定义<strong>两维上下文</strong>：状态摘要（在哪）+ 进度通道（已走到哪一步），单用任何一维都会混淆比较语义（论文表示控制：联合比单用高 4-10pp）</li>
+<li>证据不足时<strong>降级抽象而非硬比</strong>：把状态键粗化（保留进度、丢身份细节）换取对照组样本量，这是通用的"精度-证据"交换策略</li>
+<li><strong>标注者与被标注者分离</strong>（对折）：任何"用结果给决策打分"的复盘系统都应让评分数据与候选数据来自不相交的批次</li>
+<li>同一份监督信息，<strong>作对比证据用 &gt; 作奖励塑形用</strong>（8.28pp 差距）：塑形容易引入可 hack 的中间奖励，偏好对比天然抗 hack</li>
+<li>权重随支撑数收缩（n/(n+κ)）是处理小样本证据的标准贝叶斯式收缩，可直接复用</li>
+</ol>
+<h2 id="_9">关联</h2>
+<ul>
+<li>GiGPO (Feng et al., 2025, arXiv:2505.10978)：锚状态分组的直接前身，MCGPO 的比较基座</li>
+<li>GraphGPO (Cheng et al., 2026, arXiv:2605.26684)：转移图信用分配，MCGPO 的共享任务目标与对照基线</li>
+<li>G²PO (Wang et al., 2026c)：全局状态转移图 + TD 误差标准化，同赛道</li>
+<li>HGPO/BiPACE：多历史深度分组 / 策略表示+同伴基线，"丰富上下文"路线的两个分支</li>
+<li>与本库已有笔记的关联：ReGRPO (2606.31392) 同属"组相对优化的结构化改造"，ReGRPO 改反思、MCGPO 改比较语义；LedgerAgent (2606.20529) 的账本式轨迹与本文 rubric 进度通道理念同源——都是把任务结构显式编码进学习信号</li>
+</ul>
+</body>
+</html>
