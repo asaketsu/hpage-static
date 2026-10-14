@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemini4Argon深度实测-写作强于代码的百万输出模型</title>
+
+<meta property="og:title" content="Gemini4Argon深度实测-写作强于代码的百万输出模型" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="gemini-4-argon">Gemini 4 Argon 深度实测：写作强于代码的百万输出模型</h1>
+<blockquote>
+<p>来源: X @EianLu (Eian) · 2026-10-14 · <a href="https://x.com/EianLu/status/2110150526654656736">原文</a><br />
+作者: Eian — AI实战玩家 | Skill创作者 | Eian系列Skill/UCI下载系统作者<br />
+关联: Hermes v0.22 升级恰好包含 <code>feat(gemini): Gemini 4 Argon support with long decode</code></p>
+
+<p class="meta-date">生成日期 2026-10-14</p></blockquote>
+<p><code>#Gemini4Argon</code> <code>#大模型评测</code> <code>#GoogleAI</code> <code>#LongDecode</code> <code>#模型选型</code> <code>#多模态</code></p>
+<h2 id="_1">归纳总结</h2>
+<p>Google Gemini 4 系列首个旗舰 Argon 全面开放。核心升级七件套：Arena 写作榜断层第一（但 WebDev 第9/Terminal-Bench 落后 Opus 5.5）、Three.js 3D 场景一句话生成、Long Decode 单次输出 1M token（竞品均 128K）、幻觉率 88%→15%（诚实度第一）、Omni×Veo 多模态打通（LVBench 91.7% + 4K 音画同步视频生成）、云端沙盒直接交付 PDF/XLSX 文件、苏格拉底学习模式。API 首发价 $2/$10 仅为 Opus 5.5 一半（11-30 截止）。模型人格定位=资深研究员：记忆超群、通宵干重活、不懂不瞎编。</p>
+<h2 id="_2">一句话结论</h2>
+<p>Gemini 4 系列首个旗舰 Argon 于 10-14 凌晨全面开放，核心卖点是「写作第一 + 单次输出 100 万 token + 幻觉率 15%」——写作强于代码的资深研究员型模型，API 首发价只有 Opus 5.5 的一半。</p>
+<h2 id="_3">内容整理：发布与入口</h2>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>时间线</td>
+<td>9-30 首发（仅网络安全防御团队灰测）→ <strong>10-14 凌晨全面开放</strong></td>
+</tr>
+<tr>
+<td>入口</td>
+<td>Gemini App（Pro/Ultra 会员）/ Google 搜索 AI 模式 / Antigravity（Ultra 编程）</td>
+</tr>
+<tr>
+<td>窗口</td>
+<td>输入+思考+输出合计 <strong>1M token</strong></td>
+</tr>
+<tr>
+<td>输出</td>
+<td>默认 64K 同步；<strong>Long Decode 模式单次拉满 1M</strong></td>
+</tr>
+<tr>
+<td>思考档</td>
+<td>low / medium / high 三档，默认 medium</td>
+</tr>
+<tr>
+<td>API 价</td>
+<td>首发至 11-30：输入 $2 / 输出 $10 每百万；恢复原价 $4/$20</td>
+</tr>
+</tbody>
+</table>
+<p><strong>定价横评</strong>（每百万 token）：Opus 5.5 = $4/$20；GPT-6 Astra = $10/$50。优惠期 Argon 调用成本 = Opus 的 1/2、Astra 的 1/5。</p>
+<h2 id="_4">七大核心升级</h2>
+<h3 id="1-arena">1. Arena 盲测断层第一，但代码不是第一</h3>
+<ul>
+<li>Arena 文字总榜<strong>断层第一</strong>：创意写作/指令遵循/长问题/高难度复杂问题全单项第一</li>
+<li>但 WebDev 前端榜<strong>第 9</strong>（第一是 Opus 5.5）；Terminal-Bench 57.4% vs Opus 5.5 的 66.4%</li>
+<li>作者三模型同题写作实测体感：Gemini 4 完胜，Opus 5.5 最拉</li>
+<li><strong>定位：写作强于代码</strong>——文字创作/逻辑梳理/综合指令执行是老大，重度命令行工程依然是 Claude 系</li>
+</ul>
+<h3 id="2-3d-webdev">2. 3D 空间几何能力（被 WebDev 排名低估）</h3>
+<ul>
+<li>一句话 3 分钟生成可交互中国古代宫殿建筑群（Three.js，飞檐/琉璃瓦/中轴线布局完整）</li>
+<li>鹈鹕骑自行车 2 分钟搞定（新模型圈地标配梗）</li>
+<li>作者体感空间几何比 6.1 Sol 还强</li>
+</ul>
+<h3 id="3-long-decode">3. Long Decode：输出不再断句</h3>
+<ul>
+<li>旧痛点：Gemini 3.8 能读 1M 但只能写 64K——长输出中途停，人像监工一样守着敲"继续"</li>
+<li>新方案：日常 64K 快速同步；大工程开 Long Decode 单次输出 1M</li>
+<li>对比：GPT-6 Astra / Opus 5.5 单次输出上限都只有 128K</li>
+<li>意义：整项目文件丢进去，泡咖啡回来拿完整结果——"解放生产力还解放人"</li>
+</ul>
+<h3 id="4">4. 深度推理 + 高诚实度（本代最大隐性升级）</h3>
+<ul>
+<li>思考过程占输出额度——以前窗口小想多了就没地方写答案，现在思考空间宽裕，长任务后半程不掉链子</li>
+<li><strong>幻觉率暴降</strong>：长尾知识瞎编率 Gemini 3 Pro 88% / GPT-6 Astra 51% / <strong>Argon 15%</strong>（Artificial Analysis 数据，第一）</li>
+<li>注意：长尾知识准确率 Argon 50% vs Astra 63%——<strong>更倾向老实说"查不到"而非硬编</strong></li>
+<li>提示词注入免疫力：半个月网络安全团队锤炼（Fairwind 期间）的副产品</li>
+</ul>
+<h3 id="5-omni-veo">5. 原生多模态：Omni × Veo 打通</h3>
+<ul>
+<li>LVBench 长视频理解 91.7%——几十分钟播客/长视频精准定位到每秒画面与原话</li>
+<li>视频生成：8-10 秒最高 4K、音画同步（口型/环境音/配乐一次性生成）、横竖屏都行</li>
+<li>5 张参考图锁角色一致性；生成后对话式改片（"把天气改成下雨"直接改原视频）</li>
+</ul>
+<h3 id="6">6. 直接交付文件</h3>
+<ul>
+<li>旧模式：给代码让你自己装环境跑</li>
+<li>新模式：自带云端沙盒跑完，直接交 PDF/Excel/Word/CSV + 可交互图表——从"给代码"到"交文件"</li>
+</ul>
+<h3 id="7">7. 学习模式（备考向）</h3>
+<ul>
+<li>苏格拉底式引导：不甩答案，反问引导自己推导</li>
+<li>OpenStax 教材溯源（莱斯大学免费同行评审教材库），知识点标注章节出处</li>
+<li>SAT/JEE/NEET 模拟卷生成+按评分标准批改论述题+能力短板报告</li>
+</ul>
+<h2 id="10">10 段自测提示词索引</h2>
+<p>拆长视频(LVBench) / 跨文件找矛盾(百万窗口) / 去 AI 腔(Arena 榜一文字) / 问偏门问题(15%瞎编率) / 一口气长文档(Long Decode) / 天气App(WebDev争议验证) / 模糊大任务(长链规划) / 下套(防注入) / 一句话宫殿(3D) / 鹈鹕骑车(几何)</p>
+<h2 id="_5">💡 对我们的价值分析</h2>
+<h3 id="_6">✅ 已在做的</h3>
+<ul>
+<li><strong>Hermes v0.22（昨天升级）已内置 Argon + Long Decode 支持</strong>——上游 feat(gemini) 落地在先，模型目录 model-catalog.json 已含</li>
+<li>多模型分工路线（智谱主力+免费四线+场景切换）与"写作/代码分模型"判断同构</li>
+</ul>
+<h3 id="_7">🔥 重点行动</h3>
+<ol>
+<li><strong>模型选型补位</strong>：写作类任务（humanizer/内容创作/长文改写）候选加入 Argon；代码类维持现状——Arena 与 Terminal-Bench 数据支持这个分工</li>
+<li><strong>首发价窗口</strong>：11-30 前 API $2/$10，若走 API 路线这是低成本窗口期；8.8 元 18 个月会员是个人号福利价</li>
+<li><strong>Long Decode 场景清单</strong>：白皮书/全天复盘文档/批量笔记 HTML 这类"长输出中途断"痛点任务，Argon 是当前唯一 1M 单次输出方案</li>
+<li><strong>幻觉率 15% 的用法</strong>：fact-check 类工作流（fact-check-with-fallbacks）可把 Argon 作为高诚实度交叉验证源之一</li>
+</ol>
+<h3 id="_8">⚠️ 保持怀疑的</h3>
+<ul>
+<li>"断层第一"来自 Arena 盲测（真人投票），非客观基准；写作"人味"是作者主观体感</li>
+<li>长尾知识准确率 50% 低于 Astra 63%——诚实≠博学，冷门领域交叉验证仍必须</li>
+<li>10-14 凌晨刚全量开放，生产级稳定性无数据</li>
+</ul>
+<h2 id="_9">📊 趋势判断</h2>
+<p>三巨头格局进入"性格分化"阶段：Opus 5.5=高级工程师（手艺精湛审美在线）、Argon=资深研究员（记忆超群通宵干重活不瞎吹）、Astra=贵价通才。选型逻辑从"谁最强"转向"哪个岗位缺人"——这与 Agent Harness 分工思潮（六决策/多 agent 角色拆分）同频。输出窗口军备竞赛（128K→1M）是本代分水岭，"解放人"的指标从读得进转向写得完。</p>
+<h2 id="_10">🔍 查询拓展</h2>
+<ul>
+<li>Arena 榜单方法论盲测偏差（真人投票 vs 客观基准）</li>
+<li>Long Decode 技术实现：同步 64K 与异步 1M 的调度差异</li>
+<li>Veo 3.1 角色锁定与对话式改片的底层机制</li>
+<li>Fairwind 网络安全灰测期对注入免疫的贡献路径</li>
+<li>Artificial Analysis 幻觉率测试集构成（长尾知识 vs 常识 vs 时效）</li>
+</ul>
+<h2 id="_11">🛠️ 指南分析</h2>
+<ul>
+<li>上手路径：Pro/Ultra 会员 → Gemini App 三档思考档试 low/medium 差异 → Long Decode 开关在设置</li>
+<li>API 接入：Google AI Studio 建 key → 首发价 $2/$10 → 11-30 前批量跑长输出任务</li>
+<li>自测法：跑 10 段提示词中"问偏门问题"+"下套"两测，10 分钟验证核心卖点（诚实度+防注入）</li>
+</ul>
+<h2 id="_12">🔗 拓展应用推荐</h2>
+<ul>
+<li>笔记生产管线：Argon 写初稿 + 现有 humanizer 去 AI 腔交叉</li>
+<li>视频内容二创：LVBench 91.7% 长视频理解 → 播客/教程拆解笔记自动化</li>
+<li>文件直交能力 → 周报/月报数据表自动生成（PDF/XLSX 直出）</li>
+<li>Antigravity（Ultra）编程入口 → 与 Claude Code 对比的工程效率评测选题</li>
+</ul>
+<h2 id="_13">相关笔记</h2>
+<ul>
+<li>2026-10-11-AI-Agent生产化十套范式（模型分工与 Agent 编排同频）</li>
+<li>免费模型四线策略（智谱/HF/GitHub）——Argon API 首发价是四线之外的第五候选</li>
+</ul>
+<p>→ 相关：2026-10-13-走路用RL干活用Transformer-机器人算法的知识缺口决定论.md（任务特性决定算法选型的同构逻辑）</p>
+</body>
+</html>
