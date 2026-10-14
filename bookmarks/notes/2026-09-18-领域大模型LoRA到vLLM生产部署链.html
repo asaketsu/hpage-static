@@ -1,4 +1,369 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>领域大模型LoRA到vLLM生产部署链</title>
+
+<meta property="og:title" content="领域大模型LoRA到vLLM生产部署链" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-09-18-%E9%A2%86%E5%9F%9F%E5%A4%A7%E6%A8%A1%E5%9E%8BLoRA%E5%88%B0vLLM%E7%94%9F%E4%BA%A7%E9%83%A8%E7%BD%B2%E9%93%BE.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +439,162 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<p class="tag-line"><span class="tag">#大模型</span> <span class="tag">#LoRA</span> <span class="tag">#vLLM</span> <span class="tag">#部署</span> <span class="tag">#domain-llm-training</span></p>
+
+<h1 id="lora-vllm">领域大模型 LoRA 到 vLLM 生产部署链</h1>
+<blockquote>
+<p>主题：领域大模型微调（CPT+SFT+LoRA/QLoRA）到生产推理部署（vLLM）的完整技术链路梳理。为 domain-llm-training 项目（2026-09-17 新建）补齐 04 评估→06 合并→07 量化→部署段的方法论依据。</p>
+
+<p class="meta-date">生成日期 2026-09-18</p></blockquote>
+<h2 id="_1">内容整理</h2>
+<h3 id="1-lora">1. 全量微调的三堵墙与 LoRA 的数学根基</h3>
+<p>全量微调 7B 模型的显存账本：FP16 权重 14GB + 梯度 14GB + AdamW 优化器状态 28GB = 训练态 56GB 起；70B 模型至少 560GB（8×A100 80GB）。三堵墙：显存墙、存储墙（10 个下游任务 × 140GB = 1.4TB）、持续学习墙（小数据集全量微调常产出"退化版"而非"增强版"）。</p>
+<p>LoRA 的理论支点不是拍脑袋：Aghajanyan et al. 2021 实测 RoBERTa-Large（355M 参数）的内在维度（intrinsic dimensionality）仅约 200——只调 200 个自由度即可达到全量微调 90% 以上性能。LoRA 公式 <code>W = W0 + B@A</code>，以 LLaMA-7B 注意力层为例（d=k=4096）：全量 16,777,216 参数 → LoRA r=16 时 131,072 参数，压缩 128 倍。</p>
+<h3 id="2-2026">2. 三超参数实战配比（2026 共识）</h3>
+<table>
+<thead>
+<tr>
+<th>超参数</th>
+<th>推荐范围</th>
+<th>实战建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rank r</td>
+<td>8-64</td>
+<td>简单任务（格式/风格）r=8-16；领域知识/多步推理 r=32-64；r=128-256 须盯过拟合</td>
+</tr>
+<tr>
+<td>alpha</td>
+<td>16-128</td>
+<td>惯例 alpha=2r（r=16→alpha=32）保持有效学习率稳定</td>
+</tr>
+<tr>
+<td>target_modules</td>
+<td>q,k,v,o 或全部线性层</td>
+<td>资源允许时注入 gate/up/down_proj 全线性层，代价是可训练参数翻倍但质量增益明显</td>
+</tr>
+<tr>
+<td>学习率</td>
+<td>1e-4~3e-4</td>
+<td>比全量微调高 5-10 倍</td>
+</tr>
+<tr>
+<td>dropout</td>
+<td>0-0.1</td>
+<td>小数据集用 0.05-0.1</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-qlora-nf4">3. QLoRA 三件套：NF4 + 双重量化 + 分页优化器</h3>
+<ul>
+<li><strong>NF4（NormalFloat4）</strong>：按 N(0,1) 的 16 个等概率分位点量化，而非均匀 INT4 网格。原理是预训练权重近似零均值正态分布，等概率分桶使每桶权重数近似相等。实测量化误差比 INT4/FP4 低 10-30%。</li>
+<li><strong>双重量化</strong>：每 64 个权重共享一个 FP32 量化常数，本身占 0.5 bit/参数开销；对常数再量化到 FP8 后降至 0.127 bit/参数，65B 模型省约 3GB。</li>
+<li><strong>分页优化器</strong>：借用 NVIDIA Unified Memory，显存峰值时把优化器状态临时迁到 CPU。防 OOM，代价是轻微降速。</li>
+<li>NeurIPS 2023 Oral 结论：QLoRA 微调与全精度全量微调<strong>无统计显著差异</strong>——即 1/4 显存换几乎等价质量。</li>
+</ul>
+<h3 id="4-lora">4. 部署期 LoRA 两种服务策略（关键分叉点）</h3>
+<p><strong>方案 A：合并部署（merge and deploy）</strong>——A×B 永久写回基座权重，单文件、零推理开销、服务与普通模型完全一致。适合单一用途模型。代价：失去换 adapter 的灵活性。</p>
+<p><strong>方案 B：热切换 adapter（vLLM 原生支持）</strong>——基座常驻显存（7B≈14GB），adapter 按请求动态加载（单文件 50-200MB）：</p>
+<pre><code class="language-python">llm = LLM(model=&quot;meta-llama/Meta-Llama-3-8B-Instruct&quot;,
+          enable_lora=True, max_lora_rank=64)
+outputs = llm.generate(prompts, lora_request=LoRARequest(
+    &quot;customer_support_adapter&quot;, 1, &quot;path/to/adapter&quot;))
+</code></pre>
+<p>一个基座同时服务客服/代码/法务多个微调变体，规模化场景的显存/成本收益显著。代价：adapter 切换有轻微延迟开销 + 服务逻辑复杂化。</p>
+<h3 id="5">5. 推理量化格式选型</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本地/CPU（Jetson 等）</td>
+<td>GGUF + llama.cpp</td>
+<td>生态最成熟</td>
+</tr>
+<tr>
+<td>生产 GPU 重质量</td>
+<td>AWQ 4-bit</td>
+<td>4-bit 中质量最佳</td>
+</tr>
+<tr>
+<td>生产 GPU 重速度</td>
+<td>GPTQ 或 AWQ</td>
+<td>吞吐优先</td>
+</tr>
+<tr>
+<td>质量至上不计成本</td>
+<td>fp16 不量化</td>
+<td>基线</td>
+</tr>
+</tbody>
+</table>
+<p>vLLM 论坛实践补充：4-bit 微调模型可不合并直接部署——bitsandbytes QLoRA 路径（基座量化加载 + adapter 热挂），或 GPTQ+LoRA 走 vLLM 标准 LoRA API 动态选 adapter。</p>
+<h3 id="6">6. 安全发布：影子部署</h3>
+<p>新模型与旧模型并行跑真实流量：用户响应仍由旧模型出，新模型静默处理同一请求但输出只记日志对比。确认无回归后再切流。配合对基座模型的回归测试（防止领域微调把通用能力改坏）。</p>
+<h3 id="7-cpt-lora-2026-09-18">7. 关联补充：CPT 与 LoRA 的正交关系（2026-09-18）</h3>
+<p>千问分享会话「CPT训练：领域知识内化与任务对齐」的完整增补（概念正交对照 / LoRA vs 全参效果差距实证 / 选型决策框架 / domain-llm-training 项目校准）已按主题归档至 <strong><a href="./2026-09-18-CPT继续预训练完整方法论-从必要性判定到退火阶段的全流程.md">CPT继续预训练完整方法论</a> 的 1.11 节</strong>——CPT 主题内容归 CPT 笔记。此处仅留要点：CPT 是"训练目标"、LoRA 是"参数更新方式"，两者正交可组合（LoRA-CPT 约达全参 80%-90%）；新知识注入场景 LoRA 落后全参 10%+，但通用能力保持反超。</p>
+<h2 id="_2">查询拓展</h2>
+<ul>
+<li>QLoRA 训练后直接以 4-bit 服务（不反量化、不合并）的精度损失量化数据——论坛有案例但缺系统 benchmark</li>
+<li>Unsloth 在 2026 版的 r&gt;64 场景加速比是否仍保持 2-5x（meta-intelligence 指南未更新此点）</li>
+<li>vLLM LoRARequest 多 adapter 并发时的 KV cache 隔离行为</li>
+<li>GGUF 量化档位（Q4_K_M vs Q5_K_M）在领域术语密集语料上的召回差异</li>
+</ul>
+<h2 id="_3">归纳总结</h2>
+<ol>
+<li><strong>LoRA 已是 2024-2026 事实标准</strong>：内存效率×多任务灵活性×微调质量三者平衡最优，"能不能做"的问题已死，剩下"怎么做得最有效"。</li>
+<li><strong>训练期量化（QLoRA）与推理期量化（AWQ/GPTQ/GGUF）是两套独立决策</strong>，不必绑定：QLoRA 训练后可合并回 fp16 再做推理量化。</li>
+<li><strong>部署分叉点 = 用途数量</strong>：单用途合并部署（零开销），多用途热切换（vLLM enable_lora）。domain-llm-training 项目当前是单领域单用途 → 合并部署是默认正解，热切换留作多领域扩展路径。</li>
+<li><strong>评估先行原则</strong>（Evaluation-First）：先建评估集再训练，微调后必须对基座做回归测试——领域能力↑与通用能力↓的平衡需要数据说话。</li>
+<li>70B 级全量微调 560GB 的账本再次确认：个人/小团队走 QLoRA（16-24GB 单卡）是唯一现实路径。</li>
+</ol>
+<h2 id="_4">趋势判断</h2>
+<ul>
+<li>LoRA 家族在 2026 的地位进一步固化，行业讨论重心已从"原理"转向"评估工作流+服务编排"——系统化评估能力成为 AI 工程团队的核心竞争力。</li>
+<li>热切换 adapter 服务（单基座多 adapter）随企业多场景微调需求增长，正在成为 vLLM/TGI 的标配能力；adapter 50-200MB vs 全模型 14GB 的存储经济学会重塑多租户推理架构。</li>
+<li>影子部署/金丝雀这类经典 SRE 手法与 LLM 评估结合（silent comparison + 自动回归打分）是生产化的下一个标配环节。</li>
+</ul>
+<h2 id="_5">关联分析</h2>
+<ul>
+<li><strong>domain-llm-training 项目</strong>（昨日新建，CPT+SFT 两阶段，4090 单卡 ¥500 档）：本笔记的超参表直接校准其 <code>05_sft_train_lora.py</code> 的默认值——领域知识注入属复杂任务，r 应从 16 提到 32-64；alpha=2r；target_modules 应含全部线性层。该脚本目前用的 PROMPT_TEMPLATE 是静态 System/User/Response 三段式，评估段（LLM-as-Judge + 基座回归测试）是项目 docs 里最薄的环节。</li>
+<li><strong>项目 <code>06_merge_lora.py</code> / <code>07_quantize.py</code> 尚未写</strong>：本笔记第 4/5 节给出了直接蓝图——合并用 <code>merge_and_unload()</code>，量化按部署目标分叉（若最终落 Jetson 本地 → GGUF + llama.cpp/Ollama 路线；若云 GPU 服务 → AWQ）。</li>
+<li><strong>免费模型 API 四线 skill</strong>：智谱/HF/GitHub Models 等 API 线与自托管 vLLM 线互补——领域微调模型量大后，自托管吞吐成本会低于按 token 计费 API（文中阈值参考：&gt;10K 请求/天 自托管占优）。</li>
+<li><strong>dp5-gpu-training-pipeline / aircraft-minicpm5-lora-pipeline 经验</strong>：DUCK 项目的 AutoDL 训练流水线（4080S 单卡）与本主题共享同一套 QLoRA 显存经济学；MiniCPM5-2B 航空 LoRA 微调是 r=16 简单任务档，飞机结构领域问答若要注入 EBOM/适航条款知识密度，r 提档的依据见归纳总结第 3 条。</li>
+</ul>
+<h2 id="_6">出处</h2>
+<ul>
+<li>LoRA &amp; QLoRA Fine-Tuning: Build Custom LLMs on a Single GPU [2026 Guide] — meta-intelligence.tech/en/insight-lora-finetuning（LoRA 数学、三超参表、NF4/双重量化/分页优化器、内在维度理论）</li>
+<li>Fine-Tuning LLMs for Production: A Practical Guide to QLoRA, Evaluation and Deployment — Shubhodaya Hampiholi, Medium, 2026-03-08（部署策略、vLLM LoRARequest 代码、量化选型表、影子部署）</li>
+<li>vLLM Forums: Support for Deploying 4-bit Fine-Tuned Model with LoRA on vLLM — discuss.vllm.ai/t/1186（4-bit+LoRA 不合并部署路径）</li>
+<li>Fine-Tuning LLMs: Step-by-Step Guide for Developers — nirajiitr.com（QLoRA 16GB 单卡微调 7B 的 2026 开发者基线）</li>
+<li>千问分享会话「CPT训练：领域知识内化与任务对齐」— qianwen.my.cn/share/chat/a44cf652a9de478aad481060f97e4bcf（2026-09-18，第 7 节来源：CPT/LoRA 正交概念、效果差距实证表、Thinking Machines Lab 2025 LoRA 容量研究引用）</li>
+</ul>
+<h2 id="_7">指南分析</h2>
+<p>对本工作流的直接指导：</p>
+<ol>
+<li>domain-llm-training 的 SFT 脚本超参默认值按本文第 2 节表校准（r=32、alpha=64、lr=2e-4、全线性层注入）。</li>
+<li>评估段优先级前置：训练前先固化 50-100 条领域评估集 + 20 条通用能力回归集，否则训完无法判断"增强还是退化"。</li>
+<li>部署路线图：合并 → fp16 验证 → 按目标平台量化（Jetson 本地 GGUF / 云端 AWQ）→ 影子对比旧方案输出。</li>
+<li>热切换 adapter 能力保留为多领域扩展选项，vLLM <code>enable_lora=True + max_lora_rank=64</code> 一行配置启用。</li>
+</ol>
+<h2 id="_8">拓展应用推荐</h2>
+<ul>
+<li><strong>飞机设计领域知识库问答</strong>：CCAR 适航条款 + 构型管理文档 QLoRA 微调 7B 模型，Jetson 端 GGUF Q4_K_M 部署，替代敏感文档外发 API 的合规风险路径</li>
+<li><strong>DUCK 项目文档助手</strong>：用 docs/ 63 篇运维文档微调小模型，做训练问题自动诊断（.reward 曲线异常模式识别）</li>
+<li><strong>多 adapter 实验台</strong>：同一基座挂"代码审查/commit 信息生成/周报草拟"三个 adapter，验证热切换服务在 Hermes 工作流中的吞吐收益</li>
+</ul>
+<h2 id="_9">相关笔记</h2>
+<ul>
+<li><a href="./2026-04-18-tinyedge-lora.md">tinyedge-lora（2026-04）</a> — 早期 Jetson 边缘 LoRA 部署待办，本篇方法论落地依据</li>
+<li>LuxTTS / edge-llm-quantization 本地实践 — GGUF 量化+Jetson 部署经验参照（skill 库）</li>
+<li><a href="./explore/2026-09-17-LGM长期记忆神经符号解耦.md">LGM 长期记忆神经符号解耦（explore/）</a> — 小模型+强结构=边缘个性化同路线</li>
+</ul>
+</body>
+</html>
