@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VLA精密操作误差链路-从任务容差到接触控制的排查思路</title>
+
+<meta property="og:title" content="VLA精密操作误差链路-从任务容差到接触控制的排查思路" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="vla">VLA精密操作误差链路——从任务容差到接触控制的完整排查思路</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号「具身智能前沿」（作者：毛不毛）<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/KN897JKjKmCsqPqwJZc2mQ<br />
+<strong>记录日期</strong>：2026-10-16</p>
+
+<p class="meta-date">生成日期 2026-10-16</p></blockquote>
+<p><strong>标签</strong>：#VLA #精密操作 #误差分析 #视觉伺服 #阻抗控制 #在线训练 #π0.5</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<p>文章回答一个具体问题：VLA 已经"知道怎么做"（识别物体、理解任务、生成动作），为什么精密操作还是对不准？主线用<strong>插头插孔任务</strong>串起从感知到接触的完整误差链路，最后以 VLA-Precision 实机研究收尾。</p>
+<h3 id="11">1.1 先分清四件事（概念地基）</h3>
+<ul>
+<li><strong>任务容差</strong>：任务允许偏多少——插头相对孔口的横向位移与倾角上限。同一毫米对宽口容器与紧配合插孔后果完全不同，谈精度先谈容差</li>
+<li><strong>定位准确度</strong>：实际位置与目标相差多远（系统性偏差）</li>
+<li><strong>重复定位精度</strong>：重复执行时落点聚得多紧（离散度）。可以每次都稳定停在孔口右侧同一位置——重复性极好却永远插不进</li>
+<li><strong>任务成功率</strong>：整套过程完成了多少次。成功不告诉第一次对准偏了多少（可能先碰孔边再局部调整救回）</li>
+</ul>
+<h3 id="12">1.2 误差经过哪些地方（链路分解）</h3>
+<p>从看见插孔到移动插头：目标估计（相机标定/手眼标定）→ 坐标变换（基座/工具/世界系）→ 动作生成（VLA 输出）→ 控制执行（跟踪/带宽）。每一环都可能注入误差，最后一毫米的失败可能来自任何一环。</p>
+<h3 id="13">1.3 闭环纠偏的前提：反馈看得见、来得及</h3>
+<ul>
+<li><strong>反馈延迟账</strong>：物体在动（例：2 毫米变化），采图→推理→通信→执行的完整时间决定系统是否在按旧位置行动</li>
+<li><strong>动作分块 ≠ ACT</strong>：动作分块是通用的动作组织方式（一次预测未来一段）；ACT 是采用这种方式的具体模型架构。采用动作分块的 VLA 不一定用 ACT</li>
+<li><strong>RTC（实时动作分块）</strong>：执行当前段同时生成下一段，约束新旧段衔接一致（旧段从障碍上方绕、新段选下方，直接切换/平均会生成不合适的中间动作）</li>
+<li><strong>执行长度敏感性实证</strong>：VLA-Precision 在 π0.5 上逐步相对位移动作表示下，执行长度 3 步→6 步，自主成功率 <strong>58.3%→6.7%</strong>（误差随位移累加）。但这是该动作表示+任务设置的结论，不能推广为"所有模型都该执行 3 步"</li>
+</ul>
+<h3 id="14">1.4 接触阶段：力与柔顺</h3>
+<ul>
+<li>视觉帮到孔口为止；顶住孔边后继续推进只会增力，位置目标本身不告诉系统怎么调整</li>
+<li><strong>混合运动—力控制</strong>：不同方向分别安排运动目标与力目标（沿表面移动+控制法向压力）</li>
+<li><strong>阻抗控制</strong>：设定位置/速度偏差与响应力的关系，接触时表现柔顺性。VLA-Precision 在 UR5e 与 Franka 上都配了阻抗控制（分别走力接口/关节力矩接口）——策略更新的收益建立在这些控制条件之上</li>
+</ul>
+<h3 id="15">1.5 在线训练：把"这次改对"变成"下次做对"</h3>
+<ul>
+<li>行为克隆的缺口：部署偏离示教覆盖状态时缺少恢复行为；加纠正数据补经验，在线 RL 用真实交互结果改进</li>
+<li><strong>VLA-Precision 两阶段后训练</strong>：①示教微调 π0.5 建立任务策略 ②真机交互，冻结基础参数，只更新动作专家新增 LoRA</li>
+<li><strong>ACoB 方法</strong>：同时改进动作生成与价值估计。人接管时保留原提案与纠正动作——实际轨迹学后果；同一状态下要求纠正动作估值高于被替换提案。解决具体缺口：人救回操作后，不能让模型误以为被否决的原动作也值得执行。冻结的一阶段策略作参照，约束新策略偏离程度</li>
+<li><strong>成绩与边界</strong>：九项化学操作（移液器装吸头±0.25mm、橡胶塞±0.5mm、数毫米容差不等）180 次留出测试 177 成功（98.3%）；在线训练平均每项 45.8 分钟（之前还有示教+微调）。98.3% 描述任务完成，±0.25mm 描述对齐要求——实际动作偏了多少还需测量。未覆盖多个精度关键阶段的长双臂序列</li>
+</ul>
+<h3 id="16">1.6 排查表（现象→优先核对）</h3>
+<ul>
+<li>多次落点集中但总偏同一侧 → 目标估计、坐标变换、工具与运动学标定</li>
+<li>静止能对准、运动偏差扩大 → 时间戳、观测延迟、动作跟踪与执行段衔接</li>
+<li>接近孔口正常、接触后卡住/推倒 → 姿态、接触位置、受力及柔顺控制</li>
+<li>初始状态稍变就失败、人工能救回 → 状态变化范围、纠偏数据与恢复行为</li>
+<li>验收要求：位置误差要说明参考真值/测量对象/测试位置；成功率要保留样本数/初始状态范围/超时与接管规则；失败集中在哪里比平均值更有价值</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-05">2.1 π0.5 与动作专家架构</h3>
+<p>π 系列是 Physical Intelligence 的 VLA 家族（π0→π0.5）。特点是视觉语言主干 + 独立<strong>动作专家</strong>（action expert）流——动作生成与语义理解分离，本文的 LoRA 只挂在动作专家上正是利用这一分叉：冻语义能力、只调动作。这与《Low-Cost Hardware 双臂操作》（ALOHA 论文）的 ACT 单流架构形成路线对照。</p>
+<h3 id="22-visual-servoing">2.2 视觉伺服（Visual Servoing）</h3>
+<p>Chaumette 经典教程（文末引用 Part I）：IBVS（图像空间直接闭环）vs PBVS（位姿空间闭环）。本文"闭环能纠偏，前提是反馈看得见"即视觉伺服的时延约束在现代 VLA 里的重述——VLA 推理慢（百毫秒级），所以需要动作分块+RTC 执行衔接来掩盖延迟。</p>
+<h3 id="23-acob">2.3 ACoB 与人类接管学习</h3>
+<p>从人机接管（human takeover）信号提取训练数据的思想谱系：HG-DAgger（人类纠正即数据）→干预策略学习 → 本文 ACoB 的推进在于<strong>同时训价值函数</strong>（纠正动作的估值必须高于被否决提案），防止"被救回的操作污染动作分布"——这是对示教数据偏置的显式防御。</p>
+<h3 id="24-ur-rom">2.4 UR 标定与 ROM 讇义</h3>
+<p>文末引 UR 出厂标定参数与 ROS 模型文档：UR 出厂标定与 ROS通用模型有偏差，真机部署需用 ur_calibration 标定文件替换——"标定误差是系统性偏差第一嫌疑"的具体例证。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 精密操作误差分层框架</h3>
+<pre><code>任务层   任务容差(允许偏多少) ← 一切讨论的锚点
+────────────────────────────────
+执行链   ① 目标估计   相机/手眼标定误差
+         ② 坐标变换   基座/工具系标定误差
+         ③ 动作生成   VLA预测误差(相对位移表示下累积)
+         ④ 控制执行   跟踪/带宽/执行段衔接
+────────────────────────────────
+反馈层   闭环纠偏     反馈延迟 vs 目标运动速度
+接触层   力/柔顺      运动力混合分配 + 阻抗参数
+学习层   在线训练     纠正数据 + 价值约束(ACoB)
+</code></pre>
+<h3 id="32">3.2 度量三分离原则（本文最有用的思维工具）</h3>
+<ul>
+<li><strong>容差</strong>（任务属性）/ <strong>误差</strong>（系统属性）/ <strong>成功率</strong>（过程属性）三者不可互相替代</li>
+<li>98.3% 成功率 + ±0.25mm 容差 ≠ 系统 0.25mm 精度——真实动作偏差需要独立测量</li>
+<li>重复性好的系统可以不准（偏同一侧），准的系统可以不稳（落点散）——两组统计必须分别看</li>
+</ul>
+<h3 id="33">3.3 执行长度的权衡三角</h3>
+<ul>
+<li>执行段短 → 新观测进决策频繁 → 纠偏快，但推理负担大、段间衔接风险高</li>
+<li>执行段长 → 平滑省算力，但相对位移误差累积（58.3%→6.7% 实证）</li>
+<li>RTC 的位置：不是缩短执行段，而是让"生成下一段"与"执行当前段"并行且约束衔接一致性</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1vla">趋势1：VLA 精度讨论从"模型能力"转向"系统工程"</h3>
+<p>依据：全文误差链路五层里模型只占一层（动作生成），其余是标定/控制/接触/反馈。VLA-Precision 98.3% 建立在 UR5e/Franka 阻抗控制之上——模型进步不消除系统工程需求，只改变分工。</p>
+<h3 id="2-lora">趋势2：动作专家 LoRA 成为真机后训练标准姿势</h3>
+<p>依据：冻结主干+只调动作专家 LoRA 既保语义能力又降训练成本（每任务 45.8 分钟在线训练），配合 ACoB 价值约束防接管数据污染。这套组合拳有望成为 VLA 定制化的默认起点。</p>
+<h3 id="3">趋势3：精度验收走向"测量协议化"</h3>
+<p>依据：文末验收要求（真值来源/样本数/初始状态范围/失败分布）实际是把 ML 惯用的 benchmark 协议移植到机器人测量——社区正在形成"精密操作可复现报告"的雏形规范。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-duck">5.1 与 DUCK 双足项目真机链路的关联</h3>
+<p>我们的真机执行链踩过与本文完全同构的坑：E12 的 obs delay DR（2-10 tick）就是"反馈看得见来得及"的疫苗化；0930 发现的 sim BAM 321°/s vs 真机 43-133°/s 带宽差是"控制执行层误差"；v9 死区+0.25×抑制是"执行段平滑"。本文排查表可整体平移到鸭子调试：<strong>落点集中偏一侧（hip 共模 40°）→ 标定层；动态失稳静态稳 → 延迟层</strong>。另外"相对位移表示下误差累积"直接解释了为什么我们的 dact 2°/tick 增量域限制比绝对位置域更稳。</p>
+<h3 id="52">5.2 与已有笔记的关联</h3>
+<ul>
+<li>《走路用RL干活用Transformer-机器人算法的知识缺口决定论》（10-13）：本文接触层的阻抗控制/混合力控正是"干活侧"知识缺口的展开</li>
+<li>《Gemini4Argon-for-Robotics-Video到Sim到Real全栈工作流》（10-16）：Argon 的 Real2Sim 双验证（视觉+接触力对齐）对应本文误差链的①②层自动化</li>
+<li>《Sim2Real执行器建模四层联立模型》（10-01）：本文"控制执行段"误差的建模侧补充</li>
+<li>《机器人数据经济学》（10-13）：ACoB 人类接管数据是"数据采集"的又一范式（纠正即数据）</li>
+</ul>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>"同样一毫米，对宽口容器和紧配合插孔，后果可能完全不同。" —— 谈精度先谈容差，任务属性锚定一切</p>
+<p>"每次都停在孔口右侧同一个位置，可以很稳定，却始终插不进去。" —— 重复性与准确度分离的最直观表述</p>
+<p>"成功说明整套过程有效，却没有单独告诉我们第一次对准偏了多少。" —— 成功率指标的盲区定义</p>
+<p>"这次偏差发生在哪里，系统凭什么看见它，又由谁把它改回来？" —— 精度问题的三问收束（定位/感知/修复）</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li><strong>DUCK 排查表落地</strong>：把 1.6 的四行现象→核对表抄进 duck 真机调试 skill，替换现在散落的经验判断</li>
+<li><strong>度量三分离用进验收</strong>：E 系验收指标增加"任务容差"显式声明（站立带 ±X° 就是容差概念），存活率/tilt 分布分开报——避免"98.3% 式"的精度混淆</li>
+<li><strong>接管数据价值化</strong>：用户扶鸭/纠正姿态的瞬间（我们已有 SOP 快照）按 ACoB 思路记录"纠正前提案 vs 纠正后状态"，未来在线训练时是现成监督信号</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li>双足调试：现象→核对四行表直接作为站立/行走失稳的第一轮排查清单</li>
+<li>机械臂产线验收：度量三分离写成验收单模板（容差栏/误差实测栏/成功率栏分开签）</li>
+<li>仿真标定：误差链①②层作为 Real2Sim 重建的验证清单（每层独立测，不混报总成功率）</li>
+<li>数据采集设计：人类演示里的"失败-纠正"段按 ACoB 逻辑单独打标签，别混入干净示教</li>
+<li>教学场景：插头插孔案例+四概念分离是机器人学精度课的现成入门教案</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<p><strong>本文的写作方法论价值</strong>：</p>
+<ul>
+<li><strong>锚定案例贯穿法</strong>：全文只用插头插孔一个案例，五个章节各自换角度（容差/链路/反馈/接触/训练）反复剖析同一对象——比每节换案例的技术文深一倍，读者认知负荷减半</li>
+<li><strong>概念拆解先行</strong>：开篇先分离四组易混概念（容差/准确度/重复性/成功率），后文所有论证都引用这套词汇——先立字典再写文章的范式</li>
+<li><strong>数字的诚实边界声明</strong>：每个引用数据都带适用条件（"不能推成所有模型都应执行 3 步""属于另一组实验"）——反过度泛化的写作纪律，技术传播的稀缺品质</li>
+<li><strong>排查表的可操作性</strong>：现象→核对方向的双列表结构，且声明"现象只能提示检查方向，不能单独确诊"——实用工具与认知边界的平衡</li>
+<li><strong>参考资料全公开可溯源</strong>：七条参考全是原始论文/官方文档链接（罗马大学讲义/MIT/PI/arxiv），无二手转述——增强全文可信度的低成本手段</li>
+</ul>
+</body>
+</html>
