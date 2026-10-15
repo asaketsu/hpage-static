@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人形策略权重扩散-可部署网络生成与运动学先验</title>
+
+<meta property="og:title" content="人形策略权重扩散-可部署网络生成与运动学先验" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="-">人形策略权重扩散-可部署网络生成与运动学先验（内容整理）</h1>
+<p class="tag-line"><span class="tag">#论文精读</span> <span class="tag">#人形机器人</span> <span class="tag">#权重空间</span> <span class="tag">#扩散模型</span> <span class="tag">#RL策略</span></p>
+<p class="note-date">生成日期 2026-10-16</p>
+
+<h2 id="_1">元数据</h2>
+<ul>
+<li>标题：Modeling and Understanding Neural Weights of Humanoid Policies with Diffusion</li>
+<li>作者：Huixuan Cheng, Bike Zhang, Shankar Sastry, Koushil Sreenath（UC Berkeley，Sreenath/Sastry 双院士级组合）</li>
+<li>日期：2026-10-14 提交</li>
+<li>arXiv ID：2610.20606</li>
+<li>领域：cs.RO / cs.AI / cs.LG</li>
+<li>项目网站：humanoid-weight-diffusion.github.io</li>
+<li>出处/来源：arxiv.org/abs/2610.20606（arXiv HTML 全文 303KB，S1-S12 完整提取）</li>
+</ul>
+<h2 id="_2">核心问题与研究动机</h2>
+<p>人形机器人控制网络全部经由「一任务一训练」获得，维护为一堆独立专家策略。论文问两个被忽视的问题：</p>
+<ol>
+<li><strong>生成问题</strong>：能否绕过训练，直接在权重空间对策略网络做生成建模——像扩散模型生成图像一样「采样」出一个可部署的控制网络？</li>
+<li><strong>理解问题</strong>：这些 RL 训出的权重里到底编码了什么信息？是否存在跨动作、跨训练范式的结构？</li>
+</ol>
+<p>动机锚点：网络权重冗余度极高（有效维度远低于参数量），暗示策略权重可被压缩到紧凑隐空间建模。此前权重扩散只在图像分类/HalfCheetah/四足上验证过，人形（G1，29 DoF）因权重空间高维一直空白。</p>
+<h2 id="_3">内容整理</h2>
+<h3 id="s2s7">一、权重数据集构建（S2/S7）</h3>
+<ul>
+<li>平台：mjlab（MuJoCo）+ PPO（RSL-RL）默认超参，Unitree G1</li>
+<li>三动作递进：步行（T1，99 维 obs）/ 舞蹈（T2，154 维 obs）/ 旋风踢（T3，154 维 obs）</li>
+<li>actor 统一 3 层 MLP [128,128] ELU，约 30k-40k 参数/网络；<strong>obs normalization 关闭</strong>（保证权重跨网络可比，关键设计）</li>
+<li>每动作 750 个随机种子独立训练，每种子保留收敛后 8 个 checkpoint（每 100 iter 密集记录），每动作共 6000 个网络</li>
+<li>训练配置：4096 并行环境、4500 iter 上限、域随机化（摩擦 U(0.3,1.2)、躯干 CoM 偏移 ±(2.5~5)cm、编码器偏置 ±0.01~0.015rad）</li>
+</ul>
+<h3 id="dits2s8s9">二、两段式生成管线：线性自编码器 + DiT（S2/S8/S9）</h3>
+<ol>
+<li><strong>簇式线性自编码器</strong>：第一层 [w1,b1] 压到 1024 维、第二三层 [w2,b2,w3,b3] 压到另一个 1024 维，拼接成 2048 维隐变量 z。编解码器均为单层无偏置线性（无激活）。MSE 重建，输入/隐层注入高斯噪声增稳（1e-4/1e-3）。<strong>原始权重直接训练优于归一化权重</strong></li>
+<li><strong>Diffusion Transformer（DiT）</strong>：冻结自编码器，对 2048 维 z 建模。patch size 16、序列长 128、embedding 1024、深度 8、8 头、adaLN-Zero 时间步条件、x-prediction（直接预测干净 z0，非 ε-prediction）、线性噪声调度（1e-4→2e-2）、1000 步去噪、无条件生成、AdamW 2e-4 + warmup + cosine、100k 步、bfloat16</li>
+<li>推理：采样 z → 解码回完整权重 θ̂ → 直接零样本部署真机。<strong>Transformer 骨干（捕捉跨层/全局权重相关性）是对四足工作 U-Net 骨干的关键替换</strong></li>
+</ol>
+<h3 id="s3s10">三、生成质量：局部泛化而非记忆（S3/S10）</h3>
+<ul>
+<li>Table I：DiT 生成网络均值略低于数据集网络，但 100 样本最优可达数据集水平（步行 Succ 0.997 vs 1.000）；Top-90% 样本均值方差与训练集相当 → 仅 &lt;10% 样本性能塌缩</li>
+<li>Table II：embedding 维度是关键容量因子——1024 维时步行 Prog 0.997（512 维仅 0.643），动作越动态（旋风踢&gt;舞蹈&gt;步行）容量需求越高 → 动态动作对应更复杂的权重分布</li>
+<li><strong>记忆 vs 泛化判别实验（设计最巧）</strong>：对每个生成网络 D 找权重空间最近训练网络 W，定义等效噪声水平 σ=RMS((D−W)/s)，与「加同等 σ 高斯噪声扰动的 W」对照。<strong>等距离下生成网络全面胜出噪声扰动网络</strong> → DiT 学到的是权重流形的局部几何（流形内有效邻域），不是训练样本的噪声变体</li>
+<li>t-SNE：生成样本落在训练分布支撑内；分布边界处的样本也能真机完成旋风踢</li>
+<li>Sim2Real：训练集本身带 DR，sim2real gap 已隐式编码进权重分布，扩散侧零额外处理；生成网络零样本在 G1 真机完成步行/舞蹈/旋风踢</li>
+</ul>
+<h3 id="s4s11">四、权重空间三发现（S4/S11，本文理解性贡献核心）</h3>
+<ol>
+<li><strong>运动学先验（kinematic prior）</strong>：第一层权重热图中 joint pos 与 gravity 区块幅值持续大于 last action 与 command 区块。逐关节重要性（128 隐节点均值绝对权重，50 种子平均）跨动作高度一致：<strong>腰部(3)+左右髋 pitch(关节 1/7)构成的骨盆区最重要 &gt; 其余腿部 &gt; 手臂</strong>——与人体运动控制「躯干稳定、四肢机动」的结论吻合。这是结构先验而非动作知识</li>
+<li><strong>RL 与 IL 收敛到同一先验</strong>：50 个 RL 网络蒸馏出 50 个 IL 网络（离线 MSE 回归，功能等价，Table IV 差距 &lt;1%），第一层热图与归一化关节重要性曲线近乎重叠 → 先验独立于优化过程，源于具身结构本身。<strong>但 RL/IL 解在权重空间并非线性连通</strong>：RL 权重幅值更大，两者插值不能完成任务</li>
+<li><strong>DR 的作用是结构化重组而非线性位移</strong>：同初始化带/不带 DR 训练，总体结构高度相似，但逐元素差值本身就构成一个「像 RL 权重」的结构；差值单独不是有效网络，带/不带 DR 网络插值也不通 → DR 在保持动作相关权重结构的同时做整体重组，效果无法用权重空间线性平移表示</li>
+<li>（附）<strong>跨动作子空间相似性</strong>：共享输入（joint pos+joint vel 58 维）上的第一层 128 个权重向量张成的子空间，线性 CKA 度量下动作内近乎完美对齐、跨动作也高——大量共享知识+少量动作特异适应</li>
+</ol>
+<h3 id="s5">五、局限（S5，作者自陈）</h3>
+<ul>
+<li>分析止步第一层，深层与 DR 效应仍未透彻</li>
+<li>单一具身（G1）、有限动作集，结构普适性待验证</li>
+<li><strong>可解释发现尚未转化为性能提升</strong>（先验没有反过来改进训练/生成）——诚实承认「理解≠收益」</li>
+<li>未来方向：条件权重生成（行为/轨迹/文本条件）、跨具身数据集</li>
+</ul>
+<h2 id="_4">关键实验结果与数据</h2>
+<ul>
+<li>数据规模：3 动作 × 6000 网络 = 18000 个 RL 策略权重样本</li>
+<li>生成网络真机零样本完成三动作（含 43 DoF 级动态旋风踢）</li>
+<li>步行：DiT-best Succ 0.997 / TE 0.186 m/s（数据集 1.000 / 0.161）</li>
+<li>舞蹈：DiT-best Succ 0.996 / TE 0.040（数据集 1.000 / 0.036）</li>
+<li>旋风踢：DiT-best Succ 0.993 / TE 0.051（数据集 1.000 / 0.046）</li>
+<li>embedding 消融：512→1024 维，旋风踢 Prog 0.296→0.969（3.3 倍）</li>
+<li>RL vs IL 蒸馏：50 对网络 Succ 差距 ≤0.53 个百分点（0.9994→0.9979 等）</li>
+<li>DR 消融：同初始化 ±DR 对照的逐元素差值呈结构化模式</li>
+</ul>
+<h2 id="_5">创新点分析</h2>
+<ol>
+<li><strong>范式转移</strong>：策略获取从「训练产生」变为「分布采样」——策略库变成一个生成模型，存储紧凑（2048 维 latent vs 数十万个权重）、可无限采样变体</li>
+<li><strong>等距离噪声对照法</strong>：把「生成 vs 记忆」这个模糊问题变成可测的对照实验（距离匹配的噪声扰动基线），方法论可复用到任何生成模型评估</li>
+<li><strong>运动学先验的跨范式验证</strong>（RL/IL 双轨 + 跨动作一致）：把「权重可解释性」从图像域搬到机器人域，且发现与人类运动控制文献对齐的具身先验</li>
+<li><strong>DR 效应的权重空间刻画</strong>：首次给出「DR=结构化重组而非线性位移」的证据，直接否定「DR 可以用权重平移补偿」的朴素假设</li>
+<li>sim2real 隐式继承：DR 分布信息沉淀在权重分布里，生成模型免费继承——不需要在生成侧做任何 sim2real 处理</li>
+</ol>
+<h2 id="_6">局限性与未来方向</h2>
+<ul>
+<li>网络极小（3 层 MLP，30-40k 参数）——现代 transformer 策略（数百万参数）的权重空间是否还可线性压缩到 2048 维存疑</li>
+<li>无条件生成：采样出的动作不可指定（每个动作单独训一个 DiT），离「按指令生成策略」还差条件化</li>
+<li>生成最优 ≈ 训练均值水平，未超越数据集最优——是分布建模不是分布改进（对比 RLVR/搜索类方法的「超越」逻辑）</li>
+<li>理解层发现（先验）尚未闭环回训练收益</li>
+</ul>
+<h2 id="_7">趋势判断</h2>
+<ol>
+<li><strong>权重空间正在成为新的策略资产层</strong>：四足（2025）→ 人形（本文）→ 条件生成/跨具身（未来），权重扩散沿具身复杂度阶梯爬升的路径已经清晰</li>
+<li><strong>「策略集合 = 数据集」的训练范式</strong>：750 种子 × 8 checkpoint 的采集方式暗示，未来训练基础设施会把「多种子权重收割」作为标准动作——训练一次产出分布而非单点</li>
+<li><strong>可解释性与具身先验汇流</strong>：第一层权重反映骨盆重要性 = 人体运动控制理论在人工网络中重现，机器人学、神经科学、深度学习三个共同体在权重空间找到了共同语言</li>
+<li>与模型融合（model merging）、权重插值研究形成对照系：本文实证 RL/IL 解不线性连通、DR 不可平移——为 weight averaging 类方法划出了适用边界（同分布同范式内有效，跨范式失效）</li>
+</ol>
+<h2 id="_8">归纳总结</h2>
+<p>论文用「线性 AE + DiT」最小可行管线证明：6000 个同构 RL 策略的权重分布可以被建模、被采样、且采样结果零样本上真机。三条硬结论：①生成网络在等距离对照下胜过噪声扰动=学到流形几何；②第一层权重编码跨动作、跨训练范式稳定的运动学先验（骨盆&gt;腿&gt;臂）；③DR 通过结构化重组（而非平移）重塑权重。一句话：<strong>策略权重第一次在人形机器人上成为「可生成的对象、可解释的结构」</strong>。</p>
+<h2 id="hermes-agent-jetson-orin">借鉴点评估（关联 Hermes Agent / Jetson Orin / 量化交易）</h2>
+<ol>
+<li>🔨 <strong>DUCK 策略资产权重空间分析（P0）</strong>：E43-E48 九代训练存档=现成的「多版本权重数据集」。可直接复刻本文 S4 分析：对 E31i→E48 系列第一层权重做逐关节重要性热图——检验 DUCK 策略是否也存在类似的「髋/膝主导先验」。若 E45（站立）与 E48（行走）的共享输入区子空间 CKA 高=共享知识多，E47 融合失败可从子空间错位角度重新归因。工作量：纯本地 numpy 分析，无需 GPU 训练，半天</li>
+<li>🔨 <strong>等距离噪声对照法移植到策略验证（P1）</strong>：评估「蒸馏/合并出的策略是否只是教师噪声变体」时，用 σ-RMS 匹配的扰动基线对照——比只看成功率更有判别力。可进 offline-policy-distillation skill</li>
+<li>✅ <strong>多种子训练已有雏形</strong>：训练方法论上「一次训练收割分布」的思路与现有黄金档挑选（每 1000 iter 12ep）互补——同档多 checkpoint 本来就在存，缺的只是权重空间视角</li>
+<li>⚠️ <strong>权重扩散生成策略（P2）</strong>：DUCK 策略 MLP 规模与本文同量级，技术上可行；但需 750 种子级权重库（现有 ~9 代 × 少量 checkpoint，样本量差 2 个数量级），短期不现实，长期可作为 F 系列破局备选路线（生成替代训练）</li>
+<li>❌ <strong>量化交易直接套用（P3）</strong>：交易信号网络权重扩散生成的前提是「同任务大量独立训练的网络」，量化策略单版本训练成本高、分布假设弱，暂不适用；但「第一层权重看先验」的检查（哪些特征维度被赋予大权重）可作策略网络健全性检查项</li>
+<li>⚠️ <strong>Jetson 边缘侧（P3）</strong>：生成模型本身可在 Orin 跑（DiT 很小），但收益场景（现场采样新策略）尚未出现真实需求</li>
+</ol>
+<h2 id="_9">拓展应用推荐</h2>
+<ol>
+<li>给 DUCK 项目建 weight_analysis.py：输入任意两个 policy .pt，输出第一层逐输入块幅值热图 + 共享输入区 CKA 相似度，挂进 rl-standing-gate-eval 验收链作「策略结构健康检查」</li>
+<li>多教师蒸馏前先跑 CKA：离线蒸馏 skill 里加一步「教师间子空间对齐度检查」，低于阈值提示「教师解不连通，蒸馏目标可能互相冲突」</li>
+<li>训练种子策略：下一轮 GPU 训练预算允许时，同配方 4-8 种子并行（AutoDL 单卡可跑），为权重空间分析积累最小样本库</li>
+</ol>
+<h2 id="_10">指南分析</h2>
+<ul>
+<li>选文方法：策略 B（arXiv API submittedDate 3 天窗口 + 兴趣关键词加权评分），40 篇候选中按「机器人 RL × 新颖性 × 与 DUCK 项目相关度」终选</li>
+<li>提取链：arXiv API XML（99KB）→ abs+HTML 双页 curl → extract_arxiv.py meta/outline 正常 → section 子命令 SSL 崩溃（已知坑）→ 本地缓存正则降级提取 S4-S12 全部成功</li>
+<li>关键坑复用：①方括号 URL-encode；②section 末尾章节 end_sid 用 </article>；③SSL 崩溃时 /tmp/arxiv_full.html 已缓存直接正则</li>
+<li>本文 HTML 数学标记密集（每个数字后跟 LaTeX 重复），clean 正则后需人工去重——摘要写作以表格数字为准</li>
+</ul>
+<h2 id="_11">关联论文</h2>
+<ul>
+<li>Neural Network Diffusion (arXiv:2402.13144)——权重扩散开山作，图像分类</li>
+<li>四足权重采样真机部署（论文引 [15]，2025 前作）</li>
+<li>BeyondMimic (arXiv:2508.08241)——G1 运动跟踪训练协议来源（本文部署协议同源）</li>
+<li>Hypernetworks (arXiv:1609.09106)——条件生成权重的早期路线</li>
+<li>人体运动控制躯干稳定文献（引 [28]）——运动学先验的神经科学对应</li>
+<li>与本库笔记关联：dp5-training-findings / offline-policy-distillation（E47 融合失败的权重空间再解释）</li>
+</ul>
+<h2 id="_12">查询拓展</h2>
+<ul>
+<li>待验证：humanoid-weight-diffusion.github.io 项目页是否有代码开源（正文未见 GitHub 链接，追踪代码可得 750 种子训练脚本与 DiT 训练配置）</li>
+<li>延伸检索方向：①"policy weight interpolation failure RL"——RL/IL 不连通结论与 mode connectivity 文献的关系；②"linear CKA policy analysis"——子空间相似度在其他策略分析工作的用法；③条件权重生成最新进展（文本/轨迹条件）是否已出现 2026 Q4 预印本</li>
+<li>数据价值：Table V 训练配置（4096 envs/4500 iter/DR 参数表）可直接对标 DUCK 训练配方做交叉检查——G1 骨盆 CoM DR 只给 ±2.5-5cm，DUCK 的 CoM 标定 gap（docs/141 结论）在同量级，佐证 F04 动力学标定路线</li>
+</ul>
+</body>
+</html>
