@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphRAG真实成本工程实测</title>
+
+<meta property="og:title" content="GraphRAG真实成本工程实测" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="graphrag-rag">GraphRAG真实成本工程实测 — 知识图谱垫在RAG下面的账单</h1>
+<p class="tag-line"><span class="tag">#GraphRAG</span> <span class="tag">#RAG</span> <span class="tag">#知识图谱</span> <span class="tag">#Agent记忆</span> <span class="tag">#信息检索</span> <span class="tag">#成本工程</span></p>
+
+<blockquote>
+<p>原文：<a href="https://x.com/sermakarevich/status/2111515269638074660">Should we put a knowledge graph under our RAG, and what will it cost to keep it true?</a> — Sergii Makarevych (@sermakarevich, building autonomous AI workers), 2026-10<br />
+配套教程：https://github.com/sermakarevich/tutorials/tree/main/graph_rag<br />
+评分：<strong>5/5</strong> — 极稀缺的"全链计时计数"级工程实测，非营销文。参考构建（41页survey→Neo4j图谱，本地27B模型）每一步都有真实耗时/调用数，再叠加5个独立benchmark交叉验证，结论形状高度一致。</p>
+
+<p class="meta-date">生成日期 2026-10-18</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p>一句话结论：<strong>图谱的收益是"按问题类型分账"的，不是系统级收益；而成本是一次性索引价+每文档全额重付的持续价+摘要即刻过期的维护价——三张账单决定了大多数"要不要上GraphRAG"的问题，答案是先测plain检索在自己问题上到底败在哪。</strong></p>
+<p>核心论点链：</p>
+<ol>
+<li><strong>GraphRAG = plain RAG + 4个模型重步骤</strong>（抽取/实体消解/社区摘要/查询时更富的prompt）。钱花在抽取和摘要两处——参考构建281次chat调用里146次是抽取、111次是社区报告。</li>
+<li><strong>图谱质量在抽取时就已封顶</strong>。HippoRAG作者对100次多跳检索失败的归因：48% NER错误+28% openIE三元组错误+24%图游走错误——<strong>3/4的失败发生在任何图算法运行之前</strong>。参考构建的图59%实体是人、EVALUATED_ON边只有1条（半数chunk是参考文献表）。</li>
+<li><strong>收益按题型分账</strong>（5个独立benchmark一致形状）：单事实问题plain检索打平或赢；多跳问题HippoRAG2式PageRank图赢约10分（干净基准）/更少（真实语料）；聚合/全集合问题社区摘要赢——这是plain检索任何预算都做不到的唯一地带。</li>
+<li><strong>成本阶梯每级翻倍</strong>：embeddings(12分钟) → RAPTOR摘要树(100分钟/1.7M tokens) → HippoRAG2(100分钟/9.2M) → LightRAG(235分钟/68.5M) → GraphRAG社区版(277分钟/115.5M)。全局搜索未封顶时<strong>每查询33-35万tokens</strong>（vector只要约1000）。</li>
+<li><strong>2026年的位移</strong>：结构没有消失，而是从"离线建图"搬到了"在线交互"——训练过的搜索agent（Graph-R1 F1 57.82 vs 46.19）正在闭合多跳差距；数据天然带结构时（工单/代码/产品）图谱免费且碾压（LinkedIn客服MRR 0.522→0.927，工单解决7h→5h live A/B）。</li>
+<li><strong>毒化面被图谱放大</strong>：一条被毒化的共享关系攻击成功率89.2%，每条毒化文本命中3.4个查询（普通chunk只有1）；唯一有效防御是边级provenance信任分（89.2%→45.7%）。</li>
+</ol>
+<h2 id="_2">内容整理：参考构建全链账单与六个层次</h2>
+<h3 id="41graphrag-survey-neo4j27b">参考构建（41页GraphRAG survey → Neo4j，本地27B，全程计数）</h3>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>实测</th>
+<th>产出</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分块</td>
+<td>400 tokens上限/60重叠</td>
+<td>146 chunks，46.6K tokens；21张图全部静默丢弃</td>
+</tr>
+<tr>
+<td>schema发现</td>
+<td>2次调用/90秒，人工2分钟修剪</td>
+<td>12实体类型→保留10</td>
+</tr>
+<tr>
+<td><strong>抽取</strong></td>
+<td><strong>146次调用/70分钟（28.8秒/chunk）</strong></td>
+<td>2334实体提及+1731关系提及</td>
+</tr>
+<tr>
+<td>写图+按名合并</td>
+<td>2秒，零模型调用</td>
+<td>1748实体+4324边（2334条是"chunk提及实体"引用边）</td>
+</tr>
+<tr>
+<td>实体消解</td>
+<td>三段式，22次judge调用</td>
+<td>1748→1731实体</td>
+</tr>
+<tr>
+<td>向量/全文索引</td>
+<td>14秒</td>
+<td>chunk检索0.2秒/实体检索0.08秒</td>
+</tr>
+<tr>
+<td>Leiden社区+报告</td>
+<td>111份报告/28-30分钟</td>
+<td>1133社区（顶层235）</td>
+</tr>
+<tr>
+<td><strong>首次构建合计</strong></td>
+<td><strong>约281 chat+172 embedding调用，约2小时</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>8题冒烟对比</strong>：vector忠实6/8、完整度4.25、1980 context tokens；graph忠实7/8、完整度4.88、2810 tokens（多读40%上下文）。vector两次失败都是比较型问题。作者诚实标注：8题+自答自评不支撑任何"graph胜N分"的结论。</p>
+<h3 id="level-1">Level 1 抽取——图为什么歪</h3>
+<ul>
+<li>实体分布：Person 1055 / Paper 193 / Method 143 / …；关系前三：AUTHORED_BY 1122、PROPOSED_BY 132、PUBLISHED_IN 115；<strong>EVALUATED_ON（schema设计的目标边）= 1条</strong>。</li>
+<li>覆盖率硬数据（Han et al. 2025）：gold答案实体在图中的比例 HotpotQA 65.8% / NQ 65.5%——<strong>1/3的答案连节点都不是</strong>，遍历不可能命中。换GPT-4o-mini→GPT-4o抽取，多跳分71.17→75.08（+4分，先于任何检索改动）。</li>
+<li>免模型抽取两族：LazyGraphRAG（名词短语共现+查询时才花模型钱，厂商自claim索引成本≈vector、为GraphRAG的0.1%）；Graphify（Tree-sitter解析代码结构+仅prose用模型）。</li>
+<li>MemGraphRAG（2026）：给抽取/冲突检测/冲突消解三个agent共享本体+事实+段落记忆，治"逐chunk抽取各自为政"的碎片化——平均生成准确率59.25%（比HippoRAG2高2.1分），思想比数字重要。</li>
+</ul>
+<h3 id="level-2">Level 2 实体消解——一个东西五个节点</h3>
+<ul>
+<li>三段式阶梯：规则（29对候选，抓缩写/大小写）→ embedding相似度（阈值0.92给276对几乎全假阳性；0.95给27对）→ 模型judge（301对判22对相同，1748→1731）。</li>
+<li><strong>embedding不能定案的证据</strong>：两条不同引用"Li et al. [90]"vs"[95]"相似度0.9988；两个不同的人"Jin"vs"Jiang"0.9882；而真重复对GNNs/GNN只有0.9536——共同作者的描述按构造就几乎相同。</li>
+<li>judge不一致：QFS三节点簇只合并了一对；解法是判后传递闭包（参考构建没做）。judge还必须有"永不合并清单"（Microsoft/NebulaGraph/Antgroup的GraphRAG是四个东西）。</li>
+<li><strong>更新时代价暴涨</strong>：冷加第二篇文档时judge调用235次（首次构建22次）——每个新实体都要对着全图判一遍；老-老配对永不重试。作者建议：定期全量消解排程化，而非逐更新。</li>
+</ul>
+<h3 id="level-3">Level 3 本地搜索——旋钮失效，预算说了算</h3>
+<ul>
+<li>七步本地搜索；参数扫描结论：seeds 4/8/16、hops 1/2基本无效（triple上限60+token预算在单跳后就绑定），<strong>只有token预算改变模型读到什么</strong>。枢纽节点一跳就超80行。</li>
+<li>HippoRAG用Personalized PageRank替代逐跳扩展：2WikiMultiHopQA recall@5 = 89.5 vs 最佳单步dense检索67.9；HippoRAG2五数据集均值78.2 vs NV-Embed-v2的73.4——<strong>赢10分的地方是需要两个段落的问题，赢1-2分的地方是单事实</strong>。</li>
+<li>混合证据（Han et al.）：MultiHop-RAG总准确率 plain 65.77 / graph本地71.17 / <strong>两套证据一起喂77.62</strong>；纯graph答对13.6%、纯plain答对11.6%——两种检索败在几乎等量的问题上，替换=交换失败集，合并=最优。</li>
+</ul>
+<h3 id="level-4">Level 4 社区与全集合问题</h3>
+<ul>
+<li>全集合问题（"这些论文的主要开放问题是什么"）本地搜索直接回答"不在文档中"——社区层就是为此存在。Leiden后对≥3成员的顶层社区写报告111份；全局搜索=map-reduce（top-8报告相似度选取，map打0-100相关分，reduce合并）。</li>
+<li>实测把"不在文档中"变成4条带引用的具体发现（map分60,60,10,10,10,0,0,0）。</li>
+<li><strong>两个文档 rarely 提到的坑</strong>：Leiden默认线程数下不确定（同图两跑241 vs 242社区；单线程+固定种子才可复现）；社区id按运行分配→重跑洗牌报告缓存，全管线重放只有29-55%缓存复用。</li>
+<li>成本参照：Microsoft GraphRAG全局搜索均值33.1万prompt tokens/查询（vector约900）；另一研究35.4万tokens+约9分钟/查询。<strong>便宜变体</strong>：封顶map（参考构建9调用）；RAPTOR摘要树（跳过实体，1942叶→194→19→2，215调用51分钟，每题1调用）；LazyGraphRAG（自claim查询成本降700倍）；root-only（原论文9-43倍token节省）。</li>
+</ul>
+<h3 id="level-5">Level 5 成本、更新与过期</h3>
+<ul>
+<li><strong>加第二篇（26页83 chunks）= 318调用/73分钟</strong>——比首篇更贵（每chunk口径），因为消解对着全图跑。移除第二篇=0.1秒零模型调用，但加-减非幂等（judge第二次判 differently，留1条边漂移）。</li>
+<li>过期的三种静默形态：74/235社区被标记stale但报告照读；老-老漏判对永不重试；<strong>模型升级一次性作废全部缓存</strong>（embedding/抽取/判断/报告）——模型变更=全量重建预案。</li>
+<li>LightRAG的增量设计（profile+图并集、无社区）更新只付新chunk抽取——Level 6显示它在质量上付出了什么。</li>
+</ul>
+<h3 id="level-6">Level 6 评估——本次实验里图谱输了</h3>
+<p>12篇检索主题论文/22.6万tokens/27题定型（8单跳/7多跳/3比较/5全局/4不可答），gold quote+27B judge，同生成器同judge。三个锚点：无检索0.174 / plain top5 0.435 / oracle贴金句0.543；调优过的plain（混合检索+reranker）0.674-0.739。</p>
+<table>
+<thead>
+<tr>
+<th>系统</th>
+<th>正确率</th>
+<th>关键诊断</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>LightRAG</strong>（5种模式）</td>
+<td><strong>0.065-0.130，低于无检索锚点</strong></td>
+<td>检索命中率@5恒为0.087；<strong>faithfulness 0.966-0.979全场最高</strong>——对空上下文的忠实，模型诚实弃权被judge奖励</td>
+</tr>
+<tr>
+<td>RAPTOR摘要树</td>
+<td>0.522（top10）</td>
+<td>全局题0.500并列全场最佳；多跳0.429输给plain最佳0.571；索引时间60倍于plain</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>诊断利器是<strong>quote-in-context检查</strong>：47条gold quote只有17条出现在naive模式上下文中——图模式返回的实体关系长prose挤掉了chunk本身。</li>
+<li>5个独立benchmark（GraphRAG-Bench/When-to-Use/Han/WildGraphBench/Do-We-Still-Need）数字不同形状一致：单事实plain打平或赢；医疗语料Microsoft GraphRAG事实检索38.63 vs plain 63.72（输25分）；多跳图赢（+27.23分均值）；LightRAG最不稳定（一个语料最佳、另一个低于无检索）。</li>
+<li>自建评估五件套：题型分类打分；保留无检索锚点；<strong>检索与回答分开计分（gold quote是否在返回上下文中）</strong>；模型judge时交换答案顺序防位置偏；ARES用约150条人工标签校正judge。</li>
+</ul>
+<h3 id="level-7">Level 7 何时不上图，以及替代品</h3>
+<ul>
+<li>Agentic search闭合差距：多跳上graph领先dense 27.23分；prompt驱动的GraphSearch agent 26.59分（几乎没闭合）；<strong>训练的agent 3B→7B把差距14.70→9.75</strong>。作者结论：结构从离线建图转移到在线交互，图在查询量足够摊销建图成本时仍赢多跳。</li>
+<li>Graph-R1（7B，超图上RL训练多轮查询）：六套基准F1均值57.82 vs 同尺寸最佳平坦检索训练agent 46.19；每题2.3-2.5轮。PathRouter教训：只奖励最终答案时agent以0.028的证据重叠答题（=背答案），奖励检索路径才修复。</li>
+<li>GraphScout（4B训练Neo4j+Cypher）：工具调用失败率61-72%→1.3-6.6%；对GPT-4o级prompted agent平均好16.7%。但schema-agnostic研究给出反例：弱工具调用骨干下agent输给"把schema全贴进prompt"——<strong>先看骨干的工具调用失败率再谈图agent</strong>。</li>
+<li>引用路径而非节点：visited实体10-16个/题，cited约2个；删掉visited-uncited实体准确率76→68——引用清单低估了真实使用面，审计要记遍历日志。</li>
+<li>LinkedIn客服（数据天然树+关联工单，图谱查询生成+vector兜底）：MRR 0.522→0.927，recall@3 0.640→1.000，<strong>live A/B工单中位解决7h→5h</strong>。代码图（Tree-sitter确定性抽取）与agent记忆（SodaMem/HiGram时间事实图，写入时标记被取代事实）同逻辑：结构免费时图是无争议赢家。</li>
+<li>毒化（GraphRAG under Fire）：旧文本注入攻击对图管线掉10+分成功率的背景下，<strong>毒化一条共享关系达89.2%成功率</strong>（每条毒文本命中3.4查询）；防御里只有provenance信任分有效（→45.7%），改写/困惑度过滤/一致性检查约0-10分。</li>
+</ul>
+<h3 id="8">决策指南（原文8条，浓缩）</h3>
+<table>
+<thead>
+<tr>
+<th>你的情况</th>
+<th>用什么</th>
+<th>验收查什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>问题多为prose单事实</td>
+<td>混合检索+reranker，无图</td>
+<td>单跳&gt;0.8且无他型需求即停</td>
+</tr>
+<tr>
+<td>需要2-3个跨文档事实</td>
+<td>HippoRAG2或手搓本地搜索，<strong>与vector证据合并喂模型</strong></td>
+<td>多跳正确率+gold-quote命中率，同token预算对拍</td>
+</tr>
+<tr>
+<td>问集合整体</td>
+<td>RAPTOR摘要树优先，社区报告封顶map次之</td>
+<td>全局题正确率+每查询tokens+摘要是否过期</td>
+</tr>
+<tr>
+<td>语料每天变</td>
+<td>profile+图并集无社区，或无图</td>
+<td>每新增文档模型调用数+stale社区数，重建排程化</td>
+</tr>
+<tr>
+<td>数据天然结构化</td>
+<td>原生结构即图，查询生成+vector兜底</td>
+<td>检索MRR对文本基线+业务指标live A/B</td>
+</tr>
+<tr>
+<td>文档来自组织外</td>
+<td>每条边先上provenance+信任分</td>
+<td>单关系毒化的攻击成功率</td>
+</tr>
+<tr>
+<td>想用agent替代批量索引</td>
+<td>骨干工具调用失败率&lt;几个百分点才上训练图agent</td>
+<td>证据路径重叠而非仅答案准确率</td>
+</tr>
+<tr>
+<td>看了个很棒的demo</td>
+<td>用demo自己的语料+你的10个定型问题</td>
+<td>关系类型直方图——你要的那条边存在吗</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">关联分析</h2>
+<p>与本地知识体系的对接点：</p>
+<ul>
+<li><strong><code>[[2026-06-01-知识图谱与LLM从向量库到推理增强]]</code></strong>：那篇讲"为什么图谱能补向量检索"，本篇用实测账单给出"什么时候不值得"——两篇正反合璧，覆盖决策两端。</li>
+<li><strong><code>[[2026-06-10-知识库分层编排-从RAG到Agent-native]]</code></strong>：分层编排路线与本篇Level 7"结构搬到在线交互"互相印证——离线重索引让位于agent按需检索。</li>
+<li><strong><code>[[2026-05-25-zep-graphiti-temporal-knowledge-graph]]</code></strong>：Zep/Graphiti正是文中点名的temporal graph agent memory产品线；本篇补上了SodaMem/HiGram 2026新进展与"写入时标记被取代事实"的设计模式。</li>
+<li><strong><code>[[2026-07-08-AI-Agent记忆自进化架构2026-EvolveMem-MemRL-统一分类法]]</code></strong>：记忆自进化分类法与本文agent memory段落同源；本篇新增硬约束——记忆图谱的增量更新成本随图规模增长（新实体对全图judge）。</li>
+<li>对 Hermes 自身架构的直接镜子：本地 <code>rag-index-rebuild</code>（关键词+语义向量双索引）正处在成本阶梯最底层，方向正确；<code>knowledge-query</code> 统一入口对应文中"按题型路由"的决策指南；三级记忆架构与MemGraphRAG"抽取/冲突检测/消解共享内存"三agent设计同构。</li>
+</ul>
+<h2 id="_4">查询拓展</h2>
+<p>后续可深挖的方向：</p>
+<ol>
+<li><strong>HippoRAG 2 的查询侧改造</strong>（问题链到三元组而非实体名）——比索引侧消解更便宜的重复实体治理思路，可对比本地 MemoryGraph 的实体链接实现。</li>
+<li><strong>LazyGraphRAG 的 noun-phrase 图</strong>——索引零模型调用对个人知识库（Bookmarks 3000+笔记）是否够用，值得小规模复现。</li>
+<li><strong>quote-in-context 检查</strong>移植到本地 <code>notes-eval-gate</code>：验笔记质量时检查"引用的原文是否真的出现在抽取上下文里"，防faithfulness型假阳性。</li>
+<li><strong>PathRouter 的证据重叠奖励</strong>——与RL训练里"只奖最终结果=策略作弊"同构，DUCK训练的reward设计可借鉴（奖励轨迹质量而非只奖励终态）。</li>
+<li><strong>边级 provenance 信任分</strong>——多源笔记吸收（web/公众号/X）天然是"不可信文档进图"场景，值得给 <code>bookmark-reader</code> 的信源标注加信任权重。</li>
+</ol>
+<h2 id="_5">趋势判断</h2>
+<ol>
+<li><strong>"图 or 向量"是伪问题，2026年的真问题是"离线结构 or 在线交互"</strong>。训练的搜索agent正在把多跳差距从27分压到10分以内，且不需要建图摊销——对查询量小、语料常变的场景（个人知识库、多数企业内部场景），agentic搜索+plain检索会是默认答案。</li>
+<li><strong>抽取模型成为新瓶颈位</strong>。3/4失败发生在图算法之前+换强抽取模型白拿4分——图谱质量的天花板是"你能负担得起调用146次的那个模型"。本地小模型抽取的图，质量上限被成本直接锁死。</li>
+<li><strong>摘要树(RAPTOR)是社区图的性价比替身</strong>。赢全局问题、每题1调用、无实体消解负担——当问题是"主题型"而非"实体型"时，摘要树是更好的默认。</li>
+<li><strong>agent记忆是图谱的下一主场</strong>。prose问答里图谱勉强及格，但记忆天然带结构（时间/因果/取代关系）——SodaMem/HiGram/MemGraphRAG密集出现在2026，图谱从"检索增强"迁移到"记忆组织"。</li>
+<li><strong>毒化经济学会反过来驱动provenance成为标配</strong>。一条毒边命中3.4个查询的放大效应，使多源开放语料的图检索必须带边级信任分——这会像PageRank当年的trust propagation一样成为基础设施件。</li>
+</ol>
+<h2 id="_6">指南分析</h2>
+<p>可操作的落地清单（按优先级）：</p>
+<ol>
+<li><strong>任何GraphRAG提案先要三张表</strong>：关系类型直方图（你要的边存在吗）、每文档增量成本（≈首建成本）、stale社区比例随时间曲线。拿不出就按"未测量"处理。</li>
+<li><strong>评估协议最小集</strong>：题型分类+无检索锚点+gold-quote检索命中分开计分。faithfulness单独看会被"诚实弃权"骗——这是本次实验最贵的教训。</li>
+<li><strong>合并优于替换</strong>：graph证据与vector证据一起喂（77.62 &gt; 71.17 &gt; 65.77），两套检索败在几乎不相交的问题集上。</li>
+<li><strong>排程化重建</strong>：社区重建按预算排期（stale占比阈值触发），模型升级预案=全量重建，prompt变更必须带版本号。</li>
+<li><strong>消解三件套</strong>：判后传递闭包+永不合并清单+定期全量pass（老-老对补判）。</li>
+<li><strong>数据天然结构化时不要犹豫</strong>：代码/工单/产品/事件直接上图，抽取零成本，收益live A/B级。</li>
+</ol>
+<h2 id="_7">拓展应用推荐</h2>
+<p>对我们系统的具体应用：</p>
+<ul>
+<li><strong>短期（直接可用）</strong>：① <code>notes-eval-gate</code> 加入 quote-in-context 检查项（防faithfulness假阳性）；② <code>bookmark-reader</code> 信源加provenance标注字段（X/公众号/博客分权）；③ 三级记忆的L3 topics索引维持现有关键词+向量方案，<strong>不引入实体图谱</strong>——本篇实测证明该场景查询量摊销不了建图成本。</li>
+<li><strong>中期（值得试验）</strong>：① LazyGraphRAG式noun-phrase共现图在Bookmarks语料上小规模试跑（索引零LLM成本是关键卖点）；② MemoryGraph MCP 的实体消解补"传递闭包+永不合并清单"两个缺口。</li>
+<li><strong>长期（架构启示）</strong>：① agent记忆走temporal fact graph路线（写入时标记取代关系），对齐SodaMem/HiGram；② RL训练的奖励设计引入"轨迹证据重叠"项，防策略背答案（PathRouter教训，与本地RL验收"真值指标非代理指标"铁律同构）。</li>
+</ul>
+<p>→ 相关：2026-06-01-知识图谱与LLM从向量库到推理增强.md<br />
+→ 相关：2026-06-10-知识库分层编排-从RAG到Agent-native.md<br />
+→ 相关：2026-05-25-zep-graphiti-temporal-knowledge-graph.md<br />
+→ 相关：2026-07-08-AI-Agent记忆自进化架构2026-EvolveMem-MemRL-统一分类法.md</p>
+</body>
+</html>
