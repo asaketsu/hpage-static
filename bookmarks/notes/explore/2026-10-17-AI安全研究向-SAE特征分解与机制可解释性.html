@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI安全研究向-SAE特征分解与机制可解释性</title>
+
+<meta property="og:title" content="AI安全研究向-SAE特征分解与机制可解释性" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="sae-scaling-monosemanticity-turn-averaged-sae">SAE 特征分解与机制可解释性：从 Scaling Monosemanticity 到 Turn-Averaged SAE</h1>
+<blockquote>
+<p>探索日期：2026-10-17 | 兴趣等级：L2 | 来源数量：6（Anthropic Circuits 2026-06 + Scaling Monosemanticity + arXiv 2503.05613 综述 + arXiv 2606.28548 + SAELens + OpenAI k-SAE）| 前序笔记：AI安全(研究向)领域首篇（机制可解释性方向）</p>
+
+<p class="meta-date">生成日期 2026-10-17</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>稀疏自编码器（SAE）是当前机制可解释性的核心工具：在 LLM 残差流上训练一个"过完备字典"（d_sae &gt;&gt; d_model），把多义神经元激活分解为稀疏、单义、可解释的特征。2023 Anthropic《Towards Monosemanticity》证明可行 → 2024《Scaling Monosemanticity》在 Claude 3 Sonnet 上用 scaling law 指导 SAE 设计并发现跨语言/抽象概念特征 → 2026-06 Circuits 更新推出 <strong>Turn-Averaged SAE</strong>（按对话轮平均残差流再训练 SAE），把安全审计需要解读的激活量从 n_tokens × L0 压到 L0，且特征更聚焦高层语义（覆盖度指标 77% 优于 per-token）。SAE 已从研究玩具变成安全工程的生产工具（Opus 4.6 系统卡用它做 contrastive prompt 特征隔离）。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1-superposition">1. 原理：为什么必须"稀疏"——叠加（superposition）问题</h3>
+<ul>
+<li>单个神经元是多义的：模型把比神经元更多的特征"叠放"在激活空间里（superposition），直接读神经元读不出概念</li>
+<li>SAE 的解法：训练字典把密集激活重建为稀疏线性组合</li>
+</ul>
+<pre><code>Input(d_model) → Encoder → 稀疏特征(d_sae &gt;&gt; d_model) → Decoder → 重建(d_model)
+                    ↑ L1 稀疏惩罚（只许少量特征激活）
+
+L(x) = ‖x − x̂‖² + α·‖c‖₁        # α≈8.6e-4，ReLU 保证非负激活
+</code></pre>
+<ul>
+<li>人工评估：<strong>70% 的 SAE 特征真正可解释</strong>（Anthropic 口径）；OpenAI 用 k-sparse（硬性只许 top-k 激活）直接控制稀疏度，简化调参</li>
+<li>挂载点选残差流中层（信号经层层直通保留最好），不是输出层</li>
+</ul>
+<h3 id="2-scaling-monosemanticity2024-claude-3-sonnet">2. Scaling Monosemanticity（2024）：从玩具到 Claude 3 Sonnet</h3>
+<ul>
+<li>用 scaling law 预测"多少字典大小/多少训练量换来多少特征质量"，避免盲目放大算力</li>
+<li>在生产级模型上抽到跨语言特征（中英同一概念激活同一特征）、抽象概念（代码漏洞、情感、欺骗倾向）——特征不是低层语法碎片</li>
+<li>从这里开始 SAE 进入安全场景：找"欺骗/奉承/危险知识"特征 → 下游做探针监测、归因图</li>
+</ul>
+<h3 id="3-turn-averaged-sae2026-06">3. Turn-Averaged SAE（2026-06 最新）：解决"激活爆炸+无聊特征"两大工程痛点</h3>
+<ul>
+<li>痛点：①SAE 按 token 位置出激活，一段短转录产生数千~百万级激活解读不过来；②大量特征是"无聊"的（句法/具体用词），与安全无关</li>
+<li>做法：<strong>把一个 Human/Assistant 轮内全部 token 的残差流平均</strong>，再训 SAE——解读量从 n_tokens × L0 降到 L0（长轮可差百倍）</li>
+<li>实证（Qwen-2.5-7B-Instruct @ LMSYS-Chat-1M 中层）："100 以内不含 9 的最大数"答错（答 95，正解 88）——per-token SAE 最高激活特征全是"数字/算术/进制"，turn-averaged 直接命中"<strong>数谜题中的错误答案</strong>"特征；外推到训练均值 150× 长度的轮仍有效</li>
+<li>Sonnet 4.6 当裁判的双指标：判别力 74% vs 95%（per-token 含原句短语，正常）；<strong>覆盖度偏好 77% 选 turn-averaged</strong>（描述"这轮在干什么"更准）</li>
+<li>配套产出：嵌套 SAE（同模型容纳两种特征）、接归因图（14 轮对话电路级追踪）、对比提示管线定位安全相关人格特征</li>
+<li>论文：arXiv:2606.28548</li>
+</ul>
+<h3 id="4">4. 工具链与评估</h3>
+<ul>
+<li><strong>SAELens</strong>（jbloomAus，1.1k+ stars）：训练+分析 SAE 主流库，直接消费 HF 模型激活</li>
+<li>自动评估特征单义性：RAVEL / Automated Interpretability（用 LLM 生成并打分特征描述），替代昂贵人工标注</li>
+<li>已知短板：重构损失与可解释性不总相关；特征仍可能"看着单义实则混杂"；L1 系数敏感</li>
+</ul>
+<h2 id="_3">对现有工作的价值（关联分析）</h2>
+<ul>
+<li><strong>AI 安全(研究向)领域地基</strong>：本域后续关键词（monosemanticity / scalable oversight / 危险能力评估）全部以 SAE 为基础设施——evaluation awareness（模型是否知道自己在被考）特征就是 SAE 找出来的，与 benchmark-selfreport-audit 技能的"自评可信度"主题直接勾连</li>
+<li><strong>对 Agent 系统的自审借鉴</strong>：Hermes 自我进化链的 Verifier 层目前只有规则校验——SAE 式"分解-定位"思路可迁移为：把失败会话的决策轨迹分解为特征级归因（哪类任务/哪类工具调用模式诱发错误），而非整体归因</li>
+<li><strong>content-judge / paper-review 技能</strong>：Turn-Averaged 的"聚合粒度换语义纯度"思想适用——评估长文档时按段落聚合表示再判分，比逐 token 判分更贴高层属性</li>
+</ul>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li>若做 AI 安全方向论文选题（周论文计划），Turn-Averaged SAE（2606.28548）是 2026-06 的新鲜空白区：中文模型的 turn-averaged 特征、多轮 Agent 会话（非聊天）的轮平均 SAE 都未见系统工作</li>
+<li>SAELens + 开源 7B 模型是低成本复现路径（单卡可训），符合"本地摸索 best 再上大卡"的训练边界</li>
+<li>读安全评测报告（系统卡）时注意"contrastive prompt + SAE 特征隔离"已成 Anthropic 标配方法——评估厂商自报数字时把这条列入方法论核查项</li>
+</ol>
+<h2 id="_4">关键风险与盲点</h2>
+<ul>
+<li>"70% 可解释"是 Anthropic 自家人工评估，方法论存在确认偏倚风险（来源级别：官方自评）</li>
+<li>Turn-Averaged 结果以"lab meeting 分享"定位发布，官方自述"非成熟论文"，数字可能变动（来源级别：官方预印本）</li>
+<li>SAE 特征≠因果：激活高不等于因果驱动，干预实验（ablation/steering）才是因果证据——综述 2503.05613 明确区分相关性分析与因果验证</li>
+</ul>
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<p>SAE=残差流上的过完备稀疏字典：L=MSE+α·‖c‖₁，d_sae&gt;&gt;d_model，70% 特征可解释。演进线：2023 玩具模型可行 → 2024 Sonnet 规模化(scaling law 指导+跨语言抽象特征) → 2026-06 Turn-Averaged(按轮平均残差流，解读量 n_tokens×L0→L0，覆盖度77%胜出，判别力74%让位per-token95%)。挂载点=中层残差流；OpenAI 变体=k-sparse 硬稀疏。工具=SAELens。因果性要靠干预实验，激活≠因果。安全应用已产品化：Opus 4.6 系统卡 contrastive prompt 特征隔离、evaluation awareness/distress 特征监测。</p>
+</blockquote>
+<h2 id="_6">来源列表</h2>
+<ol>
+<li>Anthropic Circuits — Updates June 2026: Turn-Averaged Sparse Autoencoders（transformer-circuits.pub/2026/june-update）</li>
+<li>Anthropic — Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet（transformer-circuits.pub/2024/scaling-monosemanticity）</li>
+<li>A Survey on Sparse Autoencoders（arXiv:2503.05613v3）</li>
+<li>Turn-Averaged SAEs 论文（arXiv:2606.28548）</li>
+<li>SAELens（github.com/jbloomAus/SAELens）+ Hermes 文档 saelens 条目</li>
+<li>OpenAI — Extracting Concepts from GPT-4（k-sparse autoencoder）；Arize 对读材料</li>
+</ol>
+</body>
+</html>
