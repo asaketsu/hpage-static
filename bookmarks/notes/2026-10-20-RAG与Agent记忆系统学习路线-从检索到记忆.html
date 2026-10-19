@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG与Agent记忆系统学习路线-从检索到记忆</title>
+
+<meta property="og:title" content="RAG与Agent记忆系统学习路线-从检索到记忆" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rag-agent">RAG 与 Agent 记忆系统学习路线：从「检索」到「记忆」</h1>
+<p><code>#RAG</code> <code>#Agent</code> <code>#记忆系统</code> <code>#向量检索</code> <code>#学习路线</code> <code>#AI-Infra</code></p>
+<blockquote>
+<p>来源：X 推文 @Jerry_fsy（Jerry Fang，智能驾驶5年 / DevOps 高级工程师，已落地 2 个生产级 AI Agent）<br />
+链接：https://x.com/Jerry_fsy/status/2112149107863392401<br />
+日期：2026-10-19 | 数据：164 赞 / 8632 浏览 / 6 回复</p>
+
+<p class="meta-date">生成日期 2026-10-20</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p>这是一份<strong>面向落地与面试的 RAG + Agent 记忆系统 10 步学习路线</strong>，作者的核心定调有两点：</p>
+<ol>
+<li><strong>RAG 没有过时</strong>——它是「上下文管理策略」而非临时技术，现实业务大量将 Agent 与 RAG 结合使用。</li>
+<li><strong>RAG 落地的难点不在"向量库+检索"这个骨架，而在切块、召回、排序、记忆管理这些细节</strong>。</li>
+</ol>
+<p>路线结构 = 前半程（1-7 步）讲检索链路：基础→文档→分块→Embedding→向量库→混合检索 Rerank→索引更新；后半程（8-10 步）讲记忆链路：短期记忆（Context 管理）→长期记忆→记忆写入/更新/遗忘。一句话主线：<strong>"检索不是搜到就行，而是搜到对的"；记忆不是存了就行，而是存得对、更新得对、忘得对。</strong></p>
+<h2 id="10">内容整理：10 步路线拆解</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>阶段</th>
+<th>核心知识点</th>
+<th>关键资源</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>RAG 基础</td>
+<td>文档加载→分块→embedding→向量存储→检索→注入上下文全流程</td>
+<td>Lewis 2020 原始论文（arXiv:2005.11401），带三问读：为什么需要 RAG？Retriever+Generator 怎么结合？实验如何验证有效？</td>
+</tr>
+<tr>
+<td>2</td>
+<td>文档检索</td>
+<td>什么文档格式适合 RAG；<strong>为什么代码检索不适合 RAG</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>3</td>
+<td>分块</td>
+<td>固定大小分块 / 递归分块 / 语义分块三大策略</td>
+<td>premai.io 2026 分块策略 benchmark（rag-chunking-strategies）</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Embedding 与向量检索</td>
+<td>Embedding 模型、余弦相似度、ANN 近似检索（HNSW 索引）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>5</td>
+<td>向量库选型</td>
+<td>sqlite-vec / Milvus / pgvector 的区别与场景适配</td>
+<td>—</td>
+</tr>
+<tr>
+<td>6</td>
+<td>混合检索与 Rerank</td>
+<td><strong>语义相似 ≠ 任务相关</strong>：向量检索 + BM25 关键词检索，再用 Cross-Encoder Reranker 重排</td>
+<td>—</td>
+</tr>
+<tr>
+<td>7</td>
+<td>索引更新</td>
+<td>全量重建 vs 增量更新两种策略及适用场景</td>
+<td>—</td>
+</tr>
+<tr>
+<td>8</td>
+<td>短期记忆</td>
+<td>Context 管理：对话历史裁剪、摘要压缩、有限窗口下保留关键信息</td>
+<td>—</td>
+</tr>
+<tr>
+<td>9</td>
+<td>长期记忆</td>
+<td>跨 Session 保存用户偏好、事实、经验</td>
+<td>—</td>
+</tr>
+<tr>
+<td>10</td>
+<td>记忆写入/更新/遗忘</td>
+<td>何时写入、如何处理冲突与过时信息</td>
+<td>MemGPT 论文（arXiv:2304.03442）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>作者的三条隐性观点</strong>（路线背后 的判断）：<br />
+- 面试与实战都绕不开 RAG + 记忆——说明这已是 Agent 工程师的基础能力项而非加分项。<br />
+- 论文阅读要带问题读（三问法），反对无目的通读。<br />
+- 工具选型强调"当前场景哪款最合适"，反对默认选大而全（Milvus）或默认最简（sqlite-vec）。</p>
+<h2 id="_2">关联分析</h2>
+<p><strong>与已有笔记的关系</strong>：<br />
+- [[2026-08-18-Agent记忆系统2026综述-write-manage-read闭环与记忆即RL策略转向]]：那篇讲记忆系统的<strong>研究前沿</strong>（write-manage-read 闭环、记忆即 RL 策略），本篇是<strong>工程入门路线</strong>——两者是"前沿 vs 路线图"的互补关系。本篇第 10 步（写入/更新/遗忘）正是那篇 write-manage-read 闭环的落地视角。<br />
+- [[2026-09-28-MCP生态治理分叉与OKF记忆标准]]：OKF 记忆标准对应本篇第 9 步长期记忆的标准化方向。</p>
+<p><strong>对我们系统的对照（Hermes 自身就是活教材）</strong>：<br />
+| 路线知识点 | 我们系统的对应实现 | 差距/印证 |<br />
+|-----------|------------------|----------|<br />
+| 混合检索 + Rerank | hybrid-search skill（semantic+keyword+entity 三路融合评分，Mem0 2026 架构） | 印证第 6 步：单路向量检索不够 |<br />
+| 短期记忆 | L2 short-term/（7天过期自动注入） | 对话历史裁剪我们是靠注入预算控制的 |<br />
+| 长期记忆 | L1 MEMORY.md 铁律 + L3 topics/ 索引 | 对应第 9 步跨 Session 保存 |<br />
+| 记忆写入/更新/遗忘 | memory 工具 + memory-refiner skill + 定期清理 cron | 对应第 10 步，但"遗忘"仍是弱项 |<br />
+| 向量库 | RAG 索引（rag-index-rebuild skill） | 本机轻量场景，选型逻辑一致 |<br />
+| 分块 | 笔记系统按文档/标题自然分块 | 语义分块尚未引入 |</p>
+<p><strong>直接可吸收的判断</strong>："语义相似不等于任务相关"与 hybrid-search 的三路评分设计完全同构——这条可视为外部工程师对同一问题的独立验证。</p>
+<h2 id="_3">查询拓展</h2>
+<p>按本路线可延伸的检索方向：<br />
+- <strong>代码检索不适合 RAG 的原因</strong>：应查 code retrieval 领域的树/AST 索引方案（如 tree-sitter 语义切分），验证是否与作者判断一致。<br />
+- <strong>2026 分块 benchmark</strong>（premai.io）：值得抓全文，看固定/递归/语义分块在什么文档类型上分差最大。<br />
+- <strong>MemGPT（2304.03442）</strong>：LLM 当 OS 主内存管理器的思想源头，与我们三级记忆架构可对拍。<br />
+- <strong>HNSW 原理</strong>： ANN 检索的工业默认，值得补一篇原理笔记（跳表图结构 vs 倒排）。<br />
+- <strong>向量库选型三件套对比</strong>：sqlite-vec（嵌入式/单机）、pgvector（已有 Postgres 栈）、Milvus（大规模分布式）——可整理成本机场景选型表。</p>
+<h2 id="_4">趋势判断</h2>
+<ol>
+<li><strong>RAG 正被重新定义为"上下文管理策略"而非独立技术</strong>——与 Agent 深度绑定后，"Agentic RAG"（检索作为 Agent 的工具调用之一）是主流形态，纯管道式 RAG 才是被淘汰的部分。作者说"RAG 落后论"是误读，这个判断与业界 2026 共识一致。</li>
+<li><strong>记忆系统正在从"存储问题"转向"治理问题"</strong>：写入时机、冲突处理、遗忘机制（第 10 步）成为新焦点——与 2026-08-18 综述的"记忆即 RL 策略"判断同向。</li>
+<li><strong>混合检索已是标配而非优化项</strong>：向量+BM25+Rerank 三层架构在面试题里出现，说明已从论文走进工程常识。</li>
+<li><strong>学习路线类内容本身是信号</strong>：DevOps 工程师转型 Agent 工程的知识需求大，RAG+记忆是转型最短路径。</li>
+</ol>
+<h2 id="_5">指南分析</h2>
+<p>如果想按此路线自学，最优执行顺序建议：</p>
+<ul>
+<li><strong>第 1 周（1-3 步）</strong>：读 Lewis 2020 论文（只读 Intro/Methods/Experiments 三节）+ 手跑一次固定分块 vs 递归分块对比，建立直觉。</li>
+<li><strong>第 2 周（4-7 步）</strong>：用 sqlite-vec 起步搭最小 RAG，再叠加 BM25 混合检索 + 一个开源 Reranker（如 bge-reranker），实测召回质量差异。</li>
+<li><strong>第 3 周（8-10 步）</strong>：读 MemGPT 论文，给自己的 Agent 加一层长期记忆（写入条件 + 冲突更新 + 过期遗忘三件套）。</li>
+<li><strong>面试准备重点</strong>：第 2 步（代码检索为何不适合 RAG）和第 6 步（语义相似≠任务相关）是高频区分度问题，值得准备好答案。</li>
+</ul>
+<h2 id="_6">拓展应用推荐</h2>
+<ol>
+<li><strong>对 Hermes 记忆系统的改进参考</strong>：第 10 步"遗忘机制"是我们 L1/L2/L3 架构的短板——可评估给 L2 short-term 增加"引用频率加权"的留存策略（被高频引用的短期记忆晋升 L3）。</li>
+<li><strong>笔记 RAG 索引升级</strong>：rag-index-rebuild 可引入混合检索（关键词+语义双路），对应第 6 步——检索准确率预期提升明显。</li>
+<li><strong>分块策略优化</strong>：对结构化笔记（7 模块格式）可按模块标题做语义分块而非整篇切块，检索粒度更贴合查询意图。</li>
+<li><strong>面试/分享素材</strong>：这份路线本身可作为团队内 Agent 技术分享的骨架，每步配一个我们系统的真实案例。</li>
+</ol>
+<hr />
+<p>→ 相关：2026-08-18-Agent记忆系统2026综述-write-manage-read闭环与记忆即RL策略转向.md<br />
+→ 相关：2026-09-28-MCP生态治理分叉与OKF记忆标准.md</p>
+</body>
+</html>
