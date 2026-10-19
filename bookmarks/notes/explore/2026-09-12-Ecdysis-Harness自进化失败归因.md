@@ -244,3 +244,10 @@ Hermes cron job 失败时，当前只有 watchdog 做简单重试。可引入 FD
 - 参考 Ecdysis 的批量聚合 + 严格改进接受协议
 - 在 Hermes skill 进化中引入"跨任务失败聚合"而非"逐失败修改"
 - 用 1/4 精选训练数据替代全量，降低进化成本
+
+
+## 相关笔记
+
+- [Ecdysis论文深度版-FDCR四角色拆解](../2026-09-12-Ecdysis论文-模型特异迁就vs-harness级修复-跨任务失败聚合与FDCR四角色拆解.md) — 同源深度版笔记，含完整实验表
+- [自进化Harness与记忆-三种写法](../2026-09-11-自进化Harness与记忆-三种写的不可混同-LiveSWE-DGM-SWE-Exp实证拆解.md) — 三种写法对照
+- [SoL-Pi英伟达自我优化Harness](../2026-09-11-SoL-Pi英伟达开源自我优化Harness-四大机制与152选4的RSI流水线拆解.md) — RSI优化流水线

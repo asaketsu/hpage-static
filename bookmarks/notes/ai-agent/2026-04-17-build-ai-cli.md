@@ -1,0 +1,68 @@
+　　
+# build-ai-cli
+
+## 项目信息
+构型类型：未知
+功能标签：AI
+
+## 项目简介
+　　# 从零构建 AI CLI 工具 — 架构方法论与实现参考 　　这是一份从生产级 agentic CLI 系统中提炼的架构方法论，可用于快速构建类似 Claude Code / OpenClaw 的 AI 命令行工具。原始资料来源于对 Claude Code 源码的深度逆向分析——该源码包含 52 万行 TypeScript 代码、1884 个文件、3280+ commits——从中提炼出了一套可复用的五层架构体系、核心循环设计、权限纵深防御、渐进式压缩管道等关键工程模式。核心理念在于：一个成熟的 AI CLI 工具中，98.4% 的代码是运营基础设施，只有 1.6% 是 AI 决策逻辑。理解这一点对于正确分配工程资源至关重要。 **来源**：[雨哥向前冲 推荐](https://x.com/i/status/2050199597113360755) **代码仓库**：[chainlesschain/chainlesschain](https://github.com/chainlesschain/chainlesschain) **关联论文**：MBZUAI 研究论文 (arXi
+
+
+## 相关笔记
+- [AutoClaw-自进化与Skill商店](../2026-04-17-AutoClaw-自进化与Skill商店.md)
+- [hack-skills-给AI装上黑客大脑](../2026-04-17-hack-skills-给AI装上黑客大脑.md)
+- [Lima轻量级虚拟机管理工具](../2026-04-22-Lima轻量级虚拟机管理工具.md)
+- [歸藏PPT-Skill-电子杂志风网页演示](../2026-04-24-歸藏PPT-Skill-电子杂志风网页演示.md)
+- [竞品吸收_OpenCLI](../2026-04-28-竞品吸收_OpenCLI.md)
+- [竞品吸收笔记-khazix-skills](../2026-04-29-竞品吸收笔记-khazix-skills.md)
+- [SkillClaw-analysis](../2026-05-02-SkillClaw-analysis.md)
+- [从零构建AI-CLI方法论-ChainlessChain](../2026-05-04-从零构建AI-CLI方法论-ChainlessChain.md)
+- [Claude创意连接器9大工具-Blender-MCP深度解析](../2026-05-05-Claude创意连接器9大工具-Blender-MCP深度解析.md)
+- [github-ai-trending-mattpocock-skills](../2026-05-05-github-ai-trending-mattpocock-skills.md)
+- [lewislulu-html-ppt-skill-analysis](../2026-05-06-lewislulu-html-ppt-skill-analysis.md)
+- [addyosmani-agent-skills生产级Agent技能包](../2026-05-08-addyosmani-agent-skills生产级Agent技能包.md)
+- [Claude-Code工程师放弃Markdown转HTML](../2026-05-09-Claude-Code工程师放弃Markdown转HTML.md)
+- [OfficeCLI-AI-Agent的Office工具](../2026-05-09-OfficeCLI-AI-Agent的Office工具.md)
+- [Skill盈利死结与Plugin演进](../2026-05-09-Skill盈利死结与Plugin演进.md)
+- [skill-building-invoice-automation](../2026-05-10-skill-building-invoice-automation.md)
+- [softwarecopyright-skill-analysis](../2026-05-10-softwarecopyright-skill-analysis.md)
+- [nTop-Automate-CLI-完整测试文档](../2026-05-12-nTop-Automate-CLI-完整测试文档.md)
+- [中文学术去AI味10步Skill框架](../2026-05-12-中文学术去AI味10步Skill框架.md)
+- [30个网络抓包调试工具速查](../2026-05-14-30个网络抓包调试工具速查.md)
+- [HTML-Anything-Agent驱动HTML编辑器](../2026-05-14-HTML-Anything-Agent驱动HTML编辑器.md)
+- [SkillFactory-测试驱动Skill生成工厂](../2026-05-14-SkillFactory-测试驱动Skill生成工厂.md)
+- [Supertonic-闪电般本地TTS](../2026-05-14-Supertonic-闪电般本地TTS.md)
+- [数据目录工具全景指南](../2026-05-15-数据目录工具全景指南.md)
+- [CyberVerse公众号HTML模板分析](2026-05-03-CyberVerse公众号HTML模板分析.md)
+- [国自然申请书AI-Skill流水线](2026-05-04-国自然申请书AI-Skill流水线.md)
+- [数据血缘-lineage-工具全景](2026-05-09-数据血缘-lineage-工具全景.md)
+- [论文写作Skill工具链组合方案](2026-05-12-论文写作Skill工具链组合方案.md)
+- [HTML的不合理有效性-Claude-Code-团队](2026-05-16-HTML的不合理有效性-Claude-Code-团队.md)
+- [20260512-10-skill-学术去ai味框架](20260512-10-skill-学术去ai味框架.md)
+- [hermes-skill-top10-2026w18](hermes-skill-top10-2026w18.md)
+- [skills-apple](skills-apple.md)
+- [skills-catalog](skills-catalog.md)
+- [skills-data-science](skills-data-science.md)
+- [skills-dogfood](skills-dogfood.md)
+- [skills-email](skills-email.md)
+- [skills-github](skills-github.md)
+- [skills-leisure](skills-leisure.md)
+- [skills-logo-generator-skill](skills-logo-generator-skill.md)
+- [skills-smart-home](skills-smart-home.md)
+- [skills-social-media](skills-social-media.md)
+- [skills-team-roles](skills-team-roles.md)
+- [skills-autonomous-ai-agents](../skills-autonomous-ai-agents.md)
+- [skills-creative](../skills-creative.md)
+- [skills-devops](../skills-devops.md)
+- [skills-gaming](../skills-gaming.md)
+- [skills-mcp](../skills-mcp.md)
+- [skills-media](../skills-media.md)
+- [skills-mlops](../skills-mlops.md)
+- [skills-note-taking](../skills-note-taking.md)
+- [skills-openclaw-imports](../skills-openclaw-imports.md)
+- [skills-overview](../skills-overview.md)
+- [skills-productivity](../skills-productivity.md)
+- [skills-red-teaming](../skills-red-teaming.md)
+- [skills-research](../skills-research.md)
+- [skills-software-development](../skills-software-development.md)
