@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRCoT边缘LLM自反思维链闭环推理</title>
+
+<meta property="og:title" content="SRCoT边缘LLM自反思维链闭环推理" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="srcotllm">SRCoT边缘LLM自反思维链闭环推理精读</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.AI)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2610.23311<br />
+<strong>作者</strong>：Fabian Broszio, Michael Hoffmann, Adrian Paschke<br />
+<strong>记录日期</strong>：2026-10-20</p>
+
+<p class="meta-date">生成日期 2026-10-20</p></blockquote>
+<p><strong>标签</strong>：#LLM推理 #边缘部署 #闭环控制 #RAG #可审计性 #Agent架构</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 论文元数据</h3>
+<ul>
+<li>标题：Self-Reflective Chain-of-Thought (SRCoT): Evidence-Based Text Generation via a Closed-Loop Retrieve–Reflect–Revise Pipeline on Edge LLMs</li>
+<li>arXiv ID：2610.23311，提交 2026-10-16，28 页，2 图</li>
+<li>定位：扩展技术报告（extended technical account），同主题简报已投 Frontiers in Disaster and Emergency Medicine</li>
+<li>领域：cs.AI，LLM 推理架构 + 边缘部署 + 应急场景（EMS 急救 / 消防调度模拟）</li>
+</ul>
+<h3 id="12">1.2 核心问题</h3>
+<p>LLM 在安全关键场景（急救、应急调度）的输出"形式可信但证据无据"。根因诊断：当前主流部署把<strong>持久知识、任务状态、中间推理、行动决策</strong>全部纠缠在单一上下文/隐层表示里（monolithic context），导致无法监控、无法验证、无法控制。</p>
+<p>核心主张：可靠性不能寄望于模型流畅度，而应是<strong>系统流程与其 trace（轨迹）的属性</strong>。"全局合理"往往是"局部错误"（不同地区药物配置、升级路径、文书义务都不同）。</p>
+<h3 id="13">1.3 方法论：四状态分离 + 闭环控制</h3>
+<p><strong>状态形式化</strong>：S_t = ⟨E, K, X, M⟩</p>
+<ul>
+<li>E（environment.json）：环境约束——本地可用资源、角色、允许动作、升级路径</li>
+<li>K（knowledge.json）：稳定知识——医学原理（ABCDE/FAST），明确<strong>无本地约束力</strong></li>
+<li>X（experiences.json）：经验启发式——组织内"通常怎么做"（如常见文书坑），<strong>可引导流程但不得替代 SOP 作为证据</strong></li>
+<li>M（memory.json）：短期任务记忆——当前病例数据、时间线、已执行动作</li>
+</ul>
+<p><strong>问题形式化</strong>：找 y 使验证器 V(y, C, D) = 1（声明须有检索证据支撑 / 本地 SOP 覆盖一般知识 / 不得提议 E 中不可用的动作），约束：至多 T 次迭代 + 固定算力预算。验证不达 → <strong>安全失败</strong>（弃权或追问）而非硬答。</p>
+<p><strong>工作区 W_t</strong>（非纯文本上下文，是结构化表示）：<br />
+- 原子声明（atomic claims）<br />
+- 证据候选（带来源 ID 的检索片段）<br />
+- 显式约束（来自 E）<br />
+- 缺失关键事实清单</p>
+<p><strong>Judge（可选）</strong>：把草稿分解为可检查声明，定向检索绑定证据，产出 claim_evidence_map（如 C1 → [Knowledge:47 Antiemese SOP]）、缺失关键事实、冲突标记（"Kontraindikation"/"nicht anwenden" 等禁忌词触发保守控制）。Judge 定位为<strong>可审计诊断工具而非真值验证器</strong>。</p>
+<p><strong>Controller（确定性）</strong>：基于信号选择下一步动作——<br />
+- Finalize（覆盖与约束满足）<br />
+- Targeted-Retrieve（证据缺失）<br />
+- Revise-with-Evidence（新片段已找到）<br />
+- Abstain/Ask-Human（关键缺口仍在）</p>
+<p><strong>实现</strong>：轻量 Python 管线，LM Studio 本地 OpenAI 兼容端点，gpt-oss-120b（报告元数据）与 gpt-oss-20b（请求文件）存在不一致——作者诚实标注未裁定；BM25 检索 over 预分段 JSON 语料；两遍工作流（草稿+修订）+ 可选 Judge 循环。</p>
+<h3 id="14">1.4 关键实验结果（探索性，非受控对比——作者反复声明）</h3>
+<p><strong>场景一 EMS 急救</strong>：Apple M4 MacBook Pro 128GB 本地运行。产出 SOP 贴合的结构化检查单，缺失字段显式标 "not specified"，且追问<strong>内容特定</strong>：心率、体温、血糖（排除低血糖必需）、静脉通路状态、症状出现时间（卒中路径时间关键变量）——缺失事实 → 定向追问（gap-driven），而非流畅补全。</p>
+<p><strong>场景二 Munich-Sim</strong>（GPT 5.2 搭建的应急调度模拟器，产出事件流/无线电报文/资源清单）：<br />
+- T1 物资核算：con_fuel_mix 2200ml、con_hand_disinfectant 1250ml 等可溯源；截断条目 "10 ..." 显式标 not specified 而非脑补数字<br />
+- T2 欠覆盖检测：检出"AAO 提案存在 vs 实际未分配"状态错配，输出 JSON 控制对象 {"unitTypes":["RTW","NEF","RTW"],...}<br />
+- T3 事件文书综合：从日志/无线电流生成带来源引用的叙事报告，到达时间缺失标 not specified</p>
+<p><strong>压力测试（三场景，注入式扰动）</strong>：<br />
+- A 大记忆+控制台消息注入（MANV 升级）：仍能结构化综合，但暴露<strong>溯源滑移</strong>（provenance slippage）失败模式——Memory:<em> 声明在叙事层归因不一致<br />
+- B 单行症状注入（恶心）：query2 主动追问过敏/年龄后才给协议动作；早期 prompt 会把"禁忌信息缺失"隐式当"假定无禁忌"——</em><em>安全关键域必须用微策略显式禁止</em>*<br />
+- C 超出模拟器范围的追问：不编造未记录的增援请求，把缺口暴露为控制信号</p>
+<p><strong>核心发现</strong>：<br />
+- 证据纪律 = 显式写作契约（auditability over plausibility）：not specified 约定 + 最低引用要求，系统性压制"无数据时的合理化 embellishment"<br />
+- 对象层/元层分离在 artifact 中可见（Nelson &amp; Nares 框架）：Pass 1 产出动作结构+诊断不完备，Pass 2 整合证据稳定表述<br />
+- 控制论解读是<strong>程序性的而非比喻性的</strong>：测量（检索）→ 比较（验证器/Judge）→ 校正（控制动作）→ 再测量，因果链在报告中可查</p>
+<h3 id="15">1.5 局限性（作者自陈，异常诚实）</h3>
+<ul>
+<li>结果定性为主，未建立相对 baseline 的幻觉降低/约束遵守提升</li>
+<li>BM25 大 top-k 退化为"全返回"，掩盖精度与上下文漂移</li>
+<li>追问行为部分由 prompt/schema/输出契约诱导——反映端到端设计而非模型能力</li>
+<li>Judge 自身可能幻觉/误评分；冲突标记是粗糙关键词启发式</li>
+<li>未做专家评分研究（经费约束），改用文档锚定验证策略（SOP 为规范基线）</li>
+<li>v1.0 数值聚合脆弱（Materialverbrauch 总计可能漏算分散条目）；v1.2 引入数值冲突检测器 + query expansion 挖掘条目 ID + 聚合块优先</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-global-workspace-theorygwt">2.1 Global Workspace Theory（GWT）</h3>
+<p>Baars 1988 / Dehaene 提出的认知理论：多个专门化进程竞争有限的共享工作空间，胜出信息广播用于全系统协调。SRCoT 借用的是<strong>系统级类比</strong>而非生物建模——专门信息存储（E/K/X/M）通过受控协调步骤选择性整合进共享任务表示。作者明确反对"复刻生物机制"的解读。</p>
+<h3 id="22-self-rag">2.2 Self-RAG 对照</h3>
+<p>Self-RAG（Asai et al. 2023）把检索/生成/批评作为学习到的策略，在统一模型上下文内实现。SRCoT 的差异在<strong>架构层</strong>：不做统一自反策略学习，而是显式分离异构知识/状态为机器可读表示，控制决策在结构化状态上闭环运行。自监控不是单模型涌现行为，而是系统级协调机制。且 SRCoT 不改权重、不做自训练——"学习"被状态累积替代。</p>
+<h3 id="23-metacognition">2.3 元认知（Metacognition）操作化</h3>
+<p>"知道自己不知道"：先前工作用置信度估计/自一致性/验证器模型/反思提示实现。SRCoT 把不确定性与冲突显式跟踪在经验状态中，作为行动选择控制信号（检索/修订/弃权），而非隐式编码在 logits 或 prompt 文本里。追问问题 = 知识应用（对象层）与元控制（元层）的操作接口。</p>
+<h3 id="24-bm25">2.4 BM25 与边缘检索选型</h3>
+<p>BM25 是词法概率排序，零 GPU、确定性、可审计——与边缘部署约束匹配。代价：对查询措辞敏感、无语义泛化、大 top-k 退化。论文的 JSON 语料预分段（每条规则/日志/备注一个 item）是让 BM25 可用的工程前提。</p>
+<h3 id="25-gpt-oss-128gb-m4">2.5 gpt-oss 系列与 128GB M4</h3>
+<p>gpt-oss-120b 在 128GB 统一内存 Mac 上运行，单请求分钟级延迟——作者坦承不适合实时，但证明高溯源报告可完全离线产出。请求文件标 20b 与报告标 120b 的不一致，被作者原样披露而非掩盖，这本身是可审计性文化的体现。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31-srcot">3.1 SRCoT 闭环架构图</h3>
+<pre><code>用户查询 q
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│  状态层 S_t = ⟨E, K, X, M⟩              │
+│  environment.json / knowledge.json /    │
+│  experiences.json / memory.json         │
+└───────────────┬─────────────────────────┘
+                │ 选择性整合
+                ▼
+┌─────────────────────────────────────────┐
+│  工作区 W_t（结构化，非纯文本）          │
+│  原子声明 + 证据候选(带源ID) +           │
+│  显式约束 + 缺失关键事实清单             │
+└───────────────┬─────────────────────────┘
+                │ 草稿 → Judge 分解
+                ▼
+┌─────────────────────────────────────────┐
+│  Judge（可选，诊断非真值）               │
+│  claim_evidence_map / 冲突标记 /        │
+│  missing critical facts                 │
+└───────────────┬─────────────────────────┘
+                │ 确定性信号
+                ▼
+┌─────────────────────────────────────────┐
+│  Controller（确定性规则）                │
+│  Finalize / Targeted-Retrieve /         │
+│  Revise-with-Evidence / Abstain-AskHuman│
+└─────────────────────────────────────────┘
+   ↺ 循环至 V=1 或 T 次耗尽 → 安全失败
+</code></pre>
+<h3 id="32">3.2 可迁移设计原则提炼</h3>
+<ul>
+<li><strong>契约优先</strong>："not specified" 约定 + 最低引用要求是写作契约，不是模型美德——用输出格式压制 embellishment</li>
+<li><strong>溯源分层</strong>：经验（X）可引导流程但不得冒充证据；本地 SOP 覆盖一般知识；证据绑定（claim→store key）与检索本身是两个独立问题</li>
+<li><strong>预算显式化</strong>：T 次迭代 + 固定算力写进问题定义；达不到就弃权——弃权是设计的安全机制而非失败</li>
+<li><strong>报告即评估对象</strong>：trace（来源标签 + 两遍草稿 + 声明-证据映射 + 控制决策）是第一评估物，无金标签也能审计</li>
+<li><strong>扰动可编程</strong>：模拟器注入（admin_injected 消息）把"干扰"操作化为可重复的压力测试</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：可靠性从模型属性迁移到流程属性</h3>
+<p>依据：SRCoT 明言"贡献不是新模型而是流程架构"；本库 2026-07 读过的 Context Quality（2607.14275）实测"不换模型仅改上下文，关键失败率降 68%"——两条独立证据线同向。</p>
+<h3 id="2provenance-labeling-agent">趋势2：溯源标签（provenance labeling）将成为 Agent 输出标配</h3>
+<p>依据：SRCoT 的 [Memory:253] 式内联引用、Binding Drift（2607.18316）的实体绑定漂移、本论文暴露的 provenance slippage 失败模式——三者共同指向：长轨迹/大记忆下绑定会退化，显式溯源 + 定期交叉验证是刚需，不是锦上添花。</p>
+<h3 id="3">趋势3：边缘闭环推理的检索层将保持"简陋但确定"</h3>
+<p>依据：作者选 BM25 而非向量检索，理由是确定性+零GPU+可审计；v1.2 改进方向仍是 query expansion/优先级/冲突检测而非换 embedding。当审计要求高于召回上限时，词法检索的"笨"反而是合规资产。</p>
+<h3 id="4">趋势4：诚实评估正在成为论文竞争力</h3>
+<p>依据：SRCoT 明确写"不构成与 baseline 的受控对比"、自曝模型版本不一致、自列 5 条局限。这类"exploratory prototype + trace-based criteria"的写作范式在 2026 年系统类论文中密度上升，与刷榜论文形成分化。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-edgereasoning-2026-10-08">5.1 与 EdgeReasoning 边缘推理实测（2026-10-08 笔记）的关联</h3>
+<p>同属边缘推理主题：该笔记实测 Jetson Orin 推理模型部署画像，SRCoT 给出 M4/128GB + gpt-oss-120b 的另一端点。两者合并结论：边缘闭环推理的瓶颈不在算力在内存带宽——分钟级延迟可接受（非实时场景），溯源密度才是可用性分水岭。Jetson Orin（8-16GB）只能承载 20b 档，SRCoT 的 BM25+JSON 预分段方案恰好是该档位的配套检索层。</p>
+<h3 id="52-agent-2026-09-05-memory-compaction260708032">5.2 与 Agent 记忆三阶段进化（2026-09-05 笔记）/ Memory Compaction（2607.08032）的关联</h3>
+<p>SRCoT 的 E/K/X/M 四分法是记忆分层的又一独立收敛：与 memory-compaction 率失真框架的分层压缩、Agent 记忆 Storage→Experience 进化阶段论互证。X（经验启发式）与 K（稳定知识）的<strong>证据位阶差异</strong>（可引导不可作证）是 SRCoT 独有贡献，可直接补强本机 memorygraph 的 archival tier 设计。</p>
+<h3 id="53-binding-drift260718316">5.3 与 Binding Drift（2607.18316）的关联</h3>
+<p>SRCoT 压力测试 A 暴露的 provenance slippage = Binding Drift 论文形式化的"多步轨迹实体绑定漂移"的具体实例（数百条 Memory:* 更新后叙事层归因错乱）。Binding Drift 的廉价交叉验证（降 79% 漂移）正是 SRCoT future work 里"每操作段至少一个 store key" enforcement 的理论支撑。</p>
+<h3 id="54-hermes-agent">5.4 与 Hermes Agent 架构的直接映射</h3>
+<ul>
+<li>四状态分离 ↔ Hermes 的 system prompt（K）/ MEMORY.md（K+X）/ session 上下文（M）/ 运行环境探针（E）</li>
+<li>确定性 Controller ↔ Hermes gateway 的工具编排层（finalize/retrieve/revise/abstain 四动作与 model-fallback-chain、search-fallback-chain 的降级决策同构）</li>
+<li>"not specified" 契约 ↔ Hermes 报告纪律（禁止编造，数据缺失显式标注）</li>
+</ul>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>"The central contribution is not a new model, but a process architecture that makes reliability a property of the system procedure and its trace, not a hope placed in fluency."</p>
+<p>"In EMS, 'globally plausible' is often 'locally wrong' (different medications, different escalation paths, different documentation duties)."</p>
+<p>"Follow-up questions form the operational interface between knowledge application (object level) and meta-control (meta level)."</p>
+<p>"Evidence binding (mapping claims to concrete store keys) is a separate problem from retrieval itself."——压力测试 A 的教训浓缩。</p>
+</blockquote>
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li>启示1：给 Hermes 高风险输出（cron 汇报/生产变更建议）加 "not specified" 契约——查不到的数据显式标注而非省略，配合最低引用要求</li>
+<li>启示2：memorygraph 记忆条目加 provenance 位阶字段（knowledge/experience/environment/session 四类），检索时 X 类只引导不引用</li>
+<li>启示3：长轨迹任务（多步 tool call）每段落强制至少一个来源锚点，防 provenance slippage</li>
+<li>启示4：模拟器注入式扰动测试可移植到 Hermes cron 验证——故意注入异常输入测降级链</li>
+<li>启示5：数值聚合类输出（量化统计）加数值冲突检测器——同一 key 多值时触发 reconcile 重写</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li>场景A（适航文档问答）：CCAR 条款/SOP 语料预分段 JSON + BM25 + claim-evidence 绑定 → 本地可审计的适航合规问答，"条款覆盖手册、手册覆盖经验"的位阶规则与 SRCoT 的 SOP 优先级完全同构</li>
+<li>场景B（量化盯盘报告）：信号报告强制附数据锚点（价格/量比/时间戳来源），数据缺口标 not specified 而非模糊化，破位警报执行"弃权/追问"而非硬判断</li>
+<li>场景C（DUCK 真机日志分析）：关节角/IMU 流式记忆按 M 存，标定台账按 K 存，"以往校准坑"按 X 存——报告自动区分"实测值"与"经验推断"</li>
+<li>场景D（Hermes skill 进化）：micro-policies 作为可检索规则片段（论文 future work 方向）→ skill references 的结构化改造，规则可增量挂载不重训</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<ul>
+<li><strong>写作范式价值</strong>："exploratory prototype + trace-based proxy criteria" 的诚实评估写法可直接复用于本库研究笔记——先声明"不构成受控对比"，再定义无金标签下的可审计判据（证据锚定/约束遵守/缺口标注/控制建议四条），每条判据都能从报告 artifact 直接检验</li>
+<li><strong>可复用判据</strong>：四条 trace 代理判据（evidence anchoring / constraint adherence / explicit gap marking / controller recommendation）是任何"无金标签系统"评估的模板</li>
+<li><strong>反例警示</strong>：模型版本不一致（120b vs 20b）被原样披露——实验记录的可审计性优先于"看起来干净"</li>
+<li><strong>工程方法论</strong>：把安全约束从 prompt 恳求升级为输出契约（schema 约束 + 缺失值约定 + 微策略禁令），"missing contraindication ≠ assume none" 这类教训对一切安全关键 LLM 系统通用</li>
+</ul>
+</body>
+</html>
