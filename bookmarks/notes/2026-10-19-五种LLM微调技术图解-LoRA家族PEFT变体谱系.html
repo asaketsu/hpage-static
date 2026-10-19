@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五种LLM微调技术图解-LoRA家族PEFT变体谱系</title>
+
+<meta property="og:title" content="五种LLM微调技术图解-LoRA家族PEFT变体谱系" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="llm-lora-peft">五种 LLM 微调技术图解 — LoRA 家族 PEFT 变体谱系</h1>
+<p><code>#LoRA</code> <code>#PEFT</code> <code>#微调</code> <code>#LLM</code> <code>#参数高效训练</code></p>
+<blockquote>
+<p>来源：Avi Chawla (@_avichawla) · 2026-10-19 · https://x.com/_avichawla/status/2112109554687525360<br />
+作者：Daily Dose of DS 联合创始人，IIT Varanasi，ex-Mastercard AI Engineer，7.9 万粉丝<br />
+数据：14.8k 浏览 / 348 赞 / 54 转</p>
+
+<p class="meta-date">生成日期 2026-10-19</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p>一篇面向实践者的 PEFT 变体速查：全参微调对 LLM（数十亿参数、数百 GB 权重）不可行，PEFT 的核心思路是<strong>对权重矩阵做低秩适配</strong>——找到一个仍能表达原矩阵信息的小维度矩阵。作者以 LoRA 为基线，沿三条正交演化轴展开 5 种变体：<strong>冻结谁</strong>（LoRA-FA 冻 A）、<strong>共享什么</strong>（VeRA 全层共享随机 A/B 只学缩放向量）、<strong>动不动 W</strong>（Delta-LoRA 用 A·B 差分喂给 W）、<strong>怎么配学习率</strong>（LoRA+ 给 B 更高学习率）。核心洞察：五者不是竞争关系，而是"可训练参数量 vs 表达能力 vs 收敛质量"三角的不同取舍。</p>
+<h2 id="_2">内容整理：五种技术逐个拆解</h2>
+<p><strong>背景（数学铺垫）</strong><br />
+- LLM 权重 = 数字矩阵，微调 = 调整矩阵数值<br />
+- 多数 PEFT 技术 = 找矩阵的低秩适配（lower-rank adaptation）</p>
+<p><strong>1) LoRA（基线，2021）</strong></p>
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>结构</td>
+<td>权重矩阵 W 旁挂两个低秩可训练矩阵 A、B</td>
+</tr>
+<tr>
+<td>训练对象</td>
+<td>冻结 W，只更新 A、B</td>
+</tr>
+<tr>
+<td>内存</td>
+<td>即使最大 LLM，LoRA 矩阵也只占几 MB</td>
+</tr>
+</tbody>
+</table>
+<p><strong>2) LoRA-FA（Frozen-A）</strong><br />
+- 痛点：LoRA 虽降了可训练参数量，但更新低秩权重仍需可观<strong>激活内存</strong><br />
+- 方案：冻结矩阵 A（随机初始化后不动），只更新 B<br />
+- 收益：激活内存进一步下降</p>
+<p><strong>3) VeRA（Shared-AB + 缩放向量）</strong><br />
+- LoRA：A、B 每层独有一份<br />
+- VeRA：A、B 冻结、随机初始化、<strong>全层共享同一份</strong><br />
+- 可训练部分：每层仅学缩放向量 b 和 d（标量级参数）<br />
+- 定位：极低参数量场景（边缘/多任务微调）</p>
+<p><strong>4) Delta-LoRA（W 也动）</strong><br />
+- 突破点：唯一让 W 参与更新的变体，但非传统全参训练<br />
+- 机制：把相邻两个训练步 A·B 乘积的<strong>差分（delta）</strong>加到 W 上<br />
+- 效果：W 获得低秩更新量的累积，表达能力超过纯旁路方案</p>
+<p><strong>5) LoRA+（学习率差异化）</strong><br />
+- 洞察：LoRA 对 A、B 用同一学习率是次优的<br />
+- 方案：给矩阵 B 设更高学习率<br />
+- 效果：更好的收敛性</p>
+<p><strong>谱系总览</strong></p>
+<table>
+<thead>
+<tr>
+<th>变体</th>
+<th>A</th>
+<th>B</th>
+<th>W</th>
+<th>可训练参数</th>
+<th>独特收益</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LoRA</td>
+<td>训</td>
+<td>训</td>
+<td>冻</td>
+<td>低（几 MB）</td>
+<td>基线</td>
+</tr>
+<tr>
+<td>LoRA-FA</td>
+<td>冻</td>
+<td>训</td>
+<td>冻</td>
+<td>更低</td>
+<td>激活内存大降</td>
+</tr>
+<tr>
+<td>VeRA</td>
+<td>冻+共享</td>
+<td>冻+共享</td>
+<td>冻</td>
+<td>极低（缩放向量）</td>
+<td>参数量最少</td>
+</tr>
+<tr>
+<td>Delta-LoRA</td>
+<td>训</td>
+<td>训</td>
+<td>差分更新</td>
+<td>低</td>
+<td>W 获得表达能力</td>
+</tr>
+<tr>
+<td>LoRA+</td>
+<td>训(低lr)</td>
+<td>训(高lr)</td>
+<td>冻</td>
+<td>低</td>
+<td>收敛更好</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">关联分析</h2>
+<ul>
+<li><strong>与 [[2026-05-22-LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数.md]]</strong>：该笔记实证了 RL（GRPO）场景下 rank 选择与超参数的最优配置；本篇补上游——变体层面的选型菜单。两者合成"变体选型 → rank/超参调优"完整决策链。LoRA+ 的 B 高学习率结论可直接并入其超参搜索空间。</li>
+<li><strong>与 mlops/training 技能族（peft-fine-tuning / unsloth / fine-tuning-with-trl）</strong>：本笔记的五变体谱系是这些工具链背后的算法菜单；unsloth 等加速框架的默认配置实质是其中若干技巧的组合（如冻结 A 近似于 LoRA-FA 思路）。</li>
+<li><strong>与 domain-llm-training-pipeline（领域 LLM 训练流水线）</strong>：领域微调选型时可参考——显存极紧（Jetson 类边缘设备）选 VeRA/LoRA-FA；追求领域知识深度灌注（不止风格适配）可试 Delta-LoRA；默认 LoRA+ 起步。</li>
+<li><strong>低秩思想的普遍性</strong>：与 MLA（DeepSeek KV 缓存压缩）同源——都是"高维矩阵信息可由低秩结构近似"这一线性代数事实的应用，一个用于压缩推理缓存，一个用于压缩训练更新量。</li>
+</ul>
+<h2 id="_4">查询拓展</h2>
+<ul>
+<li><code>LoRA+ paper</code> — Hayou et al., LoRA+: Efficient Low Rank Adaptation of Large Models（B 学习率的理论依据）</li>
+<li><code>VeRA paper</code> — Kopiczko et al., VeRA: Vector-based Random Matrix Adaptation（共享随机矩阵 + 缩放向量）</li>
+<li><code>LoRA-FA paper</code> — Zhang et al., Frozen-A LoRA（激活内存分析）</li>
+<li><code>Delta-LoRA paper</code> — Zi et al., Delta-LoRA: Fine-Tuning High-Rank Parameters with Delta of Low-Rank Matrices</li>
+<li><code>DoRA / rsLoRA / QLoRA</code> — 谱系之外的后续变体（权重分解/秩稳定缩放/4bit 量化基座），作者未覆盖但同属一张菜单</li>
+<li><code>low-rank adaptation survey 2025</code> — PEFT 全景综述，补全本篇 5 技术之外的方法</li>
+</ul>
+<h2 id="_5">趋势判断</h2>
+<ol>
+<li><strong>PEFT 已从"省显存技巧"进化为"算法设计空间"</strong>：五变体分别动了冻结策略/共享策略/W 更新/学习率分配四个正交旋钮，说明社区已把低秩适配当作可系统探索的设计空间而非单一 trick。</li>
+<li><strong>参数量竞赛转向"有效参数"竞赛</strong>：VeRA 的缩放向量路线表明，随机矩阵 + 少量可调标量的组合能逼近全 LoRA，"trainable params" 这一指标的解释力在下降。</li>
+<li><strong>W 是否更新成为新的分水岭</strong>：Delta-LoRA 代表一类"让基座也吃到梯度"的折中——纯旁路方案在需要灌注新知识（而非适配格式/风格）时存在天花板，这一矛盾会驱动更多混合方案。</li>
+<li><strong>工程框架默认配置会吸收这些结论</strong>：LoRA+ 的差分学习率这类零成本改进，预计将像 AdamW 之于 Adam 一样成为框架默认。</li>
+</ol>
+<h2 id="_6">指南分析</h2>
+<p><strong>选型决策树（按约束驱动）</strong></p>
+<table>
+<thead>
+<tr>
+<th>约束场景</th>
+<th>推荐</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>显存充足，通用微调</td>
+<td>LoRA+ 起步</td>
+<td>零成本收敛增益</td>
+</tr>
+<tr>
+<td>激活内存瓶颈（长序列/大 batch）</td>
+<td>LoRA-FA</td>
+<td>冻 A 直击激活开销</td>
+</tr>
+<tr>
+<td>极端显存/边缘设备/多任务轻量适配</td>
+<td>VeRA</td>
+<td>参数量最小</td>
+</tr>
+<tr>
+<td>需灌注领域新知识（非风格适配）</td>
+<td>Delta-LoRA</td>
+<td>W 参与更新突破旁路天花板</td>
+</tr>
+<tr>
+<td>RLHF/GRPO 等 RL 场景</td>
+<td>LoRA + rank 实证调优</td>
+<td>见关联笔记的实证结论</td>
+</tr>
+</tbody>
+</table>
+<p><strong>实施提示</strong><br />
+- 变体可组合：LoRA+ 的学习率技巧理论可叠加在 LoRA-FA 上（A 冻结时只需给 B 设高 lr）<br />
+- 评估变体收益时控制变量：同 rank、同数据、同步数下比较，避免"参数少=好"的错觉</p>
+<h2 id="_7">拓展应用推荐</h2>
+<ol>
+<li><strong>domain-llm-training-pipeline 增补</strong>：领域文档训练流水线的配置模板中加入变体选型段（当前默认 LoRA，可加 LoRA+/LoRA-FA 选项），下次领域微调任务直接引用本表。</li>
+<li><strong>dp5/AutoDL 训练预算优化</strong>：训练前按显存公式预判——若激活内存是瓶颈，LoRA-FA 可在同等 GPU 上放更大 batch，等效提升梯度估计质量。</li>
+<li><strong>Jetson 边缘微调实验</strong>：本机 Orin 上对小模型做 VeRA 实验（参数量最小，适合验证边缘微调可行性），与 nexa-local-inference 技能联动。</li>
+<li><strong>量化训练菜单补全</strong>：本篇五变体 + QLoRA 组合（4bit 基座 + 低秩适配）是消费级显卡微调的标准配置，可作为后续笔记选题。</li>
+</ol>
+<p>→ 相关：LoRA-GRPO最优配置实证-RL场景的Rank选择与超参数.md</p>
+</body>
+</html>

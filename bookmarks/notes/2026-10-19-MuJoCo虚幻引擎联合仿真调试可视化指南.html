@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MuJoCo虚幻引擎联合仿真调试可视化指南</title>
+
+<meta property="og:title" content="MuJoCo虚幻引擎联合仿真调试可视化指南" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body>
+<h1 id="mujoco">MuJoCo×虚幻引擎联合仿真调试可视化指南</h1>
+<p><code>#MuJoCo</code> <code>#UnrealEngine</code> <code>#联合仿真</code> <code>#调试可视化</code> <code>#实例分割</code> <code>#sim2real</code> <code>#机器人仿真</code></p>
+<blockquote>
+<p>原文：<a href="https://mp.weixin.qq.com/s/kWtcSLp4OxzifNkHpeOPjQ">微信公众号文章</a> | 编辑：k8-bot / 审核：yuan-jia06 | 收录：2026-10-19</p>
+
+<p class="meta-date">生成日期 2026-10-19</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p><strong>一句话</strong>：MuJoCo-UE 联合仿真插件把 MuJoCo 的物理调试能力（接触力/关节轴/肌腱）与 UE 的 PBR 渲染管线打通，核心是一套快捷键驱动的视口调试叠加层 + 与渲染捕获解耦的分割相机体系，直接服务 sim2real 的视觉数据生产。</p>
+<p><strong>核心价值点</strong>：<br />
+1. <strong>物理调试叠加层</strong>（键1-5）：接触力箭头、碰撞线框、关节轴+极限弧——把 MuJoCo 原生 viewer 的诊断能力搬进 UE，且箭头按法向力大小缩放。<br />
+2. <strong>三种分割模式</strong>（键6）：Island（约束岛）/实例分割（逐刚体 Halton 色调）/语义分割（逐铰链类）——像素级精确掩膜，直接喂视觉训练。<br />
+3. <strong>肌腱可视化</strong>（键7）：激活度 0-1 映射到管径（0.5×-2×）+ 颜色（深蓝→亮红），路径取自 <code>mjData.wrap_xpos</code> 真实运动学包裹点。<br />
+4. <strong>关键设计决策</strong>：视口叠加层与相机捕获模式<strong>解耦</strong>——SceneCapture 会拍到叠加材质，持续输出的 RGB/分割流必须走专用捕获模式，两者互不污染。</p>
+<h2 id="_2">内容整理：快捷键与功能分层</h2>
+<h3 id="1">1. 快捷键全景</h3>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>功能</th>
+<th>技术要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>接触力箭头</td>
+<td>黄色箭头，大小按法向力缩放</td>
+</tr>
+<tr>
+<td>2</td>
+<td>铰链视觉网格可见性</td>
+<td>隐藏视觉网格，保留碰撞/调试层</td>
+</tr>
+<tr>
+<td>3</td>
+<td>关节碰撞线框图</td>
+<td>洋红色线框，逐碰撞几何体</td>
+</tr>
+<tr>
+<td>4</td>
+<td>关节轴 + 极限弧</td>
+<td>彩色箭头指示轴线方向与当前/极限角度</td>
+</tr>
+<tr>
+<td>5</td>
+<td>快速转换碰撞线框</td>
+<td>同3，针对 UMjQuickConvertComponent 道具</td>
+</tr>
+<tr>
+<td>6</td>
+<td>刚体着色器叠加</td>
+<td>Off→Island→实例分割→语义分割循环</td>
+</tr>
+<tr>
+<td>7</td>
+<td>肌腱/肌肉管状渲染</td>
+<td>粗细+颜色跟踪肌肉激活</td>
+</tr>
+<tr>
+<td>P / R</td>
+<td>暂停 / 重置仿真</td>
+<td>物理线程级</td>
+</tr>
+<tr>
+<td>O / F</td>
+<td>轨道相机切换 / 解雇 Impulse 参与者</td>
+<td></td>
+</tr>
+<tr>
+<td>Shift+F1 / Esc</td>
+<td>控制界面 / 退出</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<h3 id="2-6">2. 三种分割模式对比（键6）</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>着色粒度</th>
+<th>键控方式</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Island</strong></td>
+<td>约束岛（接触/关节/相等约束连通组）</td>
+<td>与 MuJoCo <code>engine_vis_visualize.c::addGeomGeoms</code> 一致</td>
+<td>诊断约束传播、接触拓扑</td>
+</tr>
+<tr>
+<td><strong>实例分割</strong></td>
+<td>逐刚体</td>
+<td>Halton 键控 × 关节类哈希 × 刚体ID</td>
+<td>像素级掩膜 → 视觉训练数据</td>
+</tr>
+<tr>
+<td><strong>语义分割</strong></td>
+<td>逐铰链类（非实例）</td>
+<td>BP_Humanoid 同类同色</td>
+<td>类别级数据增广/场景理解</td>
+</tr>
+</tbody>
+</table>
+<p><strong>睡眠模式调节</strong>：<code>bModulateBySleep</code> 开启时睡眠物体 V×0.35、S×0.9（比上游 MuJoCo 略激进以适配 UE PBR 光照），Details 面板可实时调。</p>
+<h3 id="3-7">3. 肌腱渲染细节（键7）</h3>
+<table>
+<thead>
+<tr>
+<th>信号</th>
+<th>视觉编码</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>肌肉激活 0-1</td>
+<td>半径 0.5×→2×，颜色深蓝→亮红</td>
+</tr>
+<tr>
+<td>限长肌腱（无肌肉）</td>
+<td>同款插值，由 <code>(ten_length - range_lo)/(range_hi - range_lo)</code> 驱动</td>
+</tr>
+<tr>
+<td>中性肌腱</td>
+<td>中等紫色，标称半径</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>路径来源：<code>mjData.wrap_xpos / wrap_obj / ten_wrapadr / ten_wrapnum</code>（运动学后真实包裹切点）</li>
+<li>实现：<code>USplineMeshComponent</code> 变形 <code>/Engine/BasicShapes/Cylinder</code>（初始半径 50cm，scale = radius_cm/50）</li>
+<li>逐段独立 <code>UMaterialInstanceDynamic</code> → 同一肢体两块肌肉颜色截然可分</li>
+<li>无物理/无碰撞/无阴影/视口不可选，惰性创建+复用，肌腱减少时隐藏不销毁</li>
+</ul>
+<h3 id="4">4. 相机交互已知问题（关键陷阱）</h3>
+<blockquote>
+<p>键6 叠加层<strong>替换真实材质</strong> → 任何 <code>USceneCaptureComponent2D</code> / <code>UMjCamera</code> / 截图工具都会拍到叠加层而非底层场景。</p>
+</blockquote>
+<p><strong>正确做法</strong>：持续 RGB/深度/分割输出走<strong>每摄像机捕获模式</strong>（InstanceSegmentation / Real），与键6视口状态无关；若必须同屏调试+捕获，先按 6 到 Off 再开捕获。</p>
+<h3 id="5">5. 跨版本兼容实现</h3>
+<ul>
+<li>着色器：每个网格一个 <code>UMaterialInstanceDynamic</code>，父级 <code>/Engine/BasicShapes/BasicShape_Material</code>，BeginPlay 探测 Color/BaseColor/Tint 矢量参数取第一个匹配——<strong>零 .uasset 依赖</strong>，跨 UE 版本兼容。</li>
+</ul>
+<h2 id="_3">关联分析</h2>
+<ul>
+<li><strong>→ 相关：2026-09-01-MuJoCo仿真到Three.js可视化全链路-千问工程还原.md</strong> — 同为 MuJoCo 可视化管线，Three.js 走 Web 轻量路线，UE 走高保真 PBR + 分割数据生产路线，两者是「调试看图」vs「训练数据工厂」的分工。</li>
+<li><strong>→ 相关：2026-07-07-机械臂仿真3步跑通MuJoCo入门.md</strong> — 原生 viewer 调试能力的 UE 平移，快捷键设计哲学（1-7 逐层叠加）与原生一致。</li>
+<li><strong>→ DUCK/microduck 项目</strong>：我们的策略训练全在 MuJoCo 原生栈。若后续做视觉 sim2real（相机观测输入策略），物理仿真渲染保真度不足是已知 gap——UE 联合仿真 + 实例分割相机正是「域随机化 + 真实分割标签」的低成本路径，与 dp5 部署链的观测空间升级天然衔接。</li>
+<li><strong>吸收（对我们系统的提升）</strong>：</li>
+<li><strong>分割数据生产思路可直接借鉴</strong>：microduck 若加视觉观测，先用仿真自带分割标签预训练，再小量真机微调——本插件的实例/语义双模式正对应这两级监督。</li>
+<li><strong>视口调试与捕获解耦</strong>是通用架构教训：任何「调试叠加层污染正式数据输出」的问题，解法都是双通道（视口层 vs 捕获层）而非开关切换。</li>
+<li>接触力箭头+关节极限弧对 DUCK 调步态异常（落地冲击、关节顶限位）的诊断比纯数值日志直观，值得在 pi5 联调时对照使用。</li>
+</ul>
+<h2 id="_4">查询拓展</h2>
+<ul>
+<li>MuJoCo-UE 联合仿真插件的上下游：UMjComponent / UMjCamera / UMjQuickConvertComponent 组件族出自哪个开源项目（疑似 UnrealMuJoCo 系），值得查 GitHub 仓库与许可证</li>
+<li><code>mjData.wrap_xpos</code> 肌腱包裹点的完整语义：MuJoCo 官方文档 Computation 章节 tendon wrapping</li>
+<li>UE <code>SceneCaptureComponent2D</code> 与渲染通道的叠加层捕获行为：UE 官方 docs Rendering Passes</li>
+<li>Halton 序列键控色调：低差异序列在实例分割调色板中的去碰撞（collision-free palette）应用</li>
+<li>约束岛（constraint island）算法：MuJoCo solver 的 island 分解与并行求解</li>
+<li>同类路线对比：Isaac Sim（Omniverse RTX）/ Unity Perception / UE-MuJoCo 三家的分割数据生成成本与保真度</li>
+</ul>
+<h2 id="_5">趋势判断</h2>
+<ol>
+<li><strong>「物理引擎 + 游戏引擎」分工协作正在标准化</strong>：MuJoCo 管物理精度、UE/Unity 管渲染与数据生成，单一引擎全包（Isaac Sim）之外的轻量组合路线在开源社区升温。</li>
+<li><strong>分割标签成为 sim2real 基础设施</strong>：仿真自带像素级掩膜 + 域随机化 = 视觉策略预训练标配，UE 生态把这类能力做进插件层说明需求已从论文走向工程。</li>
+<li><strong>调试可视化向「叠加层架构」收敛</strong>：视口叠加层与数据捕获通道解耦、材质参数探测替代硬编码资源依赖——跨版本兼容的工程手法值得所有仿真工具链借鉴。</li>
+<li>对具身智能训练成本的影响：UE PBR 渲染真值分割免标注，训练数据成本从「标注驱动」降到「渲染驱动」，与我们的「训练分布=验收分布」思路（E31d 考试化）同构。</li>
+</ol>
+<h2 id="_6">指南分析</h2>
+<p><strong>操作要点速查</strong>（拿即用）：<br />
+1. 调接触异常 → 键1（力箭头）+ 键3（碰撞线框），箭头大小即法向力<br />
+2. 调关节顶限位 → 键4（轴+极限弧），当前角 vs 极限角一屏可比<br />
+3. 查看约束传播/接触拓扑 → 键6 切 Island 模式<br />
+4. 产分割训练数据 → <strong>不要用键6</strong>，改用每摄像机捕获模式（InstanceSegmentation/Real）<br />
+5. 调肌腱传动策略 → 键7 看激活-颜色-管径实时联动<br />
+6. 捕获 RGB 前若开过键6 → 必须按 6 循环到 Off 再捕获<br />
+7. 睡眠物体不显眼 → Details 面板调 SleepValueScale / SleepSaturationScale<br />
+8. 扁平弦线外观（贴近原生 MuJoCo）→ TendonArcSubdivisions 降为 0</p>
+<p><strong>陷阱清单</strong>：SceneCapture 污染（见上）、肌腱管初始 50cm 需 scale 换算、快速转换道具与普通道具线框键位不同（3 vs 5）。</p>
+<h2 id="_7">拓展应用推荐</h2>
+<ol>
+<li><strong>microduck 视觉观测升级预研</strong>：在现训 DUCK 变体上加 1 路 egocentric 相机观测，先用 MuJoCo 原生 rgb + segmentation 输出验证策略可收敛，再评估是否引入 UE 管线提保真度（对照实验：原生渲染 vs UE 渲染的 sim2real 迁移差）。</li>
+<li><strong>真机调试对照工具</strong>：pi5 联调时的接触冲击/限位顶死问题，可在仿真侧用键1/键4 复现同款工况做归因，形成「真机现象 → 仿真复现 → 可视化定位」闭环。</li>
+<li><strong>DREAM/Sim2Real 数据流水线候选</strong>：若启动「仿真渲染预训练 + 真机微调」路线，本插件（或同构方案）作为分割标签工厂，替代人工标注。</li>
+</ol>
+</body>
+</html>
