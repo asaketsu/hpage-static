@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>决策模型做Evals-阈值调优成本校准实战</title>
+
+<meta property="og:title" content="决策模型做Evals-阈值调优成本校准实战" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="evals">决策模型做Evals的正确姿势：阈值调优、成本对比与概率校准</h1>
+<blockquote>
+<p>来源: X @HamelHusain (Hamel Husain, OpenAI Evals) · 2026-10-20 · <a href="https://x.com/HamelHusain/status/2112588257104216294">X Article</a> · <a href="https://hamel.dev/blog/posts/decision-model-evals/">原文博客</a>（含交互图表）<br />
+作者: Evals 领域头部作者，O'Reilly《AI Evals for AI Engineers》共同作者；本文与 Antaripa Saha 合著<br />
+定位: 商业决策模型做自动评估的<strong>选用方法论</strong>实测——先定最低 P/R 要求→排除不达标→调阈值→再比成本性能→分数当置信度前先校准<br />
+延伸阅读: [[explore/2026-10-14-自建Jev式决策模型-logprobs分类器与诚实评估工程法.md]] — 那篇讲<strong>自建</strong> Jev 式模型（数据三陷阱+LoRA 复刻），本篇讲<strong>选型使用</strong>商业决策模型，角度互补</p>
+
+<p class="meta-date">生成日期 2026-10-21</p></blockquote>
+<p><code>#决策模型</code> <code>#Evals</code> <code>#阈值调优</code> <code>#PrecisionRecall</code> <code>#概率校准</code> <code>#LLM评估</code> <code>#成本优化</code></p>
+<h2 id="_1">归纳总结</h2>
+<p>决策模型赛道半年内爆发（TypeSafe Jev → Perplexity Decider → Liquid d1 → Cloudflare Clef → OpenAI Decisions API），作为 LLM judge 的低成本替代做自动评估。Hamel 团队用 100 条公寓租赁 agent traces（二分类找 error）实测 6 个模型，核心发现：<strong>人人都在盲用默认 0.5 决策阈值，这是白白留在桌上的性能</strong>——某模型失败全打 0.40、通过全打 0.10，阈值 0.30 完美分类，默认 0.50 则一无所获。正确流程四步：①先定业务最低 precision/recall 要求（本文 80%/80%），排除不达标模型；②在约束内调阈值（分层五折交叉验证，非对称业务用 F-beta 而非机械 F1）；③把分数当置信度用之前先查校准曲线（Clef Flash 有组预测 8% 实际 60% 失败，Platt scaling 可修但 OpenAI 反而修差了）；④按 Pareto frontier 权衡性能-成本（Perplexity 0.82¢/百次 F1=0.79；OpenAI 3.72¢ F1=0.87，4.5 倍价）。作者点破：<strong>这些全是经典分类器评估方法论</strong>（P/R 权衡、阈值调优、校准），数据科学家的既有技能在 AI 时代直接复仇。</p>
+<h2 id="_2">内容整理：四步选用法全文精读</h2>
+<p><strong>测试设置</strong>：<br />
+| 项 | 值 |<br />
+|---|---|<br />
+| 数据 | 100 条公寓租赁 agent traces（对话+动作日志） |<br />
+| 任务 | 二分类：trace 是否含 error（订房失败/漏转人工） |<br />
+| 模型 | Jev 1.13、Perplexity Decider 1.1 27B、Liquid d1 / d1-ultra、Cloudflare Clef Flash、OpenAI Decisions (GPT-6 Luna) |<br />
+| 对比维度 | Performance（对比人工标注）+ Cost（token×单价）；延迟因不可控略过 |</p>
+<p><strong>① 理解决策阈值</strong>：<br />
+- 模型输出 0~1 分数，API 默认 ≥0.5 判 fail——<strong>默认值未经数据验证 = 劣质结果</strong><br />
+- 阈值是 P/R 的权衡旋钮：调低多抓失败但多误报。刑审判罪重 precision（不冤枉好人），癌症筛查重 recall（宁可多查）——<strong>正确权衡点由业务目标决定，没有普适答案</strong><br />
+- 交互图表结论：OpenAI 两类分数分得最开（F1 最高）；Perplexity / d1-ultra / OpenAI 三家满足 80%/80% 双底线进入候选</p>
+<p><strong>② 阈值调优</strong>（可直接抄的 coding agent prompt，已含约束）：</p>
+<blockquote>
+<p>用保存的模型分数+二分类标签（1=失败）调决策阈值最大化 F1，约束 precision≥80% 且 recall≥80%。分层五折交叉验证：训练折选阈值、其余折测性能；多模型对比须用同一折分。只选训练折上双达标的阈值，无可行项就如实报告而非放宽要求。报告验证集 P/R/F1、未达标折、与默认 0.50 的对比。复用已存分数，不再调模型 API。</p>
+</blockquote>
+<ul>
+<li>实测：候选三家调优增益小于落选的 d1/Clef Flash（后者连底线都不够），但<strong>小幅 P/R 移动也影响业务成本</strong>，须有意选择而非默认</li>
+<li>警告：本文用 F1 是为简化，实际业务 P/R 权重几乎从不相等——F-beta（β&lt;1 重 precision，β&gt;1 重 recall）才对</li>
+</ul>
+<p><strong>③ 性能 vs 成本</strong>（Pareto frontier）：<br />
+| 模型 | F1（调优后） | 成本/百次评估 | 备注 |<br />
+|---|---|---|---|<br />
+| Perplexity Decider | 0.79 | $0.0082 | 候选中最便宜 |<br />
+| OpenAI Decisions (GPT-6 Luna) | 0.87 | $0.0372 | 最优性能，约 4.5 倍价 |<br />
+| Liquid d1-ultra | — | — | 低成本次优选项 |</p>
+<p><strong>④ 概率校准</strong>（分数当置信度用之前必查）：<br />
+- 0.80 分要真意味着"同类分数组约 80% 是失败"才算校准——每点约 20 条 traces 分组对比预测概率 vs 实际失败率<br />
+- Clef Flash 严重失准：某组预测均值 8%，实际 60% 失败；Perplexity/Liquid d1/Clef Flash 经 <strong>Platt scaling</strong>（log-odds 上拟合简单曲线）显著靠近对角线<br />
+- Jev 与 d1-ultra 天生校准好几乎不用修；<strong>OpenAI 反而被这版 Platt scaling 修差了</strong>——校准不是免费午餐，必须实测 Brier score 前后对比<br />
+- 校准 prompt 同样可直接用（五折同折分、log-odds 拟合、clip 离 0/1、报 Brier）</p>
+<p><strong>实践清单（作者 recap）</strong>：<br />
+1. judge prompt 满意后，先定最低 P/R 要求，排除不达标模型<br />
+2. 对比性能前先调阈值，选贴合业务目标的 P/R 权衡——别因为本文用 F1 就跟着用 F1<br />
+3. 分数当置信度前查校准；校准后须实测是否改善<br />
+4. 权衡性能-成本-延迟；流程是迭代的（改 prompt→重调阈值→重校准）<br />
+5. 跨任务性能波动大，<strong>必须自己测</strong>；一个 failure mode 配一个专判 judge（窄任务下模型间差距会缩小）；先用可接受的大模型，再试小模型能否平替省钱</p>
+<p><strong>边界认知</strong>：决策模型 vs LLM 的分界（引 Randy Olson）——分类/路由任务决策模型可平 LLM 且更便宜；需知识与推理的任务 LLM 拉开差距。OpenAI Decisions 最高 F1 最高价恰说明难任务值得为 LLM 付费。</p>
+<h2 id="_3">关联分析</h2>
+<ul>
+<li><strong>与 [[explore/2026-10-14-自建Jev式决策模型-logprobs分类器与诚实评估工程法.md]] 组成决策模型双篇</strong>：那篇解决"造"（logprobs 分类器、数据三陷阱、LoRA 复刻追平 Jev 还快 2 倍、月 44M 消息自建打平成本），本篇解决"用"（选型、阈值、校准、成本）。两篇互为上下游：自建模型的评估同样要过本篇的阈值调优+校准关（10-14 篇的温度缩放即校准的亲缘方法）</li>
+<li><strong>与本地 notes-eval-gate skill（确定性六项检查）分层互补</strong>：我们的 golden set 用零 LLM 成本的确定性检查守发布门禁，Hamel 这套是 LLM/决策模型 judge 守语义质量——同一评估金字塔的两层。他"一个 failure mode 一个专判 judge"与我们六项拆分思路同构</li>
+<li><strong>与模型经济学原则共振</strong>：Perplexity 4.5 倍价差换 0.08 F1 的数据是"包月用满、按量垫底"的量化注脚——评估这种高频调用正是成本敏感场景，决策模型是 LLM judge 的降本通道</li>
+<li><strong>方法论本质</strong>：作者自认全部 ideas 不新——P/R 权衡、阈值调优、校准就是任何分类器评估的标准动作。新的是<strong>应用对象</strong>（LLM traces 评估），这正是"换 harness 顶换模型"在评估侧的镜像：评估工具链成熟度 &gt; 模型选择</li>
+</ul>
+<h2 id="_4">查询拓展</h2>
+<ul>
+<li><strong>Platt scaling / isotonic regression</strong>：概率校准两主流方法，sklearn <code>CalibratedClassifierCV</code> 即用</li>
+<li><strong>F-beta score</strong>：β 参数化的 P/R 加权调和均值，业务非对称权衡的标准工具</li>
+<li><strong>Brier score</strong>：概率预测质量的严格评分（比 accuracy 对校准敏感）</li>
+<li><strong>Randy Olson 的决策模型 vs LLM 大对比</strong>（文中引用，未给链接，值得搜）</li>
+<li><strong>《AI Evals for AI Engineers》(O'Reilly, Shreya Shankar &amp; Hamel Husain)</strong>：系统教材</li>
+<li><strong>Machine Learning with Python Cookbook 2nd Ed.（Gallatin &amp; Albon）</strong>：作者推荐的基础回归</li>
+<li>Hamel 前作：automated evals 前篇、LLM judge prompt 指南（hamel.dev/blog/posts/llm-judge/）</li>
+</ul>
+<h2 id="_5">趋势判断</h2>
+<ul>
+<li><strong>决策模型成为 2026 评估基建赛道</strong>：半年 5 家（TypeSafe/Perplexity/Liquid/Cloudflare/OpenAI）密集入场，且 OpenAI 直接拿 GPT-6 Luna 做 Decisions API 后端——judge 正从"拿通用 LLM 凑合"走向"专用评估模型分层"。赛道红利期选型混乱，本文这类横向实测正是刚需</li>
+<li><strong>"数据科学家技能复仇"叙事强化</strong>：Hamel 明说"你在 AI 时代的位置就是这些既有技能"——分类器评估、统计校准这些 pre-LLM 方法论在 LLM 评估里全面回潮。判断：评估工程的护城河在方法素养不在模型访问权</li>
+<li><strong>交互式图表做技术内容分发</strong>：正文反复导流 hamel.dev 交互版，X Article 只当分发壳——长文自建站+社交壳的双层发布模式已成头部作者标配</li>
+<li><strong>阈值意识会成评估标配检查项</strong>：正如 prompt 工程从玄学变 checklist，"0.5 默认阈值是否合适"预计会进入所有评估 SOP</li>
+</ul>
+<h2 id="_6">指南分析</h2>
+<p>对我们可直接落地的三件事：</p>
+<ol>
+<li><strong>阈值调优 prompt 直接入库</strong>：把本文两个 coding agent prompt（调阈值+校准）存为评估工作流模板——任何二分类 judge（含我们未来的决策模型评估线）上线前跑一遍，替换盲用 0.5。约束式写法（不达标就报告而非放宽）值得照抄——这是防 coding agent 自作主张放宽要求的护栏设计</li>
+<li><strong>校准检查纳入 judge 验收</strong>：现有/未来的 LLM judge 分数若要用于分级决策（如笔记质量分档），上线前按"分组预测 vs 实际"画校准对比，失准先试 Platt scaling 并用 Brier score 验证</li>
+<li><strong>评估金字塔分层定稿</strong>：确定性检查（notes-eval-gate，零成本）→ 决策模型 judge（分类/路由类，廉价高频）→ LLM judge（知识与推理类，贵而强）——按任务难度升层，成本-性能 Pareto 思维贯穿</li>
+</ol>
+<h2 id="_7">拓展应用推荐</h2>
+<ul>
+<li><strong>Hamel 的 LLM judge prompt 指南</strong>（hamel.dev/blog/posts/llm-judge/）：本文前置依赖，"craft a good judge prompt"的展开</li>
+<li><strong>决策模型试用路线</strong>：Perplexity Decider（本文性价比最优）+ Cloudflare Clef（边缘场景）先试，评估类高频任务替换 LLM judge 可直接省 4 倍成本</li>
+<li><strong>对自有评估线的迁移判断</strong>：若把 golden set 六项检查之外加"语义质量"软评分，决策模型是成本最优载体——先用 OpenAI Decisions 建金标，再蒸馏到 Perplexity/自建（衔接 10-14 篇的 LoRA 路线）</li>
+<li><strong>Randy Olson 对比报告</strong>：分类/路由 vs 知识/推理的分界数据，是选型分层的关键证据，值得检索精读</li>
+</ul>
+<p>→ 相关：explore/2026-10-14-自建Jev式决策模型-logprobs分类器与诚实评估工程法.md</p>
+</body>
+</html>
