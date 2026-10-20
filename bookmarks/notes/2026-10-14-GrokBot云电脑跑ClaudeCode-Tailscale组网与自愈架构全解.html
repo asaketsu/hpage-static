@@ -1,4 +1,369 @@
-<!--HPGATE--><script>(function(){
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GrokBot云电脑跑ClaudeCode-Tailscale组网与自愈架构全解</title>
+
+<meta property="og:title" content="GrokBot云电脑跑ClaudeCode-Tailscale组网与自愈架构全解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
 "use strict";
 var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
 try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
@@ -74,3 +439,178 @@ if(bc){try{bc.postMessage({q:1})}catch(e){}}
 if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 })();
 </script><!--/HPGATE-->
+<h1 id="grok-bot-claude-codetailscale">Grok Bot 云电脑跑 Claude Code：Tailscale 组网与自愈架构全解</h1>
+<blockquote>
+<p>来源: X @app_sail (Asa) · 2026-10-09 · 56万views · <a href="https://x.com/app_sail/status/2108523630900748335">原文</a><br />
+作者: Asa — Partner @chuhaiqu @tuttihq · ex-Zhihu · AI Builder/LLM Agent 开发者<br />
+读法: 本文是"把文章丢给 Grok Bot 让它自己执行"的可执行教程——人类只做 6 件确认类动作，其余全由 agent 完成</p>
+
+<p class="meta-date">生成日期 2026-10-14</p></blockquote>
+<p><code>#ClaudeCode</code> <code>#GrokBot</code> <code>#Tailscale</code> <code>#Orca</code> <code>#自愈架构</code> <code>#Agent工程</code> <code>#云端开发机</code></p>
+<h2 id="_1">归纳总结</h2>
+<p>在 Grok Bot 自带的美国云电脑（8核/16GB/无 systemd）上搭建 7×24 在线 Claude Code 环境的完整工程方案：三层架构=云电脑跑 Claude Code + Tailscale 组网（主机名配对）+ Orca Remote Server 会话管理（6768 端口仅 tailnet 内可达），Mac/手机随时接入同一会话。核心哲学：<strong>与其伪装环境骗风控，不如让环境本身名副其实</strong>（真美国机器+美国出口+美国时区，注册到使用全程在这台机器）。工程核心是<strong>自愈三件套对抗平台换实例</strong>：Grok Bot 自动更新会换全新实例（home 外全清），解法=凡装在 home 外的东西，home 内必留安装包+恢复脚本+定时拉起任务。附 8 个真坑的根因与修法，以及一套写给 agent 的执行规约（每步停报/人不代做/幂等/不杀活进程/密钥不进对话）。</p>
+<h2 id="_2">内容整理：三层架构与四步搭建</h2>
+<pre><code>[Mac/iPhone Orca 客户端] ──Tailscale(MagicDNS: grok-bot)──&gt; [云电脑 orca serve :6768]
+                                                              └─ Claude Code (~/.claude/ 登录态)
+[Grok Bot 对话框] ──orca CLI──&gt; 同一批会话（看/催/派活/汇总）
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>内容</th>
+<th>谁做</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. Tailscale</td>
+<td>现成 Bot 一键装：装 tailscale+SSH、看门狗、5min 自愈定时任务、密钥 21 天过期提醒、ACL 锁死仅自己设备</td>
+<td>Bot（人点授权+贴 ACL）</td>
+</tr>
+<tr>
+<td>2. Claude 注册订阅</td>
+<td>全程在云电脑浏览器完成（不碰本机网络）；官方脚本装 Claude Code 到 ~/.local（home 内，更新后还在）</td>
+<td>人（Grok Bot 开页面交控制权）</td>
+</tr>
+<tr>
+<td>3. Orca</td>
+<td>AppImage 放 home；6768 防火墙三规则（lo 放行/tailscale0 放行/DROP）；每 10min 定时拉起</td>
+<td>Bot</td>
+</tr>
+<tr>
+<td>4. 设备接入</td>
+<td>Mac 粘配对链接，手机扫专用码（两种凭据不可混用）</td>
+<td>人</td>
+</tr>
+</tbody>
+</table>
+<p><strong>日常形态</strong>：人在外只跟 Grok Bot 说话 → 它用 <code>orca worktree ps / terminal send / wait --for tui-idle / read</code> 指挥云电脑上的 Claude Code 干活并回传三行总结。</p>
+<h2 id="_3">内容整理：自愈架构（本文最高工程价值）</h2>
+<p><strong>平台事实</strong>：Grok Bot 自动更新=换新实例，无预告。apt 包、/opt、/usr/local/bin、/var/lib/tailscale、开机脚本改动全清；home 里 root-only 文件也不回来；正在干活的 agent 被直接打断。</p>
+<p><strong>对策模式</strong>（home 内自愈三件套）：<br />
+1. 安装包留在 home（官方脚本装 ~/.local 而非 npm -g；AppImage 而非 .deb）<br />
+2. 恢复脚本在 home（bootstrap-tailscale.sh / orca-serve.sh，均幂等可重复执行）<br />
+3. 定时任务拉起（Tailscale 5min / Orca 10min；更新后通常几分钟自动恢复同一节点同一 IP）</p>
+<p><strong>配对用主机名不用 IP</strong>（Tailscale 重登录=新节点=IP 变，主机名 grok-bot 不变则免重新配对）。</p>
+<h2 id="8">内容整理：8 个真坑速查</h2>
+<table>
+<thead>
+<tr>
+<th>坑</th>
+<th>根因</th>
+<th>修法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mac 连不上</td>
+<td>Tailscale 重登录→IP 变，配对存的旧 IP</td>
+<td>用主机名配对+保登录态</td>
+</tr>
+<tr>
+<td>更新后全没</td>
+<td>换新实例，home 外全清</td>
+<td>自愈三件套；备份改 box 所有 600 权限（root-only 文件快照不还原）</td>
+</tr>
+<tr>
+<td>新看门狗起不来</td>
+<td>flock 锁 fd 被 orca serve 继承，锁不释放</td>
+<td>子进程启动加 <code>9&gt;&amp;-</code> 关锁 fd</td>
+</tr>
+<tr>
+<td>每天掉线数次</td>
+<td>沙箱网络特性，控制面报离线</td>
+<td>看门狗查"控制面认为在线"而非只查进程</td>
+</tr>
+<tr>
+<td>Orca 里又让登录</td>
+<td>命令行登录≠交互向导走完</td>
+<td><code>~/.claude.json</code> 的 <code>hasCompletedOnboarding=true</code>（先备份）</td>
+</tr>
+<tr>
+<td>更新后 6768 裸奔 7 分钟</td>
+<td>iptables 是装 Tailscale 时带装的，跟它一起没了</td>
+<td>脚本自己 apt 装 iptables；<strong>规则设不好宁可不起 serve（fail-closed）</strong></td>
+</tr>
+<tr>
+<td>pkill -f orca 团灭</td>
+<td>一个进程管所有会话</td>
+<td>只用 <code>orca-serve.sh --restart</code></td>
+</tr>
+<tr>
+<td>AppImage 直接跑留死挂载</td>
+<td>无 /etc/mtab</td>
+<td>用 <code>orca-serve.sh --version</code> 或解包后二进制</td>
+</tr>
+</tbody>
+</table>
+<p>零碎但值钱：改运行中的脚本要原子替换（bash 边读边执行，先写临时文件再 mv -f）；pgrep -f 会把执行命令的 shell 自己数进去；开机钩子不能加在脚本末尾（后面有 exec/wait 永不执行）。</p>
+<h2 id="agent-agent">内容整理：写给 agent 的执行规约（可复用的 agent 工程范式）</h2>
+<ol>
+<li>按序执行，每步完成停下汇报，等"继续"再做下一步</li>
+<li>标"需要人"的事不代做不绕过（授权/订阅/配对/扫码），把链接交给用户然后等</li>
+<li>先看现状再动手；所有脚本幂等，重复执行不破坏</li>
+<li>不杀运行中的 orca serve/tailscaled，不动别的 agent 的终端</li>
+<li>端口不暴露公网（6768 仅 tailnet 内）</li>
+<li>附录脚本原样保存，不重写不"顺手优化"；报错就交输出给人，不改了硬跑</li>
+<li>与文章描述不符就停下来问（找不到文件/无免密 sudo/系统不对），不猜替代方案</li>
+<li>汇报不贴配对码/密钥/状态文件内容</li>
+</ol>
+<p>日常用法四条：派活流程存成 skill（免得每次解释"找终端→发指令→等空闲→读回"）；多 bot 只留一个总管分派汇总；<strong>事先写明"调研/起草/测试/整理自动跑，发送/发布/花钱/改生产必须回到人"</strong>；每天自动查 <code>claude auth status</code> + 随机时刻发 hello 探活记账。</p>
+<h2 id="_4">💡 价值分析：对我们的启发</h2>
+<h3 id="_5">✅ 已在做的（交叉验证）</h3>
+<ul>
+<li><strong>权限边界同构</strong>："发送/发布/花钱/改生产必须回到人"= 我们的 [ACTION REQUIRED] 生产授权红线——两个独立系统的同一结论</li>
+<li><strong>fail-closed</strong>：iptables 设不好宁可不起 serve = 今天刚修的"数据拿不到≠空仓"（DATA_DEGRADED）同款思想</li>
+<li><strong>看门狗+定时拉起</strong> = 我们的 hermes-disaster-recovery / monitor_script 模式；"查控制面在线而非只查进程"= 健康检查要查真值不只查进程存在</li>
+<li><strong>pgrep -f 自计数坑</strong>我们踩过两次（memory 在案），本文独立复证——通用坑</li>
+<li><strong>每步停报等确认</strong> = 我们真机测试的"动作前告知+目视确认"铁律</li>
+</ul>
+<h3 id="_6">🔥 重点行动</h3>
+<ol>
+<li><strong>检查我们的 flock 看门狗</strong>：e29_watchdog.sh 等用 flock 的脚本，子进程是否继承了锁 fd（9&gt;&amp;- 缺失=看门狗死后新看门狗起不来）——今天就该查</li>
+<li><strong>"环境名副其实"哲学迁移</strong>：与其对抗风控不如消除伪装面——对我们的启示是免费 API 四线的账号健康管理（每日探活+auth status 检查的自动化）</li>
+<li><strong>agent 执行规约收编</strong>：这 8 条比我们很多 skill 里的散规约更精炼，值得作为"委托执行类任务"的标准前导词模板</li>
+<li><strong>原子替换运行中脚本</strong>：我们的 cron 脚本热更新场景（launch heredoc 重写）适用"临时文件+mv -f"</li>
+</ol>
+<h3 id="_7">⚠️ 保持怀疑的</h3>
+<ul>
+<li>共享出口 IP（Cloudflare 弗吉尼亚）已有评论区反馈注册秒封——"环境名副其实"降低了伪装风险但没消除 IP 信誉风险，作者自己也承认没法替别人验证</li>
+<li>Grok Bot 16GB 内存开 3-4 个 Claude Code 会话已用 12GB——承载上限低，重度多项目要 VPS</li>
+<li>平台随时换实例+随时打断任务——<strong>生产级工作不适合</strong>，作者也把"重要代码及时推 git"列为铁律</li>
+</ul>
+<h2 id="_8">📊 趋势判断</h2>
+<p>这篇文章标记了 2026 年 agent 环境工程的新形态：<strong>算力普惠让"云电脑+组网+自愈"取代"本地主机+配置"成为 agent 的默认载体</strong>——Grok Bot 白费送美国云电脑只是开头，竞争会从模型能力转向"谁送的托管环境更可用"。三个信号：①教程以"丢给 agent 自己执行"为默认读法（人类只做 6 个确认动作）——执行主体已经换人；②自愈架构对抗平台不可控性成为标准功课（类似早期 Heroku dyno 重启文化）；③Orca/Tailscale 这类"会话层+组网层"中间件兴起，agent 的接入界面从终端变成聊天框。风险面：平台条款的灰色地带（Grok Bot 云电脑跑竞家 Claude）与共享 IP 信誉是悬顶之剑。</p>
+<h2 id="_9">🔍 查询拓展</h2>
+<ul>
+<li>Orca 的 orchestration 多 agent 协调（一文里"多模型设计评审团"玩法）</li>
+<li>Tailscale ACL 语法与 tailnet 最小权限配置</li>
+<li>AppImage 无 systemd 环境的服务化管理模式对比（flock+cron vs supervisor）</li>
+<li>Claude Code 的 ~/.claude/ 登录态结构与多设备会话语义</li>
+<li>Grok Bot 云电脑实例快照机制（哪些目录 guaranteed 还原）</li>
+</ul>
+<h2 id="_10">🛠️ 指南分析</h2>
+<ul>
+<li>复刻路径：加 Tailscale Bot → 云电脑内注册订阅 → AppImage 装 Orca → 设备配对，四步约 1-2 小时（人的动作 6 个）</li>
+<li>排障顺序：先跑 check-after-update.sh（只读自检逐项 ✅/❌ 带修复命令）→ 看 serve.log 的 Advertised endpoint → 看门狗日志</li>
+<li>升级 Orca：覆盖 AppImage + <code>--restart</code>，挑无任务跑时做（后台终端守护进程续用旧版直到自重启）</li>
+<li>迁移 VPS：四步不变，看门狗换 systemd 服务，更稳</li>
+</ul>
+<h2 id="_11">🔗 拓展应用推荐</h2>
+<ul>
+<li>我们的 watchdog 系脚本今天做 9&gt;&amp;- 缺陷排查（flock fd 继承）</li>
+<li>"每日 auth 探活+记账"模式移植到免费 API 四线的账号健康 cron</li>
+<li>agent 执行规约 8 条作为 delegate_task 委托模板的标准 context 前导</li>
+<li>Orca 式"会话可视层"思路：我们的 session 状态展示（谁在干活谁在等）可借鉴 worktree ps 的粒度</li>
+</ul>
+<h2 id="_12">关联分析</h2>
+<p>本文与我们系统的四层互证：①权限哲学——"发送/发布/花钱/改生产回到人"与 [ACTION REQUIRED] 红线同构；②自愈工程——home 内三件套 vs 我们的 hermes-disaster-recovery（进程守护+自动备份+一键恢复），共同教训是"平台不可控性必须用幂等恢复脚本+定时拉起消化"；③坑库互证——pgrep -f 自计数/原子替换脚本/fail-closed 三坑双方独立踩到，说明是 agent 环境的通用地雷而非个案；④agent 规约——每步停报等确认=真机测试目视确认铁律。差异面：我们单机自管（Jetson+pi5）vs 作者平台托管（Grok Bot 云电脑），他们的核心风险是平台换实例，我们的核心风险是硬件断电/SD 损坏——自愈对象不同但模式同构。</p>
+<h2 id="_13">相关笔记</h2>
+<p>→ 相关：2026-10-14-Gemini4Argon深度实测-写作强于代码的百万输出模型.md（三巨头格局的第三块拼图：xAI 生态的云电脑能力）<br />
+→ 相关：2026-10-11-AI-Agent生产化十套范式（agent 执行规约与生产化范式同频）</p>
+<blockquote>
+<p>✅ 落实(10-20审计): 9&gt;&amp;-排查完成——本机全部看门狗脚本(e20c~e31b)用pgrep探测、零flock,该缺陷无暴露面不适用。</p>
+</blockquote>
+</body>
+</html>
