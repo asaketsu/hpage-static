@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG与Agentic-RAG的边界-何时该把检索决策权交给Agent</title>
+
+<meta property="og:title" content="RAG与Agentic-RAG的边界-何时该把检索决策权交给Agent" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-10-21-RAG%E4%B8%8EAgentic-RAG%E7%9A%84%E8%BE%B9%E7%95%8C-%E4%BD%95%E6%97%B6%E8%AF%A5%E6%8A%8A%E6%A3%80%E7%B4%A2%E5%86%B3%E7%AD%96%E6%9D%83%E4%BA%A4%E7%BB%99Agent.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rag-agentic-rag-agent">RAG 与 Agentic RAG 的边界：何时该把检索决策权交给 Agent</h1>
+<p class="tag-line"><span class="tag">#RAG</span> <span class="tag">#Agentic-RAG</span> <span class="tag">#企业AI落地</span> <span class="tag">#架构决策</span> <span class="tag">#AI工程化</span></p>
+
+<blockquote>
+<p><strong>来源</strong>：X 推文（个人实践观点信源，数据未交叉验证不直接当事实引用）<br />
+<strong>原文</strong>：<a href="https://x.com/UPing123zzz/status/2112629920207925385">Ethan 恩宇 @UPing123zzz · 2026-10-21 03:39 CST</a><br />
+<strong>作者背景</strong>：编导生转 AI｜FDE（Forward Deployed Engineer），企业一线做 AI 落地、GEO 与软件开发；粉丝 4,090；本推互动 65 赞 / 12 转 / 7 回复 / 2,884 浏览——小账号垂直信源，本库已第 5 次收录其内容（质量稳定）<br />
+<strong>信源分权</strong>：FDE 一线交付视角，观点与笔者自身经验库互证，可信度中高；具体数字无外部交叉验证</p>
+<p>延伸阅读：[[2026-10-20-Agent不是竞争力-企业AI交付才是护城河.md]]（同作者前作，"交付才是护城河"的工程思维一脉相承）· [[2026-10-14-AI工程化真问题清单-跑通Demo之外的全部功夫.md]]（同作者，本文"真难点清单"的展开版）· [[2026-08-10-企业RAG不是知识库聊天机器人-而是AI可调用的知识基础设施.md]]（同作者，RAG=企业基础设施论）· [[2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md]]（Agentic RAG 架构机制详解）<br />
+<strong>分工说明</strong>：本篇聚焦"普通 RAG vs Agentic RAG 的选型判据"，不重复架构细节</p>
+
+<p class="meta-date">生成日期 2026-10-21</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p>一句话核心：<strong>RAG 与 Agentic RAG 解决的不是同一个问题——普通 RAG 解决"把正确的信息找出来"，Agentic RAG 解决"检索决策本身需要动态规划"</strong>；选型判据是任务是否真的需要动态规划/多步检索/跨数据源/工具协作，而不是"加 Agent 就更智能"。作者最锋利的判断：把 Agentic RAG 当技术炫耀正在成为企业 AI 落地的新型反模式——混合检索 + Rerank 能解决的问题套上多层 Agent，换来的是 token 成本、延迟和错误规划的三重代价。</p>
+<p><strong>作者决策准则（可直接抄）</strong>：能用普通 RAG 解决的问题，就不要为了 Agent 而 Agent。真正优秀的 AI 工程师不是能把系统设计得多复杂，而是知道什么时候该复杂、什么时候该保持简单——架构以更低成本、更稳定地解决真实问题为赢，不以高级为赢。</p>
+<h2 id="_2">内容整理：两种架构的本质差异与选型判据</h2>
+<h3 id="_3">架构对照表</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>普通 RAG</th>
+<th>Agentic RAG</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>解决的问题</strong></td>
+<td>把正确的信息找出来，让模型基于证据回答</td>
+<td>检索决策本身需要动态规划的任务</td>
+</tr>
+<tr>
+<td><strong>流程形态</strong></td>
+<td>固定流水线：提问 → 检索 → 证据交给模型 → 生成</td>
+<td>把一部分<strong>检索决策权</strong>交给 Agent</td>
+</tr>
+<tr>
+<td><strong>决策自由度</strong></td>
+<td>无决策，链路写死</td>
+<td>可决定：去哪里检索 / 调用什么工具 / 要不要拆分问题 / 失败后是否重查或切换数据源</td>
+</tr>
+<tr>
+<td><strong>典型场景</strong></td>
+<td>"公司报销制度是什么"——检索几份文档即可答</td>
+<td>"今年报销政策比去年变了什么？哪些部门受影响？有无特殊审批？"——查多版本制度 + 确认生效时间 + 多部门规定 + 调用内部业务系统 + 证据整合</td>
+</tr>
+<tr>
+<td><strong>复杂度代价</strong></td>
+<td>低</td>
+<td>token 消耗高、响应慢、错误规划会检索到不相关信息</td>
+</tr>
+<tr>
+<td><strong>适用前提</strong></td>
+<td>单跳问答、证据集中</td>
+<td>动态规划、多步检索、跨数据源、工具协作四者真需要</td>
+</tr>
+</tbody>
+</table>
+<h3 id="agentic-rag">作者的警示：Agentic RAG 正在沦为技术炫耀</h3>
+<ul>
+<li>明明<strong>混合检索 + Rerank</strong> 就能解决，偏要加好几个 Agent 让它自己规划、自己检索、自己评估、自己重试</li>
+<li>结果三重代价：架构复杂度↑、token 成本↑、响应速度↓，外加错误规划引入不相关检索</li>
+<li>这与"加 Agent、多轮推理、工具调用，系统就一定更智能"的直觉相反——<strong>架构升级不自动等于智能升级</strong></li>
+</ul>
+<h3 id="rag">企业级 RAG 的真难点清单（不是选框架）</h3>
+<p>文档解析 · 权限隔离 · 增量同步 · 版本管理 · 检索质量 · 证据引用 · Evals 验证系统是否真的答对了。作者的实证观察：这些基础工程没做好，套十层 Agent 也进不了生产环境。</p>
+<h2 id="_4">关联分析</h2>
+<p><strong>与同作者思想链的呼应</strong>：本篇是 Ethan 工程思维三部曲的架构选型篇——8 月定调"RAG 是企业基础设施而非聊天机器人"，10 月 14 日列"AI 工程化真问题清单"，10 月 20 日提出"Agent 不是竞争力、交付才是护城河"，本篇给出两者间的<strong>桥梁判据</strong>：Agentic RAG 的价值不在 Agent 本身，而在检索决策确实需要自主性时才启用。四篇互证：他的立场始终是"基础工程 &gt; 架构炫技"。</p>
+<p><strong>与既有笔记的对照</strong>：[[2026-04-27-MCP协议生态与Agentic-RAG架构深度学习.md]] 从机制侧讲 Agentic RAG 怎么构建（MCP 工具调用、多轮规划），本篇从<strong>选型侧</strong>讲何时不该构建——机制笔记 + 选型笔记互补，合起来才是完整决策链。</p>
+<p><strong>对我们系统的镜鉴（Hermes/Agent 实践）</strong>：<br />
+- 我们的 <code>knowledge-query</code> 统一入口（自动路由 Memory/Wiki/RAG/Notes）本质上就是一个 Agentic 检索层——它的价值成立正是因为跨数据源路由是真实需求，恰好落在作者划的适用区内<br />
+- 反例自省：<code>x-content-extraction</code> skill 的降级链（fxtwitter API → CDP → web_search）是<strong>确定性固定链</strong>而非让 Agent 现场规划——这与作者"简单问题别上 Agent"完全同构：链路模式已稳定就固化为 SOP（skill），决策自由度只留给真不确定的场景<br />
+- 模型经济学一致：作者"token 消耗越来越高"的代价清单与我们的包月额度纪律（智谱凌晨错峰、简单查询禁 ov-思考）是同一原则在不同层面的表达</p>
+<h2 id="_5">趋势判断</h2>
+<ol>
+<li><strong>企业 AI 落地正从"架构军备赛"回归"工程基本功赛"</strong>：2025-2026 上半场比谁 Agent 叠得多，下半场的分化点会转移到文档解析质量、权限模型、Evals 体系这些"看不见"的工程——与"交付才是护城河"论互相印证</li>
+<li><strong>Agentic RAG 不会消失但会分层</strong>：单跳问答回归普通 RAG + Rerank 的性价比组合；Agentic 层下沉为"多跳/跨源/带工具"场景的专用件，而非默认架构</li>
+<li><strong>决策权转移是本质变量</strong>：未来 RAG 演进的度量衡可能不是"检索精度"单指标，而是"系统在多大程度上需要自主决定检索路径"——选型问题会变成决策论问题</li>
+<li>小账号垂直信源的信号价值：4k 粉丝 FDE 的实战判断（65 赞/2.9k 浏览）与头部 KOL 共振同题，说明该观点已在一线工程师群体形成共识面</li>
+</ol>
+<h2 id="_6">指南分析</h2>
+<p><strong>选型决策流程（按序自问，命中即停）</strong>：<br />
+1. 任务是否单跳可答、证据集中？→ <strong>普通 RAG</strong>（混合检索 + Rerank 优先）<br />
+2. 是否需要跨数据源 / 多版本 / 调用外部业务系统？→ 进入 Agentic 候选<br />
+3. 检索路径是否真的无法预先穷举（失败重查、动态切换源）？→ <strong>Agentic RAG</strong><br />
+4. 已上 Agentic 的存量系统：反向审计——砍掉规划层后用固定链能否等价交付？能则降级，省 token 省延迟</p>
+<p><strong>作者视角的生产化检查表</strong>：文档解析 ✅ 权限隔离 ✅ 增量同步 ✅ 版本管理 ✅ 检索质量 ✅ 证据引用 ✅ Evals ✅——七项全绿之前，Agent 层数是零增值装饰。</p>
+<h2 id="_7">查询拓展</h2>
+<ul>
+<li>"Agentic RAG vs standard RAG benchmark latency token cost 2026"——找量化对比数据（本文缺硬数字，是信源短板）</li>
+<li>"self-RAG corrective RAG evaluation"——学术界对检索决策自主性的评测框架</li>
+<li>"enterprise RAG permission filtering document parsing production"——真难点清单的工程解法</li>
+<li>"when not to use agents"——反 Agent 泛化的同题讨论（Anthropic/Karpathy 均有相关论述）</li>
+<li>查自己库：<code>Agentic RAG</code>、<code>Evals</code>、<code>企业 RAG</code> 关键词已有 10+ 篇，可做一次主题聚合</li>
+</ul>
+<h2 id="_8">拓展应用推荐</h2>
+<ol>
+<li><strong>立即可用</strong>：对我们任何要新建检索类工具的场合，先过"指南分析"的四问流程再写代码——把本文判据固化为 skill 的选型前置检查</li>
+<li><strong>系统审计</strong>：对 Hermes 现有链路做一次"Agent 层必要性审计"：哪些 skill 的降级链其实可以固化、哪些路由真的需要现场决策，输出精简清单</li>
+<li><strong>反向输出</strong>：我们的 skill 体系（确定性 SOP 优先、决策自由度只给不确定场景）本身是本文论点的活案例，可整理成对 Ethan 观点的实证补充发回 X 讨论（低粉丝账号的优质回帖是低成本信源互动）</li>
+</ol>
+<h2 id="_9">💡 对我们的提升与实施</h2>
+<ul>
+<li><strong>提升</strong>：拿到一个可直接引用的选型判据四要件（动态规划/多步检索/跨数据源/工具协作）+ 七项生产化检查表——此前我们只有"简单优先"的直觉，现在有结构化判据</li>
+<li><strong>实施</strong>：① 新检索类需求先过四问流程（零成本，立即可用）；② 下次做 <code>rag-index-rebuild</code> / <code>knowledge-query</code> 类维护时，顺带跑一遍七项检查表打分，缺口记入 error-case-library；③ 本文判据与"链序→model-fallback-chain"的固化原则合并理解：<strong>稳定路径固化为链，不确定决策才留 Agent</strong>——这句可当我们的架构口诀</li>
+</ul>
+<hr />
+<p><em>笔记创建：2026-10-21 · 来源：@UPing123zzz RAG vs Agentic RAG 选型判据 · 第 5 次收录该作者</em></p>
+</body>
+</html>
