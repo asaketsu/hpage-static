@@ -497,7 +497,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 </tr>
 </tbody>
 </table>
-<p><strong>最终三模型评测</strong>（金标准 15 chunk，temperature=0）：tiny SFT/DPO 全 0（char-level 容量边界，生成在 <code>{"req_id":"</code> 骨架后退化）；<strong>规则基线</strong>（预标注初抽）召回 23.1% / 引用准确率 100% / 强度一致 100% / unit_err 0。评测体系对三个层级全部给出正确判别——判死 tiny 而非虚高，就是评测可信的证据。</p>
+<p><strong>最终三模型评测</strong>（金标准 15 chunk，temperature=0）：tiny SFT/DPO 全 0（char-level 容量边界，生成在 <code>{"req_id":"</code> 骨架后退化）；<strong>规则基线</strong>（预标注初抽）召回 15.4% / 引用准确率 100% / 强度一致 100% / unit_err 2。评测体系对三个层级全部给出正确判别——判死 tiny 而非虚高，就是评测可信的证据。</p>
 <h2 id="_3">查询拓展</h2>
 <ul>
 <li>char-level 小模型生成精确 JSON 的能力边界：563K 参数在 val loss 1.79（perplexity≈6）时仍无法维持 300+ 字符结构化输出——真实任务必须 token-level 底座（Qwen 词表+预训练），这正是"为什么真训要换基座"的实证注脚。</li>
@@ -511,6 +511,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
 <li><strong>引用自洽是地基</strong>：伪造语料的第一铁律是金标准对校验器自身全过（description⊂原文、条款号在原文、数值三要素一致），否则评测无意义。生成顺序决定成败：先构造 desc，再由 desc 拼装原文。</li>
 <li><strong>评测体系的价值在判别力</strong>：门槛表不是给自己贴金的，是给后期真训定的验收线；tiny 全 0 + 基线部分过 = 评测在工作。</li>
 <li><strong>Jetson 上做训练的三条铁律</strong>：GPU 前先看 free（统一内存 7.4G 常态只剩 1.2G）；nv torch 有 optimizer 坑（备手写 AdamW）；CPU 自回归生成 ~2s/百 token，BoN 预算按此算。</li>
+<li><strong>校验器也要被校验</strong>：check_unit 曾把换算系数当 SI 值（35000ft→0.3048 而非 10668m），范围检查从未生效——修复后 unit_err 0→2、基线召回 23.1%→15.4%，数字变严格才是修复生效的证据。</li>
 <li><strong>DPO loss 恒等于 ln2 = 假训练</strong>：margin/acc 全 0 必查 mask 维度——<code>mask[len-1:]</code> 切的是 batch 维（大小 1，越界空切片），必须 <code>mask[:, len-1:]</code>。</li>
 </ol>
 <h2 id="_5">趋势判断</h2>
@@ -567,7 +568,7 @@ python3 scripts/demo.py                       # 五类 chunk 单条演示
 <p><strong>避坑清单</strong>（全部亲踩）：Jetson GPU 训练先查 free；nv torch 用手写 optimizer；max_seq_len 要算 user+assistant 峰值总和；DPO mask 用 <code>[:, n:]</code>；loss 恒 ln2 立即查梯度流；<code>map_location="auto"</code> 要先 resolve 再传。</p>
 <h2 id="_9">拓展应用推荐</h2>
 <ol>
-<li><strong>规则基线直接投产</strong>：23% 召回的初抽草稿可作为真实规章文档的预标注工具（人工改比人工写快 3-5 倍，源方案数字），<code>src/rule_baseline.py</code> 独立可用。</li>
+<li><strong>规则基线直接投产</strong>：15.4% 召回的初抽草稿可作为真实规章文档的预标注工具（人工改比人工写快 3-5 倍，源方案数字），<code>src/rule_baseline.py</code> 独立可用。</li>
 <li><strong>校验器单独复用</strong>：<code>verifier.py</code> 的引用三件套回查+单位换算+量纲检查可挂到任何 LLM 抽取流程后当硬门（包括直接调 API 的方案）。</li>
 <li><strong>元模型模板当团队规范</strong>：<code>docs/meta-model-template.md</code> 的 15 字段表+强度词映射+录入模板可直接作为需求条目化的团队标准文档起点。</li>
 <li><strong>AutoDL 真训发射</strong>：数据/评测资产打包上云，Qwen-7B + LoRA rank64 按 config [real] 参数发射，验收跑 <code>eval_metrics.py</code> 对照门槛表。</li>
