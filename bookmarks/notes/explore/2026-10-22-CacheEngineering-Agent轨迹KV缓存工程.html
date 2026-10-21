@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CacheEngineering-Agent轨迹KV缓存工程</title>
+
+<meta property="og:title" content="CacheEngineering-Agent轨迹KV缓存工程" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="cacheengineering-agentkvakv">CacheEngineering论文精读-Agent轨迹的KV缓存工程与AKV服务引擎</h1>
+<blockquote>
+<p><strong>出处</strong>：arXiv (cs.CL)<br />
+<strong>来源链接</strong>：https://arxiv.org/abs/2610.28577<br />
+<strong>作者</strong>：Tianyu Fu, Ruoxi Wang, Zihan Min, Zhongqi Ren, Zhihao Li, Tengxuan Liu, Shengxu Mu, Hanling Zhang, Yu Wang（清华大学， thu-nics/NICS 组，感谢 Infinigence-AI 支持）<br />
+<strong>代码</strong>：github.com/thu-nics/AKV<br />
+<strong>记录日期</strong>：2026-10-22</p>
+
+<p class="meta-date">生成日期 2026-10-22</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #KV缓存 #Agent工程 #推理优化 #服务系统 #上下文管理</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-agent-kv-cache-">1.1 核心问题：长轨迹 Agent 的 KV cache 成本-精度困境</h3>
+<p>LLM Agent 的任务轨迹越来越长（数百轮推理+工具调用），KV cache 增长带来双重挑战：</p>
+<ul>
+<li><strong>成本侧</strong>：实测 KV cache 读取占总 API 成本的 <strong>82.4%</strong>（论文 Figure 14），存储+I/O 成为第一大开销</li>
+<li><strong>精度侧</strong>：活跃 KV 状态数量或位置范围超出模型可靠处理能力后，任务精度严重退化</li>
+</ul>
+<p>既有解法是 <strong>context engineering</strong>（裁剪/摘要历史消息），但它有三宗罪：</p>
+<ul>
+<li>编辑早期消息 = 修改轨迹前缀 = <strong>无效化后续所有已缓存状态</strong>，触发被保留后缀的 re-prefill；编辑越早，re-prefill 越长</li>
+<li>主流 harness 因此采用"阈值触发+激进截断"（只在接近上下文上限时摘要、只保留最近几轮）——<strong>中间轮次的有效信息被扔掉</strong></li>
+<li>形成 re-prefill 成本与任务精度之间的两难（dilemma）</li>
+</ul>
+<p>论文的实证：GPT-OSS-120B 在 100 个 BrowseComp-Plus 任务上，trim 型 context engineering（保留最近 12 轮工具响应）成本是全量上下文基线的 <strong>1.85×</strong>；48K 阈值摘要省 7% 成本但精度掉 <strong>5 个百分点</strong>。</p>
+<h3 id="12-cache-engineering-history-dependence">1.2 方法论：cache engineering 三原语 + history dependence 形式化</h3>
+<p>核心主张：<strong>不动文本轨迹，直接操作活跃 KV cache</strong>。</p>
+<p><strong>三个 cache 操作原语</strong>（形式化定义）：</p>
+<ul>
+<li><strong>append(x)</strong>：标准推理路径。处理新 token 并追加 cache 条目：<code>C ← [C; C_{t+1}]</code>。位置索引从 0 起每个 append 递增 1</li>
+<li><strong>drop(P)</strong>：把选中逻辑索引集 P 的 KV 状态从后续 attention 中排除。<strong>保留条目的位置编码、逻辑 token 序列全部不变</strong>——这是与 context engineering 的本质区别（后者必须改文本+re-prefill）</li>
+<li><strong>repos</strong>：把保留的 r 个 cache 条目的 key 位置编码按逻辑序重排为 0..r-1，后续 append 从索引 r 继续。对 RoPE 实现：<code>K ← R(q)·R(p)⁻¹·K</code>（旋转矩阵左右乘，纯 key 侧操作，<strong>value 不变</strong>）</li>
+</ul>
+<p><strong>history dependence 关键发现</strong>：cache 状态由 <strong>token 序列 + cache 操作序列</strong> 共同决定。相同 token 序列在不同 drop 时序下产生不同 cache 状态（B 在"有 A 前缀"与"无 A 前缀"下计算出的 KV 不同；C 在三种轨迹下全不同）。推论：</p>
+<ul>
+<li>服务系统的 <strong>prefix matching（前缀匹配复用）不再充分</strong>——token 前缀相同 ≠ cache 状态等价</li>
+<li>正确的 cache 复用与恢复必须同时携带 <strong>token 历史 + 操作历史</strong></li>
+</ul>
+<p><strong>策略层经验</strong>（Figure 2/3/4 实证）：</p>
+<ul>
+<li>老 token 注意力低于新 token；<strong>tool response 的注意力显著低于 assistant 消息</strong>（同等相对位置）→ 主打策略选 tool-response rolling-drop（保留全部推理+最近 12 轮工具响应的 KV）</li>
+<li>被 drop 的历史信息并未完全丢失：保留条目的 KV 计算时"看过"被丢弃内容，信息部分残留</li>
+</ul>
+<h3 id="13-akv-stateless-interface-stateful-serving">1.3 AKV 服务引擎：stateless interface, stateful serving</h3>
+<p>三大设计性质要保住：①当且仅当状态等价才复用；②驱逐不影响请求隔离；③被驱逐状态可在<strong>一次 prefill</strong> 内恢复。</p>
+<p>三大挑战与对策：</p>
+<ul>
+<li><strong>挑战1</strong>：token 前缀不再决定 cache 状态 → <strong>扩展 radix tree</strong>：在 drop 触发点插入 <strong>drop 节点 Δ</strong> 记录被丢弃的逻辑索引集，匹配时沿"token 前缀+操作前缀"双维度复用；不同 drop 时序的轨迹共享 A-B 前缀后在 drop 节点处分叉</li>
+<li><strong>挑战2</strong>：一个请求 drop 的 KV 可能仍被其他请求需要 → <strong>drop-aware eviction</strong>：驱逐决策考虑跨请求引用</li>
+<li><strong>挑战3</strong>：普通因果 prefill 无法复现 drop/repos 后的状态，逐条重放操作历史需多次前向 → <strong>segment-batch attention</strong>：单次 prefill 按 segment 分批重建</li>
+</ul>
+<p><strong>接口设计</strong>（向后兼容）：标准 messages 字段提供完整逻辑 token 序列（每条消息隐式 append），可选 cache 字段用 operate-after 语法声明 drop（"第 i 条消息后 drop 第 j 条消息的 cache"）与 reposition 序列。无状态接口保证：输出分布独立于物理 cache 驻留与其他请求的操作——共享前缀 cache 的请求间互不污染；显存压力驱逐后可全量恢复。</p>
+<h3 id="14-table-1">1.4 关键实验数据（Table 1：三模型 × 四基准）</h3>
+<p>模型覆盖 MiniMax-M2.7（230B/10B active）、GPT-OSS-120B（5.1B active）、MiroThinker-1.7-Mini（30B/3B active）；基准覆盖 BCP（BrowseComp-Plus）、GAIA-Text、SWE-Verified、xbench-DeepSearch。</p>
+<p>平均分与平均成本（美分/任务）：</p>
+<ul>
+<li>MiniMax-M2.7：AKV 53.7 分 / 4.4 分钱 vs Standard 52.4 / 5.0 vs Text Engineering 52.8 / 5.7</li>
+<li>GPT-OSS-120B：AKV 53.1 / 7.3 vs Standard 51.0 / 11.2 vs TextEng 48.3 / 10.2</li>
+<li>MiroThinker-1.7-Mini：AKV 45.8 / 14.8 vs Standard 44.1 / 20.4 vs TextEng 37.1 / 18.1</li>
+<li>汇总：<strong>平均分 +1.7，平均成本 -27.7%</strong>（vs Standard）；vs TextEng -21.9%</li>
+</ul>
+<p>精度提升来源：在基线各自的摘要阈值区间（48-96K / &gt;96K）内，基线因激进上下文削减掉分，AKV 的 rolling drop 增量式移除旧工具响应 cache，<strong>双阈值区间内均不塌</strong>。</p>
+<h3 id="15-table-2gpt-oss-120btop-80-swe-verified">1.5 服务性能（Table 2：GPT-OSS-120B，Top-80 SWE-Verified）</h3>
+<p>并发 C=8..16 全档位 AKV 延迟/吞吐占优：</p>
+<ul>
+<li>峰值吞吐配置下（AKV C=14 vs Standard C=12）：mean 请求延迟加速 <strong>1.36×</strong>，<strong>P95 加速 1.51×</strong></li>
+<li>输入吞吐 <strong>1.53×</strong>、输出吞吐 <strong>1.18×</strong></li>
+<li>高并发（C≥14）优势扩大：Standard 的 re-prefill 工作量随 KV 压力膨胀，可并发解码请求数下降</li>
+</ul>
+<h3 id="16-table-34-rsi">1.6 消融与策略进化（Table 3/4 + RSI）</h3>
+<ul>
+<li><strong>drop 目标消融</strong>（GPT-OSS-120B）：tool drop 无 repos=55.0 分；<strong>tool drop + repos=62.0 分</strong>（BCP）——repos 让探索能越过位置编码上限继续跑（55→62，+7pp）；drop reasoning cache（单独或叠加）反而降分</li>
+<li><strong>Cache-As-Tool（CAT）</strong>：把 cache 管理暴露为工具让 agent 自主决策。100 任务 BCP 子集上两个模型均最高分：GPT-OSS-120B 61.0%（成本 13.4→12.1）、MiniMax-M2.7 64.0%</li>
+<li><strong>递归自改进（RSI）</strong>：用 MiniMax-M2.7 在 20 个 BCP 任务上迭代精炼 cache 策略，第 3/6 轮策略在 100 个留出任务上相对 Standard <strong>再降本 15.6%/17.8%</strong>（叠加在专家设计的 rolling-drop 之上）——cache 策略本身可被进化</li>
+<li>abstract 级汇总：rolling-drop 较阈值摘要 +1.7 分 / -27.7% 成本；AKV 吞吐 1.2×、P95 加速 1.5×；RSI 再降 7.1%</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-context-engineering-vs-cache-engineering">2.1 Context Engineering vs Cache Engineering 的分层</h3>
+<ul>
+<li>context engineering 工作在<strong>文本层</strong>：摘要（启发式触发/agent 决策触发/RL 优化摘要质量）、trim（直接删）；共同代价=前缀改变→re-prefill</li>
+<li>cache engineering 工作在<strong>算法层活跃 cache</strong>：文本轨迹不动、保留 cache 不重算、位置编码可独立调整</li>
+<li>两层互补而非替代：摘要解决"模型读什么"，cache 操作解决"attention 看什么、计费算多少"</li>
+</ul>
+<h3 id="22-kv-cache-related-work">2.2 KV cache 压缩/驱逐/复用技术谱系（Related Work 梳理）</h3>
+<ul>
+<li>压缩：低秩表示、量化、聚合合并</li>
+<li>驱逐：token 位置信号（StreamingLLm 类）或 attention 重要性信号（H2O 类）</li>
+<li>复用：位置编码调整（PrefixCache/CacheBlend 系）或部分重算</li>
+<li>本文定位：<strong>把驱逐决策权从服务端低层信号上移到 agent/harness 高层语义决策</strong>，并补上配套 serving 引擎</li>
+</ul>
+<h3 id="23-radix-tree-sglang">2.3 Radix tree 前缀复用与 SGLang 系服务</h3>
+<p>主流 serving（SGLang/vLLM）用 radix tree 做 prefix caching；本文扩展点=drop 节点，使"操作历史"成为树的分叉维度。</p>
+<h3 id="24-rope">2.4 RoPE 位置重排的数学</h3>
+<p>repos 对 key 施加 <code>R(q)R(p)⁻¹</code> 旋转：RoPE 下 attention score 只依赖相对位置，整体平移不改变保留条目间的相对几何，但压缩了与新 append token 的距离——等价于"逻辑上把历史挪近"。</p>
+<h3 id="25-api-cache">2.5 API 计费中的 cache 读写经济学</h3>
+<p>KV cache 读占 82.4% 成本（Groq 口径）——按 token 计费体系中"活跃输入 token"才是计费单位，drop 掉的 cache 不再计费也不占 attention 预算。这与 Anthropic/OpenAI 的 cached input 折扣定价直接相关。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 一句话</h3>
+<p>把上下文管理从文本层下移到 KV cache 层：<strong>drop（排除注意力）+ repos（位置重排）两原语让 agent 不改历史、不重算前缀地控制活跃 cache，AKV 引擎用扩展 radix tree + drop-aware 驱逐 + segment-batch attention 把"history-dependent cache 状态"变成可复用、可恢复、可隔离的一等服务对象</strong>。</p>
+<h3 id="32">3.2 三条核心洞察</h3>
+<ul>
+<li><strong>历史依赖性是新的正确性维度</strong>：token 序列不再唯一决定推理状态，"操作序列"成为 cache 等价性的第二坐标轴——任何想做 cache 级复用的系统都必须显式建模它</li>
+<li><strong>保留即继承</strong>：被 drop 内容的信息部分残留于保留条目的 KV 计算中，因此"渐进 rolling drop"在信息损失上远优于"阈值触发的一次性摘要截断"</li>
+<li><strong>驱逐决策应该语义化</strong>：服务端靠 attention 分数猜重要性，不如让知道"这是工具返回的旧搜索结果"的 agent 自己拍板；Cache-As-Tool 实验证明 agent 自主管理 cache 是最优策略形态之一</li>
+</ul>
+<h3 id="33">3.3 局限性与未来方向（论文自述+笔者的判断）</h3>
+<ul>
+<li>论文自述：cache 策略空间待探索、cache engineering 下训练 agent（而非仅推理期策略）、线性 attention 模型支持是未来工作</li>
+<li>笔者补充①：drop 粒度是 message 级（整条工具响应），细粒度（段落/字段级）drop 的收益未测</li>
+<li>笔者补充②：依赖服务端支持 cache 字段扩展——在闭源 API（无此接口）上无法使用，自建/开源 serving 是前提；接口未被 vLLM/SGLang 主线采纳前生态位有限</li>
+<li>笔者补充③：保留 12 轮的 K 值与 repos 阈值仍是手调超参，RSI 进化只在小任务集上验证</li>
+</ul>
+<h2 id="_4">四、趋势判断</h2>
+<ul>
+<li><strong>趋势1：Agent 成本优化主战场从 prompt 层转向 cache 层</strong>。82.4% 成本占比意味着上下文工程（省 token）的边际收益见顶，cache 工程（省 I/O 与注意力预算）是下一战场；与 2026 年下半年集中出现的 KV 驱逐/压缩/按需读取系列（MemDecay/ODA/Kara 等）共同构成"上下文经济学"技术族</li>
+<li><strong>趋势2：Serving 接口语义化扩展成为新竞争面</strong>。messages+cache 双字段、operate-after 语法，本质是把 agent harness 的状态管理诉求下推到推理引擎——推理引擎从"无状态文本进出"走向"有状态轨迹托管"，vLLM/SGLang 跟进与否决定普及速度</li>
+<li><strong>趋势3：资源管理策略本身可被 RSI 进化</strong>。继 HarnessPro（harness 结构进化）之后，本文证明 cache 策略也能递归自改进再降 15-18% 成本——"一切资源策略皆可进化"正在成为 Agent 自进化体系的标配组件</li>
+<li><strong>趋势4：Agent 记忆分层从文本摘要走向注意力位阶</strong>。"保留在上下文里"与"参与注意力计算"解耦后，记忆系统出现新设计轴：一份文本可以永久留在轨迹里（供未来 re-prefill 恢复），同时按需退出注意力（省成本）</li>
+</ul>
+<h2 id="_5">五、关联（关联论文 + 对本系统的意义）</h2>
+<h3 id="51">5.1 关联论文</h3>
+<ul>
+<li><strong>MemDecay (2607.10582)</strong>：区域感知 KV 驱逐（system 区半衰期 10× 于 scratchpad）——本文的 message 角色感知（tool response 先丢）与其同向，但决策主体从服务端衰减曲线换成 agent 显式操作</li>
+<li><strong>ODA (2609.20734)</strong>：按需注意力（recall head 步级预测 KV 收益，KV 全保留）——四路线坐标系（驱逐/压缩/复用/读取）中，本文同时推进"驱逐"与"复用"两轴并加第三坐标（操作历史）</li>
+<li><strong>Kara (2607.01237)</strong>：KV 滑动窗口压缩——同为"老 cache 让位"，Kara 服务端固定窗口，本文 agent 决策+位置重排</li>
+<li><strong>Context-Engineering Quality (2607.14275)</strong>：七维上下文质量评分——本文可视为其 token 维度之外开辟的 cache 维度姊妹篇</li>
+<li><strong>HarnessPro (2610.26770)</strong>：RSI 进化 harness——本文 RSI 进化 cache 策略，同一"策略即代码、进化即优化"范式</li>
+<li><strong>StreamingLLM / H2O / CacheBlend</strong>：本文 Related Work 中的直接技术基座</li>
+</ul>
+<h3 id="52-hermes-agent">5.2 对 Hermes Agent 的关联</h3>
+<ul>
+<li>Hermes Gateway 的会话上下文管理目前是文本层裁剪+session 压缩（[SKILL_PRUNED] 机制），命中本文批判的"编辑前缀→re-prefill/信息损失"困境；本文证明 message 级 rolling drop（先丢旧工具输出）在精度-成本双轴上均优于阈值摘要</li>
+<li>Hermes 的工具输出修剪 skill（context-compressor）与本文 tool-response drop 语义一致，但缺少"保留条目位置重排（repos）"这半边——长会话接近模型位置上限时无法继续而不重算</li>
+<li>三机部署（jbot/ubot/abot）共享推理后端时，跨请求 cache 隔离（drop 不污染共享前缀）是 Gateway 直连推理服务的实际设计问题</li>
+</ul>
+<h3 id="53-jetson-orin">5.3 对 Jetson Orin 边缘推理的关联</h3>
+<ul>
+<li>Jetson 显存 8-16GB，长轨迹 Agent（如 DUCK 部署链的多轮工具调用）KV cache 是显存第一杀手；drop 操作零计算成本（只改活跃掩码），比摘要（要跑一次 LLM 前向）更适合边缘</li>
+<li>repos 的旋转矩阵操作在 tensor core 上是逐 key 轻量矩阵乘，边缘 GPU 完全可负担</li>
+<li>AKV 的 radix tree 需要常驻内存管理器——边缘单请求场景可简化为线性 cache 池+drop 位图，去掉树结构</li>
+</ul>
+<h3 id="54">5.4 对量化交易的关联</h3>
+<ul>
+<li>盘神探/盯盘类 Agent 长会话累积大量行情快照工具输出（占 attention 低价值高体量）——rolling drop 恰好匹配"旧行情让位、新行情进场"的时序特征</li>
+<li>回测 Agent 轨迹中 drop 已处理完的历史数据 KV，可在不丢失"已看过"逻辑的前提下延长单会话回测长度</li>
+</ul>
+<h2 id="_6">六、拓展应用推荐</h2>
+<ul>
+<li><strong>P0（Heros Gateway 工具输出 rolling-drop）</strong>：在 Gateway 的会话消息序列上实现 message 级 drop 标记——超过 N 轮的工具输出在后续请求中从 messages 序列移除但保留摘要指针（模拟 attention 排除）。不依赖服务端接口、立即可做；预期显著降低智谱/Groq 长会话 token 成本。工作量：约半天（改 Gateway 消息组装层）</li>
+<li><strong>P1（Jetson 边缘 LLM 会话 cache 位图）</strong>：nexa-local-inference（Ollama）长会话加 drop 位图——LLM 输入组装时跳过旧工具输出。与 P0 同构，但边缘场景显存收益更直接。工作量：1 天</li>
+<li><strong>P1（cache 策略进纳入 evolver 体系）</strong>：把"保留轮数 K/丢什么角色"作为可进化参数进 experience-bank/evolver，用会话成本+任务完成率做双目标——复刻论文 RSI 结论（再降 15%+）的最小化版本。工作量：2-3 天</li>
+<li><strong>P2（跟踪 vLLM/SGLang 社区对 cache 操作接口的采纳）</strong>：若上游 PR 落地，Hermes 可直连 AKV 式接口获得服务端复用收益；在此之前自建文本层模拟即可。工作量：监控级</li>
+<li><strong>P3（量化盯盘会话的时序化 drop）</strong>：盯盘 Agent 工具输出按"行情时效"衰减 drop（盘中快照保留 12 轮，隔夜全丢）——需先有 P0 基础设施。工作量：P0 完成后 +2 小时</li>
+</ul>
+<h2 id="_7">七、指南分析</h2>
+<p>若要把本文方法落地到自有 Agent 系统，按依赖链走：</p>
+<ol>
+<li><strong>第一步先做文本层近似（无需服务端支持）</strong>：把"drop 旧工具响应"实现为请求组装时跳过旧 tool message+在系统提示中保留一行指针（"第 N 轮搜索结果已归档"）。这已能拿到大部分成本收益（论文中 tool response 是低注意力高体量区）</li>
+<li><strong>repos 不可在文本层近似</strong>：位置重排必须服务端支持。判断标准：当会话逻辑长度逼近模型位置上限且任务还需继续时，才有 repos 刚需；否则跳过</li>
+<li><strong>drop 目标优先级</strong>：tool response &gt; 旧的 assistant 推理 &gt; 系统提示（永不丢）——与论文消融顺序一致，别 drop reasoning（掉分）</li>
+<li><strong>保留窗口起点</strong>：K=12 轮工具响应是论文验证的甜点值，从 12 起调</li>
+<li><strong>正确性红线</strong>：若自建 serving 支持真 cache 操作，必须实现"操作历史"随请求显式传递（history dependence），否则 prefix 复用会产生静默错误——这是论文最硬的工程警告</li>
+<li><strong>验证指标</strong>：任务通过率（不掉）+ 活跃输入 token（应降）+ P95 延迟（长会话应稳）；三者的基线先测再上线</li>
+</ol>
+<hr />
+<p><strong>数据来源说明</strong>：本笔记全部数字（82.4% 成本占比、+1.7 分/-27.7%、1.36×/1.51×/1.53×、55→62、15.6%/17.8% 等）提取自 arXiv HTML 全文（v1，2026-10-20 提交）Table 1/2/3/4 与正文；abstract 与正文数字一致。代码库 thu-nics/AKV 已开源。</p>
+</body>
+</html>
