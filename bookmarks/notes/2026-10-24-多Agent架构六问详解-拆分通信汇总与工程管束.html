@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>多Agent架构六问详解-拆分通信汇总与工程管束</title>
+
+<meta property="og:title" content="多Agent架构六问详解-拆分通信汇总与工程管束" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/cyber.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="agent">多 Agent 架构六问详解：要不要拆、怎么拆、怎么通信、谁汇总、工程管束、面试怎么答</h1>
+<blockquote>
+<p>来源：码良 @cxjwin《Agent 高频题 03. 为什么要多 Agent：怎么拆、怎么通信、结果谁汇总》<br />
+原文：https://x.com/cxjwin/status/2113503891174420770 （X Article，2026-10-23，15.7k 浏览）<br />
+性质：面试题详解（50 位作者 / 63 场面试的面经归纳），核心考「拆分的理由」——单 Agent 卡在哪里，拆开多花什么，换回什么。</p>
+
+<p class="meta-date">生成日期 2026-10-24</p></blockquote>
+<h2 id="_1">内容整理：六问主线与全部硬数据</h2>
+<h3 id="_2">一、先回答要不要拆</h3>
+<p><strong>单 Agent 循环的四个卡点（拆的理由各不相同）：</strong></p>
+<table>
+<thead>
+<tr>
+<th>卡点</th>
+<th>机制</th>
+<th>拆的理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>上下文被中间结果塞满</td>
+<td>查日志/搜代码读进来的东西只用一次却一直占上下文、分散注意力</td>
+<td>隔离上下文</td>
+</tr>
+<tr>
+<td>工具太多太像、选不准</td>
+<td>OpenAI：问题不在数量在重叠——15 个界限清楚的工具能用好，&lt;10 个互相重叠就开始选错</td>
+<td>隔离工具</td>
+</tr>
+<tr>
+<td>提示词分支太多</td>
+<td>「如果…就…否则…」改一处牵动别处；角色冲突（同上下文既写代码又审代码，审时带着写时的假设）</td>
+<td>分开职责</td>
+</tr>
+<tr>
+<td>互不依赖子任务只能串行</td>
+<td>单 Agent 轮流做，每件做完上下文多一堆材料</td>
+<td>并行（只有这个理由对应并行）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Anthropic 量级：子 Agent 探索可能用几万 token，交回主 Agent 的往往只一两千 token 摘要。研究系统主 Agent 一次派 3-5 个子 Agent、每个同时调 3+ 工具，复杂问题研究时间最多缩短 90%。</li>
+<li>面试关键反驳链：「单 Agent 调 Skill 也能并行」→ 若每一路只是一次查询，单 Agent 并行调工具就够；若每一路要自己搜、读、判断再搜好几轮，几路中间材料挤在一个上下文里才需要拆——拆换的是「每一路有干净上下文」。</li>
+<li>研发平台 vs 电商下单：关键不在流程固不固定，而在每一步要不要大量探索、要不要独立上下文和权限、能不能并行。</li>
+</ul>
+<p><strong>多 Agent 贵在哪（四项成本）：</strong><br />
+- Token：Anthropic 数据——普通对话 1x、Agent 4x、多 Agent 15x。但研究系统 Opus 4 主 + Sonnet 4 子比单 Opus 4 高 90.2%（内部研究评测）；BrowseComp 上 token 用量一项能解释 80% 表现差异——多 Agent 赢的很大部分来自能花更多 token 到任务上。<br />
+- 作者自证实验：1 主 + 3 子，62 分钟，总 token ≈1.92 亿（主 3860 万 + 子 1.53 亿），预算 100 万 = 192 倍；主 Agent 只占总量 1/5，子 Agent 必须单独记账。<br />
+- 协调成本：拆任务、写说明、读报告、核对版本、纠错（曾读到还在修改中的中间产物，整轮作废重跑）。<br />
+- 交接丢信息 + 决策冲突：Cognition Walden Yan 的 Flappy Bird 案例——背景做成马里奥风格、鸟不像，两个子 Agent 各自决定说得通、放一起对不上。两条原则：共享上下文要共享完整过程记录；动作里带隐含决策，决策冲突结果就坏。<br />
+- 错误下传：上游猜测到下游成已知事实；Cemri 等分析 7 个框架 1600+ 运行记录，失败三类=系统设计、Agent 间对不齐、检查没做好。</p>
+<p><strong>值得拆（五条）</strong>：子任务依赖少可各做各的；过程长结论短（读大量日志只要一个结论）；需要不同工具/权限（只读检索 vs 能写执行）；需要没参与过程的人检查；任务够值钱（Anthropic：只适合价值高到付得起额外开销的任务）。</p>
+<p><strong>不该拆（三条）</strong>：各部分强依赖要共享同一套决策（编码即典型——能并行的部分比研究少，Agent 还不擅长实时协调分派）；几步能做完；流程固定每步可写死（用 Workflow 更稳）。</p>
+<p><strong>Skill vs SubAgent 判据</strong>：缺「会不会做」→ 加 Skill（说明+脚本+资料按需加载进当前上下文，活还是同一个 Agent 干）；缺「做时别弄乱主上下文/要不同权限/要独立检查者/要并行跑几轮」→ 拆 Agent（另起炉灶：独立上下文窗口、独立系统提示词、独立权限，只交回摘要）。<br />
+<strong>五概念一句话</strong>：Function Calling=调工具的基础机制；MCP=统一协议接工具和数据源；Skill=把某类事怎么做打包按需加载；Workflow=步骤由代码写死；SubAgent=另起上下文干一段活只交结果。组合：Workflow 串主流程，节点 Agent 调 MCP 工具，大量探索步骤派子 Agent。</p>
+<h3 id="_3">二、怎么拆</h3>
+<p><strong>五种结构</strong>：<br />
+1. 主从（manager）：主拆任务派活汇总，子只对主负责；Anthropic 研究系统、Claude Code 子 Agent。<br />
+2. 流水线：按阶段排死（需求→设计→编码→测试），更接近 Workflow。<br />
+3. 并行分片：同类任务切几份各做再合并（长文档按章节切）。<br />
+4. 执行+审查（evaluator-optimizer）：一调用生成、另一调用评估反馈，循环。<br />
+5. 按意图转交（decentralized）：分诊 Agent 判断意图后把整个对话单向交给专职 Agent（典型客服）。<br />
+- 套娃（主→编排→原子）每多一层多一次转述和等待，只有管不过来或各层权限确实不同才值得。<br />
+- Multi-Agent vs Sub-Agent：后者是主从结构里的子（派生→交回）；前者范围更大含平级协作互相转消息。Claude Code agent teams 队友可直接互发消息、用共享任务列表认领工作，但 token 明显更多。选型：只需各自交结果用子 Agent；要边做边对齐才平级协作。</p>
+<p><strong>拆分边界三判据</strong>：上下文边界（拿一份任务说明就能干完，不需要主 Agent 之前的讨论）；工具/权限边界（只读与能写分开，碰生产数据单独一个）；能单独验收（测试过没过/文件生没生成/结论有没有出处——没法单独检查的产出，汇总时也查不出错）。「产品经理 Agent/架构师 Agent」按职位起名≠找到边界——读同一批材料、做互相依赖的决定，拆完只是多几次转述。</p>
+<p><strong>预定义 vs 动态创建</strong>：预定义好测试、行为可预期（Claude Code 可用 tools/disallowedTools 字段限定）；动态创建灵活但必须有上限——Anthropic 早期犯错：简单问题派 50 个子 Agent。后写进提示词的规模：简单事实查询 1 Agent + 3-10 次工具调用；直接比较 2-4 子 Agent 各 10-15 次；复杂研究 10+ 子 Agent 分工清楚。常见做法=类型预定义 + 任务动态下发。</p>
+<p><strong>任务说明六要素</strong>：要交付什么；做什么不做什么、与其他子 Agent 怎么分界；已确认事实和相关文件路径（免重查）；用哪些工具优先看哪些来源；交回格式；做到什么程度算完成 + 步数/token 上限。检验：交给没参与讨论的新同事能否直接开工。反例：只写「研究半导体短缺」→ 一个查 2021 汽车芯片危机、两个重复查 2025 供应链。<br />
+<strong>分档派发</strong>：难的给强模型多预算，机械的给便宜模型（Opus 主 + Sonnet 子）。<br />
+<strong>嵌套与上限</strong>（Claude Code 2026-10-23 文档）：子 Agent 默认可再派、最深 3 层（环境变量可调，设 1 关嵌套）；同会话并发默认最多 20 个，超了直接失败。设计要管：深度、并发数、整棵树共用预算 + 循环检测（派生带祖先链；同工具同参数反复调用要能识别；兜底=全局步数和时间上限）。</p>
+<h3 id="_4">三、怎么通信</h3>
+<p><strong>三方式</strong>：<br />
+1. 经主 Agent 中转：子 Agent 彼此看不见，好控制好追踪，但主 Agent 成瓶颈。<br />
+2. 共享状态（黑板）：读写同一块存储（任务表/状态对象/共享目录），主 Agent 读表不靠自己记。要管写入：一个任务只能被一个 Agent 认领；同一数据只有一个权威副本、写入带版本、冲突可发现。<br />
+3. 直接对话/转交：Claude Code agent teams 可互发消息（实验性、默认关、token 多）。<br />
+- 抢答问题（百度面试）：中转时顺序主 Agent 定；共享状态靠任务认领+加锁；直接对话要有明确规则（协调者指定下一个轮到谁）。<br />
+- 派给谁：规则/分类模型/大模型按各子 Agent 说明选——说明要写清负责什么不负责什么、彼此不重叠（道理同工具重叠选不准）。评测提准确率：标一批「应该派给谁」算准确率、错例回流；路由留「拿不准的出口」（追问用户或交通用 Agent）；派错能退回（子 Agent 发现不归自己管就退回，转交限次数防踢皮球）。<br />
+- 往下传：任务说明是子 Agent 唯一上下文来源，要自带背景；大材料给路径/链接不整段贴。子 Agent 一般不参与主 Agent 运行中上下文（隔离本来就是拆的理由）；缺信息→带问题提前返回标「需要补充」，或读共享状态（A2A 的任务也可停在「需要输入」态）。<br />
+- 往回传（两派主张可兼顾）：Cognition 主张共享完整过程记录；Anthropic 主张产出存外部只交轻量引用（防传话游戏式丢失）。作者改法=默认回短结论（状态/几句话结论/证据路径/假设与未核实项），详细日志落文件，主 Agent 有疑问再读。结论绑定版本：实现交出可测版本后记文件哈希，测试结论绑哈希。<br />
+- 上下文膨胀处理：子 Agent 回短报告原文落文件；不把子 Agent 完整对话转给另一个；主 Agent 自己历史也压缩、计划类长青内容写外部（Anthropic 主 Agent 把研究计划存 Memory——上下文超 20 万 token 会被截断）。</p>
+<p><strong>A2A vs MCP</strong>：A2A（Google 2025-04 开放协议）连 Agent↔Agent，MCP 连 Agent↔工具。核心概念：Agent Card（JSON 自述：身份/服务地址/能力/认证，标准路径 /.well-known/agent-card.json）；任务有状态生命周期（已提交/处理中/需要输入/需要认证/完成/失败/取消/拒绝，长任务中途可停下要信息）；消息=一轮交流，artifact=任务产出物；传输=HTTP 上 JSON-RPC 2.0，长任务 SSE 推进度或回调，规范另列 gRPC 和 HTTP+JSON 绑定。本质差异：调 MCP 工具像调函数（输入输出确定、工具不判断）；A2A 找的是另一个 Agent（有自己的模型工具记忆、是黑盒、可能跑很久、中途回头要信息）。<strong>使用判据</strong>：跨团队/跨厂商/分开部署才上 A2A；同进程同框架的主从用框架自带子 Agent 或函数调用就够，上 A2A 只多网络认证版本管理成本。子 Agent 要不要做成服务同理：要独立扩缩容/独立发布/给别的团队用才值得。</p>
+<h3 id="_5">四、结果谁汇总、冲突怎么办</h3>
+<p><strong>汇总纪律</strong>：主 Agent 做；子 Agent 按统一格式交结果带出处（第几块哪一段）；汇总按字段合并、去重、标冲突，<strong>不把几份报告丢给模型自由改写</strong>；块多可分层汇总。<br />
+<strong>主 Agent 汇总幻觉四成因</strong>（蔚来面试）：报告太多太长漏看看混；模型用自己的知识补空缺；转述时改了数字和限定词；几份冲突报告被揉成一个通顺说法。<br />
+<strong>约束四条</strong>：每条结论标「来自哪个子 Agent 的哪条证据」，标不出的不写；汇总后加一道核对逐条查依据（Anthropic 专门有 CitationAgent）；关键数字名称照抄不让模型改写；汇总步不给检索工具（防半路自己找新材料）。</p>
+<p><strong>矛盾仲裁四步</strong>（恒生电子面试）：①确认真冲突（时间点/口径/来源不同都只是看起来矛盾）→②按规则采信（权威数据源&gt;文档&gt;模型推断；新版&gt;旧版；有证据&gt;无证据）→③规则判不了去查（调权威系统核实或派 Agent 专项复核，还判不了交给人）→④冲突写进结果，不许汇总模型自己挑一个了事。<br />
+<strong>投票（voting）</strong>：只在各 Agent 出错原因互不相关时有用——同模型读同一份错误资料，几票一起错。</p>
+<p><strong>Critic 五要点</strong>：①查有客观依据的（测试过没过/格式对不对/结论有没有出处/清单项做没做到），主观部分用评分标准；②不用同模型同上下文自查——Huang 等（ICLR 2024）：无外部反馈时 LLM 难以自纠推理错，改完有时更差；Critic 要独立上下文（只看需求和产出、不看执行者推理过程）、接外部信号（测试结果/工具返回）、条件允许换模型；③不通过给具体问题+证据，执行者按清单改而非整个重做；证据不足定向补证（Critic 列缺哪几条只补那几条）；④防循环：最多 N 轮 / 连续两轮问题数不降就停 / 预算到线停；停下把未解决问题写进结果或交给人；⑤Critic 自己也会错（判错好结果被打回返工、判漏坏结果放行），要拿标好对错的结果集测它。作者实证：像素检查工具曾把清屏改成不执行→残留火球被当飞机（先修工具再重验）；同一次也真抓出 NaN、撞山、机头瞬转。</p>
+<p><strong>幻觉不放大</strong>：证据跟着结论走（结论+出处一起传，无出处的标「未核实」）；下游把上游输出当说法不当事实；关键事实在交接处核对一次；最终引用能追到原始出处。</p>
+<h3 id="_6">五、工程管住的六件事</h3>
+<ol>
+<li><strong>失败/超时</strong>：每子 Agent 设超时+步数上限；偶发错（网络/限流）有限自动重试，同错反复出现就别试；失败也带做完的部分返回（做到哪步/哪些未核实），主 Agent 决定重派/换人/跳过/降级交付；长任务从出错处续跑（Agent 有状态，从头再来代价大）；<strong>副作用操作（写库/发消息/下单）必须幂等</strong>——重试不能做两遍。成功率是乘出来的：5 环节各 95% 独立不重试 → 整体 77%，要分环节看才知道哪里加检查加重试。</li>
+<li><strong>预算覆盖所有 Agent</strong>：预算必须是整棵树的运行时停止条件（作者实验最大教训——预算只在题面，主/子各只见自己那份）；开工前给子 Agent 留份额、运行时持续累加全树用量，时间+token 双卡哪个先到停；子 Agent 继承剩余预算不各自从头算。反向题（汇川）：预算卡死只能单 Agent 时——几个角色改成同 Agent 几个步骤+按清单自查；能用规则/代码检查的不交模型；材料先筛再给；少了独立视角更要依赖外部信号（测试/规则校验/数据核对）。</li>
+<li><strong>权限最小化</strong>：检索/审查只读；实现只能写自己工作目录/分支；发消息/写生产/部署等副作用操作只留给主 Agent 或要人确认；消息也限（能给谁发、能读哪些共享状态）。</li>
+<li><strong>trace + 分 Agent 记账</strong>：一任务一 trace ID，每子 Agent 一段：收到的任务说明/调的工具/交回的结果/token/时间。出问题能定位哪个 Agent 引入错，成本能分摊到每个 Agent。</li>
+<li><strong>评测先有单 Agent 基线</strong>：端到端（同批任务单/多 Agent 各跑几遍——Agent 每次结果不一样，跑一遍不够——比成功率/质量分/耗时/token/费用）+ 分环节（路由选对比例/各子 Agent 完成率/Critic 判对比例/汇总结论可追溯率）。起步不用大：Anthropic 起初约 20 个代表真实用法的问题；人工测试发现早期 Agent 总挑 SEO 过的内容农场而非更权威的排名靠后来源。</li>
+<li><strong>延迟</strong>：会变慢。每多一层多一轮模型调用+任务说明+汇总；并行只缩短互不依赖的那几路，整体耗时取决于最慢一路；Anthropic 研究系统是同步执行——一批子 Agent 全做完才往下走，中途没法调整，一个慢全系统等。</li>
+</ol>
+<h3 id="2">六、面试怎么答（2 分钟主线）</h3>
+<p>为什么拆（单 Agent 卡在哪，有现象有数据；拆前在单 Agent 里试过什么）→ 怎么拆（哪种结构/几个 Agent/职责输入输出工具权限）→ 怎么通信（经谁中转/下传什么/回传什么）→ 怎么汇总（谁汇总/冲突规则/谁检查/不过怎么办）→ 工程（失败兜底/预算/权限隔离/追踪）→ 效果（vs 单 Agent 成功率耗时成本各变多少）。最好带一个具体的坑。<br />
+<strong>四个失分点</strong>：为多 Agent 而多 Agent 说不出单 Agent 哪里不够；只拿并行当理由被「单 Agent 也能并行调工具」问住；只有架构图没有对照数据和成本数字；没想过失败、冲突和停止条件。</p>
+<h3 id="_7">关键外部文献（原文引用）</h3>
+<ul>
+<li>Anthropic：How we built our multi-agent research system（2025-06-13）；Building effective agents（2024-12-19）；Effective context engineering for AI agents（2025-09-29）</li>
+<li>Cognition：Don't Build Multi-Agents（2025-06-12）</li>
+<li>OpenAI：A practical guide to building agents</li>
+<li>Cemri 等：Why Do Multi-Agent LLM Systems Fail?（7 框架 1600+ 运行记录，失败三分类）</li>
+<li>Huang 等：Large Language Models Cannot Self-Correct Reasoning Yet（ICLR 2024）</li>
+<li>Google：Announcing the Agent2Agent Protocol（2025-04-09）+ A2A 文档</li>
+<li>Claude Code 文档：Subagents / Agent teams</li>
+</ul>
+<h2 id="_8">查询拓展：三个待验证的开放问题</h2>
+<ol>
+<li><strong>Claude Code agent teams 的「共享任务列表认领」与本文黑板模式的关系</strong>：官方实现是文件级共享（如 kanban-workflow）还是内存态？实验性默认关的风险点在哪？</li>
+<li><strong>Anthropic「token 用量解释 BrowseComp 80% 表现差异」的可复用性边界</strong>：换到编码类任务（Cognition 说强依赖）是否还成立？是否有后续研究控制 token 后重测？</li>
+<li><strong>A2A 在 2026 年的落地现状</strong>：Linux Foundation 托管后的生态采用度、与 MCP 在「Agent 即工具」边界的最新互相渗透（MCP servers 暴露 Agent 能力 vs A2A 直连）。</li>
+</ol>
+<h2 id="_9">归纳总结</h2>
+<ul>
+<li>全文可压成一条主线：<strong>拆分是买「干净的上下文 + 独立的权限 + 独立的检查者 + 并行」，付的是 token（15x）、协调、交接失真、错误放大四笔钱</strong>；只有任务值钱到付得起这笔钱才拆。</li>
+<li>四个卡点对应四种拆的理由（隔离上下文/隔离工具/分开职责/并行），面试只说「任务复杂所以拆」或只拿「并行」当理由都是失分点——单 Agent 并行调工具就能覆盖「每路一次查询」的场景。</li>
+<li>判据速记：缺「会不会做」= Skill；缺「独立上下文/权限/检查者/并行」= SubAgent；跨团队跨部署才 = A2A。</li>
+<li>工程核心是把预算、停止条件、幂等、trace 从「写在题面」变成「运行时的系统属性」——作者的 192 倍预算事故正是缺运行时停止条件的实证。</li>
+<li>Critic 有效性依赖独立性（独立上下文/外部信号/异模型），同上下文自查被 ICLR 2024 证伪。</li>
+</ul>
+<h2 id="_10">趋势判断</h2>
+<ul>
+<li>面试考察点从「会不会画架构图」转向「拆分的经济学」：快手直接问「做过单/多 Agent 对照评测吗」——没有基线数据的架构选型正在失去说服力，这与工程界对 LLM 系统可观测性/评测的重视同向。</li>
+<li>协议层分工趋于稳定：MCP（Agent↔工具）+ A2A（Agent↔Agent）+ Skill（Agent 内知识打包）三层概念在面试中被并列考察（美团/百度），说明已成为行业共识词汇，2026 年进入「组合使用」而非「选一个」的阶段。</li>
+<li>反方声音（Cognition Don't Build Multi-Agents）与正方（Anthropic 研究系统）实际收敛在同一组条件上——分歧在任务分布（研究=广度并行 vs 编码=强依赖），不在信仰；行业正在从「架构站队」走向「按任务结构选型」。</li>
+<li>成本侧（token 15x、延迟取决于最慢一路、成功率连乘衰减）决定了多 Agent 会继续向「高价值任务+强工程管束」收缩，而不是泛化成默认架构。</li>
+</ul>
+<h2 id="hermes-agent">关联分析（与 Hermes / 本机多 Agent 体系的映射）</h2>
+<ul>
+<li><strong>Hermes 的 delegate_task 即本文主从结构</strong>：subagent 拿 isolated context 只交回 final summary，正是「隔离上下文」卡点的解法；其「Children know nothing of this conversation: pass everything needed via context」约束 = 本文任务说明六要素的运行时强制。</li>
+<li><strong>背景并发 children + 结果 re-enter 主循环</strong>对应「并行分片 + 主 Agent 汇总」；「never wait or poll on transcripts」对应「不经主 Agent 中转的死等反模式」的规避。</li>
+<li><strong>本机 skill 体系（lark-<em> / duck-</em> 等 400+ skills）与 SubAgent 的边界</strong>正落在本文判据上：Skills 目录=「会不会做」的知识打包（按需加载不另起上下文）；delegate_task/kanban=需要独立执行域时才启用。当前用法符合「类型预定义+任务动态下发」的推荐形态。</li>
+<li><strong>作者「子 Agent 用量单独记账」教训对应 Hermes 的 observability 实践</strong>（本机 observability-dashboard/error-monitoring skills 的 token 消耗分摊统计）；「结论绑定版本（文件哈希）」对应本机「三证=进程/iter/新目录」验收纪律。</li>
+<li><strong>Critic 独立性原则</strong>与本机 content-judge（LLM-as-Judge 独立评分）、ai-test-review（独立 review 而非作者自查）设计同构——「验证者不得继承执行者的推理上下文」。</li>
+</ul>
+<h2 id="_11">拓展应用推荐</h2>
+<ul>
+<li><strong>面试准备</strong>：本文+作者系列题单（第 2 题单 Agent 循环、第 4 题评测、第 14 题 ReAct vs Plan-and-Execute、第 23 题 Workflow vs Agent、第 28 题死循环防护）构成 Agent 岗位面试主干，值得按题单顺序过。</li>
+<li><strong>系统设计 checklist 化</strong>：把第五节六件事直接落成 PR 模板/review 清单（预算运行时停止条件、幂等、最小权限、trace、基线评测、延迟预算），适用于任何要上多 Agent 的项目评审。</li>
+<li><strong>Hermes 侧可借鉴</strong>：给 delegate_task 的任务说明按六要素自查（交付物/边界/已知事实/工具/格式/完成判据）；子任务回传字段固定化（状态/结论/证据路径/假设与未核实）。</li>
+<li><strong>延伸阅读</strong>：Cemri 等 Why Do Multi-Agent LLM Systems Fail?（失败三分类的原始论文）、Anthropic 上下文工程文（2025-09-29）、Claude Code Subagents/Agent teams 官方文档（嵌套 3 层/并发 20 的默认上限出处）。</li>
+</ul>
+<h2 id="agent_1">指南分析：多 Agent 决策操作顺序（下次直接抄）</h2>
+<ol>
+<li>先问单 Agent 卡在哪：上下文膨胀 / 工具重叠选错 / 提示词分支失控 / 串行拖慢——四者都不是 → 不拆，加 Skill 或 Workflow。</li>
+<li>对照「值得拆五条」（依赖少/过程长结论短/异工具异权限/要独立检查/任务值钱）逐条打勾，≥2 条才继续。</li>
+<li>选结构：只需各自交结果 → 主从/并行分片；要边做边对齐 → 平级协作（接受更高 token）；流程固定 → 退回 Workflow。</li>
+<li>按边界拆：上下文边界（一份任务说明能干完）+ 权限边界（只读/能写/碰生产分开）+ 可单独验收（测试/文件/出处）。</li>
+<li>写任务说明六要素，用「新同事能否直接开工」自检；难的给强模型、机械的给便宜模型。</li>
+<li>定通信：默认经主 Agent 中转 + 子 Agent 回短报告落文件；需要共享进度才上黑板（认领制+版本化写入）。</li>
+<li>汇总纪律：统一格式带出处→字段级合并→CitationAgent 式逐条核对→关键数字照抄→汇总步禁检索。</li>
+<li>冲突四步仲裁（真冲突?→规则采信→查证→写进结果），投票只在错误原因互不相关时用。</li>
+<li>工程六件事上线前逐项过：超时/重试/续跑/幂等、全树预算双卡、最小权限、trace 分账、单 Agent 基线评测、延迟按最慢一路估。</li>
+<li>交付时带对照数据：成功率/质量分、耗时、token、费用 vs 单 Agent 基线，多轮取均值。</li>
+</ol>
+<h2 id="_12">相关笔记</h2>
+<ul>
+<li>来源：<a href="https://x.com/cxjwin/status/2113503891174420770">X 原文</a></li>
+<li>分类：AI Agent / 多智能体架构 / 面试</li>
+</ul>
+</body>
+</html>
