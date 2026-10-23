@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PLC_单片机_嵌入式-FreeRTOS-Zephyr实时任务调度</title>
+
+<meta property="og:title" content="PLC_单片机_嵌入式-FreeRTOS-Zephyr实时任务调度" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="freertos-vs-zephyr-2026">FreeRTOS vs Zephyr 实时任务调度：2026 选型与调度器机制对比</h1>
+<blockquote>
+<p>探索日期：2026-10-23 | 兴趣等级：L2 | 来源数量：6（Hubble 2026 实测口径 + Ezurio 技术博客 + 社区批判观点）| 前序笔记：PLC/单片机/嵌入式 第6篇（JTAG 10-14 / RISC-V 10-14 / 低功耗 10-17 / IEC ST 10-20 / 软PLC 10-20）；MuditaOS 源码笔记(09-07)已涉及 FreeRTOS 服务总线，本篇聚焦调度器本体</p>
+
+<p class="meta-date">生成日期 2026-10-23</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>FreeRTOS 与 Zephyr 的 2026 年对比已不是"轻量 vs 全功能"的旧叙事：系统级（含 BLE/MQTT/TLS/OTA）footprint 差距收窄到 10-15%，真正的分水岭在<strong>调度器可配置性</strong>与<strong>工程化基础设施</strong>。FreeRTOS = 固定优先级抢占 + 可选时间片，"可扩展的调度器库"，一小时跑起来；Zephyr = Kconfig 可切换调度策略（抢占/协作/无抢占/时间片 + meta-IRQ + SMP 负载均衡），配套 west/devicetree/twister 的平台化工具链，学习曲线 2-3 周但多板/CI/认证后劲足。硬实时角度两者都有 O(n) 中断关断窗口的原生缺陷，µs 级硬截止期场景须看混合架构。</p>
+<h2 id="_2">关键发现</h2>
+<h3 id="1">1. 调度器机制对比（本篇核心）</h3>
+<pre><code>FreeRTOS（固定策略）:
+  固定优先级抢占 + 同优先级可选时间片轮转
+  configMAX_PRIORITIES / configUSE_TIME_SLICING / configUSE_PREEMPTION
+  → 简单可预测，策略不可换
+
+Zephyr（策略可配置）:
+  CONFIG_SCHED_DUMB/SCALABLE/MULTIQ/MPSC  — 就绪队列实现可选
+  线程类型三分：cooperative（负优先级，永不抢占）
+              preemptive（非负，可被更高优先级抢占）
+              meta-IRQ（最低延迟内核工作，可抢占普通抢占线程）
+  CONFIG_TIMESLICING + CONFIG_TIME_SLICE_MS — 时间片可开可关
+  CONFIG_SMP — 多核负载均衡（FreeRTOS 主线 SMP 较晚补上）
+</code></pre>
+<ul>
+<li>Zephyr 上下文切换实测 &lt; <strong>5 µs</strong> @ Cortex-M4 168 MHz（ProteanOS 口径）</li>
+<li>设计分野：FreeRTOS 把调度策略写死换取最小开销；Zephyr 把"协作线程不抢占"做成类型系统——混合实时负载（慢日志协作线程 + 快控制抢占线程）天然可表达</li>
+</ul>
+<h3 id="2-footprint">2. Footprint：内核数字是谎言，系统级才作数</h3>
+<p>nRF52840-DK / GCC13 -Os / 去调试符号（Hubble 2026，illustrative 口径）：</p>
+<pre><code>配置                Zephyr(F/R KB)   FreeRTOS(F/R KB)
+仅内核              18 / 4           9 / 2
++BLE 外设栈         110 / 28         95 / 24*
++MQTT+TLS(mbedTLS)  180 / 42         165 / 38
++OTA 子系统         220 / 48         195 / 44
+*FreeRTOS BLE 走 NimBLE/厂商SDK，非第一方集成
+</code></pre>
+<ul>
+<li>系统级差距 15-25KB flash / 4-6KB RAM：64KB RAM 档位是生死线，256KB 档位无关痛痒</li>
+<li>方向性差异：FreeRTOS <strong>从零往上加</strong>（默认几乎不含任何东西），Zephyr <strong>从全量往下裁</strong>（默认拉进 logging/shell/电源管理脚手架，Kconfig 可外科手术式剪裁）</li>
+</ul>
+<h3 id="3-zephyr">3. 工程化与生态：Zephyr 的集成测试优势</h3>
+<ul>
+<li>Zephyr 单一源码树：BLE 栈/GATT/HCI 驱动<strong>同一版本同 CI 测试</strong>；FreeRTOS = 多仓库多组织拼装（coreMQTT/corePKCS11/mbedTLS 各自版本对齐靠人）</li>
+<li>Zephyr：600+ 官方板级定义、devicetree 跨板移植、west(CMake 元工具)、twister 自动化测试、MCUboot OTA、Apache 2.0；Nordic nRF Connect SDK 直接基于 Zephyr，NXP/ST/Intel/Renesas Tier-1 贡献</li>
+<li>FreeRTOS：MIT、AWS 养护、40+ 架构、STM32Cube 默认捆绑、AWS IoT Core 路径最短（Device Shadow + OTA Jobs 一条龙）；安全认证走 SafeRTOS 商业版（IEC 61508/ISO 26262 生态，DO-178C 航空适航衔接待查证）</li>
+<li><strong>交叉点 ~2-3 周</strong>：hello world FreeRTOS 快；带 CI/CD+自动化测试+多板支持的生产固件 Zephyr 快</li>
+</ul>
+<h3 id="4-rtos">4. 硬实时批判：两者都不是"真硬 RTOS"</h3>
+<p>社区技术批判（LinkedIn 深度评论，社区级未官方验证）：<br />
+- 两者都会<strong>关应用中断做 O(n) 操作</strong>（按优先级/延时排序的链表插入随任务数线性增长）<br />
+- 相当一部分上下文切换逻辑在应用 ISR 内执行（ISR 长度 ×4）——最高优先级任务可被低优先级 ISR/他核任务阻碍<br />
+- 参照系：ThreadX 在部分协作/抢占调度测试中比 Zephyr 快 2.6-3.4×（witekio/Eclipse 生态口径，有利益立场）<br />
+- 硬截止期出路：异构 SoC 上 Linux(应用核)+RTOS(实时核) 经 <strong>OpenAMP</strong> 通信；或 PREEMPT_RT（6.12 起主线化，32-bit ARM 7.1/2026-04 合入），最坏延迟数十 µs 级</p>
+<h3 id="5-2026-hubble-zephyr">5. 2026 选型判据（Hubble 编辑立场：新产品默认 Zephyr）</h3>
+<ul>
+<li>选 Zephyr：跨多 MCU 家族 / 多协议组合（BLE+Thread+LoRaWAN）/ 日起就要 CI+host 测试 / 团队吃得起 2-3 周学习曲线 / 冲功能安全或网络安全认证</li>
+<li>选 FreeRTOS：单一 MCU 家族成熟 BSP / &lt;64KB RAM 极限压缩 / AWS IoT 后端 / 小团队快出活</li>
+</ul>
+<h2 id="_3">对现有工作的价值（关联分析）</h2>
+<ul>
+<li><strong>ESP32 双板固件（asc-aim-dual-board）直接受益</strong>：ESP-IDF 内核就是 FreeRTOS（S3 双核 SMP）——CAM 采集任务与 S3 舵机控制任务的优先级差设计、"最新帧"语义用 xQueueOverwrite（覆盖写而非队列积压）是控制环标配模式</li>
+<li><strong>DUCK 四端架构（传感/推理/控制/执行）映射</strong>：pi5(Linux) 跑策略 + 未来传感器/控制 MCU 跑 RTOS = 教科书式 OpenAMP/串口混合架构——"安全关键实时代码与非安全 Linux 代码物理隔离"；若传感器板选 GD32/CH32（承接 10-14 RISC-V 笔记），Zephyr 的 devicetree 可让同一固件跨板复用</li>
+<li><strong>robotics-bom-selection skill</strong>：硬件选型评估表可加一列"RTOS 适配成本"（FreeRTOS=厂商SDK即用 / Zephyr=板级支持树查询）</li>
+</ul>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li>ESP32 固件任务模板固化：采集任务优先级 &gt; 通信 &gt; 日志；控制环用 xQueueOverwrite 保持最新样本（旧样本自动丢弃），避免队列深度累积引入延迟</li>
+<li>任务数 &gt;20 或出现 µs 级硬截止期需求时，先测中断关断窗口再谈"实时"——O(n) 链表插入是 FreeRTOS/Zephyr 共同的天花板，勿迷信 RTOS 名号</li>
+<li>多板传感器节点（GD32/CH32 系列）立项时默认评估 Zephyr：2-3 周学习曲线一次性付清，换板/devicetree 移植成本趋近于零</li>
+</ol>
+<h2 id="_4">关键风险与盲点</h2>
+<ul>
+<li>Hubble 为 IoT 卫星公司（推荐 Zephyr 立场），footprint 表自标 illustrative——BOM 决策前必须按实际版本 tag 实测【来源级别：厂商博客】</li>
+<li>ThreadX 性能数字来自其生态方（witekio），2.6-3.4× 为选择性测试场景【立场源】</li>
+<li>LinkedIn 批判为资深工程师个人分析，机制方向可信（O(n) 关中断有源码依据）但数字未独立复现【社区级】</li>
+<li>Zephyr SMP 标注"实验性→逐步成熟"口径不一（Ezurio 2025 文称 experimental），最新状态需查 4.x LTS release notes</li>
+</ul>
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<p><strong>调度</strong>：FreeRTOS=固定优先级抢占+可选时间片（策略写死）| Zephyr=Kconfig 换策略+协作/抢占/meta-IRQ 三类线程+SMP 负载均衡 | 切换 &lt;5µs @M4/168MHz<br />
+<strong>体积</strong>：内核 9/2 vs 18/4 KB，系统级只差 10-15% | FreeRTOS 从零加，Zephyr 从全量裁<br />
+<strong>工程</strong>：Zephyr 单树 CI 测试+600 板+twister | FreeRTOS 厂商 IDE 即插+AWS 路径最短 | 交叉点 2-3 周<br />
+<strong>硬实时</strong>：两者都有 O(n) 关中断窗口 | µs 级硬截止期 → meta-IRQ / OpenAMP 混合 / PREEMPT_RT<br />
+<strong>选型</strong>：多板多协议认证 → Zephyr | 单板省内存快出活 → FreeRTOS</p>
+</blockquote>
+<h2 id="_6">待深入</h2>
+<ul>
+<li>Zephyr meta-IRQ 实操：CONFIG_META_IRQ 优先级设计陷阱（与 deferred work 竞争）</li>
+<li>FreeRTOS SMP 在 ESP32-S3 双核的核间迁移行为：xTaskCreatePinnedToCore vs eTaskCoreAffinity</li>
+<li>SafeRTOS DO-178C 认证证据链现状（关联用户航空适航背景）</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ul>
+<li>hubble.com: Zephyr vs FreeRTOS for IoT in 2026（footprint 实测表+选型立场）</li>
+<li>ezurio.com: Zephyr RTOS vs FreeRTOS Comprehensive Comparison（调度器/生态/认证）</li>
+<li>gnsengineering.com: FreeRTOS vs Zephyr for STM32（交叉点引用）</li>
+<li>proteanos.com: RTOS vs Embedded Linux 2026（5µs 切换/OpenAMP/PREEMPT_RT）</li>
+<li>techveda.live: Real-Time Linux vs RTOS（PREEMPT_RT 主线化时间线）</li>
+<li>LinkedIn Shawn Hymel 帖评论区（硬实时批判，社区级）+ witekio ThreadX 对比（立场源标注）</li>
+</ul>
+</body>
+</html>
