@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude单Agent循环架构-子Agent折入与Skills渐进披露</title>
+
+<meta property="og:title" content="Claude单Agent循环架构-子Agent折入与Skills渐进披露" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-10-25-Claude%E5%8D%95Agent%E5%BE%AA%E7%8E%AF%E6%9E%B6%E6%9E%84-%E5%AD%90Agent%E6%8A%98%E5%85%A5%E4%B8%8ESkills%E6%B8%90%E8%BF%9B%E6%8A%AB%E9%9C%B2.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="claude-agent-agent-skills">Claude 单 Agent 循环架构：子 Agent 折入主循环与 Skills 渐进披露</h1>
+<p class="tag-line"><span class="tag">#Claude</span> <span class="tag">#Agent架构</span> <span class="tag">#单Agent循环</span> <span class="tag">#Subagent</span> <span class="tag">#Skills</span> <span class="tag">#渐进披露</span> <span class="tag">#Conway定律</span> <span class="tag">#AgentEngineering</span></p>
+
+<blockquote>
+<p>来源：<a href="https://x.com/shao__meng/status/2114164780986679331">X 推文 @shao__meng</a>（meng shao，36.4K followers，AI 顾问/前 CTO，2026-10-25，2116 views）· 中文解读 Claude 官方博客<br />
+原文：<a href="https://claude.com/resources/articles/building-agents-when-to-fold-subagents-into-your-main-agent-loop">Building agents: When to fold subagents into your main agent loop</a>（Diane Sarkis，Anthropic Applied AI，2026-10-22，18 min）<br />
+信源分权：推文=二手转述（已逐项对原文核验 10+ 项，全吻合，无幽灵数字）；官方博客=一手高权重<br />
+系列脉络：@shao__meng 第 6 次收录（08-21 Harness 解剖 / 08-25 长时运行 Harness / 09-01 GrokBot / 10-20 MIT MAS-S62 / 本文）——该作者持续追踪 Harness 演化主线，可信度累积</p>
+
+<p class="meta-date">生成日期 2026-10-25</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p><strong>一句话：Anthropic 官方立场——企业 Agent 的「每团队一个子 Agent + 总编排」常是 Conway 定律复刻组织架构，而非能力必需；默认应是一个主循环 + Skills/工具渐进披露，子 Agent 只留给上下文膨胀、真并行、指令冲突三类场景。</strong></p>
+<p>三个核心判断：</p>
+<ol>
+<li><strong>多专家编排是组织病不是技术解</strong>：各团队自建 Agent 再盖编排层，立即产生上下文管理损耗、子 Agent 膨胀（数百个重叠无人管）、Frankenprompt（人人往系统提示加一句→规则冲突）、局部 eval 稀释（无人守端到端）、延迟翻倍（一家客户实测单循环比多 Agent harness 快约 2×）。</li>
+<li><strong>模型的进步在吃掉脚手架</strong>：自 Opus 4.5 起单循环能扛的远超团队预期；Claude Code 面向更强模型把系统提示砍了 80%+（含 Skills/工具渐进披露相关裁剪）；刚性多 Agent 结构反而挡住新模型多干活。原文金句：<em>measure, change one thing at a time, and keep what holds up</em>（度量 → 一次改一件 → 留得住的才留）。</li>
+<li><strong>折入有工程闭环</strong>：不是一把梭重写——先建端到端 eval（10 条黄金例即可起步）→ 子 Agent 降级为工具（主 Agent 持对话）→ 逐个折成 Skills + MCP 工具，一次一个，比总分更看「哪些任务翻转了」；折入版更差才保留子 Agent。</li>
+</ol>
+<h2 id="claude">内容整理：Claude 官方「折入主循环」方法论</h2>
+<h3 id="1-agent">1. 大组织建 Agent 的五种失败模式</h3>
+<table>
+<thead>
+<tr>
+<th>失败模式</th>
+<th>机制</th>
+<th>症状</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>上下文管理</strong></td>
+<td>跨 Agent 来回传摘要</td>
+<td>细节丢失、传话游戏保真度递减</td>
+</tr>
+<tr>
+<td><strong>子 Agent 膨胀</strong></td>
+<td>每团队各养一个</td>
+<td>数百个重叠子 Agent，无标准无 owner</td>
+</tr>
+<tr>
+<td><strong>Frankenprompt</strong></td>
+<td>人人往系统提示加一句</td>
+<td>规则冲突、语气不一</td>
+</tr>
+<tr>
+<td><strong>局部 eval</strong></td>
+<td>各优化子任务</td>
+<td>无人维护端到端集，领导看被稀释分数</td>
+</tr>
+<tr>
+<td><strong>延迟</strong></td>
+<td>嵌套模型循环叠加</td>
+<td>单循环实测约 2× 更快</td>
+</tr>
+</tbody>
+</table>
+<p>另一常见过度设计路径：意图分类 → 固定多步推理 → 用户分群桶 → 分叉推荐 → 再盖编排。反馈共识：<strong>一条清晰系统提示 + 4-5 个瘦数据工具 + 硬输出护栏</strong>就盖住大半场景。</p>
+<h3 id="2-agent">2. 子 Agent 仍适用的三个充要场景</h3>
+<ul>
+<li>单循环因<strong>上下文膨胀</strong>出现可测的性能下降</li>
+<li>多任务需<strong>真并行</strong>，用完即丢的新鲜上下文窗</li>
+<li>单 Agent <strong>选不好工具</strong>或系统提示<strong>指令打架</strong></li>
+</ul>
+<p>边界案例：前沿研究、核验（generator-verifier）、模块化权限仍适用；Anthropic 自家 multi-agent research system 仍在用。「每个问题类型/每个团队一个子 Agent」= Conway 定律，不是能力上限。</p>
+<h3 id="3">3. 目标形态：单循环 + 渐进披露</h3>
+<p><strong>用 Skills 渐进披露上下文、用 tool search 渐进披露工具</strong>——先见短描述，需要再全量加载。三点理由：</p>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>理由</th>
+<th>证据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>共享上下文更好答</td>
+<td>长程任务前几步结果留在同一窗，比子 Agent 回传摘要更能串起来；更少上下文窗、更少有损交接</td>
+</tr>
+<tr>
+<td>2</td>
+<td>渐进披露防膨胀</td>
+<td>不必把一切塞进超长系统提示（这是以前拆子 Agent 的主因）；Claude Code 对更强模型砍系统提示 80%+</td>
+</tr>
+<tr>
+<td>3</td>
+<td>模型更强</td>
+<td>Opus 4.5 起单循环承载力超预期；Opus 5.5/Fable 5.1 无法关 thinking，新模型自述进度、自检，部分 harness 冗余</td>
+</tr>
+</tbody>
+</table>
+<p>循环规格（原文设计）：</p>
+<ul>
+<li>一个模型、一个上下文窗、开放式工具循环；harness 只设轮次/成本预算与写门禁</li>
+<li>每轮模型<strong>批量发工具调用</strong>，harness 并行执行，原样结果回同一模型</li>
+<li><strong>写计划的模型也是执行的模型</strong>，可中途改计划（这是与编排-专家结构的本质差异）</li>
+<li>排序与领域流程 → <strong>Skills</strong>；校验/审批/记忆查找等硬限制 → <strong>工具</strong>；廉价且几乎总相关的步骤仍可用代码预载（如实体解析）</li>
+</ul>
+<p>治理配套：<strong>一个小而集中的中央团队</strong>守系统提示与端到端质量，新工具与 eval 上线前先 vet。若走多 Agent：从最简可工作模式起步，<strong>按上下文边界拆</strong>（独立研究路径、干净接口组件、黑盒核验），<strong>勿按问题类型拆</strong>——后者每传一次保真度掉一截。</p>
+<h3 id="4">4. 迁移路径（四步，一次一个）</h3>
+<ol>
+<li><strong>任务完成度 eval</strong>：中央一份端到端集 + 各 Skill 配小集（10 条黄金例起步）；编排期盯路由准确率，折入后盯「是否加载对 Skill/调对工具」；难回放的内部系统用关键事件时间戳做定向回放。</li>
+<li><strong>合并领域 Agent</strong>：优先合「链式产出、同数据、常连调」的对（生产流量里 A 后常跟 B = 紧耦合对）。</li>
+<li><strong>子 Agent 当工具</strong>：主 Agent 继续对用户说话，子 Agent 只回结构化结论，主 Agent 对真数据核验其结论；仅当子 Agent 必须直接对用户说话才全量交接。这是折入前的基线（无需重写），但残留三损：各自 prompt/owner/eval、有损摘要、嵌套循环延迟。</li>
+<li><strong>折成 Skills + MCP 工具</strong>：一次折一个，对比有无子 Agent；<strong>不只看总分，看哪些任务翻转了</strong>。反例警示：折入后延迟降了，但主 Agent 自己拿订单查询工具答完，没再问物流专员要送达日——原流程断裂，且该断裂 <strong>2 跑里只现 1 次</strong>（每任务必须多跑几次）。</li>
+</ol>
+<h3 id="5-agent">5. 多团队共养一个 Agent</h3>
+<p>所有权从「各养一个 Agent」转为「养 Skills/工具」：</p>
+<table>
+<thead>
+<tr>
+<th>载体</th>
+<th>放什么</th>
+<th>纪律</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MCP 工具</strong></td>
+<td>动作、实时数据、固定形状结果</td>
+<td>按用户意图分组（勿一 API 一工具）；系统提示内工具定义 <strong>超 30-50 个选型劣化</strong> → tool search + 延迟加载；前置条件与权限放工具内检查、返回模型可读的拒绝</td>
+</tr>
+<tr>
+<td><strong>Skills</strong></td>
+<td>团队怎么干活：步骤、规则、判断</td>
+<td>各队 DRI 保证成形、不重叠、带 eval；用 /skill-creator 自建审计剪枝、/skill-doctor 看成本与使用率删死重</td>
+</tr>
+<tr>
+<td><strong>知识库</strong></td>
+<td>偶尔才要的政策/指标/规格</td>
+<td>放搜索或 Skill 内参考文件；<strong>禁止代码检索后硬贴进 prompt</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="6-migration-kit">6. 配套工具链（官方 migration kit）</h3>
+<p>GitHub：<a href="https://github.com/anthropics/single-agent-loop-kit">anthropics/single-agent-loop-kit</a>（含 mock demo 可先试再跑真系统）：</p>
+<ul>
+<li><code>/claude-api build-eval</code>：建端到端 eval 集</li>
+<li><code>/claude-api prompt-audit</code>：标记写给旧模型的指令并出 diff 修复（找出为早期模型加的、现在只会让 Agent 更慢更僵硬的规则）</li>
+<li><code>/claude-api hillclimb</code>：对既有 eval 迭代改进（「折入版 vs 保留版」对比就用它跑）</li>
+<li><code>/claude-api cost-optimize</code>：剖析调用去向，从 prompt 缓存/裁剪 token/effort/模型选型逐项省（一次改一件）</li>
+</ul>
+<h3 id="7-vs">7. 推文 vs 原文核验表</h3>
+<table>
+<thead>
+<tr>
+<th>推文表述</th>
+<th>原文核对</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单循环约 2× 更快</td>
+<td>"roughly 2x faster runtime with the latter"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>系统提示砍 80%+</td>
+<td>"reduced Claude Code's system prompt…by over 80%"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>工具定义 30-50 后选型劣化</td>
+<td>"exceed 30-50 tool definitions…tool choice tends to degrade"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>4-5 个瘦数据工具</td>
+<td>"4-5 thin data tools"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>10 条黄金例起步</td>
+<td>"a set of 10 golden examples is enough to start"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>断裂案例 2 跑 1 现</td>
+<td>"only showed up in one run out of two"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Conway 定律</td>
+<td>"agent architecture becoming a copy of their org chart (Conway's law)"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>一打专家子 Agent 客户</td>
+<td>"dozen of specialist subagents"</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>迁移 kit 四命令</td>
+<td>build-eval/prompt-audit/hillclimb/cost-optimize</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Opus 4.5 起更强</td>
+<td>原文另补充 Opus 5.5/Fable 5.1 不可关 thinking</td>
+<td>✅（推文略简化）</td>
+</tr>
+</tbody>
+</table>
+<p>推文增量：无明显事实增量，属忠实压缩转述；价值在中文圈的快速传播定位。</p>
+<h2 id="_2">关联分析</h2>
+<p><strong>与库内笔记的对话</strong>（三强关联）：</p>
+<ul>
+<li>[[explore/2026-10-20-MIT-MAS-S62课程精读-Harness与多Agent演化.md]]（同作者 5 天前）：S62 五条实证里「单 Agent 基线已超 45% 时 MAS 反而有害」「廉价编排器+昂贵执行子 Agent」与本文<strong>互相印证</strong>——学术课证与工业落地文在同一方向收敛：多 Agent 结构的适用域正在被更强的单模型基线持续压缩。差异视角：S62 给判据（45% 阈值），本文给<strong>迁移工程学</strong>（eval 护栏 + 四步折叠 + 任务翻转检查）。</li>
+<li>[[explore/2026-08-06-SkillUse.md]]：SkillUse 把「渐进披露」作为研究对象（Agent 只见 skill 名+一句话描述，须主动判断相关性再检索），本文把它作为<strong>生产架构的默认形态</strong>——研究层的接口约定已变成 Anthropic 官方推荐的企业部署姿势，且给出了 30-50 工具定义的量化红线（SkillUse 的 skill retrieval 训练方向因此更具现实意义）。</li>
+<li>[[explore/2026-05-20-Hermes-Agent源码解析-越用越聪明的秘密.md]]：Hermes 的 Skill Loop（做过→精通）+ 本文的 skill-doctor 思想（看成本与使用率删死重）= Skill 库生命周期管理的两端；本文的「skill sprawl 靠各队 DRI + eval 配套」正是 Hermes skill-health-tier/skill-review 技能在做的事。</li>
+</ul>
+<p><strong>对我们自己系统的镜子</strong>（本文最大价值）：</p>
+<table>
+<thead>
+<tr>
+<th>原文原则</th>
+<th>Hermes 现状</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主循环 + Skills 渐进披露为默认</td>
+<td>Hermes 正是此架构：单会话主循环 + 按需 skill_view 加载</td>
+<td>✅ 路线被官方背书</td>
+</tr>
+<tr>
+<td>子 Agent 只留给并行/上下文膨胀/指令冲突</td>
+<td>delegate_task 用于长文提取、并行子任务（独立上下文窗、用完即丢）</td>
+<td>✅ 符合保留条件</td>
+</tr>
+<tr>
+<td>按问题类型拆 = 传话游戏</td>
+<td>四猫分工是<strong>同一上下文内的角色隐喻</strong>（非真子 Agent，无传话损耗），真外派才走 delegate_task</td>
+<td>✅ 无反模式，但 S62 笔记标记的「未内化 45% 判据」仍待补</td>
+</tr>
+<tr>
+<td>工具按用户意图分组、30-50 上限</td>
+<td>Hermes 工具面较小 + skill 内聚，未触红线</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>一次改一件 + eval 门禁</td>
+<td>skill-ab-testing/notes-eval-gate 已有此纪律</td>
+<td>✅ 已具备</td>
+</tr>
+<tr>
+<td>prompt-audit：清写给旧模型的指令</td>
+<td>系统提示/技能里确有为旧模型写的补偿规则（模型升级后未清）</td>
+<td>⚠️ <strong>可执行增量</strong></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">查询拓展</h2>
+<ul>
+<li>anthropics/single-agent-loop-kit 仓库结构：guided workflow 如何识别 pattern、mock demo 怎么跑？（ GitHub contents API 列目录可核）</li>
+<li>原文引用的 <a href="https://claude.com/blog/the-anatomy-of-effective-commerce-agents">the-anatomy-of-effective-commerce-agents</a>：多项企业对比的原始数据出处（"In our comparisons across several enterprise deployments"）</li>
+<li><a href="https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/">the-new-rules-of-context-engineering-for-claude-5-generation-models</a>（80% 裁剪的一手细节）</li>
+<li>tool search 官方文档：deferred loading 的实际 token 经济账</li>
+<li>与 OpenAI 侧对照：Swarm/Agents SDK 的 handoff 模式在同期是否也在收敛到单循环？</li>
+<li>S62 判据「单 Agent 基线&gt;45% 不上 MAS」的原始论文与本文 2× 延迟数据能否拼出「何时 MAS 净收益为正」的完整决策面？</li>
+</ul>
+<h2 id="_4">趋势判断</h2>
+<ol>
+<li><strong>Anthropic 的立场演化有清晰轨迹</strong>：2025-06 multi-agent research system（多 Agent 高光）→ 2026 技能化（Skills/Agent Skills 开源）→ 2026-10 本文（折入主循环）。不是自我否定——多 Agent 研究系统仍在用——而是「模型每强一代，脚手架就减一层」的<strong>减法主线</strong>。Claude Code 系统提示砍 80% 与本文同属这条线。</li>
+<li><strong>治理权重从「编排设计」移向「eval 与门禁」</strong>：本文把编排层的注意力整个搬到 eval 体系（中央端到端集 + 各 Skill 小集 + 任务翻转检查 + 多跑防偶发）。未来 Agent 团队的核心资产不是架构图而是黄金例集。</li>
+<li><strong>组织病显性化</strong>：Conway 定律从软件架构蔓延到 Agent 架构，「各团队养 Skill 而非养 Agent」的所有权转移，本质是把接口边界从组织边界改为<strong>上下文边界</strong>——这会成为企业 Agent 落地的组织变革命题。</li>
+<li><strong>对 Skill 生态</strong>：skill-creator/skill-doctor 工具化意味着 Skill 库治理进入「可测量、可修剪」阶段，Skill 会从文档形态演进为带 eval、带成本核算的一等工程资产。</li>
+</ol>
+<h2 id="_5">指南分析</h2>
+<p><strong>架构评审清单</strong>（新 Agent 设计先过这四问）：</p>
+<ol>
+<li>为什么不是一个主循环？（对照三条件：上下文膨胀/真并行/指令冲突——都不满足就回单循环）</li>
+<li>子 Agent 是按<strong>上下文边界</strong>拆的还是按<strong>问题类型/团队</strong>拆的？（后者 = 传话游戏，重拆）</li>
+<li>系统提示里有多少条是写给旧模型的？（跑 prompt-audit 式审查，砍掉只会让 Agent 更慢更僵硬的补偿规则）</li>
+<li>eval 覆盖：每条生产 Agent 链有任务？每条不可破规则有任务？每任务多跑几次？</li>
+</ol>
+<p><strong>迁移操作序</strong>（从既有编排系统迁出）：</p>
+<ul>
+<li>第 0 步：建 10 条黄金例的端到端 eval（中央 owning），先测当前编排系统做基线</li>
+<li>第 1 步：子 Agent 降级为工具（不重写，拿折入前基线）</li>
+<li>第 2 步：挑最常连调的一对，合并成单领域 Agent</li>
+<li>第 3 步：一次一个把子 Agent 折成 Skills+MCP 工具，hillclimb 对比；看任务翻转不只看总分；折入版更差才保留</li>
+<li>全程纪律：度量 → 一次改一件 → 留得住的才留</li>
+</ul>
+<p><strong>对我们系统的两条落地项</strong>：</p>
+<ul>
+<li>P0（低成本）：prompt-audit 思想自审——清点系统提示/skill 描述里为旧模型（glm-4.x 时代）写的补偿指令，模型已升 5.3 的今天逐条判废</li>
+<li>P1：笔记/技能的「任务翻转」检查意识——吸收分析类改动后不只看总分，grep 是否有原流程断裂（订单查询案例的教训通用化）</li>
+</ul>
+<h2 id="_6">拓展应用推荐</h2>
+<ul>
+<li>单 Agent 循环 kit 直接可试：clone anthropics/single-agent-loop-kit 先跑 mock demo，体验 guided 迁移流程的交互设计（其「识别 pattern→评估替代→验证」三段式对自进化系统有借鉴）</li>
+<li>/skill-doctor 思想移植：给 Hermes 的 skill-health-tier 加「成本×使用率」双维报表，识别死重技能（已有雏形，按本文补成本核算）</li>
+<li>prompt-audit 的 diff 式修复输出形态值得抄：审查工具不只报问题、直接出修复 diff——我们的 error-case-library/skill-review 可引入此交互</li>
+<li>传话游戏可视化：按本文「按问题类型拆 vs 按上下文拆」做一张对照图，作为团队架构评审的教具</li>
+<li>相关文章顺藤：Claude Code 团队 code review 文章（10-16）与 Scion 版本控制（10-19，为 always-online agents 重造 VCS）——Anthropic 内部工程系列正在系统性输出「Agent 时代重写基础设施」叙事</li>
+</ul>
+<hr />
+<p>→ 相关：<a href="explore/2026-10-20-MIT-MAS-S62课程精读-Harness与多Agent演化.md">explore/2026-10-20-MIT-MAS-S62课程精读-Harness与多Agent演化.md</a>（单/多 Agent 判据的学术侧证据，与本文工业侧互印证）<br />
+→ 相关：<a href="explore/2026-08-06-SkillUse.md">explore/2026-08-06-SkillUse.md</a>（渐进披露作为研究对象的接口层分析）<br />
+→ 相关：<a href="explore/2026-05-20-Hermes-Agent源码解析-越用越聪明的秘密.md">explore/2026-05-20-Hermes-Agent源码解析-越用越聪明的秘密.md</a>（Hermes 主循环+Skill Loop 实例，本文架构的活样本）</p>
+</body>
+</html>
