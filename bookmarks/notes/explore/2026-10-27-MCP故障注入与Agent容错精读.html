@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCP故障注入与Agent容错精读</title>
+
+<meta property="og:title" content="MCP故障注入与Agent容错精读" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-10-27-MCP%E6%95%85%E9%9A%9C%E6%B3%A8%E5%85%A5%E4%B8%8EAgent%E5%AE%B9%E9%94%99%E7%B2%BE%E8%AF%BB.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="mcpagent-scale-does-not-purchase-fault-tolerance">MCP故障注入与Agent容错精读 — Scale Does Not Purchase Fault Tolerance</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.SE) · NeurIPS 2026 (poster)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2610.32555<br />
+<strong>作者</strong>：Antonio Ken Iannillo, Joshua Segun Owotbe, Roberto Natella, Francesco Avallone, Kristina Kudryavtseva, Indika Kumara（卢森堡大学 SnT / 那不勒斯费德里克二世大学）<br />
+<strong>提交日期</strong>：2026-10-23 · <strong>记录日期</strong>：2026-10-27</p>
+
+<p class="meta-date">生成日期 2026-10-27</p></blockquote>
+<p><strong>标签</strong>：#MCP #Agent可靠性 #故障注入 #工具调用 #容错工程</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11">1.1 核心问题</h3>
+<p>LLM Agent 越来越依赖通过 MCP（Model Context Protocol）暴露的外部工具，但现有 benchmark 全部假设<strong>工具响应正确且及时</strong>——Agent 对真实工具故障的韧性从未被系统测量。论文回答三个问题：</p>
+<ul>
+<li>哪些 Agent 设计能在工具故障下优雅降级？</li>
+<li>把 backbone 换大（20B → 120B）能否减少运行脆弱性？</li>
+<li>Agent 框架（编排层）与模型规模，谁对容错贡献更大？</li>
+</ul>
+<p>关键洞察：MCP 把工具调用标准化为结构化协议后，故障可以是<strong>语义级</strong>的——格式合法但值错误、schema 违反、静默挂起、重试级联。经典分布式系统故障分类（timing / content failure）在 MCP 边界上需要重新实例化。</p>
+<h3 id="12-mcp-injector">1.2 MCP-Injector：协议感知故障注入中间件</h3>
+<p>架构上是 MCP 工具调用路径上的<strong>代理式中间件</strong>（drop-in，不改 Agent 也不改工具）：对上游 Agent 扮演 MCP server，对下游真实 server 扮演 MCP client。每次调用经过四阶段：Observe（读工具名/参数）→ Decide（按故障 profile + 持久化状态 + 种子随机性选算子）→ Act（转发并在响应侧可选变异）→ Record（结构化日志）。</p>
+<p><strong>七个故障算子</strong>（六个故障 + 一个直通）：</p>
+<ul>
+<li>OP0 Null：直通（测中间件自身开销的对照组）</li>
+<li>OP1 Minor mistake：随机字符替换（内容类）</li>
+<li>OP2 Incorrect output：词级替换（内容类）</li>
+<li>OP3 Invalid output：类型强转如 str→int（内容类，schema 违反）</li>
+<li>OP4 Explicit error：返回结构化 MCP 错误（内容类）</li>
+<li>OP5 Delayed response：人工延时（时序类）</li>
+<li>OP6 Silent drop：无限挂起不响应（时序类）</li>
+</ul>
+<p><strong>三种持久化调度</strong>（这是超越一次性故障注入的关键设计）：</p>
+<ul>
+<li>Permanent：激活后每次匹配调用都触发，直到外部修复</li>
+<li>Transient：单次触发后自愈（按激活概率抽取）</li>
+<li>Intermittent：突发式——按去激活概率持有若干次调用，持有期内按激活概率触发</li>
+</ul>
+<p>调度是<strong>可种子化</strong>的：给定种子和工具调用历史，注入决策确定可复现。</p>
+<h3 id="13-1774-mcp-57240">1.3 故障画像校准：从 1,774 个 MCP 仓库挖 57,240 条线程</h3>
+<p>故障混合比例不是拍脑袋，而是从公开 MCP 生态的真实事故分布中挖掘：</p>
+<ul>
+<li>仓库发现：合并 MCP Market + Awesome MCP Servers 两个注册表，去重后 1,774 个活跃仓库（2025-09 采集）</li>
+<li>线程挖掘：GitHub REST API 每仓库取最多 200 条 issue/PR，共 103k issues + 64k PRs + 158k comments，拼接成时序叙事，103,166 条合并线程</li>
+<li>过滤：关键词启发式分类 + 去重 1,374 + 排除构建类 3,013 + 排除非英语 2,668 → 57,240 条英语故障线程</li>
+<li>LLM 分类：gpt-4o（temperature 0，固定 JSON schema，约 $800 API 成本）分类为（故障模式 × 持久化）对；人工抽 117 条分层验证，Cohen's κ = 0.93（模式）/ 0.80（持久化），一致性很高</li>
+</ul>
+<p><strong>校准出的画像</strong>（stress profile）：</p>
+<ul>
+<li>持久化分布：Permanent 91.3% / Intermittent 8.0% / Transient 0.75%</li>
+<li>模式分布：EXPLICIT_ERROR/PERMANENT 单格占 65.6%；全部显式错误 71.2%；静默内容故障（minor/incorrect/invalid）19.1%；时序故障 9.7%</li>
+<li>作者诚实声明：GitHub issue 天然过采"可复现的持久故障"，所以这是压力画像而非运行故障率——但其形状与 JPL/NASA 18 个任务 520 个软件故障中 61.4% Bohrbug 占比一致</li>
+</ul>
+<h3 id="14-1350">1.4 实验：1,350 格全因子</h3>
+<ul>
+<li><strong>Backbone ×2</strong>：gpt-oss-20B / gpt-oss-120B，本地 MXFP4 精度，统一 16K context，消费级 Apple Silicon 上 LM Studio 服务（无任何 per-model 提示调优 → 差异只归因于规模）</li>
+<li><strong>Agent 栈 ×3</strong>：MCPBench 自带 plan-and-execute 循环 / OpenAI Agents SDK / LangChain(LangGraph) 预置 Agent</li>
+<li><strong>注入条件 ×3</strong>：Proxy-off（真基线）/ OP0（直通，测开销）/ OPP（18 规则校准故障画像）</li>
+<li><strong>任务 ×25 ×种子 ×3</strong>：MCP-Bench 单服务器任务，rubric 式 LLM-as-judge（gpt-4o-mini 每次跑 5 遍取中位数）</li>
+<li>总计 2×3×3×25×3 = <strong>1,350 格</strong>，约 58 小时 wall-clock + 18 小时判分 API</li>
+<li>运行策略：每任务 3,000s 超时 + 循环上限（40 轮/40 turn/25 superstep），防止 silent drop 无限挂起</li>
+</ul>
+<h3 id="15">1.5 三大核心结果</h3>
+<p><strong>结果一：校准故障造成严重且普遍的质量退化</strong></p>
+<ul>
+<li>任务完成分从 8.08 跌到 3.23（-60%），配对差 -4.85 分（95% CI [-5.22, -4.48]，Wilcoxon BH 校正 p&lt;0.001，rank-biserial r≈0.9）</li>
+<li>工具选择 -59%，规划有效性 -67%，其余六项指标 -54%~68%</li>
+<li>关键控制：<strong>只看双条件都完成的格子，跌幅仍有 57%</strong>——退化是真实质量损失，不只是跑不完</li>
+<li>完成率：OP0 95-100% → OPP 88-97%</li>
+<li>失败形态分布：<strong>partial degradation（部分退化）是最常见结局，占 56% 的格子</strong>（44-71%）；完全不受影响仅 7-19%；灾难性完成/优雅降级/工具绕过/未完成合计 21-39%</li>
+</ul>
+<p><strong>Tool bypass（工具绕过）是基线就存在、故障只是暴露的行为</strong>：Agent 不调工具直接凭记忆答题。判分规则（任务满足≥4 但工具恰当性&lt;2）在 OPP 下标出 27 格（6.0%），但其中 17 格<strong>一次工具调用都没有</strong>（零剂量），故障根本没机会触发。LangChain/120B 跑 unit_converter 任务全程记忆心算，任务满足 9.8 分、工具恰当性 1.2 分——这类答案在故障环境下<strong>虚增分数</strong>。引入 grounded fulfillment（工具恰当性≥2 才计任务满足）后，跌幅从 58% 扩大到 63%；OPP 下 16% 的满足度积分来自无工具证据的答案（OP0 仅 5%）。</p>
+<p><strong>结果二：Agent 框架塑造故障响应（暗示性证据）</strong></p>
+<ul>
+<li>OPP 完成率：LangChain 95-97% &gt; MCPBench 91-95% &gt; OpenAI 88-95%</li>
+<li>线性混合效应模型：相对 LangChain 的共同 -4.26 分 OPP 效应，MCPBench 再多跌 0.93（p=0.048，显著），OpenAI 再多跌 0.84（p=0.074，边缘）</li>
+<li>失败后行为分化：<strong>MCPBench 是 switch-dominant</strong>（失败后下一轮换工具重规划，与 plan-and-execute 每轮重发完整 planned_tools 一致）；<strong>LangChain/OpenAI 是 fallback-leaning</strong>（更常直接退出工具循环，与 ReAct 循环 LLM 一发纯文本就终止一致）</li>
+<li>作者克制：无多重比较校正、MCPBench 单格承受更多故障事件（8.6 vs 2.3/1.8），框架效应是 suggestive 而非 established</li>
+</ul>
+<p><strong>结果三：规模买不来容错（标题结论）</strong></p>
+<ul>
+<li>韧性比率 = OPP/OP0 完成分保留比例。混合效应模型中模型规模系数 β=-0.009（95% CI [-0.39, 0.37]，p=0.96）——120B <strong>没有</strong>保留更高比例的无故障得分</li>
+<li>更扎眼的是描述性结果：OPP 下 120B 完成率反而更低（91.1% vs 95.6%），故障可归因跌幅 -5.8 分（McNemar p=0.015）</li>
+<li>候选解释（作者明确标注为假设非机制）：120B 输出更长 → 工具调用链更长 → 承受更多故障事件（每格 4.6 vs 3.9 次）</li>
+<li>无故障基线上两模型实力相当（OP0 完成分 8.37 vs 8.13），排除了"120B 本来就更弱"的混淆</li>
+</ul>
+<h3 id="16">1.6 局限性（作者自陈）</h3>
+<ul>
+<li>构念效度：LLM judge 有随机性；画像继承 GitHub 报告偏差；内容算子未覆盖 schema drift/载荷截断/部分结果缺失</li>
+<li>内部效度：16K 共享 context 下 120B 输出更长、调用量更高——<strong>暴露量与错误处理仍然纠缠</strong>，"更长工具链放大暴露"是假设</li>
+<li>外部效度：单一模型家族（gpt-oss 系）、单一 serving 设置；benchmark 无故障时太容易（8.08 均分）；研究只对 91%-permanent 画像有统计功效（transient/intermittent 仅 9/1905 次触发事件）；无 multi-agent / human-in-the-loop / 多服务器长程任务</li>
+<li>Broader impact：MCP-Injector 本身是双刃剑——MCP 路径上的攻击者可用同款算子伪造错误/延时/篡改载荷。缓解：默认 OP0 直通、注入响应带 fault header 可被合作式 logger 识别、文档限定预部署 staging 用途</li>
+</ul>
+<hr />
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-avizienis-2004">2.1 Avizienis 依赖性分类学（2004）</h3>
+<p>论文全部故障术语基于这篇经典：fault（原因）→ error（状态）→ failure（可观察偏离）三链条，failure 再分 timing/content 两类。这篇 2004 年 IEEE TDSC 论文是分布式系统可依赖性的圣经，MCP-Injector 的贡献本质上是把它在 LLM Agent 工具边界上<strong>操作化</strong>了——这个"老分类学 × 新协议"的手法值得借鉴。</p>
+<h3 id="22-mcpmodel-context-protocol">2.2 MCP（Model Context Protocol）</h3>
+<p>Anthropic 2024 年底开源的 vendor-neutral 工具调用协议，现已成为 Agent-tool 互操作事实标准（OpenAI/Google 均已兼容）。关键特性：结构化 client-server 接口、JSON-RPC 传输、tool/resources/prompts 三类原语。本文只处理 tool calls（Agent 影响外部世界的主执行器），resources/prompts/streaming 明确划出范围。</p>
+<h3 id="23-bohrbug-vs-heisenbug">2.3 Bohrbug vs Heisenbug</h3>
+<p>Bohrbug：固定、可复现的故障（量子力学确定论的玻尔）；Heisenbug：观察即改变的间歇故障。MCP 生态 91.3% permanent 的画像与 JPL/NASA 航天软件 61.4% Bohrbug 的历史数据同向——开源生态的 issue 追踪天然筛选"我能稳定复现"的 bug，这个采样偏差正是作者把画像定位为 stress profile 的原因。</p>
+<h3 id="24-chaos-engineering">2.4 Chaos Engineering</h3>
+<p>Netflix 2016 年提出的生产故障演练哲学（Chaos Monkey 随机杀实例）。本文 Related Work 明确区分：经典混沌工程在<strong>基础设施层</strong>（杀进程/断网络），MCP-Injector 在<strong>语义协议层</strong>（伪造结构化错误/变异 JSON 载荷）——后者的故障 Agent 能"看见"并可能理解，因此能测试 Agent 的解释-重试-组合逻辑，这是基础设施层注入测不到的。</p>
+<h3 id="25-reliabilitybench">2.5 ReliabilityBench（最接近的先行工作）</h3>
+<p>已评价 timeout/rate-limit/schema-drift 下的 Agent 容错，但故障混合是手工设定的。MCP-Injector 的差异化：故障模型校准自 1,774 仓库真实事故分布 + 建模持久化调度 + 透明中间件零改动接入。</p>
+<hr />
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 核心论点链</h3>
+<pre><code>工具故障是 Agent 生产化的第一杀手
+        │
+        ▼
+现有 benchmark 假设工具完美 → 容错能力零测量
+        │
+        ▼
+MCP-Injector：协议层注入 × 真实事故画像 × 持久化调度
+        │
+        ▼
+三大结论：
+① 校准故障 → 质量崩塌 60%（partial degradation 占 56%）
+② 框架错误处理 &gt; 模型规模（switch vs fallback 两种失败哲学）
+③ 规模买不来容错（p=0.96，120B 反而更脆：链长→暴露多）
+        │
+        ▼
+工程启示：投资 harness 层，别指望换大模型
+</code></pre>
+<h3 id="32-450">3.2 六类失败形态分类法（450 格实证分布）</h3>
+<ul>
+<li>Partial degradation：56%——完成了但质量大损（最常见，也最隐蔽）</li>
+<li>Unaffected：7-19%——零剂量或运气好</li>
+<li>Catastrophic completion / Graceful degradation / Tool bypass / Non-completion：合计 21-39%</li>
+</ul>
+<blockquote>
+<p><strong>最有价值的单点发现</strong>：灾难不是主要风险形态，<strong>静默的部分退化才是</strong>——任务"完成"、分数尚可、但质量已损 40-60%，且 16% 的满足度来自无工具证据的凭空回答。这与"Agent 看起来在工作"的生产幻觉高度呼应。</p>
+</blockquote>
+<h3 id="33-capability-benchmark">3.3 与 capability benchmark 的互补定位</h3>
+<p>论文主张把 protocol-aware fault injection 作为工具调用 Agent 的<strong>第二评估维度</strong>：能力 benchmark（无故障成功率）度量"能做多好"，故障画像度量"坏条件下保住多少"。两者的差值（韧性比率）才是运维视角的模型质量。</p>
+<hr />
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1-agent-benchmark">趋势1：容错评估将成为 Agent benchmark 的标配维度</h3>
+<p>依据：MCP 标准化让故障注入第一次可以"协议感知"地跨框架复用；NeurIPS 2026 接收本身是信号；作者开源全部工件（GitLab + Zenodo）降低了复现门槛。预计 12 个月内主流 Agent 评测会出现 fault-aware 变体。</p>
+<h3 id="2harness">趋势2：Harness/框架层的工程投资回报率将高于模型升级</h3>
+<p>依据：120B 相对 20B 韧性增益为零（p=0.96）而框架间差异可测（p=0.048/0.074）；MCPBench 的 switch 策略与 LangChain 的 fallback 策略产生可测量差异。当模型规模红利见顶，编排层的错误处理设计（重试策略/换工具重规划/降级退出）成为差异化战场。</p>
+<h3 id="3">趋势3：故障画像数据集本身会成为资产</h3>
+<p>依据：57,240 线程 × 1,774 仓库的 (mode × persistence) 分布是首个 MCP 生态实证故障统计，配合种子化调度可直接嵌入 CI 回归测试。类比 chaos engineering 的演进史——先有工具，后有画像库，最后形成 SRE 实践体系。</p>
+<h3 id="4dual-use">趋势4：语义层安全将获得关注（dual-use 倒逼）</h3>
+<p>依据：论文 Broader Impacts 自陈同款中间件可被攻击者用于 MCP 路径劫持（伪造错误/篡改载荷）。MCP 生态扩张后，MCP 路径完整性（fault header 签名、server 认证）会成为必答题。</p>
+<hr />
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-llm-agent">5.1 与 <a href="2026-07-09-LLM-Agent失败模式综合分类法.md">LLM-Agent失败模式综合分类法</a> 的关联</h3>
+<p>该笔记（Beyond the Leaderboard, 2607.05775）提出 Agent 六大失败模式 + "脚手架边际递减"三定律；本文在其上叠加了<strong>故障归因维度</strong>——失败不仅来自 Agent 认知缺陷，还来自工具通道故障 × Agent 错误处理的交互。两者互补：前者治"Agent 为什么蠢"，本文治"世界为什么坏 + Agent 怎么应对"。本文的 partial-degradation-占-56% 恰好为前者"非线性复合失败"提供了故障注入视角的定量证据。</p>
+<h3 id="52-bindingdrift-agent">5.2 与 <a href="2026-07-23-BindingDrift-多步Agent实体绑定漂移.md">BindingDrift-多步Agent实体绑定漂移</a> 的关联</h3>
+<p>BindingDrift 研究 Agent 内部的实体绑定漂移传播；本文研究外部工具通道的故障传播。共同方法论：都在"中间层"注入扰动（前者是转录本污染，后者是 MCP 载荷变异）然后测量端到端质量损失。OP2 incorrect output（词级替换）本质就是一种受控的语义污染源。</p>
+<h3 id="53-cron">5.3 与 Cron可靠性工程笔记的关联</h3>
+<p>[2026-08-15-Cron可靠性工程-从静默失败到生产级定时任务] 的核心论点——静默失败比崩溃更危险——与本文 partial degradation 占 56% 的发现完全同构：<strong>看得见的崩溃只占少数，静默退化才是主形态</strong>。Hermes 的 cron 监控体系（watchdog/error-case-library）本质就是 Agent 侧的 chaos detection。</p>
+<h3 id="54-hermes-agent">5.4 与 Hermes Agent 架构的直接映射</h3>
+<ul>
+<li>Hermes Gateway 的 model-fallback-chain / agent-reliability-engineering skill（七层优雅降级、Circuit Breaker）= 本文说的 framework-level error handling，本文为其提供了首个 MCP 生态校准的实证依据</li>
+<li>Hermes 的 native-mcp client + mcporter = 天然的注入点：在 MCP client 配置层挂 proxy 即可复刻实验</li>
+<li>"120B 链更长 → 暴露更多"的假设对 Hermes 的启示：推理预算自适应路由（adaptive-inference-routing）在故障环境下应主动<strong>缩短</strong>工具链深度</li>
+</ul>
+<hr />
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Scale does not purchase fault tolerance」— 标题即结论，p=0.96 的冷酷事实</p>
+<p>「Capability benchmarks alone can mask operational brittleness」— 对整个 Agent 评测领域的警示</p>
+<p>「Partial degradation, not catastrophic failure, the most common outcome (56%)」— 最反直觉也最有生产价值的发现</p>
+</blockquote>
+<hr />
+<h2 id="_7">七、行动启示</h2>
+<ul>
+<li>无故障成功率是必要非充分指标 → 引入韧性比率（故障态/无故障态得分比）作为第二指标</li>
+<li>错误处理设计（switch vs fallback vs retry）是可测量的框架属性，不是玄学</li>
+<li>凭记忆答题的 tool bypass 在故障环境下会虚增分数 → 评分必须绑定工具证据（grounded fulfillment）</li>
+<li>故障注入画像要校准到真实事故分布，手工设定的"想象故障"会失真</li>
+</ul>
+<hr />
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>Hermes MCP 集成测试</strong>：在 native-mcp client 前挂 MCP-Injector（或复刻其 7 算子），用校准画像对 Hermes 的 MCP 工具链做预部署压力测试——论文代码已开源（GitLab uniluxembourg），预计 1-2 天可接入</li>
+<li><strong>Cron/长任务 Agent 的韧性回归</strong>：用 seedable 调度把 OP4（显式错误）+ OP5（延时）注入 watchdog 巡检链路，验证 Circuit Breaker 触发阈值是否合理——比真实等故障发生再复盘便宜一个数量级</li>
+<li><strong>量化交易数据链路容错</strong>：行情/push2 接口的故障分布大概率同构（permanent 为主 + 少量 intermittent）；用 resilience-ratio 指标评估策略 Agent 在数据中断下的 P&amp;L 保留率，作为风控维度</li>
+<li><strong>Jetson 边缘 Agent 部署验收</strong>：边缘场景工具超时/半途失败更常见，OP5/OP6 注入测试应纳入部署前 checklist——本文 3,000s 超时 + 循环上限的运行策略可直接抄</li>
+<li><strong>Agent 评分体系改良</strong>：把"工具证据绑定"（tool appropriateness ≥2 才计满足度）引入自有 Agent 评测，堵住凭记忆答题的分数漏洞</li>
+</ul>
+<hr />
+<h2 id="_9">九、指南分析</h2>
+<ul>
+<li><strong>方法论价值1（老分类学 × 新协议）</strong>：把 2004 年依赖性分类学操作化到 2026 年的 MCP 边界——顶尖工程论文的常见手法：不发明新理论，而是让经典理论在新界面变得可测量。可复用于任何"新协议可靠性"选题</li>
+<li><strong>方法论价值2（画像校准闭环）</strong>：仓库发现 → 线程挖掘 → 双重过滤 → LLM 分类（κ 验证）→ 分布合成，六阶段管线每级都报告存活数量（57,240 ← 103,166）——这个"漏斗带计数"的写法是数据挖掘型论文的可复用模板</li>
+<li><strong>方法论价值3（统计克制）</strong>：框架效应明明有 p=0.048 也只敢称 suggestive（无多重校正 + 暴露量纠缠）；规模零效应给出宽区间承认功效不足——这种"证据等级标注"远比夸大结论的可信度高，值得所有实证笔记学习</li>
+<li><strong>方法论价值4（对照组设计）</strong>：OP0 直通算子隔离了中间件自身开销，Proxy-off 隔离了 proxy 集成效应，OPP 才测故障效应——三层对照让 -4.85 分的归因干净利落。设计任何注入/干预实验时照抄这个结构</li>
+<li><strong>反例警示</strong>：LLM-as-judge 单次判分噪声大，作者用 5 次重复取中位数 + 随机 rubric 顺序压噪——自有评测体系若用 LLM 判分，不重复就是裸奔</li>
+</ul>
+</body>
+</html>
