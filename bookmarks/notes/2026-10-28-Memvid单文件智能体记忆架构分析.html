@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memvid单文件智能体记忆架构分析</title>
+
+<meta property="og:title" content="Memvid单文件智能体记忆架构分析" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-10-28-Memvid%E5%8D%95%E6%96%87%E4%BB%B6%E6%99%BA%E8%83%BD%E4%BD%93%E8%AE%B0%E5%BF%86%E6%9E%B6%E6%9E%84%E5%88%86%E6%9E%90.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="memvid">Memvid 单文件智能体记忆架构分析</h1>
+<blockquote>
+<p>来源：Memvid 官方 GitHub 仓库、MV2 格式规范与项目方基准仓库；厂商自述和本次分析分开标识。<br />
+原文链接：https://github.com/memvid/memvid<br />
+记录日期：2026-10-28</p>
+
+<p class="meta-date">生成日期 2026-10-28</p></blockquote>
+<p><strong>标签</strong>：#AI记忆 #Agent #检索 #本地优先 #Memvid</p>
+<h2 id="_1">一、内容整理</h2>
+<h3 id="_2">定位与结论</h3>
+<p>Memvid v2 是以 Rust 实现的嵌入式记忆与检索引擎，将内容、元数据、日志和索引封装进 <code>.mv2</code> 文件；目标是免去部署独立向量数据库，而不是消除切分、索引、召回质量评估或生成模型等 RAG 工作。最有价值的是<strong>可携带、带索引、可追溯的知识快照</strong>；并不能仅据此认定它适合取代现有 Hermes 记忆。</p>
+<p><strong>版本辨析</strong>：旧版 v1 的二维码方案已被官方弃用。v2 借鉴视频编码的帧式组织与压缩思想，并不是把数据转换成视频或二维码。</p>
+<h3 id="_3">结构与数据流</h3>
+<pre><code class="language-text">文档/对话 → 提取与切分 → Smart Frame + 元数据 → 追加/提交
+                                         ↓
+.mv2：文件头 → 内嵌 WAL → 内容段 → 关键词/向量/时间索引 → TOC
+                                         ↓
+                         检索候选 → 业务模型生成答案
+</code></pre>
+<ul>
+<li><strong>Smart Frame</strong>：官方描述为带时间戳、校验和、元数据的不可变内容单元，支持追加、压缩和时间线。不可变帧不等于没有更新或删除：格式规范列出 frame update 和 tombstone，具体历史保留、清除及重建行为需要按版本实测。</li>
+<li><strong>头部</strong>：格式规范 2.1 规定 4096 字节，含魔数、版本、WAL 和页尾偏移、TOC 校验和。</li>
+<li><strong>内嵌 WAL</strong>：规范按容量配置 1、4、16 或 64 MB，用于恢复；README 承诺无外置 WAL、lock、shm 文件。不能把 WAL 当作备份，真实断电与文件损坏恢复仍需测试。</li>
+<li><strong>内容与索引</strong>：内容段压缩；词法索引基于 Tantivy，向量索引使用 HNSW，时间索引用于时序。索引是否存在取决于构建特性和数据。</li>
+<li><strong>提交</strong>：官方 Rust 示例先 create，再 put，最后 commit 后 search。提交边界与故障后可见性需要实际验证，不能把缓存写入等同持久化。</li>
+</ul>
+<p>来源：<a href="https://github.com/memvid/memvid/blob/main/MV2_SPEC.md">格式规范</a>；<a href="https://github.com/memvid/memvid/blob/main/README.md">README</a>。</p>
+<h3 id="_4">功能并非默认全部开启</h3>
+<p>仓库 Cargo.toml 所示 <code>memvid-core 2.0.140</code> 默认特性为 <code>lex</code>、<code>pdf_extract</code>、<code>simd</code>；<code>vec</code>、<code>clip</code>、<code>whisper</code>、<code>encryption</code>、<code>api_embed</code> 均为可选功能。上层 SDK 的默认能力不应直接套用 Rust crate 设置，应分别核对。</p>
+<ul>
+<li><code>lex</code>：BM25 关键词检索；<code>vec</code>：HNSW 向量检索和 ONNX 本地 embedding。</li>
+<li><code>clip</code>：图像向量；<code>whisper</code>：语音转写，需模型和运行时。</li>
+<li><code>encryption</code>：密码加密胶囊 <code>.mv2e</code>，属于可选特性；普通 <code>.mv2</code> 不应默认视为加密。</li>
+<li><code>api_embed</code>：云端 embedding，需要网络和相应费用；离线模式仍需提前取得本地模型和运行依赖。</li>
+<li>官方列出的 <code>bge-small-en-v1.5</code> 模型约 120 MB、384 维，主要是英文模型，不证明中文混合检索质量。模型名绑定可防索引与查询向量模型混用，但升级模型仍需重建或迁移索引。</li>
+</ul>
+<h3 id="_5">基准数字：项目方自报，不是实机承诺</h3>
+<p>官方 README 宣称 LoCoMo +35%、P50 0.025 ms、P99 0.075 ms 和吞吐 1372 倍。原页缺少可直接对应各数值的完整同口径实验细节；不能把检索微基准延迟等同模型调用、网络、embedding 和回答生成的端到端延迟。</p>
+<p><a href="https://github.com/memvid/memvidbench">MemvidBench</a> 给出另一组具体口径：1,540 题的类别 1–4 准确率 85.65%，排除 446 道对抗题；使用 gpt-4o 作答、gpt-4o-mini 宽松裁判、text-embedding-3-large、混合检索、K=60。其对照数字来自另一论文，仓库也注明部分厂商存在争议。模型、候选数、上下文预算、时间、数据污染和裁判标准若未统一，不能视为严格公平对照；本次未复现，也没有验证仓库宣传的 1372 倍。</p>
+<h2 id="_6">二、查询拓展</h2>
+<h3 id="rag">嵌入式检索与 RAG 的关系</h3>
+<p>单文件将内容与索引打包，主要降低部署和搬运复杂度；RAG 仍由摄取、切分、索引、召回、重排、生成、验证组成。数据库换成文件并不自动提高中文召回、可靠性或权限隔离。</p>
+<h3 id="_7">时间线、事件溯源与删除</h3>
+<p>追加式时间线适合审计与版本回溯，但并不天然提供物理安全删除。若采用 tombstone 隐藏记录，旧数据、快照和备份可能仍存在；合规清除需要验证压缩重写、密钥销毁和备份留存流程，不能仅看搜索结果消失。</p>
+<h2 id="_8">三、归纳总结</h2>
+<p>以“知识胶囊”看 Memvid：</p>
+<ol>
+<li><strong>存储层</strong>：文本与索引封装到单个持久文件，便于迁移和交接。</li>
+<li><strong>检索层</strong>：词法、语义、时间多路索引，适合检索与版本回放。</li>
+<li><strong>可靠性层</strong>：内嵌 WAL 和校验和提供设计基础；损坏恢复、并发和跨机器复制应实测。</li>
+<li><strong>决策层</strong>：何时写、哪些是权威事实、冲突如何处理，仍由上层 Agent 和业务策略负责。</li>
+</ol>
+<p>核心洞察：<strong>文件便携解决知识搬运，检索策略和证据溯源决定实际价值。</strong></p>
+<h2 id="_9">四、趋势判断</h2>
+<ul>
+<li>本地优先、免服务依赖的可携带知识包对离线边缘设备和跨机交付有明确吸引力；依据是 <code>.mv2</code> 同时承载数据和索引，但模型及运行时并不一定包含其中。</li>
+<li>单文件不是分布式架构替代品：高并发、多租户 ACL、审计、跨地域同步和高可用需要额外设计，具体支持程度需实测。</li>
+<li>从单纯向量检索转向关键词、语义和时间联合召回是合理方向，但优劣需要同一中文数据集、相同预算和模型评估，不能由单项厂商基准推出。</li>
+</ul>
+<h2 id="_10">五、关联分析</h2>
+<h3 id="_11">与现有记忆体系</h3>
+<p>本会话已注入的 Hermes 记忆描述包含 L1 长期约束、L2 短期记忆、L3 按需主题索引；这些是知识分层和注入策略，Memvid 则主要提供存储与检索载体，两者不在同一层。具体后端、权限和现行检索质量本次未源码审计，不能判定替换成本或功能缺口。</p>
+<h3 id="_12">与已有笔记</h3>
+<ul>
+<li><a href="2026-08-08-AI-Agent自进化与记忆系统全景.md">AI Agent 自进化与记忆系统全景</a>：旧笔记记录 Memvid 的宣传数字；本篇补充基准配置、排除题目和对照限制，旧笔记数字不应作为独立实测。</li>
+<li><a href="2026-04-11-gbrain-hybrid-search-proposal.md">混合搜索方案</a>：关键词与向量融合是共通方向；Memvid 将相关索引封装进文件，旧方案关注现有系统检索策略，二者侧重点不同。</li>
+</ul>
+<h2 id="_13">六、金句摘录</h2>
+<blockquote>
+<p>检索策略才是真正的 Alpha；容器解决的是知识如何装走，而不是如何判真。</p>
+</blockquote>
+<p>以上为本次分析总结，不是项目原话。</p>
+<h2 id="_14">七、行动启示</h2>
+<ul>
+<li><strong>建议先保留现有系统</strong>：没有中文语料、真实故障样本和端到端成本对比前，不替换生产记忆，不安装新软件。</li>
+<li><strong>可复现评估设计</strong>：从已脱敏的历史问题构建带证据答案集，固定切分、embedding、top-k、模型、上下文预算；比较 Recall@K、证据准确性、冲突事实识别、冷/热 P50/P95、建索引耗时、文件体积和峰值内存。</li>
+<li><strong>可靠性门禁</strong>：分别验证写入中断与重开、快照一致性、并发读写、断电恢复、跨架构打开、删除后的物理残留；先在隔离副本进行，不碰真实记忆。</li>
+<li><strong>落实情况</strong>：本次完成源码配置与基准口径的只读核验并写入本笔记；未部署、未测性能，也未改生产配置。可迁移方案待实际需求与隔离评估成立再启动。</li>
+</ul>
+<h2 id="_15">八、拓展应用推荐</h2>
+<ul>
+<li>项目交接：将脱敏后的文档及其索引封装为可携带快照，接收端仍需兼容运行时与模型。</li>
+<li>离线设备：提前准备本地 embedding 模型与运行依赖，评估 ARM 构建支持与内存；不假设即插即用。</li>
+<li>事故复盘：保留来源、时间、版本与提交标识，结合外部备份追踪判断依据；文件日志不替代备份。</li>
+</ul>
+<h2 id="_16">九、指南分析</h2>
+<p>开源项目选型依次回答五个问题：功能是否默认启用、基准是否同口径、离线依赖是否齐全、异常恢复和删除是否实证、许可证能否满足分发要求。仓库 <a href="https://github.com/memvid/memvid/blob/main/LICENSE">LICENSE</a> 为 Apache-2.0：分发时保留许可证、适用的版权与 NOTICE，并标明修改；依赖与模型许可证需另查。本篇只读分析，不构成法律意见。</p>
+</body>
+</html>
