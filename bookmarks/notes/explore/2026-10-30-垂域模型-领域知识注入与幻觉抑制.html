@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>垂域模型-领域知识注入与幻觉抑制</title>
+
+<meta property="og:title" content="垂域模型-领域知识注入与幻觉抑制" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | tech-blue" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-10-30-%E5%9E%82%E5%9F%9F%E6%A8%A1%E5%9E%8B-%E9%A2%86%E5%9F%9F%E7%9F%A5%E8%AF%86%E6%B3%A8%E5%85%A5%E4%B8%8E%E5%B9%BB%E8%A7%89%E6%8A%91%E5%88%B6.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="-">领域知识注入与幻觉抑制：垂域模型"注入-幻觉"矛盾的五层防线</h1>
+<blockquote>
+<p>嗅探学习笔记 | 2026-10-30 | 领域：垂域模型(L2) | 来源：9篇(4 arXiv预印本+1工业级案例+1法规考试实证+1评测方法+2安全/工程)<br />
+前序笔记：explore/2026-10-20-行业SFT数据配方、explore/2026-10-23-CPT持续预训练配方、explore/2026-10-27-领域评测基准、notes/2026-08-25-AeroStructFM*</p>
+
+<p class="meta-date">生成日期 2026-10-30</p></blockquote>
+<h2 id="_1">一、摘要</h2>
+<p>领域知识注入与幻觉抑制是同一枚硬币的两面：<strong>参数化注入（SFT/CPT）内化知识但引发灾难性遗忘与过拟合；上下文注入（RAG）易更新但检索错误会把幻觉直接传导进答案</strong>。2025-2026 的主线是从"二选一"走向"分层组合 + 可验证信号闭环"。三个数字锚点：①保险垂域 INS-S1 做到幻觉率 0.6%（HHEM）同时领域分 90.14 超 DeepSeek-R1（82.47）且通用能力不掉——证明专精与通用可以不 trade-off；②核安全监管考试实证：<strong>不做参数更新的配置在 14 场考试中 0 场达标</strong>，SFT+固定分块 RAG 达标 8/14——执业级知识必须进参数；③RAGognizer 把幻觉检测头作为训练信号联合微调，Llama2-7B 幻觉率 56.98%→13.29%。核心反直觉发现：<strong>微调并不强化参数记忆，而是抑制幻觉——模型更少"凭权重说话"，但说的时候可靠得多</strong>（PKP×PR 分解实证）。</p>
+<h2 id="_2">二、关键发现</h2>
+<h3 id="21">2.1 注入路线四分法与"参数必要性"铁证</h3>
+<ul>
+<li><strong>GSI Agent</strong>（arXiv:2603.15643）给出干净的四分法：</li>
+<li>动态注入=RAG（易更新，依赖检索质量）</li>
+<li>静态注入=SFT（进参数，难更新）</li>
+<li>适配器=LoRA（低成本，容量有限）</li>
+<li>提示工程=Prompt（零训练，脆弱）</li>
+<li><strong>NRC 核反应堆操作员执照考试</strong>（arXiv:2607.22067，31B 多模态）：法规阈值 80%，评估 8 种适配×检索组合，<strong>唯一规律是无微调配置 0/14 达标</strong>；最强配置 = Gemini 蒸馏 CoT 的 SFT + 固定分块 RAG（8/14）。结论：<strong>认证级/执业级领域掌握，纯 RAG 或纯 prompt 无法达成，参数更新是必要非充分条件</strong></li>
+<li>对适航/结构强度这类"零容忍幻觉"域，这是路线选择的直接证据</li>
+</ul>
+<h3 id="22-pa-ragarxiv250208356ibm-research">2.2 PA-RAG：知识注入微调的两种失败模式（arXiv:2502.08356，IBM Research）</h3>
+<ul>
+<li><strong>条件记忆偏置（Conditional Memorization Bias）</strong>：训练时每题静态分配"检索成功/失败"场景→模型对一部分文档学会依赖检索、对另一部分学会硬背，推理时面对相反场景就崩</li>
+<li><strong>标准答案过拟合（Canonical Answer Overfitting）</strong>：每题只配一个 canonical 答案→模型学到的是风格伪模式而非知识本身</li>
+<li>解法两件套：</li>
+<li><strong>上下文增强（CA-RAFT）</strong>：同一题混造"检索成功+检索失败+干扰文档"多种样本，教会模型判断"何时信检索、何时信参数"</li>
+<li><strong>知识改写（Knowledge Paraphrasing）</strong>：同题合成多个答案变体微调（承 Allen-Zhu &amp; Li 2024 预训练改写结论，首次迁移到微调段）</li>
+<li>遗忘防线两件套：<strong>自选择重放缓冲</strong>（用模型自己的预测而非 gold response 重放通用指令）+ <strong>领域标识符</strong>（问题前加域前缀，帮模型区分新知识与既有能力）</li>
+<li>收益：token 级召回 +10%，通用能力保持</li>
+</ul>
+<h3 id="23-ins-s1-arxiv260314463">2.3 INS-S1：工业级"可验证精通 + 幻觉控制"范式（arXiv:2603.14463，蚂蚁集团）</h3>
+<ul>
+<li>两大方法论创新：</li>
+<li><strong>可验证数据合成系统</strong>：精算推理+合规的层级化数据集（超越"简单知识注入"，构造带严格逻辑约束的多源合成管线，自蒸馏保通用能力）</li>
+<li><strong>渐进 SFT-RL 课程框架</strong>：动态数据退火（data annealing）+ RLVR（可验证推理）与 RLAIF（AI 反馈）协同配比，通过数据配比与奖励信号优化同时实现"领域约束+防遗忘"</li>
+<li>结果：INSEva（自发布 39k+ 基准）90.14 超 DeepSeek-R1（82.47）与 Gemini-2.5-Pro；<strong>幻觉率 0.6%（HHEM）为该域纪录低位</strong>；通用基准对 backbone 无显著退化</li>
+<li>关键叙事：反驳"垂域化必掉通用能力"（DianJin-R1 等金融模型灾难性遗忘的反例）</li>
+</ul>
+<h3 id="24">2.4 幻觉抑制的三个新机制层级</h3>
+<ul>
+<li><strong>训练级｜检测头联合优化（RAGognizer，arXiv:2604.15945）</strong>：把基于内部状态的幻觉检测头集成进 LLM，语言建模与幻觉检测联合 LoRA 微调→内部状态对幻觉的可分性提升，<strong>生成时幻觉率随之下降</strong>（Llama2-7B：56.98%→13.29%，可答性 F1 70.94→91.86），无指令改动、无质量损伤。附 RAGognize 数据集（自然发生的闭域幻觉+token 级标注）</li>
+<li><strong>推理级｜上下文门控（CGKI-LLM，London Met 2026）</strong>：免微调路线——查询分解→候选知识获取→语义相关性计算→门控过滤无关知识→组 prompt。PubMedQA 准确率 84.3%→89.2%，<strong>幻觉率 7.2%→3.8%</strong>。证明"灌进来的上下文越相关，幻觉越少"——RAG 的问题常不在检索器而在"不相关内容也照灌"</li>
+<li><strong>度量级｜声明级评测（C-FEX/PKP，arXiv:2603.23047）</strong>：ROUGE/BertScore 在长技术文本上失效；C-FEX 把每条响应声明归因到来源（prompt 或参考答案），<strong>PKP（参数知识精度）× PR（参数输出率）分解</strong>。核心发现：RAG-SFT 后模型"凭权重说话"频率下降但正确率上升——<strong>微调的价值是让模型学会闭嘴而非学会多记</strong>；微调后 7B 可匹敌 72B 基线</li>
+</ul>
+<h3 id="25">2.5 注入的代价面：收益有限性与新攻击面</h3>
+<ul>
+<li><strong>CLAP</strong>（arXiv:2604.21525，制造场景闭环后训练）：QLoRA-SFT 平均增益温和（总分 +0.0098），<strong>5 批次仅 3 批改善、部分回退</strong>；GRPO 暴露高 KL 风险；事实抽取仍必须靠 RAG；<strong>应用链回放</strong>作为发布门禁（adapter 是否适配目标应用链，用 100 条回放案例判定）</li>
+<li><strong>成员推断攻击（MIA）新面</strong>（EACL 2026 Findings）：知识注入（SFT/RAG）扩大隐私攻击面；EPD 防御框架聚合"注入模型+基座+裁判模型"三方输出，MIA 成功率最高降 27.8%（SFT）/526.3%（RAG）——<strong>注入私有语料（如型号资料/EBOM）前必须过隐私评估</strong></li>
+</ul>
+<h2 id="-_1">三、关键概念：注入-幻觉五层防线图</h2>
+<pre><code>垂域模型知识注入与幻觉抑制防线（由外到内）
+──────────────────────────────────────────────
+L1 推理层: 上下文门控/检索质量     CGKI 幻觉7.2→3.8% (免训练,当天上线)
+L2 数据层: 注入数据配方            PA-RAG 混合检索成败场景+答案改写 (+10%召回)
+L3 训练层: 渐进SFT-RL课程         INS-S1 数据退火+RLVR/RLAIF (幻觉0.6%不掉通用)
+L4 架构层: 检测头联合训练          RAGognizer 幻觉56.98→13.29% (生成即检测)
+L5 度量/发布层: 声明级评测+回放门禁 PKP×PR归因 + CLAP应用链回放 (防假收益)
+──────────────────────────────────────────────
+铁律: 参数更新是执业级必要条件(NRC 0/14)
+      微调≠强化记忆,=抑制幻觉+学会闭嘴(PKP)
+      每注入一分私有知识,多一分MIA攻击面
+</code></pre>
+<h2 id="skill">四、对现有工作的价值（Skill/项目改进建议）</h2>
+<ul>
+<li><strong>P0｜domain-llm-training-pipeline skill 增补注入数据配方</strong>：SFT 数据构造加 PA-RAG 双增强——①每题混配"金标准文档+干扰文档+无文档"三态上下文；②同题多答案改写。防条件记忆偏置（当前管线只有单态：有上下文）。另加"领域标识符前缀+自选择重放缓冲"两件套防遗忘</li>
+<li><strong>P0｜AeroStructFM 评测体系补声明级指标</strong>：10-27 笔记已立"领域基准=合规证据链"叙事，C-FEX/PKP 正是缺失的度量层——结构强度问答的幻觉判定应从"ROUGE/裁判总分"升级为"逐声明归因（条款依据/参数来源/模型编造）"，与适航符合性验证的逐项追溯逻辑同构</li>
+<li><strong>P1｜幻觉抑制三层组合拳</strong>（按成本递增）：先做 L1 上下文相关性门控（免训练）→ 数据层 PA-RAG 增强 → 若幻觉仍是瓶颈再上 RLVR 课程（可验证：载荷计算/规范条款引用天然可自动判分，是 RLVR 理想域）</li>
+<li><strong>P1｜注入前隐私门</strong>：型号资料/AD 指令/供应商数据入库即过 MIA 评估，EPD 式三方聚合是参考架构</li>
+<li><strong>P2｜发布门禁借鉴 CLAP</strong>：adapter 发布前跑 N 条应用链回放（领域问答真实链路），防"离线指标涨、线上回退"</li>
+</ul>
+<h2 id="actionable-insights">五、Actionable Insights</h2>
+<ol>
+<li>训练领域 SFT 数据时，检索成败场景必须<strong>按题混合</strong>而非按文档静态分配——这是最便宜的反偏置手段，零算法改动</li>
+<li>评测幻觉率优先声明级归因（每句话从哪来），总分制（ROUGE/LLM 整体打分）会系统性掩盖"编造但流利"的答案</li>
+<li>"微调让模型少说而非多说"——垂域模型的正确预期是<strong>降低参数输出率 PR、提升参数精度 PKP</strong>，而非期待模型背下全部规范</li>
+<li>免训练防线（上下文门控）与训练防线（数据配方/RL课程）<strong>按边际成本排序部署</strong>，幻觉指标决定是否升级下一层</li>
+<li>高风险域（适航/保险/核电）的共识：无参数更新的方案过不了执业级门槛，RAG 的角色是"事实接地"而非"知识掌握"</li>
+</ol>
+<h2 id="_3">六、关键风险与盲点（来源级别标注）</h2>
+<ul>
+<li>INS-S1 数字为蚂蚁自报 + 自发布基准 INSEva 评测（官方论文但<strong>厂商自评</strong>，HHEM 幻觉率自测——参照自评审计原则打七折看）；"不掉通用能力"结论需第三方复验</li>
+<li>NRC 实验仅 31B 单模型单域（14 场考试），"无微调 0/14"结论外推到其他域需谨慎（官方论文）</li>
+<li>PA-RAG 的 +10% 召回在 2-3 个数据集上测得，规模有限（同行评议前预印本）</li>
+<li>CLAP"5 批仅 3 批改善"是匿名制造数据，无公开数据集可复核（工业报告）</li>
+<li>RAGognizer 检测头需要访问内部状态，闭源 API 模型不可用（开源复现可行）</li>
+<li><strong>盲点</strong>：知识编辑（ROME/MEMIT 类精准编辑）路线本次未覆盖；多模态领域知识注入（图纸/试验曲线）证据几乎空白——恰是飞机结构域最需要的形态</li>
+</ul>
+<h2 id="_4">七、一页速查</h2>
+<blockquote>
+<p><strong>路线</strong>：RAG(动态/易更新) vs SFT(静态/进参数) vs LoRA(适配器) vs Prompt(脆弱)——执业级必须进参数（NRC 0/14 铁证）<br />
+<strong>注入失败模式</strong>：条件记忆偏置(检索场景静态分配) + 标准答案过拟合(单答案) → 解法=混合三态上下文+答案改写(PA-RAG)<br />
+<strong>幻觉抑制五层</strong>：上下文门控(免训练,7.2→3.8%) → 数据配方(PA-RAG) → SFT-RL课程(INS-S1, 0.6% HHEM) → 检测头联合训练(56.98→13.29%) → 声明级评测+回放门禁(PKP/CLAP)<br />
+<strong>反直觉</strong>：微调≠强化记忆，=抑制幻觉+学会闭嘴（PKP↑ PR↓）<br />
+<strong>代价</strong>：注入私有语料=MIA 攻击面扩大（EPD 防御）；LoRA-SFT 收益批次间不稳定（5批仅3批改善），发布必须过应用链回放<br />
+<strong>适航映射</strong>：载荷/条款引用天然可验证=RLVR 理想域；声明级归因评测与符合性验证逐项追溯同构</p>
+</blockquote>
+<h2 id="_5">八、待深入</h2>
+<ul>
+<li>知识编辑（ROME/MEMIT/MEND）精准注入 vs SFT 模糊注入的对比——垂域模型知识更新场景</li>
+<li>多模态领域知识注入（工程图纸/试验数据曲线进参数）——飞机结构域刚需，证据空白</li>
+<li>RLVR 奖励设计在"规范条款引用"类任务上的具体形态（可验证信号如何构造）</li>
+<li>HHEM/自报幻觉率 vs 第三方幻觉基准的系统性偏差量化</li>
+</ul>
+<h2 id="_6">九、来源列表</h2>
+<ol>
+<li>PA-RAG: Systematic Knowledge Injection via Diverse Augmentation for Domain-Specific RAG — arXiv:2502.08356（IBM Research + IIT ISM Dhanbad）</li>
+<li>INS-S1: Industrial-Scale Insurance LLM, Verifiable Domain Mastery and Hallucination Control — arXiv:2603.14463（蚂蚁集团）</li>
+<li>RAGognizer: Hallucination-Aware Fine-Tuning via Detection Head Integration — arXiv:2604.15945</li>
+<li>Parametric Knowledge in RAG-SFT (C-FEX/PKP) — arXiv:2603.23047</li>
+<li>NRC Reactor Operator Licensing Exam: Fine-Tuning and Retrieval Strategies — arXiv:2607.22067</li>
+<li>GSI Agent: Domain Knowledge Enhancement for LLMs in Green Stormwater Infrastructure — arXiv:2603.15643</li>
+<li>CLAP: Closed-Loop Training, Evaluation, and Release Control for Domain Agent Post-training — arXiv:2604.21525</li>
+<li>CGKI-LLM: Dynamic Domain Knowledge Injection using Context-Gated Prompt Engineering — Int'l J. of AI and ML, London Metropolitan University, 2026</li>
+<li>Membership Inference Attacks on RAG/SFT-injected LLMs + EPD Defense — EACL 2026 Findings</li>
+</ol>
+</body>
+</html>
