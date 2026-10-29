@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PageIndex目录树RAG落地实战-裸标题失败教训与两段式混合检索</title>
+
+<meta property="og:title" content="PageIndex目录树RAG落地实战-裸标题失败教训与两段式混合检索" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-10-30-PageIndex%E7%9B%AE%E5%BD%95%E6%A0%91RAG%E8%90%BD%E5%9C%B0%E5%AE%9E%E6%88%98-%E8%A3%B8%E6%A0%87%E9%A2%98%E5%A4%B1%E8%B4%A5%E6%95%99%E8%AE%AD%E4%B8%8E%E4%B8%A4%E6%AE%B5%E5%BC%8F%E6%B7%B7%E5%90%88%E6%A3%80%E7%B4%A2.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="pageindex-rag">PageIndex 目录树 RAG 落地实战：裸标题失败教训与两段式混合检索</h1>
+<p class="tag-line"><span class="tag">#RAG</span> <span class="tag">#LLM</span> <span class="tag">#信息检索</span> <span class="tag">#PageIndex</span> <span class="tag">#目录树检索</span> <span class="tag">#向量数据库</span> <span class="tag">#知识库</span> <span class="tag">#检索策略</span></p>
+
+<blockquote>
+<p><strong>来源</strong>：X 推文（@yibie 转述日本工程师实战文章，2026-10-29，2285 浏览/48 赞）；项目事实已对官方仓库 <a href="https://github.com/VectifyAI/PageIndex">VectifyAI/PageIndex</a> 核验（GitHub API 实测 2026-10-30：39,893 stars / 3,433 forks / MIT / 最近 push 2026-10-29）<br />
+<strong>信源分权</strong>：yibie 转述=二手（日本工程师原文链接在评论区，未能取得，其实测数字按转述分权）；官方仓库=一手（机制描述已核验吻合）<br />
+<strong>延伸阅读</strong>：[[2026-05-07-PageIndex-无向量推理式RAG.md]] — 半年前已收录该项目机制精读（架构两步流程/对比表/代码结构/部署模式），本篇只写增量：<strong>落地实战视角</strong>（失败教训、验证方法、混合方案），机制骨架不复述</p>
+
+<p class="meta-date">生成日期 2026-10-30</p></blockquote>
+<h2 id="_1">归纳总结</h2>
+<p>yibie 转述的核心命题：RAG 检索不准时，调切块大小、换 embedding 模型都是表层修补——<strong>"切块 + 语义相似度"这件事本身有结构缺陷</strong>：切块破坏连续性（合同"第 3 条例外"、排障"第 5 步"必须连上下文才有意义），且术语密集领域（法律/金融/技术文档）"语义相近的词"和"答案实际所在位置"经常不是同一个地方。PageIndex 把前提翻过来：不做向量化，从文档标题结构生成可推理的目录树，让 LLM 像人翻长文档一样逐层下钻检索。<strong>本篇增量不在机制（旧笔记已覆盖），而在三条实战硬经验</strong>：①裸标题下钻必失败（抽象标题"第 4 章 运营"让每个章节都可疑），节点必须配 1-2 句摘要且人工核对一遍；②小成本验证法（5-10 题只测"该打开哪个标题"的目录导航准确率）；③最顺配置是两段式混合——目录导航粗筛到 2-3 章，章内再跑向量细筛，不必推倒现有 RAG。</p>
+<h2 id="_2">内容整理：从裸标题失败到两段式混合的四段实战路径</h2>
+<h3 id="1">1. 问题定义：为什么"相似 ≠ 相关"</h3>
+<ul>
+<li>传统 RAG 隐含假设"语义相似 = 内容相关"，在专业长文档场景系统性失效</li>
+<li>两类典型断裂：<strong>连续性断裂</strong>（"第 3 条例外"切成块后失去所指）与<strong>位置错位</strong>（术语密集文档中相似词聚集处 ≠ 答案所在处）</li>
+<li>这与官方仓库口径一致：README 直呼向量检索为 "vibe retrieval"（凭感觉检索），主张推理式检索可追溯、可解释、带页码引用</li>
+</ul>
+<h3 id="2">2. 机制四步（与官方两步法对齐）</h3>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>动作</th>
+<th>官方对应</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>① 建树</td>
+<td>抽出章/节/条层级 → 目录树</td>
+<td>Step 1: Generate TOC tree index</td>
+</tr>
+<tr>
+<td>② 摘要</td>
+<td>LLM 给每个节点写一句"该节讲什么"</td>
+<td><code>--if-add-node-summary</code>（默认 yes）</td>
+</tr>
+<tr>
+<td>③ 下钻</td>
+<td>提问时从根逐层判断"该读哪个子节点"</td>
+<td>Step 2: Reasoning-based tree search</td>
+</tr>
+<tr>
+<td>④ 取回</td>
+<td>定位末端小节后取正文生成答案</td>
+<td>返回 node_id + 页码范围</td>
+</tr>
+</tbody>
+</table>
+<p>人的翻文档行为对照：先看目录猜"大概在第 4 章" → 看小节标题继续缩 → 到末端小节读正文作答。副作用实在：<strong>不用搭和运维 embedding 数据库</strong>，索引重建/向量库版本管理/相似度阈值调整全部消失。</p>
+<h3 id="3">3. 失败教训与修正（本篇最有价值的增量）</h3>
+<ul>
+<li><strong>第一次实现失败</strong>：只把标题文字丢给模型 → 碰到"第 4 章 运营"这类抽象标题，每个章节看起来都可疑，缩不下去</li>
+<li><strong>解法</strong>：每个标题补 1-2 句"这一节具体处理什么、谁在什么时候该读"的摘要，并<strong>人工核对一遍</strong></li>
+<li><strong>关键认知</strong>：自动生成的摘要不能盲信——人工看这一遍反而是最省时间的一步（坏摘要会把下钻引向错误分支，且错误静默不可见）</li>
+</ul>
+<h3 id="4">4. 实测与边界条件</h3>
+<ul>
+<li><strong>实测</strong>（日本工程师，转述未核验）：约 80 页、4 级标题的内部业务手册；问"退货处理的例外条件"，传统向量检索多次命中含相似词的错误小节；目录导航一次走对章节的概率明显提高</li>
+<li><strong>不适用</strong>：聊天记录、纯要点笔记等<strong>没有标题结构的文本</strong>——没有可跟随的树，建目录无收益</li>
+<li><strong>代价</strong>：每次提问多调几次 LLM 下钻，延迟和成本对实时场景要提前估算（官方参数佐证：每节点默认 max 20k tokens，索引构建本身就消耗大量 token）</li>
+</ul>
+<h3 id="5">5. 小成本验证法（引入前的最小实验设计)</h3>
+<ol>
+<li>挑一份标题清晰的文档</li>
+<li>只抽标题做成层级列表，每个标题配一两句摘要</li>
+<li>准备 5-10 个常见问题</li>
+<li>让模型只看目录回答"该打开哪个标题"，与正确章节对准确率</li>
+<li>准确率低 → 回去改标题命名或摘要粒度（不动检索代码）</li>
+</ol>
+<h3 id="6">6. 两段式混合（作者判断：不是二选一）</h3>
+<blockquote>
+<p>章节级粗筛交给结构，句级细匹配仍交给向量。</p>
+</blockquote>
+<p>先目录导航缩到 2-3 个可疑章节 → 只在这几章内部跑向量检索。对已有 RAG 的团队 = 不推倒重来，在现有检索前<strong>加一层目录预筛</strong>，改动最小。</p>
+<h3 id="7">7. 引入前四条自查</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>自查项</th>
+<th>判据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>文档至少有章、节两级标题</td>
+<td>无结构 → 不适用</td>
+</tr>
+<tr>
+<td>2</td>
+<td>每章文本量在 LLM 一次读得下范围内</td>
+<td>超限 → 树深度/切分要重设计</td>
+</tr>
+<tr>
+<td>3</td>
+<td>单次提问多几次模型调用的成本延迟可接受</td>
+<td>实时场景 → 慎用</td>
+</tr>
+<tr>
+<td>4</td>
+<td>能从 5-10 题小验证起步</td>
+<td>直接废掉现有向量检索 = 错误</td>
+</tr>
+</tbody>
+</table>
+<p>四条都满足才值得试；文档本来没标题 → 继续打磨向量检索是更短的路。</p>
+<h3 id="8-vs">8. 推文 vs 官方仓库核验表</h3>
+<table>
+<thead>
+<tr>
+<th>推文表述</th>
+<th>核验结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无向量化、无切块、目录树推理检索</td>
+<td>✅ README: No Vector DB / No Chunking / tree search</td>
+</tr>
+<tr>
+<td>建树 + 节点摘要 + 逐层下钻 + 取回</td>
+<td>✅ 两步法 + <code>--if-add-node-summary</code> 默认 yes</td>
+</tr>
+<tr>
+<td>适用于术语密集的法律/金融/技术文档</td>
+<td>✅ README 明确列出 financial reports, legal or technical manuals</td>
+</tr>
+<tr>
+<td>"2026 年以来多次登上 GitHub Trending"</td>
+<td>⚠️ 间接吻合：stars 从 28.7k（2026-05 旧笔记）→ 39.9k（2026-10-30 API 实测），5 个月 +39% 且当天仍有 push；Trending 历史无存档，无法直接核验</td>
+</tr>
+<tr>
+<td>日本工程师 80 页手册实测数字</td>
+<td>❌ 原文链接在评论区未取得，转述数据未能核验</td>
+</tr>
+<tr>
+<td>项目归属</td>
+<td>⚠️ 澄清：PageIndex 是 <strong>VectifyAI</strong> 项目（非日本工程师开发）；日本工程师是写实战文章的使用者</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">关联分析</h2>
+<ul>
+<li><strong>与旧笔记分工</strong>：[[2026-05-07-PageIndex-无向量推理式RAG.md]] 精读了架构与对比表，其"预判"章节预判了混合模式方向——本篇日本工程师的两段式实测正好是这个预判的实证落地，两篇构成"机制 → 落地"闭环</li>
+<li><strong>与 [[2026-04-26-RAG与MCP架构差异.md]]</strong>：该笔记描述的传统 RAG 工作流（文档索引 FAISS → 语义检索 Top-k → 注入上下文）正是本篇批判的对象——"Top-k 相似度"在专业文档场景的位置错位问题，PageIndex 是对该工作流检索段的替换方案</li>
+<li><strong>与 [[2026-05-22-Hermes-Agent四层记忆架构深度分析.md]]</strong>：四层记忆分析指出 session_search 关键词匹配（非语义检索）是明确短板——目录树检索提供了第三条路：既非关键词也非向量，而是<strong>结构推理</strong>。对标题结构良好的知识库（如本笔记系统），树导航可能比向量更对症</li>
+<li><strong>与自有体系</strong>：<code>rag-index-rebuild</code> skill（关键词+语义向量双索引）可吸收"目录预筛层"作为第三路——笔记库天然有标题层级 + 摘要（7 模块结构），恰好是 PageIndex 树索引的现成形态；<code>hybrid-search</code> skill 的三路融合（semantic+keyword+entity）与两段式混合（结构粗筛+向量细筛）是同一设计哲学在不同粒度的实例</li>
+<li><strong>跨领域同构</strong>：飞机型号资料/适航文档（用户领域）是典型的"标题结构严密 + 术语密集 + 条款强依赖上下文"文档——CCAR 条款"第 X 条例外"式引用与推文所述合同场景同构，目录树检索对该领域的适配度可能高于通用向量 RAG</li>
+</ul>
+<h2 id="_4">查询拓展</h2>
+<ul>
+<li>VectifyAI 官方博客 Mafin2.5（FinanceBench 98.7% 的完整评测方法与失败案例分析）</li>
+<li>PageIndex File System：从单文档树扩展到文档库级树层（百万级），跨文档混合方案</li>
+<li>树搜索检索的理论根源：AlphaGo 式 tree search 用于信息检索的相关论文（RAG+reasoning 路线，如 Self-RAG / GraphRAG 对比谱系）</li>
+<li>日本工程师原文（待取得：评论区链接），其 80 页手册实测的完整数据</li>
+<li>反向对照：向量 RAG 阵营对 reasoning-based retrieval 的批评（成本/延迟/单文档局限）</li>
+</ul>
+<h2 id="_5">趋势判断</h2>
+<ul>
+<li><strong>"结构推理"正在成为检索第三范式</strong>：关键词（精确匹配）→ 向量（语义匹配）→ 树推理（结构导航），三者不是替代而是分文档形态共存——结构化长文档走树、海量短内容走向量、精确引用走关键词</li>
+<li><strong>混合架构是终局形态</strong>：本篇两段式（目录粗筛+章内向量）与已有笔记预判、hybrid-search 三路融合互相印证——单一检索范式的阵营化论战意义在下降，分层编排能力在上升</li>
+<li><strong>成本曲线是变量</strong>：目录下钻的多次 LLM 调用成本随模型降价持续下降，半年前"成本高"的反对理由正在失效——这解释了 stars 五个月 +39% 的持续热度</li>
+<li><strong>对无结构文本的补课</strong>：聊天记录/要点笔记不能建树，但可以用 LLM 先"生成结构"再建树——结构生成与树检索的合并是可预期的下一步</li>
+</ul>
+<h2 id="_6">指南分析</h2>
+<p><strong>对我有什么提升</strong>：<br />
+1. 检索不准时先判文档形态再选工具——标题结构是否清晰是比"换 embedding 模型"更前置的诊断问题<br />
+2. "自动生成摘要必须人工核对一遍"是所有 LLM 中间产物的通用纪律——坏摘要的错误是静默的，人工核对是最省时间而非最费时间的环节<br />
+3. 最小验证法（只测目录导航准确率，不动检索代码）可迁移到任何检索方案评估</p>
+<p><strong>如何实施</strong>：<br />
+1. <code>rag-index-rebuild</code> skill 补一路"目录树预筛"模式：利用笔记库现成的标题层级 + 模块结构，对结构化查询先做树导航再向量细筛（触发条件：用户查询含明确章节指向，如"XX 的四个步骤在第几篇"）<br />
+2. 笔记系统的 backlink/索引层在下次重建时评估树化组织——本质上 batch-note-linking 的关键词关联可升级为层级导航<br />
+3. 用户领域文档（适航/型号资料）若引入 RAG，直接按四条自查表评估目录树方案——该领域文档结构严密，是树检索的高适配场景</p>
+<h2 id="_7">拓展应用推荐</h2>
+<ul>
+<li><strong>VectifyAI/PageIndex</strong>（github.com/VectifyAI/PageIndex）：MIT 开源，<code>run_pageindex.py --pdf_path</code> 一条命令建树；支持 LiteLLM 多后端，默认 gpt-4o</li>
+<li><strong>pageindex.ai/developer</strong>：官方 API（增强 OCR + 树构建管线），适合不想自运维解析质量的团队</li>
+<li><strong>MCP 接入</strong>（pageindex.ai/mcp）：可直接挂进 Agent 工具链做文档问答</li>
+</ul>
+<p>→ 相关：2026-05-07-PageIndex-无向量推理式RAG.md（同项目机制精读）<br />
+→ 相关：2026-04-26-RAG与MCP架构差异.md（传统向量 RAG 工作流参照）<br />
+→ 相关：2026-05-22-Hermes-Agent四层记忆架构深度分析.md（检索短板与记忆架构）</p>
+</body>
+</html>
