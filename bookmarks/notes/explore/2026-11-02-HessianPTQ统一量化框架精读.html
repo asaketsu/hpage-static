@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HessianPTQ统一量化框架精读</title>
+
+<meta property="og:title" content="HessianPTQ统一量化框架精读" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-02-HessianPTQ%E7%BB%9F%E4%B8%80%E9%87%8F%E5%8C%96%E6%A1%86%E6%9E%B6%E7%B2%BE%E8%AF%BB.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="h_z-ptq-hessian">H_Z-PTQ 统一 Hessian 引导后训练量化框架精读笔记</h1>
+<p class="tag-line"><span class="tag">#量化</span> <span class="tag">#PTQ</span> <span class="tag">#LLM推理优化</span> <span class="tag">#边缘部署</span> <span class="tag">#Hessian</span></p>
+<p class="note-date">生成日期 2026-11-02</p>
+
+<h2 id="_1">元数据</h2>
+<ul>
+<li>标题：A Unified Hessian-Guided Framework for Post-Training Quantization</li>
+<li>arXiv ID：2610.40345v1（2026-10-29 提交，&lt;3天新论文）</li>
+<li>作者：Mads Toftrup, Marco Federici, Boris van Breugel, Paul Whatmough, Markus Nagel</li>
+<li>团队背景：Markus Nagel 是 AdaRound（PTQ 自适应舍入开山之作，2020）一作，van Breugel/Whatmough/Nagel 均为 Qualcomm AI Research 谱系——本文是 Qualcomm 量化研究线的正统延续</li>
+<li>领域分类：cs.LG / cs.AI</li>
+<li>页数：10 页正文 + 4 附录</li>
+<li>出处/来源：arXiv（https://arxiv.org/abs/2610.40345），全文 HTML 直读</li>
+</ul>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="_3">核心问题与研究动机</h3>
+<p>后训练量化（PTQ）在固定位宽下有三个可调旋钮：</p>
+<ul>
+<li>量化范围（scales/clipping）：网格步长 s 决定裁剪误差与舍入分辨率的权衡</li>
+<li>线性变换（transforms）：旋转/Hadamard 等保函数可逆变换，重分配权重与激活幅度</li>
+<li>权重舍入（rounding）：在网格上选哪个整数点</li>
+</ul>
+<p>现状痛点：<strong>现有方法把三个旋钮当独立问题、各用局部重建目标优化</strong>（GPTQ 修舍入、AWQ/SmoothQuant 修范围、QuaRot/FlatQuant 修变换），但"层输出局部误差小"不等于"模型最终预测变化小"——论文 Figure 1 实证：局部扰动幅度与下游 KL 散度相关性差。而 Tseng et al. 2026 的权重 Hessian 路线虽然捕捉了权重的下游效应，<strong>却完全漏掉激活量化误差</strong>（Figure 1 第二列）。</p>
+<p>直接优化任务级指标理论最优但不可行：量化操作不连续 + 下游评估计算太贵。本文的答案：<strong>用输出空间 Hessian 的二次型做可处理的代理</strong>。</p>
+<h3 id="_4">方法论详解（四步推导）</h3>
+<p>第一步——统一联合目标（Eq 2）：把变换 T、激活裁剪因子 γx、权重步长 sw、舍入 W* 全部塞进一个最小化下游预测散度的目标：</p>
+<ul>
+<li>量化输出 Z̃ = Q(XT; sx) · Q(T⁻¹W*; sw)，激活先变换再量化，权重用逆变换补偿</li>
+<li>min over {γx, sw, T, W*} of E[L(Z̃)]</li>
+</ul>
+<p>第二步——二阶泰勒展开（Eq 3-4）：对全精度层输出 Z 做二阶展开，选 KL 散度做 L 时零阶/一阶项消失（Z 是全局最小），得到干净形式：</p>
+<ul>
+<li>D(pZ || pZ̃) ≈ ½·vec(ΔZ)ᵀ·H_Z·vec(ΔZ) = ½‖ΔZ‖²_{H_Z}</li>
+<li>关键：H_Z 是 <strong>输出 Hessian</strong>（形状 s×o 展平），不是权重 Hessian——激活量化误差自然进入 ΔZ</li>
+</ul>
+<p>第三步——Output Kronecker Fisher 近似（Eq 5-6，核心创新）：KL 选择下 H_Z = Fisher 信息矩阵 = 输出梯度外积期望。全秩不可算（s×o 的平方级），于是按序列维×特征维做 Kronecker 因子分解：</p>
+<ul>
+<li>F_Z ≈ F_⊗Z = (G_Z·G_Zᵀ ⊗ G_Zᵀ·G_Z) / ‖G_Z‖²_F</li>
+<li>序列曲率 ⊗ 特征曲率，G_Z 秩 1 时精确还原单个梯度外积</li>
+<li>存储只需：E[G_Zᵀ G_Z]（特征曲率）+ E[G_Xᵀ G_X]（输入侧）等少量矩阵</li>
+</ul>
+<p>第四步——优化次序（Eq 7-17）：</p>
+<ol>
+<li><strong>先定变换 T̂</strong>：变换影响权重+激活+梯度，联合优化太难；闭式解 SPD 分量 M̂ = (E[G_W G_Wᵀ]⁻¹·E[G_Xᵀ G_X])^{1/2}（沿 Federici et al. 2026 CAT 路线，梯度范数和对齐）</li>
+<li><strong>误差解耦</strong>：固定 T̂ 后总误差 ≈ 权重项（X_T̂·ΔW）+ 激活项（ΔX_T̂·W_T̂），各自用 F_⊗Z 加权</li>
+<li><strong>权重尺度+舍入</strong>（Eq 13-14）：对输入/输出曲率按量化 tile [k_i, k_o] 做 Block-LDL 分解，交替更新 scale 与 rounding（沿 Tseng et al. 2026 流程但曲率换成 Output Kronecker）</li>
+<li><strong>激活裁剪 γx</strong>（Eq 17）：序列曲率只取对角 E[Diag(G_Z G_Zᵀ)]——单向量存储，实证序列曲率基本就是对角的，误差极小；γx 在小校准集上从候选集里挑最小代理误差</li>
+</ol>
+<h3 id="_5">关键实验结果与数据</h3>
+<p>实验设置：</p>
+<ul>
+<li>量化配置三档：W4A4KV4（通道级，权重每输出通道一 scale、激活每 token 一 scale）/ W4-g32（仅权重，32 值一块浮点 scale）/ W4A4-g32（块级权重+激活）</li>
+<li>校准：DCLM-Edu 采样 2048 条序列 × 2048 token，3 个随机种子报均值±方差</li>
+<li>评估：WikiText-2048 困惑度（↓）+ 六常识推理任务归一化均值（PIQA/WinoGrande/HellaSwag/ARC-e/ARC-c/LAMBADA，↑）</li>
+<li>模型：Llama v3.2 1B inst、Llama v3 8B、Ministral 8B inst、Qwen v3 8B</li>
+</ul>
+<p>主结果（Table 2，W4A4KV4 通道级，wiki ppl / csr acc）：</p>
+<ul>
+<li>FP 基线：1B=13.16/57.61，Llama3-8B=6.14/70.12，Qwen3-8B=9.73/67.46</li>
+<li>RTN 直接崩：1B=878.89/30.02，Qwen=10441.69/29.23（通道级 4bit 无优化的代价）</li>
+<li>FlatQuant+GPTQ（最强基线）：1B=17.23/52.95，Qwen=10.60/65.26</li>
+<li><strong>H_Z-PTQ：1B=16.05/54.21，Llama3-8B=7.06/67.25，Ministral=7.69/69.32，Qwen=10.43/65.56——四个架构全部最低 ppl 且 csr 匹配或超越</strong></li>
+</ul>
+<p>块级结果（Table 3）：W4-g32 与 W4A4-g32 两档下同样全部最低 ppl。W4A4-g32 1B 档：14.22 vs Had+GPTQ 14.57 vs CAT+GPTQ 14.54 vs WUSH 14.65 vs Had+YAQA 14.56。</p>
+<p>消融（Table 4，W4A4KV4）——四个组件全有贡献，无单点救世主：</p>
+<ul>
+<li>去掉变换（退回 Hadamard）：Qwen 10.43→<strong>25.19 灾难性崩塌</strong>，1B 16.05→18.64——<strong>变换是最大贡献者</strong></li>
+<li>去掉激活裁剪（−A.clip）：1B 16.05→17.05，Qwen csr 65.56→64.08——第二大</li>
+<li>换 GPTQ 式 Hessian（−Hess）：1B→16.83——曲率模型质量本身有效，不全是优化流程的功劳</li>
+<li>去掉舍入优化（−Round）：1B→16.52</li>
+</ul>
+<p>舍入算法 × 曲率估计交叉实验（Table 5，1B）：同一曲率下自研舍入稳定优于 GPTQ/YAQA；同一舍因下 Output Kronecker（G_W G_Wᵀ ⊗ G_Zᵀ G_Z）显著优于 GPTQ 式 XᵀX⊗I（14.25 vs 30.96，1B 通道级）；YAQA 在 Hadamard 前置下反而退化（20.68）——组件间存在适配性。</p>
+<p>无舍入优化时（Table 8）H_Z-PTQ 仍胜基线——增益不靠单一组件堆叠。</p>
+<h3 id="_6">局限性与未来方向</h3>
+<ul>
+<li>近似链四重假设：二阶展开、Kronecker 秩一 Fisher、激活/权重误差解耦、舍入噪声与协方差假设——层数深/位宽更低时误差累积未完全量化</li>
+<li>输出梯度估计比无梯度重建法（如纯 GPTQ）<strong>增加校准时间与显存</strong>——论文诚实承认但未给出具体开销数字（待全文附录 C 核实）</li>
+<li>未来方向自列：更丰富的输出曲率模型、精度-校准成本自适应权衡、非均匀/混合精度/硬件感知扩展</li>
+</ul>
+<h2 id="_7">二、创新点分析</h2>
+<ul>
+<li>范式级贡献：证明 PTQ 设计空间可以视为<strong>单一下游优化问题</strong>而非独立启发式集合——transform/scale/rounding/clipping 四旋钮首次共享同一目标函数（此前 GPTQ/AWQ/QuaRot 各修各的）</li>
+<li>技术核心：<strong>Output Kronecker Fisher</strong>——把不可算的输出 Hessian（Fisher）因子化为序列曲率⊗特征曲率，秩 1 情形精确；相比 Tseng 2026 的权重 Hessian 多覆盖了激活误差，相比局部重建多覆盖了下游效应</li>
+<li>位置感：这是 Qualcomm 谱系（AdaRound→GPTQ 生态→CAT/Federici 2026→本文）从"组件优化"到"统一框架"的自然收敛点，与 2025-2026 年 WUSH/FlatQuant/YAQA 竞争线同台且全档位胜出</li>
+<li>工程亮点：激活裁剪用对角序列曲率（单向量存储）即可——"序列曲率基本对角"这一实证发现本身有价值</li>
+</ul>
+<h2 id="_8">三、归纳总结</h2>
+<ul>
+<li>局部重建误差 ≠ 下游预测变化；权重 Hessian 只解决一半（权重侧），激活误差需要输出空间曲率</li>
+<li>四旋钮联合优化在一个二次型代理下可行且全档位 SOTA：W4A4KV4 通道级 + W4/W4A4 块级、四架构全胜</li>
+<li>组件贡献排序：变换 &gt; 激活裁剪 &gt; 曲率模型 &gt; 舍入；但去掉任何一个都退化——增益来自交互</li>
+<li>代价：校准期需反传拿输出梯度，时间/显存高于无梯度法（数字未披露）</li>
+<li>一句话：<strong>PTQ 从"手艺活合集"进化为"一个目标函数"——用输出 Fisher 的 Kronecker 因子化把所有量化决策统一进下游敏感度框架</strong></li>
+</ul>
+<h2 id="_9">四、趋势判断</h2>
+<ul>
+<li>2022-2024（GPTQ/AWQ/QuaRot 时代）= 单组件突破期；2025-2026（CAT/WUSH/本文）= 统一目标整合期；下一站是论文自己指出的<strong>硬件感知+混合精度</strong>统一（把 kernel 效率纳入同一目标）</li>
+<li>W4A4KV4 正在成为 8B 级端侧默认配置——本文在通道级（最硬件友好、无需块 scale 存储）设置下做到可用，对 NPU/DLA 类固定网格硬件是利好</li>
+<li>"下游目标的可处理代理"这一方法论在持续外溢：与 LLM 训练侧的 Fisher/K-FAC、Agent 评估侧的代理指标问题同构</li>
+<li>边缘部署视角：变换（最大贡献组件）推理期零开销（权重预变换+激活在线旋转），Qwen3-8B 类模型 4bit 端侧部署的质量下限被系统性抬高</li>
+</ul>
+<h2 id="_10">五、查询拓展</h2>
+<ul>
+<li>Tseng et al. 2026：权重 Hessian + Block-LDL 舍入路线（本文 3.5 的直接前置）——值得追踪其与本文的组合实验</li>
+<li>Federici et al. 2026（CAT）：梯度对齐变换的闭式解——本文 3.4 的变换基础</li>
+<li>K-FAC（Martens &amp; Grosse）：Kronecker 因子化 Fisher 在优化中的经典源头，本文把它从训练搬到了压缩</li>
+<li>SpQR/AWQ 的 outlier 处理视角：与变换视角的等价性/互补性</li>
+<li>附录 C 未读部分：校准成本具体数字、KV4 量化的独立消融——后续补充验证点</li>
+<li>追问：更低 3bit/W4A3 场景下二阶近似是否仍成立？论文未探</li>
+</ul>
+<h2 id="_11">六、关联分析（借鉴点评估）</h2>
+<p>对 Hermes Agent 的借鉴：</p>
+<ul>
+<li>"局部代理 vs 下游目标"同构问题：Agent 评估里工具调用级正确性（局部重建）≠ 端到端任务成功率（下游 KL）——本文给出了"用输出敏感度加权局部误差"的可操作中间层，与 Beyond-the-Leaderboard 六失败模式的教训互印证</li>
+<li>可迁移模式：昂贵全局指标 → 廉价因子化代理（序列曲率⊗特征曲率 ≈ 任务维×步骤维分解），可移植到 cron 成本感知评估（Cost-Aware Security Agent 案例的 Retrospective Budget Cap 可升级为此类因子化敏感度）</li>
+</ul>
+<p>对 Jetson Orin 边缘部署的借鉴：</p>
+<ul>
+<li>本机 Ollama/NVFP4 路线上，Qwen3-8B 类模型的 W4A4KV4 通道级配方质量下限抬高；TensorRT-LLM 校准管线中"每 token 激活 scale + 学习 γx 裁剪"可直接对标现有 smoothquant 校准参数</li>
+<li>消融排序（变换&gt;裁剪&gt;曲率&gt;舍入）给边缘部署排障提供优先级：量化后掉点先查变换/离群值处理，再查舍入</li>
+<li>⚠️ 注意：本文是研究框架非推理引擎特性，Jetson 实际部署仍走 TensorRT-LLM/mlc 已实现管线，借鉴的是配方选择与排障顺序</li>
+</ul>
+<p>对量化交易的借鉴：</p>
+<ul>
+<li>KL 加权敏感度 ≈ 风险加权误差定价：因子模型估计误差在 whitening 度量（LDL 分解）下做收缩——与 Block-LDL 按块分解曲率再逐块定 scale 的操作同构</li>
+<li>"误差解耦近似"（总误差≈权重项+激活项）与组合归因（Brinson 类）的加性分解假设同源——交互项被假设掉时的系统性偏差值得警惕</li>
+</ul>
+<p>关联已读论文：</p>
+<ul>
+<li>Kara（2607.01237）：KV cache 压缩——本文 KV4 与之互补（本文量化 KV，Kara 驱逐 KV）</li>
+<li>TileFuse（2606.11357）：NPU 融合核——本文的硬件感知扩展方向正是 TileFuse 所在层</li>
+<li>MemDecay（2607.10582）：区域感知驱逐——激活裁剪 γx 与区域优先级同为"校准期学出的全局系数"</li>
+<li>Context-Engineering Quality（2607.14275）：代理指标与真实质量的相关性问题同构</li>
+<li>GGUF 量化 skill（gguf-quantization）：部署侧现有能力覆盖 k-quants，本文方法对应的研究前沿在其上游</li>
+</ul>
+<h2 id="_12">七、拓展应用推荐</h2>
+<ul>
+<li>P2｜端侧模型量化排障 SOP：按"变换→裁剪→曲率→舍入"消融顺序建立量化掉点排查清单，补进 llm-inference-deploy skill 的排障段（收益中、可行性高）</li>
+<li>P2｜cron 评估因子化代理：把"任务成功率"分解为步骤维×组件维的 Kronecker 敏感度代理，用于低成本 cron 质量回归（收益中、需工程改造）</li>
+<li>P3｜跟踪本文开源进展：Qualcomm 谱系通常会放出实现，落地 TensorRT 校准对比实验等代码可用后再做（收益待定）</li>
+<li>P3｜量化交易归因交互项检验：对 Brinson 加性分解做交互项残留检验脚本（收益低、与主线弱相关）</li>
+</ul>
+<h2 id="_13">八、指南分析</h2>
+<p>若要在边缘部署中复用本文结论，操作要点：</p>
+<ul>
+<li>配方选择：通道级 W4A4KV4 是最硬件友好的档位，本文证明该档位经统一优化后质量可用——优先于块级 g32（后者精度更高但 scale 存储与 kernel 复杂度高）</li>
+<li>校准数据：DCLM-Edu 2048×2048 token 是本文配置；自建校准集应覆盖部署域分布（Agent 用途模型用 Agent 轨迹文本校准）</li>
+<li>排障顺序（依消融贡献排序）：量化后崩 → ①查变换是否应用/离群值处理 → ②查激活裁剪 γx → ③查曲率估计质量 → ④查舍入</li>
+<li>风险线：Qwen 系架构对"无变换"最敏感（25.19 崩塌）——Qwen 系模型量化部署时变换组件不可省</li>
+<li>验证门：部署前用 WikiText ppl + 常识推理六件套做量化前后回归，ppl 漂移 &lt;1 为通过线（对标本文 FP→W4A4KV4 的 13.16→16.05）</li>
+</ul>
+</body>
+</html>
