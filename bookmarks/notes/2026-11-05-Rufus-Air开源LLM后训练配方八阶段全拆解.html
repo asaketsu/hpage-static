@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rufus-Air开源LLM后训练配方八阶段全拆解</title>
+
+<meta property="og:title" content="Rufus-Air开源LLM后训练配方八阶段全拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-05-Rufus-Air%E5%BC%80%E6%BA%90LLM%E5%90%8E%E8%AE%AD%E7%BB%83%E9%85%8D%E6%96%B9%E5%85%AB%E9%98%B6%E6%AE%B5%E5%85%A8%E6%8B%86%E8%A7%A3.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="rufus-air-llm">Rufus-Air：亚马逊开源 LLM 后训练八阶段完整配方</h1>
+<blockquote>
+<p><strong>来源</strong>：X 推文 @Michaelzsguo（Michael Guo）2026-11-03（note tweet，28590 浏览/288 赞，附 33 分钟视频教程）→ 论文一手源 arXiv:2609.29421v2（Amazon，48 页/9 图/20 表，2026-09-25 提交）<br />
+<strong>信源类型</strong>：KOL 解读他人论文（二手转述）+ 论文原文（高权重一手）。<strong>已对论文原文核验 7 项关键声明（6 项全吻合，1 项为教程缩放主张非论文配置，见核验表）</strong>。第 2 次收录该作者（前作 Engram 条件记忆架构）。<br />
+<strong>评分</strong>：★★★★★（5/5，后训练配方全公开的标杆级文献，与 Tülu 3 同档稀缺）<br />
+tag: <code>#后训练</code> <code>#RLVR</code> <code>#GLM</code> <code>#SFT</code> <code>#RLHF</code> <code>#Agent训练</code> <code>#开源配方</code> <code>#亚马逊</code></p>
+
+<p class="meta-date">生成日期 2026-11-05</p></blockquote>
+<hr />
+<h2 id="_1">归纳总结</h2>
+<p>亚马逊团队把 GLM-4.5-Air-Base（106B-A12B MoE）的<strong>完整后训练配方</strong>开源成 48 页报告：八阶段串行流水线（SFT → Reasoning RL → Coding RL → IF RL → General Agent → Coding Agent → Search Agent → RLHF），全程零新人工标注、零自研蒸馏教师，SFT 数据 100% 来自 17 个公开数据集原样使用。同一底座换这套配方，IFBench 从 33.6 → 76.9，对官方 GLM-4.5-Air 在所有报告基准上领先（仅 Arena-Hard v2 创意写作一项落后）。</p>
+<p>四个可迁移的核心结论：<br />
+1. <strong>SFT 是能力构建阶段不是热身</strong>——SFT 单独 checkpoint 已在 IFEval(+5.3)/IFBench(+24.2)/AIME 双年(+6.6/+3.5)反超官方完整后训练版；<br />
+2. <strong>难度过滤把 prompt 锁在可学习带</strong>（pass 率 &gt;0.8 丢弃、零成功丢弃，过滤即自动课程）；<br />
+3. <strong>奖励可靠度决定阶段顺序</strong>（硬可验证奖励先训、易被 hack 的 judge/偏好奖励后训，RLHF 压轴；顺序按"被 hack 的暴露时间"排，不按奖励形式排）；<br />
+4. <strong>基础设施是配方的一部分</strong>（token-in/token-out、chat template 全程一致、Firecracker microVM 沙箱、MoE 的 Rollout Routing Replay）。</p>
+<h2 id="vs">内容整理：推文 vs 论文核验表</h2>
+<table>
+<thead>
+<tr>
+<th>推文声明</th>
+<th>论文核对</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>指令遵循 33.6 → 76.9</td>
+<td>IFBench (prompt strict)：GLM-4.5-Air 33.6 / Rufus-Air 76.9（Table 1）</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>同一个底座模型只换训练配方</td>
+<td>两者都出自 GLM-4.5-Air-Base；官方版=厂商自己的后训练，Rufus-Air=本文配方</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>八个训练阶段</td>
+<td>§2.1 串行八阶段，逐阶段 checkpoint 链</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>数据来源全公开</td>
+<td>17 个公开 SFT 数据集原样使用，Rufus-Air 重生成比例为零；RL prompt 集全部公开来源+合成</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>奖励怎么设计全写出</td>
+<td>§3 每阶段 Data/Reward design/Training setup 三段式</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>基础设施踩坑全写出</td>
+<td>§4 专章 + 附录 C 配置表</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>"一张卡一台机器完全够用"</td>
+<td>论文实际：SFT 64 节点(512×H200)约 13 天，RL 阶段 8–32 节点。单卡够用的是<strong>教程换小模型的降规格复现路径</strong>，非论文配置</td>
+<td>⚠️ 教程主张</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_2">内容整理：八阶段速查表（数据 · 奖励 · 增量 · 算力）</h2>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>数据</th>
+<th>奖励</th>
+<th>关键增量（对上一阶段）</th>
+<th>节点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. SFT</td>
+<td>9.01M 样本/27B loss tokens/6 类配比</td>
+<td>监督损失（仅 assistant token）</td>
+<td>IFBench 57.8、AIME25 90.8，已反超官方版</td>
+<td>64</td>
+</tr>
+<tr>
+<td>2. Reasoning RL</td>
+<td>121K prompts（Math 47.7%/Science 35.7%/Puzzle 16.7%）</td>
+<td>二元确定性验证器（Math-Verify/Python 检查器/模糊匹配）</td>
+<td>GPQA +5.3（AIME −2.8 属 30 题噪声）</td>
+<td>8</td>
+</tr>
+<tr>
+<td>3. Coding RL</td>
+<td>29.4K 题（EvolveCoder 50.1%，Codeforce 系约 30%）</td>
+<td>单元测试执行，二元</td>
+<td>LCBv6 +7.3（68.6→75.9）</td>
+<td>32</td>
+</tr>
+<tr>
+<td>4. IF RL</td>
+<td>14K 多约束 + 13K 多轮合成对话</td>
+<td>rubric 二元（Python 可验证 + LLM judge）</td>
+<td><strong>IFBench +14.0、Multi-challenge +24.7</strong>、AdvancedIF +17.4</td>
+<td>8</td>
+</tr>
+<tr>
+<td>5. General Agent</td>
+<td>AWM 10K MCP 任务过滤至约 2K</td>
+<td>代码验证器查环境终态，二元</td>
+<td>MCP-Atlas +7.8、Tau2-Retail +9.8（合成环境→真实工具迁移）</td>
+<td>16</td>
+</tr>
+<tr>
+<td>6. Coding Agent</td>
+<td>Endless-Terminal+SETA-Env+Scale-SWE 约 4K 任务</td>
+<td>沙箱跑 tests/，二元</td>
+<td>TB2.1 +1.4、SWE-V +2.2（<strong>未训到收敛</strong>，SWE 增量未存活到最终版）</td>
+<td>16</td>
+</tr>
+<tr>
+<td>7. Search Agent</td>
+<td>MiroVerse 36.6K→2.2K 题（三轮激进过滤）</td>
+<td>LLM judge 连续 [0,1] + 部分分</td>
+<td>BrowseComp +3.0、Seal-0 +5.4、HLE-V +3.4</td>
+<td>16</td>
+</tr>
+<tr>
+<td>8. RLHF</td>
+<td>HH-RLHF 75.8K <strong>仅用 prompt</strong>（标签弃用）</td>
+<td>Skywork-Reward-V2-Qwen3-8B 开源 RM + 线性长度惩罚</td>
+<td>Arena-Hard v2 HP +6.0、<strong>CW +14.4</strong></td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><strong>算力经济学</strong>：SFT 是最大单项（约 832 节点·日）；Agent 阶段成本在 GPU 之外——沙箱服务约 1 万并发、约 $10K/月；BrowseComp 全量评估约 10⁵ 次搜索调用、数百美元。</p>
+<p><strong>四个值得单拎的工程细节</strong>：<br />
+- <strong>SFT 三轮 epoch 中第 1 轮就平台化</strong>——held-out 分数在 epoch 1 内走平，后续 epoch 只降 loss 不涨分，最终携带 ckpt 3799（平台区内）而非终点。"loss 在降"不等于"模型在变好"。<br />
+- <strong>Coding RL 64K→128K 中途扩响应预算</strong>：截断率 11–28% 压到 &lt;0.1% 后奖励与 LCB 双双续涨；截断样本 loss-mask 掉（不惩罚被截断的）。<br />
+- <strong>IF RL 的 rubric 只写必要条件</strong>：加"可选 rubric"（约 10 条/实例）会让策略学会长文冗余覆盖；只保留必要条件，最终回复从 5.4K 缩到 3.6K token。奖励设计直接塑造输出风格。<br />
+- <strong>Search Agent 用 mean-only 优势（Dr. GRPO 变体）</strong>：judge 噪声下，除以组标准差会把 0.1 的部分分差放大成与真解同权（+3.75），成对消融 mean-only 全面领先（55.8–64.8 vs 49.7–58.7）。噪声奖励通道必须改优势估计器。</p>
+<p><strong>诚实边界（论文自述）</strong>：阶段顺序是"一个可行的顺序"非"最优顺序"（未探索多专家蒸馏合并）；Coding Agent 算力用尽未收敛；无单一基准套件全程跟踪（跨阶段归因有缺口）；创意写作输给官方版与 Nemotron（未试风格化 RM）。</p>
+<h2 id="_3">关联分析</h2>
+<ul>
+<li><strong>与 EXPO-FT 机器人后训练配方（09-28 笔记）互为镜像</strong>：EXPO-FT 说机器人界缺通用后训练配方，本文是 LLM 界交出的答卷。两文共享同一设计直觉——<strong>奖励可靠度分层</strong>（EXPO-FT 的 value-based 信用分配 ↔ 本文的"硬奖励先训"）；差异在机器人奖励稀疏+物理噪声更重，LLM 侧已能把"可验证性"做成排序原则。</li>
+<li><strong>与 DUCK/RL 训练实践直接对表</strong>：①难度过滤 = 我们 0926 拍板的"z 随机 0.07-0.10 + 课程缓爬坡"的同构物——丢弃全对/全错组（DAPO 动态采样）正是 reward-hack 防线；②"SFT 定能力地板，RL 只做精修" ↔ 我们的预训练策略 + 微训迭代模式；③"基础设施是配方的一部分" ↔ 我们的部署链文档化铁律（playboy doc51"下次直接抄"级）。论文把工程细节当一等公民写，正是用户要求的文档标准。</li>
+<li><strong>GLM 系实证</strong>：底座是智谱 GLM-4.5-Air，训练框架 Slime 也出自 GLM 团队——与我们日常跑 GLM-5.3 同源生态，其 Megatron+SGLang+FP8 rollout 配方对智谱系 MoE 的适配性已被本文验证。</li>
+<li><strong>与作者前作（Engram 笔记）</strong>：Michael Guo 持续做"硬核论文中文教程化"赛道，此篇配套 33 分钟视频+每章可跑脚本，选题质量稳定。</li>
+</ul>
+<h2 id="_4">趋势判断</h2>
+<p>后训练配方的"系统卡化"正在被打破：Tülu 3（Allen AI）→ Rufus-Air（Amazon）→ 开源大厂跟进，<strong>"配方即护城河"的窗口在收窄，可复现的工程细节成为新的竞争面</strong>。判断：①106B-A12B 档的完整配方公开后，百亿级开源模型的"厂商官方版 vs 社区配方版"差距会被快速抹平（本文已示范反超）；②合成环境训练（AWM 的 1K 合成 MCP 环境→真实 MCP-Atlas 迁移成立）是下一段 Agent 训练数据的主战场——合成环境的<strong>可验证终态</strong>比环境真实感更重要；③RLHF 降格为"最后的风格抛光层"（仅用 prompt、开源 RM、标签弃用），独立 RLHF 团队的技术壁垒持续贬值。</p>
+<h2 id="_5">指南分析</h2>
+<p>小团队照抄路径（按论文自身可复用性排序）：<br />
+1. <strong>单阶段借用零门槛</strong>：论文明确支持"拿一个阶段或一个基础设施组件而不取其余"。最易迁移的是难度过滤三件套（正确性过滤用强教师跑一遍 + 可学习带 [0, 0.8] + 动态采样）——任何 RLVR 任务通用，零额外标注。<br />
+2. <strong>IF RL 合成法可整体复用</strong>：14K 多约束（教师增广 2-6 原子约束+每约束 Python 验证函数）+ 13K 对抗多轮（教师扮用户主动制造失败），两数据集合训 90 步就拿到 +24.7 的 Multi-challenge——性价比全表最高，且合成管线全可程序化。<br />
+3. <strong>不要照抄的</strong>：阶段顺序未证明最优；RLHF 段的 HH-RLHF 原始标签在他们的设置里是负资产（直接训会掉编码/IF 能力，需过滤后仅取 prompt）。<br />
+4. <strong>预算红线</strong>：Agent RL 的真实成本在沙箱与外部 API（$10K/月级），不在 GPU——规划 Agent 训练时按"每阶段单独预算"而非均值外推。</p>
+<h2 id="_6">查询拓展</h2>
+<ul>
+<li>GSPO（Group Sequence Policy Optimization）vs GRPO 的序列级裁剪——为何长 MoE rollout 更稳</li>
+<li>Rollout Routing Replay（R3）：MoE rollout-训练专家路由错位的修复机制（上游 Slime 已有）</li>
+<li>AWM（AgentWorldModel）合成 MCP 环境的生成方法与 1K 环境覆盖面</li>
+<li>Dr. GRPO 的长度归一化争论与本文 mean-only 消融的量化证据</li>
+<li>Tülu 3 配方与本文的逐阶段对照（两代开源配方的差异 = 领域一年进展）</li>
+</ul>
+<h2 id="_7">拓展应用推荐</h2>
+<ul>
+<li>Michael Guo 配套 33 分钟视频教程（推文内视频，每章附笔记本可跑脚本）——跟跑一遍即完成后训练全流程 hands-on</li>
+<li>Slime（THUDM/GLM 系 RL 训练框架）+ SGLang：本文验证过的开源栈，直接可作小团队起步栈</li>
+<li>Skywork-Reward-V2-Qwen3-8B：开源 RM，可单独用作响应质量打分器（评分工具属性，不必跑完整 RLHF）</li>
+<li>Harbor 任务格式：Coding Agent 阶段的统一终端任务接口（instruction.md + Dockerfile + tests/test.sh 三件套），自制任务集可直接对齐</li>
+</ul>
+<hr />
+<h3 id="_8">对我们的提升与实施</h3>
+<table>
+<thead>
+<tr>
+<th>借鉴点</th>
+<th>对应我们的系统</th>
+<th>实施动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>难度过滤=自动课程（丢全对/全错组）</td>
+<td>DUCK RL 训练迭代</td>
+<td>已有同构实践（z 门禁 0.07-0.10），无需改动；训前加"强教师正确性预筛"可防死任务混入</td>
+</tr>
+<tr>
+<td>"SFT 定地板、RL 只精修"</td>
+<td>策略迭代模式</td>
+<td>强化"预训练底座+短程微训"心智，禁从零 RL 起步——与既有热启教训一致</td>
+</tr>
+<tr>
+<td>mean-only 优势消融法</td>
+<td>任何 judge 噪声奖励场景</td>
+<td>采信其结论：噪声奖励通道禁用 std 归一化；成对消融方法学可直接搬</td>
+</tr>
+<tr>
+<td>基础设施写成配方一等公民</td>
+<td>部署链文档</td>
+<td>已达标（"下次直接抄"级），本文佐证该标准是前沿实验室通行做法</td>
+</tr>
+</tbody>
+</table>
+<p>→ 相关：[[2026-09-28-EXPO-FT机器人后训练通用配方.md]]（机器人侧镜像问题）、[[2026-09-11-Engram条件记忆架构-196B记忆表零推理成本的外挂原理-DeepSeek-V4.1-Flash实装拆解.md]]（同作者第 1 次）、[[2026-09-03-LLM推理与RL入门四讲-NVIDIA与DLAI资源地图.md]]（RL 后训练学习路径）</p>
+</body>
+</html>
