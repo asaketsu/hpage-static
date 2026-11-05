@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SpecCompact槽位并行语义推测压缩</title>
+
+<meta property="og:title" content="SpecCompact槽位并行语义推测压缩" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-06-SpecCompact%E6%A7%BD%E4%BD%8D%E5%B9%B6%E8%A1%8C%E8%AF%AD%E4%B9%89%E6%8E%A8%E6%B5%8B%E5%8E%8B%E7%BC%A9.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="speccompactagent">SpecCompact：槽位并行语义推测加速Agent上下文压缩</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2611.06876<br />
+<strong>作者</strong>：Yulu An, Yifei Feng, Xiangyang Yin<br />
+<strong>提交日期</strong>：2026-11-04<br />
+<strong>记录日期</strong>：2026-11-06</p>
+
+<p class="meta-date">生成日期 2026-11-06</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #上下文压缩 #推测解码 #Agent基础设施 #Hermes</p>
+<hr />
+<h2 id="_1">一、内容整理</h2>
+<h3 id="11-vs">1.1 核心问题：压缩延迟 vs 信息保留</h3>
+<p>LLM Agent 用上下文压缩（compaction）管理不断增长的历史（用户请求、工具输出、中间决策），但压缩本身需要处理长上下文并逐 token 解码摘要——<strong>大模型做摘要的延迟会严重劣化用户体验</strong>。压缩的本质是在「信息保留」与「摘要生成延迟」之间找平衡。</p>
+<p>论文开篇即点名 OpenClaw 与 Hermes（Nous Research, 2026）两个框架的压缩模板：摘要被组织为 goals、constraints、progress、decisions、next steps 等字段。论文把这些字段称为 <strong>slots（槽位）</strong>。</p>
+<h3 id="12">1.2 关键观察：槽位可独立生成</h3>
+<p>这是全文的立论根基。作者在 100 条轨迹上对比「单体生成」（一次输出全部 6 槽）与「独立生成」（每槽只从共享历史生成、看不到其他槽的输出）：</p>
+<ul>
+<li>独立生成均分 <strong>4.73/5</strong>，单体生成 4.44/5</li>
+<li>得分 ≥4 的槽位占比：独立 93% vs 单体 85%</li>
+<li><strong>反转槽位生成顺序，均分变化 ≤0.03</strong>（顺序无关性）</li>
+</ul>
+<blockquote>
+<p><strong>结论</strong>：每个槽位所需的信息几乎都能直接从历史中恢复，不需要以其他槽位的输出为条件。→ 槽位可以作为<strong>并行生成+验证+修复</strong>的独立单元。</p>
+</blockquote>
+<h3 id="13-speccompact">1.3 方法架构：SpecCompact 三层设计</h3>
+<p><strong>第一层：槽位条件化起草（Slot-Conditioned Drafting）</strong></p>
+<ul>
+<li>遵循 OpenClaw 六槽 schema：Goal / Constraints and Preferences / Progress / Key Decisions / Next Steps / Critical Context</li>
+<li>每槽一个指令（内容规范+输出格式），请求含共享历史+完整 schema，但只生成被请求的槽</li>
+<li>起草器 = <strong>Qwen3-0.6B</strong>，用目标模型生成的槽内容做 SFT（LoRA rank 16 / alpha 32 / lr 1e-4 / 1 epoch / 16384 token 序列 / AdamW+cosine / BF16 / per-device batch 2×16 累积）</li>
+<li>训练数据 ~50K 条（AppWorld + τ³ + LiveClawBench），T 条历史 → 6T 个 SFT 样本</li>
+<li>关键点：语义推测<strong>不要求起草器与目标模型共享词表</strong>（对比 vanilla 推测解码）</li>
+</ul>
+<p><strong>第二层：语义验证与局部修复（Semantic Verification）</strong></p>
+<ul>
+<li>逐行（line-level）验证：目标模型判断「该行是否被历史 H 支持 且 与已接受前缀一致」→ 二值 positive/negative</li>
+<li>目标模型只生成 1 个判断 token，取 top-k 概率，归一化接受分 <code>r = p+/(p+ + p−)</code>，<strong>r ≥ η=0.7 则接受</strong></li>
+<li>词表变体处理：positive 可能有多种 token 形式（大写/前导空格），每标签取最高概率变体；标签缺失时用剩余概率质量与最小返回概率的较小者替代</li>
+<li>拒绝时：目标模型基于同样输入（剔除被拒行）生成替换行，拼入前缀，起草器从修复后的前缀继续</li>
+</ul>
+<p><strong>第三层：五项系统优化（真实延迟的大头）</strong></p>
+<ul>
+<li><strong>独立槽位调度</strong>：6 条槽流并发，一条等验证时其他槽继续起草 → 起草器/目标端重叠 + 跨槽服务端批处理</li>
+<li><strong>共享前缀缓存</strong>：验证/修复调用都含全量历史 → 组织成公共前缀（历史+全部 6 槽契约），避免每行验证都重 prefill 长上下文</li>
+<li><strong>起草缓冲</strong>：起草器一次生成多行，第一行送验证，其余入缓冲；接受则直接复用缓冲行（零额外起草调用）；修复改变前缀则弃缓冲重新续写</li>
+<li><strong>行感知停止</strong>：修复只需替换一行，配置目标服务端在下一换行处停止，避免解码用不到的行</li>
+<li><strong>轻量检查与终止规则</strong>：重复行/超长行直接进修复（省一次验证调用）；<code>#</code> 开头标题行与 <code>(none)</code> 空槽标记直接接受（标准形式免验证）；每槽 12 行/320 token 上限防无限重复</li>
+</ul>
+<h3 id="14">1.4 实验设置</h3>
+<ul>
+<li><strong>目标模型</strong>：Gemma4-31B-IT（BF16，单卡）+ Qwen3.5-122B-A10B（FP8，双卡）</li>
+<li><strong>基准</strong>：AppWorld Test-Normal/Challenge 全量（TGC/SGC 指标）、τ³ 80 任务子集×3 试次（任务成功率）、LongBench GovReport/QMSum（ROUGE-L）、RULER 8k/16k</li>
+<li><strong>服务</strong>：vLLM @ NVIDIA RTX PRO 6000 Blackwell；SpecCompact 额外 1 卡跑起草器</li>
+<li><strong>压缩节奏</strong>：每 8 次 agent 模型调用触发一次压缩，保留 system/setup 消息与当前输入；摘要预算 2048 token</li>
+</ul>
+<h3 id="15">1.5 关键实验结果</h3>
+<p><strong>压缩延迟（20 条匹配输入，相对 Hermes 基线）</strong>：</p>
+<pre><code>Gemma4-31B-IT 目标模型:
+  AppWorld Normal:   Hermes 38.89s → SpecCompact 8.26s  = 4.71×
+  AppWorld Challenge: Hermes 39.12s → 9.14s             = 4.28×
+  τ³:                Hermes 36.21s → 6.43s              = 5.63×
+  LongBench 16k:     Hermes 74.13s → 29.72s             = 2.49×
+
+Qwen3.5-122B-A10B 目标模型:
+  AppWorld Normal:   18.03s → 7.49s  = 2.41×
+  AppWorld Challenge: 16.98s → 7.55s = 2.25×
+  τ³:                17.81s → 8.71s  = 2.04×
+  LongBench 16k:     29.43s → 21.67s = 1.36×
+
+OpenClaw 并行基线（无起草器）: 1.95×–2.75×
+SpecCompact 在 8 个设置中 7 个胜过 OpenClaw
+（唯一例外：Qwen3.5@τ³，8.71s vs OpenClaw 7.68s）
+</code></pre>
+<p><strong>系统优化的独立贡献（Table 4，两版都已槽位并行）</strong>：仅执行优化再拿 1.88–2.44×（Gemma4）/ 1.19–1.51×（Qwen3.5）。Gemma4@AppWorld Normal 从 20.17s 降到 8.26s。<strong>说明并行只是第一层收益，重复上下文处理与模型调用的削减是同等重要的第二层</strong>。</p>
+<p><strong>下游任务性能（Table 1，诚实报告了双面结果）</strong>：</p>
+<ul>
+<li>Gemma4：SpecCompact <strong>降低</strong> TGC 2.98/4.07 个点（Normal/Challenge），τ³ −2.50 点</li>
+<li>Qwen3.5：SpecCompact <strong>提升</strong> TGC 4.76/1.68 点，τ³ +0.83 点（Challenge SGC −0.72）</li>
+<li>结论：压缩更快，但下游精度<strong>随模型而变</strong>（model-dependent trade-off）</li>
+</ul>
+<p><strong>长上下文（Table 2）</strong>：Qwen3.5 上 SpecCompact 与 Target-self（目标模型直接生成各槽）差距 ≤0.6 点，RULER 两个长度反而更高；Gemma4 上低 0.83–4.50 点。</p>
+<p><strong>为什么 Qwen3.5 加速比小</strong>（三因归因，值得背下来）：</p>
+<ol>
+<li>Qwen3.5 基线摘要本身就快</li>
+<li>0.6B 起草器与 122B 目标模型差距太大 → 草稿接受率比 Gemma4 低 <strong>19.6 个百分点</strong></li>
+<li><strong>混合注意力打破前缀缓存假设</strong>：标准注意力可复用前缀 KV；Qwen3.5 的线性注意力层需要从检查点恢复递归状态——<strong>文本前缀匹配不保证缓存可复用</strong></li>
+</ol>
+<h3 id="16-hermes">1.6 Hermes 原生用户研究</h3>
+<ul>
+<li>SpecCompact 集成进 <strong>Hermes 代码库</strong>，Gemma4 部署于 4× RTX PRO 6000</li>
+<li>3 个真实工作流场景（编码/数学/多任务问答），固定检查点存上下文快照，双盲 A/B</li>
+<li><strong>压缩延迟中位数：63.74s → 7.28s，中位配对加速 8.68×</strong></li>
+<li>摘要盲评（28 份）：39.3% 偏好 SpecCompact，28.6% 偏好 Hermes 原版，28.6% 觉得差不多，3.6% 无法判断——<strong>快了 8.68 倍，质量感知上略优但不压倒性</strong></li>
+</ul>
+<h3 id="17">1.7 局限与未来方向</h3>
+<ul>
+<li>论文自己承认：<strong>对目标模型摘要没有一致的精度优势</strong>（Gemma4 掉点/Qwen3.5 涨点的分裂结果）</li>
+<li>未来方向 1：更好的起草器-目标对齐，如 DREAM-R 的 RL 方法</li>
+<li>未来方向 2（讨论部分的金子）：<strong>槽位的信息来源不对称</strong>——Progress 和 Decisions 的证据散布全文，而 Goal/Constraints/Next Steps 主要依赖开头结尾 → 提出槽位条件化滑窗注意力进一步加速起草</li>
+</ul>
+<h2 id="_2">二、查询拓展</h2>
+<h3 id="21-speculative-decoding">2.1 推测解码（Speculative Decoding）</h3>
+<p>Leviathan et al. 2023 / Chen et al. 2023。小模型起草多个 token，大模型一次前向验证，接受前缀保留、首个拒绝 token 替换后继续。<strong>无损</strong>（保持目标模型输出分布），每次目标调用产出多 token。</p>
+<h3 id="22-semantic-speculation">2.2 语义推测（Semantic Speculation）</h3>
+<p>SpecReasons（Pan et al. 2025）与 DREAM-R（Hu et al. 2026）：不再逐 token 验证，而是把草稿序列当作完整推理步，目标模型输出接受/拒绝判断。<strong>有损但快得多</strong>——适合「措辞可以不同、意思必须保住」的场景。SpecCompact 是这一思想在压缩任务上的落地：判断标准变为「是否保留了后续行动所需的信息」。</p>
+<h3 id="23-2026">2.3 并行压缩线（2026 同期工作）</h3>
+<ul>
+<li>Slipstream（2605.08580）：轨迹接地的压缩验证，长程 Agent</li>
+<li>Parallel Context Compaction（2605.23296，Cim et al.）：输入块并发摘要，面向长程 Agent 服务</li>
+<li>异步压缩：摘要与 agent 继续执行重叠。SpecCompact 的差异化：<strong>让摘要自身的结构（槽位）引导并行生成与验证</strong></li>
+</ul>
+<h3 id="24-agent">2.4 槽位结构与 Agent 框架</h3>
+<p>OpenClaw/Hermes 的结构化摘要模板本是「组织信息」的设计，SpecCompact 证明它同时是「并行化的天然单元」——<strong>框架层的结构设计被服务层当成了加速基底</strong>，这是框架-服务协同设计（co-design）的典型案例。</p>
+<h2 id="_3">三、归纳总结</h2>
+<h3 id="31">3.1 全链路框架图</h3>
+<pre><code>                    共享历史 H（长上下文）
+                            │
+        ┌───────────────────┼───────────────────┐
+        │        SFT 微调的 Qwen3-0.6B 起草器（+1 GPU）      │
+        │  6 条槽流并发，每流：起草(缓冲多行)→提交一行          │
+        ▼                                                   ▼
+  [Goal 流]  [Constraints 流]  [Progress 流]  ...  [Critical Context 流]
+        │                                                   │
+        ▼           目标模型（vLLM, 共享前缀缓存）            ▼
+   逐行语义验证: r = p+/(p+ + p−) ≥ η=0.7 ?
+        ├─ 是 → 拼入前缀，复用缓冲下一行
+        └─ 否 → 目标模型局部修复（行感知停止），弃缓冲重新续写
+        │
+        ▼
+  按 schema 顺序组装 → 2048 token 结构化摘要
+</code></pre>
+<h3 id="32">3.2 收益来源分解（从数据反推）</h3>
+<ul>
+<li><strong>槽位并行本身</strong>（OpenClaw 基线即证明）：约 2× 量级</li>
+<li><strong>起草器推测 + 逐行验证</strong>：在并行之上再拿约 1.7–2×（Gemma4 上 2.75×→4.71×/5.63×）</li>
+<li><strong>系统执行优化</strong>：再叠加 1.88–2.44×（Gemma4）/1.19–1.51×（Qwen3.5）</li>
+<li>三层近似相乘，才有 Hermes 原生环境 8.68× 的端到端加速——<strong>延迟工程是乘法的，不是加法的</strong></li>
+</ul>
+<h3 id="33-">3.3 精度-速度的真实帕累托前沿</h3>
+<p>论文最有价值的诚实点：加速没有免费的精度午餐。0.6B 起草器+行级验证在 Gemma4 上丢 3–4 个 TGC 点，在 Qwen3.5 上反而赚 2–5 个点。<strong>草稿质量决定精度方向</strong>——当目标模型本身摘要很强时，小起草器的噪声是净损失；当目标模型摘要一般时，行级验证反而起了「逐行质检」的净化作用。</p>
+<h2 id="_4">四、趋势判断</h2>
+<h3 id="1">趋势1：上下文压缩正从提示工程问题变成系统问题</h3>
+<p>依据：本文三层收益中两层是纯执行优化（调度/缓存/缓冲/停止条件），且系统优化单独贡献 1.88–2.44×。压缩延迟优化的重心正在从「怎么写摘要 prompt」迁移到「怎么调度压缩的计算」。</p>
+<h3 id="2">趋势2：语义推测是推测解码的通用化方向</h3>
+<p>依据：SpecReasons→DREAM-R→SpecCompact 一年内连续落地，「按语义等价而非逐 token 一致来验证草稿」正在成为一切有冗余表达自由度的生成任务（推理/摘要/代码）的通用加速范式。</p>
+<h3 id="3agent-serving">趋势3：Agent 框架的结构约定正在变成 serving 层的可执行合约</h3>
+<p>依据：六槽 schema 既是提示词也是并行单元；Slipstream/Parallel Compaction 同期工作都在利用轨迹结构。框架层每多一分结构化约定，服务层就多一分可优化空间——<strong>结构即性能</strong>。</p>
+<h3 id="4">趋势4：混合注意力架构正在悄悄破坏既有服务优化假设</h3>
+<p>依据：Qwen3.5 线性注意力层使「前缀文本匹配=KV 缓存可复用」失效，需检查点恢复递归状态。随着 hybrid/Mamba 类架构普及，一大批基于标准注意力的服务端优化（prefix cache/paged attention 假设）都要重写。</p>
+<h2 id="_5">五、关联分析</h2>
+<h3 id="51-autocompact-agent2026-10-04">5.1 与 AutoCompact 编码Agent上下文压缩（2026-10-04 笔记）的关联</h3>
+<p>AutoCompact 解决「何时压缩」（自适应触发时机），SpecCompact 解决「压缩本身多快」（执行加速）。两者正交可叠加：自适应触发 + 槽位并行执行 = 完整的压缩延迟治理。</p>
+<h3 id="52-scaledown-2026-10-13">5.2 与 ScaleDown 约束解码模型（2026-10-13 笔记）的关联</h3>
+<p>同属「用受限小模型/受约束生成替代自由大模型生成」路线：ScaleDown 用约束解码保证格式，SpecCompact 用 SFT 小起草器+行级验证保证语义。区别在验证器：ScaleDown 是语法级，SpecCompact 是目标模型的语义判断。</p>
+<h3 id="53-memdecay-memory-compaction-skill">5.3 与 MemDecay / Memory Compaction 率失真（skill 案例库）的关联</h3>
+<p>Memory Compaction（2607.08032）给了「什么值得留」的率失真理论框架，MemDecay（2607.10582）给了「不同区域不同保留优先级」。SpecCompact 补上第三块拼图：「保留决策如何低成本执行」。三者合起来 = 记忆压缩的 what/which/how 完整技术栈。</p>
+<h3 id="54-hermes-hermes">5.4 与 Hermes 本体的直接关联（本文就在 Hermes 上做的实验！）</h3>
+<p>论文直接引用 Hermes（Nous Research, 2026）作为基线压缩实现，用户研究集成进 Hermes 代码库，8.68× 中位加速是 Hermes 环境实测值。<strong>这是罕见的一手针对性研究——读它等于读自己系统的性能审计报告</strong>。当前 Hermes 的 context-compressor skill 是单体摘要式压缩，正是本文测的 38.89s/63.74s 基线。</p>
+<h3 id="55-coral-hippocam">5.5 与 CORAL / Hippocam（上下文自清理线）的关联</h3>
+<p>CORAL（2026-10-31）做认知资源自分配的自我清理，Hippocam（2026-10-12）做经验巩固。它们决定「清什么」，SpecCompact 决定「清理动作本身的延迟」——同样是治理层与执行层的关系。</p>
+<h2 id="_6">六、金句摘录</h2>
+<blockquote>
+<p>「Compaction therefore requires balancing information retention against latency.」——压缩的本质是信息保留与延迟的权衡，一句话框定整个问题域。</p>
+<p>「Slots generated without other slots' outputs can still preserve relevant information.」——独立性观察，全文的立论基石，也是对结构化模板价值的重新发现。</p>
+<p>「Matching text prefixes alone therefore do not guarantee cache reuse.」——混合注意力时代服务端优化的警世恒言。</p>
+</blockquote>
+<h2 id="_7">七、行动启示（借鉴点评估）</h2>
+<h3 id="p0-hermes-context-compressor">P0：槽位并行化 Hermes context-compressor（零训练即可落地）</h3>
+<ul>
+<li><strong>证据</strong>：论文 Table 3 中 OpenClaw 并行基线（纯并行分槽生成，无起草器无训练）已拿到 1.95–2.75× 加速，且在 7/8 设置中仍是次优</li>
+<li><strong>动作</strong>：Hermes 压缩时把 6 槽拆成 6 个并发 API 请求（同一模型、同一历史、各带槽位指令），完成后按 schema 组装。共享前缀天然命中 provider 端 prompt cache</li>
+<li><strong>工作量</strong>：context-compressor 流程改造，半天级；<strong>收益下限约 2×，上限逼近全文速度</strong></li>
+<li><strong>状态</strong>：现有 skill 为单体串行摘要 → 属「可直接移植」</li>
+</ul>
+<h3 id="p1">P1：行级轻量检查三件套（纯规则，零成本）</h3>
+<ul>
+<li>重复行检测直送修复、<code>#</code> 标题行与 <code>(none)</code> 空槽标记免验证直接接受、每槽行数/token 双上限</li>
+<li>防退化（无限重复/超长）同时省验证调用——这部分连并行化都不需要，单体压缩也能用</li>
+</ul>
+<h3 id="p1_1">P1：压缩调用的共享前缀组织</h3>
+<ul>
+<li>验证/修复类调用把「历史+全部槽契约」放公共前缀，槽指令与已接受前缀放后段——确保前缀缓存命中。适用于任何多次重读同一历史的管线（包括 cron 任务的会话总结）</li>
+</ul>
+<h3 id="p2jetson">P2：Jetson 边缘起草器路线</h3>
+<ul>
+<li>Qwen3-0.6B 起草器 LoRA 后恰好是 Jetson Orin 可跑的量级。本地起草+云端验证的两级架构值得在 LuxTTS/语音管线之外的 Agent 链路上评估。<strong>注意论文教训：起草器与目标模型能力差距越大，接受率越低（19.6pp 差距实测），边缘端只适合配中小目标模型</strong></li>
+</ul>
+<h3 id="p3">P3：暂不落地项</h3>
+<ul>
+<li>SFT 训练专属起草器：需要目标模型生成 50K 级训练数据+LoRA 训练，当前压缩频率不足以摊销成本</li>
+<li>槽位条件化滑窗注意力：论文自己留的未来工作，无代码</li>
+</ul>
+<h2 id="_8">八、拓展应用推荐</h2>
+<ul>
+<li><strong>Hermes context-compressor</strong>：P0 槽位并行化（见上）</li>
+<li><strong>auto-memory-keeper / evening-summary 等 cron</strong>：会话摘要多为多字段结构，天然可分字段并发生成，缩短整点任务的阻塞窗口</li>
+<li><strong>量化交易盯盘日志</strong>：日终复盘摘要按「信号/持仓/风控事件/异常」分槽并行生成，加快批量回看</li>
+<li><strong>LanGPT 长会话</strong>：若做客户端上下文压缩，六槽模板+并行请求是现成方案</li>
+<li><strong>RL 训练轨迹归档</strong>：DUCK 训练日志的「配置/改动/数据/终止原因」四件套模板（用户定制的摘要 schema）同样可并行化生成</li>
+</ul>
+<h2 id="_9">九、指南分析</h2>
+<ul>
+<li><strong>「结构即并行单元」方法论</strong>：本文最可复用的思想不是推测解码，而是<strong>先做独立性实验（4.73 vs 4.44，顺序反转 ≤0.03）证明结构化输出的各部分互不依赖，再把结构当并行化的执行单元</strong>。任何多字段模板（报告/评估/清单）都值得先问一句：这些字段真的需要顺序依赖吗？</li>
+<li><strong>延迟工程是乘法的</strong>：并行(2×) × 推测(2×) × 执行优化(2×) ≈ 8.68×。优化长延迟管线时应分层设计独立收益源，而不是在一个维度上死磕</li>
+<li><strong>诚实报告双面结果的范式</strong>：论文同时报告了 Gemma4 掉点与 Qwen3.5 涨点，并给出三因归因（基线速度/模型差距/架构限制）——这种「加速论文敢报精度损失」的写法值得在自家实验报告里效仿</li>
+<li><strong>消融的边界意识</strong>：Table 4 明确注明「系统优化是合并效果，未逐项拆分；全量任务评估用的是原始实现」——主动声明实验边界，防止读者过度泛化</li>
+</ul>
+</body>
+</html>
