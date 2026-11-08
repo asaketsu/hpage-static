@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StepBack步级错误定位重采样</title>
+
+<meta property="og:title" content="StepBack步级错误定位重采样" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-09-StepBack%E6%AD%A5%E7%BA%A7%E9%94%99%E8%AF%AF%E5%AE%9A%E4%BD%8D%E9%87%8D%E9%87%87%E6%A0%B7.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="stepback-test-time-41-token">StepBack：步级错误定位重采样，让 Test-Time 推理省最多 41% Token</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2611.08403（cs.AI / cs.CL / cs.LG）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2611.08403<br />
+<strong>作者</strong>：Yang Ouyang, Jung-Eun Kim<br />
+<strong>提交日期</strong>：2026-11-05<br />
+<strong>记录日期</strong>：2026-11-09</p>
+
+<p class="meta-date">生成日期 2026-11-09</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #推理时计算 #Self-Consistency #错误定位 #Token效率</p>
+<hr />
+<h2 id="_1">〇、定锚：我的现状与目标</h2>
+<p>我的核心场景是 Agent 长任务与多候选决策：Hermes 生态里大量任务走"采样多个候选→投票/择优"的模式（best-of-N 选修复方案、多模型交叉验证、cron 失败重试）。当前痛点有两个：一是<strong>失败后从头重跑</strong>——一条长推理链只有一两步出错，却把整条链的全部 token 重新烧一遍；二是<strong>多候选预算浪费</strong>——多数候选的前半段推理几乎相同，重复采样同一前缀等于重复付费。资源约束是智谱/GLM 包月额度+按量垫底，token 就是真金白银。期望时间尺度：一周内能把"局部重试"思想用在失败任务恢复流程上。这篇论文正好回答"错误定位值多少 token"这个先行问题。</p>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11-self-consistency-2026">1.1 核心问题：Self-Consistency 的预算浪费〔方法，2026〕</h3>
+<p>Self-Consistency（SC）采样 B 条完整推理轨迹再多数投票，是 CoT 推理的标准增强手段。但它的效率变体（AC/ESC/DSC）只在"什么时候停"上做文章——早停全轨迹采样、按问题难度分配样本数。没有任何变体触碰一个事实：<strong>错误轨迹的前半段往往是对的，错通常从某一步开始</strong>。SC 把每条候选都从头采到尾，等于为"已经正确的前缀"反复付费。</p>
+<h3 id="12-oracle-2026">1.2 Oracle 研究：错误定位的价值上限〔数据，2026〕</h3>
+<p>论文先做 oracle 实验回答"如果首错位置已知，能省多少"：用 LLM verifier 标注每条错误轨迹的首错步 e(τ)，从该步回滚、保留前缀、只重采样后缀。</p>
+<ul>
+<li>GSM8K：SC@32 = 91.21% / 9506 tokens；Oracle 8×4 配置 = 91.89%、3427 tokens（<strong>省 64.0%</strong>）；16×2 配置 = 92.27%、5449 tokens（省 42.7%）</li>
+<li>MATH500：SC@32 = 72.80% / 18335 tokens；Oracle 16×2 = 73.00%、12615 tokens（省 31.2%）</li>
+</ul>
+<p>结论：<strong>准确定位 + 前缀复用，精度持平甚至反超 SC，token 砍掉三分之一到三分之二</strong>。这是全文的价值锚点——先把上限证明了，再做工程化。</p>
+<h3 id="13-stepback-2026">1.3 方法：StepBack 三步走〔方法，2026〕</h3>
+<ul>
+<li><strong>分步</strong>：利用 instruction-tuned 模型天然用空行分隔推理步的特性，把轨迹 τ 切成 z₁…z_T（推理步）+ z_T+1（答案步），零额外解析成本</li>
+<li><strong>定位</strong>：两种轻量信号预测回滚点 ê——</li>
+<li>NLL-signal：步内平均 token 负对数似然的突增 Δt = u_t − u_{t−1} ≥ δ_NLL(0.1)，即模型"自己写到这步时心虚了"。logprob 是模型推理时免费自带的，零额外开销</li>
+<li>PRM-signal：过程奖励模型（Qwen2.5-Math-PRM-7B）给前缀打分，分数骤降 r_{t−1} − r_t ≥ δ_PRM(0.05)，只打分部分轨迹而非完整采样</li>
+<li>检测不到错误时 ê = T+1（保留全链只重采答案步），保证预算结构与 SC 对齐</li>
+<li><strong>重采样与投票</strong>：预算 B = n_d × n_s。n_d 条 draft 各自定位回滚点，保留前缀、补采 n_s−1 条后缀，连同 draft 自身答案共 B 个候选，归一化多数投票</li>
+</ul>
+<h3 id="14-b32-2026">1.4 主实验：三模型七基准，B=32 同预算对比〔数据，2026〕</h3>
+<p>配置 (n_d, n_s) = (16, 2)，阈值全域共享不逐数据集调参。模型：Llama-3.2-3B / Qwen2.5-3B / Qwen2.5-7B。基准：GSM8K、MATH500、AMC2023、AIME24、OlympiadBench、HotpotQA、2WikiMultiHopQA。</p>
+<ul>
+<li>Qwen-7B + PRM-signal：GSM8K 93.63→94.08（+0.45，<strong>省 41.26%</strong>，全文最大节省）；MATH500 +2.00 省 28.53%；AMC2023 +6.02 省 17.98%</li>
+<li>Qwen-3B 加权平均：NLL-signal +0.12 省 27.15%；PRM-signal +0.17 省 21.07%</li>
+<li>Llama-3B 加权平均：NLL −0.17 省 27.74%；PRM +0.36 省 18.66%（NLL 在 Llama 上平均掉 0.17 点，非全面碾压）</li>
+<li>模型越强、任务越结构化（数学），定位信号越可靠；HotpotQA 上 PRM 反而 −2.0 点——多跳 QA 的错误定位信号仍不稳</li>
+</ul>
+<h3 id="15-2026">1.5 与自适应方法组合：正交叠加〔数据，2026〕</h3>
+<p>StepBack 可直接嫁接到 AC/ESC/DSC 上（Qwen2.5-3B，B=32 上限）：</p>
+<ul>
+<li>GSM8K：SC 91.21% / 9506 tok / G/1kT=0.638 → StepBack+DSC <strong>92.12% / 1815 tok / G/1kT=3.843</strong>——token 降到 19%，每千 token 精度增益×6</li>
+<li>MATH500：StepBack+AC 72.60% / 8749 tok（SC 是 18335 tok）</li>
+<li>结论：错误定位（空间维度）与自适应停止（时间维度）<strong>正交可叠加</strong></li>
+</ul>
+<h3 id="16-2026">1.6 消融与分析〔数据，2026〕</h3>
+<ul>
+<li><strong>PRM 规模</strong>：1.5B Skywork PRM 也够用——8×4 配置 +0.36 点省 23.8%，打分开销 13.7ms/draft（7B 是 19.7ms）。关键不是 PRM 规模而是<strong>信号是否有信息量</strong></li>
+<li><strong>预算分配谱系</strong>：suffix-heavy（2×16）最省 token 但不稳（少数坏 draft 前缀拖垮恢复）；draft-heavy（8×4 / 16×2）前缀多样更稳，8×4 在全部五个数学基准上超过 SC</li>
+<li><strong>回滚规则对比</strong>：final-step resampling（不定位、只重采答案步）是出人意料的强效率基线；<strong>定位信号的增量价值在 suffix 占比高时最大</strong>——4×8 配置下 PRM-signal 比 final-step 高 2.06 点</li>
+</ul>
+<h3 id="17-2026">1.7 局限〔观点，2026〕</h3>
+<ul>
+<li>只验证了 NLL / PRM 两种定位信号，更轻量的信号空间未探索</li>
+<li>只在数学推理 + 多跳 QA 验证，代码生成、长文摘要等领域的泛化未证明</li>
+<li>⚠️ 存疑点：oracle 标注本身由 LLM verifier 生成（人工抽检 100 条未见误判，但非全量人工），oracle 上限可能略有偏差</li>
+</ul>
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-sc">2.1 SC 效率变体家族〔补充〕</h3>
+<p>AC（Adaptive Consistency, 2023）按收敛提前停采；ESC（Early-Stopping SC, 2024）用统计停止规则；DSC（Difficulty-Adaptive SC, 2025）按难度分配样本。三者全在"何时停/采多少"上优化，StepBack 是第一个在"从哪重采"上动刀的——空间维度 vs 时间维度的差异。</p>
+<h3 id="22">2.2 回溯类方法对照〔补充〕</h3>
+<p>Thought Rollback（ICML 2024）在生成中回滚错误思维；Singh et al. 2025 / Tan et al. 2025 的 backtracking 用 PRM 指导回退。区别：这些方法在<strong>单轨迹内</strong>回溯修正，StepBack 在<strong>多候选投票框架</strong>内做前缀复用+后缀重采样，两者可组合。</p>
+<h3 id="23">2.3 验证型检索：步级信号可信度〔反驳〕</h3>
+<p>搜索"step-level error detection LLM reasoning limitations"发现：步级 PRM 在分布外任务上打分漂移是已知问题（与本文 HotpotQA 上 PRM 掉点一致）。NLL 信号依赖模型校准度，弱模型/过拟合模型的 logprob 不忠实反映置信度。⇒ 迁移到非数学领域时，定位信号需要重新标定，不能直接照搬阈值。</p>
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：两阶段预算重分配</h3>
+<pre><code>SC（基线）:   [完整轨迹]×B ──────────────→ 投票
+StepBack:     [draft×n_d] → 定位首错步 → 保留前缀
+              → [后缀重采×(n_s−1)] ────→ 投票
+价值来源 = 正确前缀的复用率 × 定位准确率
+</code></pre>
+<p><strong>优点</strong>：证据强度高——oracle 先证上限（省 31-64%），工程版三模型七基准同预算对比，且与三类自适应方法正交叠加均有增益；阈值全域共享，无逐数据集调参，工程可信。<br />
+<strong>缺点</strong>：增益分布不均（HotpotQA 负增益、Llama+NLL 平均微降），说明定位信号依赖模型校准度与任务结构化程度；只覆盖数学/QA 域；B=32 的小预算设定下结论，超大预算行为未验证。<br />
+<strong>借鉴点</strong>：直接可迁移的是<strong>思想框架</strong>——"失败后定位首错点、复用正确前缀、只重做后缀"；NLL 突增信号在 API 返回 logprob 的场景零成本可用；阈值必须按域标定而非照抄 0.1/0.05。</p>
+<h3 id="32">3.2 三维修筛：错误定位值不值得做</h3>
+<ul>
+<li>判据一（信息量）：NLL 免费、PRM 13.7ms/样本——信号成本可忽略</li>
+<li>判据二（增益）：最大 41.26% 节省，但平均 18-28%，且个别配置为负</li>
+<li>判据三（适用面）：结构化推理（数学/代码类）&gt;开放推理；多候选场景 &gt; 单轨迹场景</li>
+</ul>
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1test-time-compute">趋势1：Test-Time Compute 从"堆量"转向"定位修复"〔上升〕</h3>
+<p>2023-2025 的主旋律是 scaling 采样数量（SC→BoN→self-refine），本文代表 2026 的新方向：预算不变，靠<strong>结构性复用</strong>（前缀复用+定点重采）提效。对我的意义：多候选决策任务的 token 成本有 20-40% 的结构性压缩空间，这是机会。</p>
+<h3 id="2">趋势2：步级轻量信号取代重验证器〔上升〕</h3>
+<p>1.5B PRM ≈ 7B PRM 的结论与 ODA（2609.20734，28.3M recall head）同向：验证组件在快速轻量化、参数不再堆。意义：Jetson 边缘侧跑步级监控在算力上完全可行。</p>
+<h3 id="3">趋势3：推理策略组件化、正交组合〔上升〕</h3>
+<p>定位（空间）× 自适应停止（时间）× 模型分级（精度）可自由拼装，单一策略论文时代在退潮。意义：架构设计应预留正交插槽，而非寻找单一最优策略。</p>
+<h3 id="4">趋势4：错误定位信号的域漂移是主要风险〔分化〕</h3>
+<p>HotpotQA 负增益暴露步级信号在开放域不稳，PRM 分布外漂移是已知问题。意义：跨域部署必须重新标定阈值，直接照搬有翻车风险。</p>
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-hermes">5.1 与 Hermes 失败任务恢复的关联</h3>
+<p>当前长任务/cron 失败后的恢复策略≈"从头重跑"（SC 模式）。StepBack 的映射：失败时从 error-case-library 定位首错步骤（哪一步开始偏离），<strong>保留已成功的上游产物</strong>（已下载文件、已通过的校验、已生成的中间件），只重执行失败步骤及其下游。这正是 skill 里 harness-checkpoint 的经济版论证——checkpoint 复用的价值有了量化锚点（同预算下省 18-41%）。</p>
+<h3 id="52-spork260703333-fork">5.2 与 SPORK（2607.03333）自推测 fork 的关联</h3>
+<p>SPORK 在工具调用场景用自推测 fork 加速（前缀共享+分支展开），StepBack 在数学推理场景用前缀复用+后缀重采样——同一"前缀复用经济学"在不同域的实例化。两者可对照：SPORK 省的是并行等待时间，StepBack 省的是采样 token。</p>
+<h3 id="53-llm-as-a-verifier-framework-best-of-n">5.3 与 llm-as-a-verifier-framework / best-of-N 选优的关联</h3>
+<p>best-of-N 选择时先对候选做廉价信号初筛（NLL/一致性）再对分歧候选深验证，等价于把 StepBack 的"定位→选择性重采"搬到验证侧：共识强的早停（AC 思想），分歧大的定点重采（StepBack 思想）。</p>
+<h3 id="54">5.4 与量化多模型投票的关联</h3>
+<p>多模型/多信号投票产生分歧时（如三模型两多一空），不是全部重算，而是定位分歧源（哪个信号/哪段时间窗引发分歧）只重采该分支——盘神探类盯盘任务的信号冲突处理可直接借鉴。</p>
+<h2 id="_7">六、金句摘录</h2>
+<blockquote>
+<p>"Many failed trajectories still contain useful early reasoning steps."（许多失败轨迹仍含有用的早期推理步）— 全文价值主张的一句话版本，也是所有重试系统的第一性原理。</p>
+<p>"The key requirement is not PRM scale, but whether the localization signal is informative."（关键不在 PRM 规模，而在定位信号是否有信息量）— 1.5B PRM 实验的结论，轻量信号哲学。</p>
+</blockquote>
+<h2 id="_8">七、行动启示与回访</h2>
+<p><strong>我的结论：保留"定位→前缀复用→后缀重采"框架与 NLL 免费信号；放弃照搬 PRM-signal（需 7B/1.5B 专用 PRM，域漂移未解）；改造 Hermes 失败恢复流程为步级局部重试。</strong></p>
+<ul>
+<li><strong>行动1</strong>：长任务失败恢复改为"定位首错步+局部重跑" | 时间：一周内 | 触发条件：下一次 cron/长任务失败且 error-case-library 有步骤记录 | 验收标准：同任务恢复消耗 token ≤ 全量重跑的 70%</li>
+<li><strong>行动2</strong>：多候选决策（best-of-N 修复方案选择）加 NLL 初筛层 | 时间：两周内 | 触发条件：下次走 verifier 框架选优 | 验收标准：候选数相同下最终选中率不降，token 消耗降 ≥20%</li>
+<li><strong>回访日期</strong>：2026-11-23</li>
+<li><strong>待验证假设/证伪条件</strong>：假设"NLL 突增能定位 Agent 任务的首错步"。若实际日志中失败任务的步级 logprob 无明显突增模式（定位准确率 &lt;50%），说明 Agent 域与数学推理域的信号分布差异过大，该假设证伪，退回 checkpoint 粒度复用。</li>
+</ul>
+<h2 id="_9">八、拓展应用推荐</h2>
+<ul>
+<li><strong>Agent 失败恢复</strong>：长管线失败→定位首错步→复用上游产物→只重跑下游（StepBack 直接映射）</li>
+<li><strong>多模型量化投票</strong>：信号分歧时定点重采分歧源分支，而非全信号重算</li>
+<li><strong>代码 Agent 调试</strong>：测试失败→定位首个失败 commit/步骤→只重生成其后代码（论文未验证代码域，属推测迁移，需先小规模验证）</li>
+<li><strong>RL 训练轨迹回放</strong>：rollout 中段失败时前缀复用重采后段，降低轨迹采集成本（与 Offline 蒸馏的轨迹合并思想互补）</li>
+<li><strong>边缘端小模型增强</strong>：Jetson 上 NLL 信号零成本，适合资源受限设备的多候选推理提效</li>
+</ul>
+<h2 id="_10">九、指南分析</h2>
+<ul>
+<li><strong>Oracle-first 实验设计</strong>：先构造"假设信号完美"的 oracle 实验证明价值上限（Table 1），再工程化逼近——这个两段式论证值得所有系统论文借鉴，先回答"值不值得做"再做"怎么做"</li>
+<li><strong>阈值不做逐集调参</strong>：δ_NLL=0.1 / δ_PRM=0.05 全域共享 + 附 wide-grid 校准实验（Appendix F），工程可信度高于 per-dataset 调参的论文</li>
+<li><strong>诚实呈现负结果</strong>：Llama+NLL 平均 −0.17、HotpotQA PRM −2.0 均如实报告并分析原因，这种"增益分布不均"的呈现方式是判断论文可信度的信号</li>
+<li><strong>反例判据</strong>：final-step resampling 这个"不定位也能省钱"的强基线提醒——任何"智能方法"都必须先赢过它的最笨变体</li>
+</ul>
+</body>
+</html>
