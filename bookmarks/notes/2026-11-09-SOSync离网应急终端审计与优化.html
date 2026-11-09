@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOSync离网应急终端审计与优化</title>
+
+<meta property="og:title" content="SOSync离网应急终端审计与优化" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-09-SOSync%E7%A6%BB%E7%BD%91%E5%BA%94%E6%80%A5%E7%BB%88%E7%AB%AF%E5%AE%A1%E8%AE%A1%E4%B8%8E%E4%BC%98%E5%8C%96.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="sosync">SOSync 离网应急终端审计与优化</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号“没有蜂窝网络也能发出求救信息：ESP32 S3离网通信与应急终端”；同步核验 Instructables 原项目与 GitHub 上游源码<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/zDgt-q1O1JFDpf33bdpCnw<br />
+<strong>记录日期</strong>：2026-11-09</p>
+
+<p class="meta-date">生成日期 2026-11-09</p></blockquote>
+<p><strong>标签</strong>：#ESP32-S3 #LoRa #离网通信 #应急终端 #嵌入式安全</p>
+<hr />
+<h2 id="_1">〇、定锚：我的现状与目标</h2>
+<p>SOSync 的吸引力不是“把很多模块装进盒子”，而是把网络失效场景下的通信、定位、提示和供电收敛为一台可携带设备。现有项目库里已有 ESP32-S3、LoRa 告警和多外设原型，因此新增项目不应再做一份模块清单，而应补上原型最薄弱的“真实投递可信度”。本次目标是形成可上板前先验证的软件和工程合同：按钮触发 SOS 后，什么条件允许发射、什么状态可称为已确认、什么证据只能称为本机已处理。</p>
+<p>约束同样明确：本机没有这套目标硬件，不可以把主机模拟写成无线距离、充电安全或救援能力已验证。优化的时间尺度分两层：当下交付可运行的协议/状态机/引脚验证；后续在两台真实设备上完成收发、断电和电源测试。</p>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11">1.1 原文提供的系统骨架</h3>
+<ul>
+<li>〔观点，2026〕原文把 ESP32-S3、SX1262 LoRa、NEO-M8N GPS、QMC5883、AHT20/BMP280、RDA5807M、PAM8403、COB 灯和 18650 供电纳入同一便携设备。</li>
+<li>〔方法，2026〕交互层用 SquareLine Studio 生成 LVGL 8.3.x 界面，分为 FM、环境、LoRa、GPS、罗盘、灯控和 SOS 页面。</li>
+<li>〔方法，2026〕上游源码定义了显示 SPI、触摸 I2C、系统 I2C、GPS UART 与 LoRa SPI 的独立引脚集合；这使引脚规划可以被机械地审计，而不是凭肉眼判断。</li>
+</ul>
+<blockquote>
+<p><strong>原型真正的价值</strong>：它已经证明“多总线、多外设、触摸 UI 能被组织成一个物理终端”，但还没有证明“求救报文确实被可信地发送并得到对端确认”。</p>
+</blockquote>
+<h3 id="12-ui">1.2 源码反证：UI 状态与通信事实脱节</h3>
+<ul>
+<li>〔数据，2026〕<code>esp32-s3_lvglTFT_test.ino</code> 中，LoRa 的 <code>SPI.begin</code>、<code>LoRa.setPins</code>、<code>LoRa.begin</code> 整段处于注释状态。</li>
+<li>〔数据，2026〕<code>funcSendSOS()</code> 与 <code>sendLoraMessage()</code> 中的 <code>beginPacket</code>、<code>print</code>、<code>endPacket</code> 同样处于注释状态，但函数仍把界面标签设为 <code>SENT</code> 或 <code>Status: Sent</code>。</li>
+<li>〔方法，2026〕上游仅以 <code>gps.location.isValid()</code> 作为 SOS 前置条件，随后组装明文经纬度字符串，没有 GPS 年龄、接收方 ACK、认证、序号或重放防护。</li>
+</ul>
+<p>这不是对原型作者的苛责，而是原型到可靠设备必须跨过的边界。只有本地 UI 执行成功，不能推出无线模块已初始化、数据进入空口、对端收到、对端可信，或救援行动已经发生。</p>
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21">2.1 对“离网”的边界补充</h3>
+<ul>
+<li>〔补充〕LoRa 能在没有蜂窝网络时工作，但它不是卫星应急服务；通信成功率由频段合规、扩频参数、天线、地形、遮挡、安装高度和接收方在线状态共同决定。</li>
+<li>〔反驳〕“固定频点加一根天线就有固定公里数”的说法不可采信。上游把 <code>865E6</code> 标为 India region，这恰好说明射频参数不能无条件迁移到其他部署地。</li>
+<li>〔支持〕将消息压缩为预定义事件码、位置和少量文本，符合低速率无线链路的有效载荷约束；但压缩不等于可信。</li>
+</ul>
+<h3 id="22">2.2 对安全与可验证性的补充</h3>
+<ul>
+<li>〔补充〕明文位置报文既可被伪造也可被重放。对于 SOS 场景，攻击者重放旧位置会制造错误救援点，伪造包会消耗接收端注意力。</li>
+<li>〔方法〕项目中以 HMAC-SHA256 截断 tag 覆盖规范化报文；每个发送端使用单调 sequence，接收端保存每个 source 的最高序号，从而拒绝重复或倒退的包。</li>
+<li>〔补充〕ACK 仍只是“该接收节点收到并验过此包”，不是“专业救援已响应”。界面应该准确显示 <code>waiting_ack</code>、<code>confirmed</code> 或 <code>exhausted</code>，而非笼统的“已求救”。</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 从设备功能集到可信投递链</h3>
+<pre><code class="language-text">按下 SOS
+  └─ GPS 有效且位置新鲜？────否→ BLOCKED_GPS
+       └─ 区域射频 profile 与电台就绪？──否→ BLOCKED_RADIO
+            └─ 构造认证报文 + 持久化递增序号
+                 └─ 有界发送 → WAITING_ACK
+                      ├─ 匹配的认证 ACK → CONFIRMED
+                      └─ 超出次数 → EXHAUSTED（可见告警）
+</code></pre>
+<ul>
+<li><strong>优点</strong>：该链条把“界面事件”“本地 TX 尝试”“对端确认”三个不同语义拆开，能消除伪成功。</li>
+<li><strong>缺点</strong>：HMAC、NVS 序号和 ACK 增加了固件复杂度；设备密钥的烧录、轮换与丢失处理也必须设计。</li>
+<li><strong>借鉴点</strong>：先在主机端锁定字段、状态与失败语义，再移植到 Arduino/ESP-IDF。这样真实硬件问题将集中于驱动、电源和射频，而不是协议定义不断漂移。</li>
+</ul>
+<h3 id="32">3.2 四类工程风险</h3>
+<ul>
+<li><strong>通信真实性</strong>：上游源代码当前未启用真正发射路径；最小修复不是换 UI，而是恢复驱动并以收端日志验证。</li>
+<li><strong>地理真实性</strong>：GPS 位置“有效”不代表新鲜；需要上限，例如 30 秒，过期就禁止新 SOS。</li>
+<li><strong>电源真实性</strong>：LoRa TX、功放和手机外供电叠加时是 brownout 风险峰值；必须量测 VSYS/3.3V，不可用“有太阳能板”替代测试。</li>
+<li><strong>人机真实性</strong>：SOS 页面应显示尝试次数、等待 ACK 与失败原因；用户不能被绿色 <code>SENT</code> 误导。</li>
+</ul>
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="12026-diy">趋势1：2026 年的多功能 DIY 终端会向“状态可证”分化</h3>
+<p>2026 年原文强调模块整合与可见 UI；更可用的后续产品会把注意力转向 message contract、事件日志、错误状态和可复测验收。对本项目而言，价值不在堆叠更多传感器，而在把已有传感器的输入变成可审计决策。</p>
+<h3 id="2">趋势2：区域合规会成为开源硬件复用的分水岭</h3>
+<p>上游明确写出印度相关频点，说明同一份源码并不天然跨区域复用。未来项目应把频段、功率、占空比和监管要求放进 profile，而不是散落在 <code>#define</code>。</p>
+<h3 id="3">趋势3：离网终端将更强调“辅助通信”定位</h3>
+<p>随着用户对 SOS 字样的敏感度提升，产品需要区分本机发射、对端收包、人工响应三个层次。这不是文案保守，而是减少错误行为的工程设计。</p>
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-neuro-claw">5.1 与 <code>neuro-claw</code> 的关联</h3>
+<p><code>/home/jc/uclaw/project/neuro-claw</code> 提供了 ESP32-S3 多外设分层、天线净空与主机端测试思路。SOSync-Guard 复用这些工程原则，但主动不接入云端 Agent：断网应急场景的首要目标是确定性与低功耗，不是语义复杂度。</p>
+<h3 id="52-photovoltaic-dust-alarm">5.2 与 <code>photovoltaic-dust-alarm</code> 的关联</h3>
+<p><code>/home/jc/uclaw/project/photovoltaic-dust-alarm</code> 也使用 LoRa 进行告警。它提示了“发出告警”与“告警被接收”应区分；SOSync-Guard 在此基础上补充认证、重放保护和 ACK 事务。</p>
+<h3 id="53">5.3 与新项目的关系</h3>
+<p>项目路径为 <code>/home/jc/uclaw/project/sosync-offgrid-terminal</code>。其中主机端 10 项测试覆盖签名、篡改、错密钥、重放、坐标边界、ACK 和 GPIO 冲突；它不代替目标板验收。</p>
+<h2 id="_7">六、金句摘录</h2>
+<blockquote>
+<p>“离网”不是没有网络就必然可靠，而是在基础设施失效时，仍能诚实地说明设备已经做到哪一步。</p>
+<p>一个 SOS 按钮最危险的缺陷，不是不能亮，而是亮出“已发送”却没有任何可验证投递证据。</p>
+</blockquote>
+<h2 id="_8">七、行动启示与回访</h2>
+<p>我的结论是：<strong>保留</strong>多模块一体化和触摸分区设计；<strong>放弃</strong>UI 直接宣告通信成功的做法；<strong>改造</strong>通信层为带安全门、认证、ACK 与失败可视化的事务。</p>
+<ul>
+<li><strong>行动1</strong>：锁定 ESP32-S3、屏幕与 SX1262 的具体料号和数据手册；触发条件是准备采购或接入实物；验收标准是逐 pin 接线表与电源额定值均能追溯到 datasheet。</li>
+<li><strong>行动2</strong>：以两台节点完成基线收发、ACK、重放与 GPS 过期测试；触发条件是硬件接线完成；验收标准是每一条状态转换都有串口日志和接收端证据。</li>
+<li><strong>行动3</strong>：在 TX、音频与外供电组合负载下测 brownout；触发条件是通讯功能通过；验收标准是 5 次连续 SOS 周期中不复位，且记录电压波形。</li>
+<li><strong>回访日期</strong>：2026-11-23。</li>
+<li><strong>待验证假设/证伪条件</strong>：如果目标板屏幕/LoRa 模块与上游引脚定义不一致，或单电芯电源在峰值负载下低于稳压余量，则当前引脚/电源设计必须重做，不能靠软件补丁掩盖。</li>
+</ul>
+<h2 id="_9">八、拓展应用推荐</h2>
+<ul>
+<li><strong>校园/山地活动签到</strong>：用同一认证/ACK 协议报告“到达点位”，但界面标记为活动安全消息而非紧急救援。</li>
+<li><strong>野外传感网维护</strong>：把状态机中的 ACK 与重放机制用于设备巡检上报，防止旧遥测被当作新数据。</li>
+<li><strong>光伏告警节点</strong>：把固定告警字符串升级为带序号、认证与接收确认的低带宽事件包。</li>
+</ul>
+<h2 id="_10">九、指南分析</h2>
+<p>这篇文章的价值在于给出了完整的“器件—外壳—界面—主循环”原型叙事；但工程化时必须追加“源码是否真的执行关键路径”的审计步骤。最可复用的判据是：任何安全关键 UI 结论都要回溯到驱动调用、可观察的对端证据与明确失败状态。对于硬件项目，漂亮的 UI、可编译的代码和真正的端到端功能是三件不同的事。</p>
+</body>
+</html>
