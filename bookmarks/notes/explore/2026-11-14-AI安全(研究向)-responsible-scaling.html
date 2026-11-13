@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI安全(研究向)-responsible-scaling</title>
+
+<meta property="og:title" content="AI安全(研究向)-responsible-scaling" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | cyber" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-14-AI%E5%AE%89%E5%85%A8%28%E7%A0%94%E7%A9%B6%E5%90%91%29-responsible-scaling.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1e293b;
+  background: #f0f4ff;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #1e1b4b;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f1f0ff;
+  color: #7c3aed;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #7c3aed30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1e293b88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #1e1b4b;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e0e7ff;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #1e1b4bcc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #1e1b4baa;
+}
+
+a {
+  color: #6d28d9;
+  text-decoration: none;
+  border-bottom: 1px solid #6d28d930;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #6d28d9;
+}
+
+code {
+  background: #f1f0ff;
+  color: #7c3aed;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #7c3aed;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1e293bcc;
+  background: #ede9fe;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1e293b88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #7c3aed;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1e293b88;
+  text-decoration-color: #7c3aedaa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #7c3aed;
+  background: #7c3aed18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e7ff;
+  display: table-cell;
+}
+th {
+  background: #ede9fe;
+  font-weight: 600;
+  color: #7c3aed;
+  border-bottom: 2px solid #7c3aed;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #ede9fe80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e0e7ff;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #1e1b4b; }
+
+
+        h1::after { content: ''; display: block; width: 60px; height: 3px; background: #7c3aed; margin-top: 10px; border-radius: 2px; }
+        .badge { display: inline-block; background: #7c3aed15; color: #7c3aed; padding: 2px 10px; border-radius: 12px; font-size: 0.75em; margin-right: 6px; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+var S="b68f95fd48e9b712",H="c18341b953ab2e8a6e3e4a863860e87a1855f0ce9c04bc603d9612b0bdb0dc54",K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.digest("SHA-256",new TextEncoder().encode(S+v)).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="responsible-scaling-policy-v3">Responsible Scaling Policy v3 重写与前沿安全框架生态 — 从"暂停承诺"到"行业推荐+风险报告"的治理架构转移</h1>
+<blockquote>
+<p>探索日期: 2026-11-14 | 兴趣等级: L3 | 来源数量: 6 | 前序笔记: 危险能力评估三框架(11-08，评估方法论层)、AI治理监管动态(10-23)、alignment对齐研究进展(11-11)</p>
+
+<p class="meta-date">生成日期 2026-11-14</p></blockquote>
+<h2 id="_1">摘要</h2>
+<p>RSP（Responsible Scaling Policy）是 Anthropic 2023-09 首创的前沿模型灾难性风险治理框架，2026-02-24 的 v3.0 是其最大重写：<strong>删除"无法缓解即暂停"的旗舰承诺</strong>，改为三层结构——单边无条件承诺（unilateral）/ 行业整体推荐（industry-wide recommendations）/ Frontier Safety Roadmap + 定期 Risk Reports 透明机制补偿。理由是集体行动问题（单方面减速让位于不负责任的竞争者，反而损害安全）+ 反常激励（宣布跨越阈值→触发昂贵缓解→激励瞒报能力）。此后 4 个月内快速迭代 v3.1→v3.4（现行版 2026-07-08）。生态侧：Seoul 2024 峰会后 <strong>12 家公司</strong>已发布同类框架，SaferAI 按 65 项加权标准横评——<strong>行业平均仅 22%，照抄同业现有最佳实践即可达 59%</strong>；且框架正转化为监管基础设施——EU AI Act GPAI 条款 2026-08 进入执行、加州 SB-53、纽约 RAISE Act、伊利诺伊 SB 315（年度独立第三方审计）。本篇承接 11-08 笔记（三框架"阈值-评估-响应"同形结构），补齐的是<strong>承诺结构设计与治理架构层</strong>。</p>
+<hr />
+<h2 id="_2">关键发现</h2>
+<h3 id="f1-rsp-v30">F1 RSP v3.0 重写：三支点替换"暂停承诺"</h3>
+<pre><code class="language-text">旧 RSP (v1 2023-09 → v2.2 2025-05)
+  能力级别 ASL-1..4+ ──→ 预承诺逐级缓解 ──→ &quot;无法保持风险可接受即暂停训练/部署&quot;
+                                              （Time: &quot;flagship safety pledge&quot;）
+
+新 RSP v3.0 (2026-02-24, Karnofsky 主导)
+  ├─ ① 单边承诺: 无论竞对怎么做都执行
+  │     · 生/化武器阈值 → 维持 ASL-3 防护(分类器守卫+访问控制+安全控制)
+  │     · 高风险破坏阈值 → 披露模型能力细节+监控实践
+  │     · 自动化 R&amp;D 阈值 → 追求 Roadmap 目标(&quot;pursue&quot;而非&quot;achieve&quot;)
+  ├─ ② 行业整体推荐: 只倡导不单方面绑定
+  │     · RAND Security Level 4(抗国家级权重窃取)从承诺降为推荐
+  │     · 阈值处需给出&quot;灾难性伤害不会显著更可能&quot;的 strong argument
+  ├─ ③ 透明补偿: Frontier Safety Roadmap(公开目标清单,&quot;no hard commitments&quot;)
+  │     + Risk Reports(每 3-6 月, 覆盖所有公开部署模型+高危内部模型)
+  └─ 向上看齐条款: 竞对缓解更有效且成本相当 → 承诺跟进匹配(race to the top)
+</code></pre>
+<ul>
+<li><strong>最大删除</strong>：暂停承诺整体移除；ASL 阶梯从"预定义未来两级"缩到"仅下一级"；ASL-4 部署/安全标准字样消失（本就未清晰定义过）。GovAI 注：旧承诺因脚注逃逸条款本就是条件性的，但 Anthropic 长期未纠正外界"它是无条件"的印象——信任损耗由此而来</li>
+<li><strong>AI R&amp;D 阈值重定义</strong>：旧 AI R&amp;D-4（"完全自动化一名远程初级研究员"）+ R&amp;D-5 合并为单一阈值——"将 2018-2024 两年的 AI 进度压缩进一年"；v3.1 澄清指<strong>聚合能力进步速率</strong>而非研究员生产率。2026-02-10 判定：Claude Opus 4.6 未跨越 AI R&amp;D-4</li>
+<li><strong>风险类目修订</strong>：新增 <strong>high-stakes sabotage</strong>（对敏感资产有广泛访问权的模型操纵后继系统的训练/部署——威胁模型从"权重被窃"转向"AI 自主内部破坏"）；生化分裂 novel/non-novel；删除辐射/核；网络不再单列</li>
+</ul>
+<h3 id="f2-v31v34">F2 v3.1→v3.4 四个月快速迭代：治理微调轨迹</h3>
+<ul>
+<li>v3.1（04-02）：AI R&amp;D 阈值歧义澄清 + 明确"RSP 未要求时仍可自主暂停"</li>
+<li>v3.2（04-29）：<strong>LTBT（长期利益信托）扩权</strong>——可要求 Risk Report 外部审查、批准外部审查员遴选、获定期简报</li>
+<li>v3.3（05-26）：新型生/化武器阈值重校准（贴合真实威胁模型）+ 单模型风险的周期外更新机制</li>
+<li>v3.4（07-08）：自动化 R&amp;D 阈值再校准；未删节 Risk Report 内部共享从"全体常规许可员工"改为"≥200 人"；允许按覆盖日期而非发布日分析；公开版必须标注删节位置；外部审查可分段由多名审查员拼接覆盖</li>
+<li>每版均公开 <strong>redline 修订线版本</strong>（可审计 diff）；配套 RSP 违规举报与反报复政策（2026-02 内部发布、03-24 更新：扩渠道+非正式问询通道）</li>
+<li><strong>诚实自我审计范式</strong>：Anthropic 公开披露旧 RSP 下 4 处未完全达标——评估延迟 3 天、autonomy 评估超出占位任务更新、部分评估缺 best-of-N/CoT 诱导、6x scaling buffer 未显式设计——并制度化解法（评估间隔 3→6 个月防赶工降质）。这直接回应了 11-08 笔记 F4 的"评估意识掏空"担忧：与其伪装达标，不如承认 elicitation 局限</li>
+<li>Risk Reports 实绩：2026-02 与 2026-08（覆盖至 07-15）两份已发布；基于边际风险论证继续推进的决策须董事会+LTBT 双批准</li>
+</ul>
+<h3 id="f3-12-22-59">F3 12 家公司框架生态：平均 22%，可达 59%</h3>
+<p>SaferAI（Stelling et al. 2026, arXiv 2512.01166）对 12 家（Amazon/Anthropic/Cohere/G42/DeepMind/Magic/Meta/Microsoft/Naver/Nvidia/OpenAI/xAI）按 <strong>65 项加权标准</strong>横评四域（风险识别/分析评估/处置/治理）：</p>
+<ul>
+<li><strong>行业平均 22%</strong>；仅采用同业已在用的最佳实践即可升至 <strong>59%</strong>——差距不在发明，在采纳</li>
+<li>四个"少数公司显著领先"的速赢域：</li>
+<li><strong>Risk Modeling</strong>：Meta 最佳——outcomes-led 威胁建模（灾难结局→威胁路径→关键风险因子→评估贡献度四步），每风险域公开威胁场景</li>
+<li><strong>KCIs（关键控制指标）</strong>：G42 最佳（Security Mitigation Levels 显式映射能力阈值）；DeepMind 定义 SL2+/SL3/SL4 递进承载标准（建基 RAND 报告）；OpenAI 部署侧三类防护——Robustness（越狱抗性）/Usage Monitoring（有害行为检测）/Trust-based Access（审查制访问）</li>
+<li><strong>KRI 持续监测</strong>：OpenAI 最佳——诱导策略匹配高端威胁行为者，<strong>单次能力评估视为下界而非上限</strong></li>
+<li><strong>Risk Governance</strong>：xAI 风险责任人、G42 风险委员会、Anthropic RSO、OpenAI SAG、Nvidia 清晰升级程序各有亮点</li>
+<li>命名地图（同物异名）：Anthropic=RSP+Frontier Compliance Framework、OpenAI=Preparedness+Frontier Governance、DeepMind=FSF（2026-04-17 增设低于 CCL 的 TCL 预警级+有害操纵新 CCL）、Meta=Advanced AI Scaling Framework、Microsoft=Frontier Governance Framework。METR 维护全部版本索引（metr.org/fsp）</li>
+</ul>
+<h3 id="f4">F4 框架→法律转化管线：自愿标准正在变成监管基础设施</h3>
+<ul>
+<li><strong>EU</strong>：AI Act GPAI 系统性风险条款 + Code of Practice（安全章节 Measure 3.3 要求系统性风险建模、3.5 要求部署后监测、附录 3.3 要求缓解有效性评估）——<strong>2026-08 进入执行</strong></li>
+<li><strong>美国州级</strong>：加州 SB-53（季度灾难性风险报告）、加州 TFAIA、纽约 RAISE Act、伊利诺伊 SB 315（2026-07 通过：前沿开发者<strong>年度独立第三方审计</strong>——与 RSP 自身委托的年度程序合规审查同年频）</li>
+<li>NIST/ISO 标准化进行中（评估标准 + 框架预备工作项）</li>
+<li>Anthropic 另发独立 Frontier Compliance Framework 满足法定义务——<strong>政策（自愿）与合规（法定）分离双轨</strong></li>
+<li>GovAI 判词：这些框架"已成为全球前沿 AI 监管的地基"，包括 SB-53/RAISE/EU AI Act</li>
+</ul>
+<h3 id="f5-govai">F5 GovAI 评析：三选项逻辑与"自评作业"残留</h3>
+<ul>
+<li>初反应负面（暂停承诺删除）→ 深入审读后<strong>转向正面</strong>。核心论证：三选项中——①保留承诺并真暂停（掉队，损失安全研究能力）②保留承诺+触发逃逸条款（激励把边际风险说小）③删除承诺+公开理由+透明补偿——③最优。<strong>"保留不会被遵守的承诺"比"诚实承认约束"更危险</strong></li>
+<li>残留担忧：其他公司可能跟进降承诺而不加透明对冲；自定目标+自评进度+自决删节的 "grading own homework" 结构未变（独立审查触发条件窄）；按 Anthropic 自身的集体行动逻辑，应更积极推动强监管</li>
+<li>积极面：Risk Reports 覆盖<strong>内部部署模型</strong>（METR 实证：模型在公开发布前即可危险）；公开"为什么决定继续"的推理（同业无人做到）；向上看齐条款支持 race to the top</li>
+</ul>
+<hr />
+<h2 id="_3">与现有工作的关联（含改进建议）</h2>
+<ul>
+<li><strong>P2 · 承诺结构设计原则可平移</strong>：①只对可控项做无条件承诺，依赖外部的显式降级为"条件性/推荐"——映射到 cron SLO、对用户的交付承诺话术（过度承诺→违约信任损耗，RSP 的信任损耗即实证）；②反常激励识别——"阈值触发惩罚"必配"无惩罚披露通道"，否则激励瞒报。RSP 的 Noncompliance Anti-Retaliation Policy 与我们的 error-case-library"无惩罚错误沉淀"同构，方向正确</li>
+<li><strong>P2 · Risk Report 模式吸收进 evening-summary</strong>：定期汇报中增加"红线事件 + 为什么继续"段落——不是只报状态，而是公开继续运行的决策推理。Anthropic 的"边际风险论证须董事会+LTBT 批准"= 重要决策的双签机制</li>
+<li><strong>印证 · 确定性外部标准 &gt; 自评</strong>：SaferAI 用 65 项固定标准横向打分（22%→59% 可执行路径）与 notes-eval-gate 六项确定性 golden-set 检查同构——LLM 自评不可比，固定标准可比</li>
+<li><strong>股票域（弱关联）</strong>：治理框架迭代已是前沿实验室的竞争维度与媒体事件（Time 报道暂停承诺删除），重大 RSP 类政策变化可作 AI 板块情绪面的边际参考，不构成信号</li>
+<li>11-08 笔记补全：该篇 F1 表格中 RSP 行停留在 v3.0 结构，本篇更新至 v3.4 并补治理层；两篇合并即为"评估方法论 × 治理架构"完整视图</li>
+</ul>
+<h2 id="actionable-insights">Actionable Insights</h2>
+<ol>
+<li>给 cron/自动化系统的告警阈值设计加上"披露豁免"：报告自己接近/越过阈值不受惩罚，否则信号漂移被隐藏（RSP 反常激励教训）</li>
+<li>政策/规范类文档（项目 docs、REQUIREMENTS）采用 redline 惯例——重大修订附 diff 版本，可审计</li>
+<li>"单次评估=下界不是上限"（OpenAI elicitation 原则）适用于一切能力验收：一次通过≠能力上限，test-time 策略/best-of-N 诱导应成为评估标配</li>
+</ol>
+<h2 id="_4">关键风险与盲点</h2>
+<ul>
+<li>全部透明机制仍以自报为主，独立审查触发条件窄（"highly capable"+"significantly redacted"才强制）——<strong>来源级别：GovAI 分析（官方文档佐证）</strong></li>
+<li>SaferAI 自认参与撰写 G42 框架（其 footnote 1），best-in-class 表中 G42 多项上榜的中立性需打折——<strong>来源级别：利益关联披露</strong></li>
+<li>暂停承诺删除的净效应未知，取决于其他 11 家是否跟进降级——观察点：后续框架版本是否移除 pause 语言</li>
+<li>RSP v3.4 PDF 原文（21 页）未全文精读，本文基于官方版本页 changelog + GovAI/SaferAI 二手深读；EU GPAI CoP 2026-08 执行的首批执法案例尚未跟踪</li>
+</ul>
+<h2 id="_5">一页速查</h2>
+<blockquote>
+<p><strong>RSP 时间线</strong>：v1 2023-09（首创，ASL+暂停承诺）→ v2.2 2025-05 → <strong>v3.0 2026-02-24 全面重写</strong>（删暂停承诺；行业推荐/单边承诺/Roadmap+RiskReport 三层）→ v3.4 2026-07-08（现行）<br />
+<strong>v3 三支点</strong>：单边承诺(ASL-3 生化防护/破坏阈值披露) + 行业推荐(RAND SL-4/strong argument) + 透明补偿(公开目标清单+季度级风险报告)<br />
+<strong>阈值重定义</strong>：AI R&amp;D="两年进度压缩进一年"；新增 high-stakes sabotage（模型操纵后继系统训练）<br />
+<strong>生态</strong>：12 家发布框架；SaferAI 65 标准：均分 22% → 采纳同业实践 59%；速赢域=风险建模(Meta)/KCI(G42,DeepMind)/KRI 监测(OpenAI)/治理(xAI,Nvidia)<br />
+<strong>法规管线</strong>：EU GPAI 2026-08 执行；加州 SB-53 季度报告；伊利诺伊 SB 315 年度第三方审计；政策(自愿)与合规(法定)双轨分离<br />
+<strong>GovAI 判词</strong>：诚实承认约束 &gt; 保留不会被遵守的承诺；残留问题=grading own homework</p>
+</blockquote>
+<h2 id="_6">待深入</h2>
+<ul>
+<li>Karnofsky 的 LessWrong 长文（RSP v3 设计推理全文）</li>
+<li>RSP v3.4 PDF 原文精读（尤其 Risk Report 程序与删节规则）</li>
+<li>EU GPAI Code of Practice 2026-08 执行后的首批案例</li>
+<li>Meta Advanced AI Scaling Framework v2（outcomes-led 建模范本）</li>
+<li>伊利诺伊 SB 315 实施细则（首个强制年度第三方审计州）</li>
+</ul>
+<h2 id="_7">来源列表</h2>
+<ol>
+<li>Anthropic — Responsible Scaling Policy 版本页（v1.0–v3.4 changelog + Risk Reports 链接）: anthropic.com/responsible-scaling-policy</li>
+<li>GovAI — Anthropic's RSP v3.0: How it Works, What's Changed, and Some Reflections（2026-03-05, 更新 03-17）: governance.ai</li>
+<li>SaferAI — Emerging Best Practices for Frontier AI Safety Frameworks（2026-07-15; Stelling et al. 2026, arXiv 2512.01166）</li>
+<li>METR — Frontier Safety Policies 索引: metr.org/fsp</li>
+<li>Google DeepMind — Strengthening the Frontier Safety Framework（2025-09-22, 更新 2026-04-17）</li>
+<li>Regulations.ai — Anthropic RSP v3.4 立法关联分析（Illinois SB 315 / 模型权重安全）</li>
+</ol>
+</body>
+</html>
