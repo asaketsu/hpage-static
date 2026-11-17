@@ -571,6 +571,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
             if (type === 'note') {
                 const fileRef = item.path || item.file;
                 const rawHref = SITE_PREFIX + '/bookmarks/notes/' + fileRef;
+                primeSlug(rawHref);
                 // Encoded version for sharing (WeChat etc.)
                 const encodedHref = SITE_PREFIX + '/bookmarks/notes/' + fileRef.split('/').map(s => encodeURIComponent(s)).join('/');
                 return `<a class="card-title" href="${rawHref}" target="_blank">${hl(item.title, q)}</a>
@@ -599,6 +600,7 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
                     href = SITE_PREFIX + '/bookmarks/notes/' + item.file;
                 }
                 else if (item.folder) href = SITE_PREFIX + '/project/' + encodeURIComponent(item.folder) + '/';
+                primeSlug(href);
                 const statusBadge = item.status ? `<span class="badge ${item.status === 'active' ? 'b-bamboo' : 'b-clean'}">${item.status}</span>` : '';
                 return `<a class="card-title" href="${href}" target="_blank">${hl(item.title, q)}</a>
             <div class="card-meta">
@@ -798,8 +800,50 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
         document.addEventListener('keydown', function(e) { if (e.key === 'Escape') clearSearch(); });
         toggleClear();
 
+        // ---- 短链（2026-11-17）：复制/转发产出独立短域名链接，不暴露本站域名 ----
+        // 服务端 = Cloudflare Worker（n.927792.xyz），slug 算法与 worker.js 完全一致：
+        // base62(SHA-256(pepper + '|' + 站点绝对路径))[:10]，渲染时预计算、点击零等待
+        const SHORT_BASE = 'https://n.927792.xyz';
+        const SHORT_PEPPER = '3e61a0232224e76daca30c6fbefe8033b14f7a7d606411c0';
+        const SHORT_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+        const slugCache = new Map();
+        function shortSitePath(rawHref) {
+            try {
+                const u = new URL(rawHref, location.href);
+                let p = decodeURIComponent(u.pathname);
+                if (p.startsWith('/hpage-static/')) p = p.replace(/^\/hpage-static/, '');
+                if (p.startsWith('/bookmarks/notes/') && p.endsWith('.html')) return p;
+            } catch (e) {}
+            return null;
+        }
+        async function computeSlug(sitePath) {
+            const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(SHORT_PEPPER + '|' + sitePath)));
+            let s = '';
+            for (let i = 0; i < 10; i++) s += SHORT_ALPHABET[digest[i] % 62];
+            return s;
+        }
+        async function shortUrlFor(rawHref) {
+            const sp = shortSitePath(rawHref);
+            if (!sp) return null;
+            let slug = slugCache.get(sp);
+            if (!slug) { slug = await computeSlug(sp); slugCache.set(sp, slug); }
+            return SHORT_BASE + '/s/' + slug;
+        }
+        function primeSlug(rawHref) {
+            const sp = shortSitePath(rawHref);
+            if (sp && !slugCache.has(sp)) computeSlug(sp).then(s => slugCache.set(sp, s)).catch(() => {});
+        }
         // Share note: share URL only (WeChat auto-fetches preview with title)
-        function shareNote(rawHref, title) {
+        async function shareNote(rawHref, title) {
+            const su = await shortUrlFor(rawHref);
+            if (su) {
+                if (navigator.share) {
+                    navigator.share({ title: title, url: su }).catch(() => {});
+                } else {
+                    copyToClipboard(title + '\n' + su, '✅ 已复制: ' + title);
+                }
+                return;
+            }
             const a = document.createElement('a');
             a.href = rawHref;
             const fullUrl = a.href;
@@ -817,7 +861,9 @@ if(bc){pending=setTimeout(showGate,300)}else{showGate()}
             }
         }
         // Copy clean (decoded) URL to clipboard
-        function copyUrl(relativeHref) {
+        async function copyUrl(relativeHref) {
+            const su = await shortUrlFor(relativeHref);
+            if (su) { copyToClipboard(su, '🔗 已复制短链（不含主站地址）'); return; }
             const a = document.createElement('a');
             // Normalize: deployed site serves .html only; .md links 404/400
             if (/\.md(\?|#|$)/.test(relativeHref)) {
