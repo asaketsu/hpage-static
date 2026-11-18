@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OKF与RAG设计哲学对比</title>
+
+<meta property="og:title" content="OKF与RAG设计哲学对比" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-18-OKF%E4%B8%8ERAG%E8%AE%BE%E8%AE%A1%E5%93%B2%E5%AD%A6%E5%AF%B9%E6%AF%94.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="1dee5b38377d1b80f95efbfc6771ad3f",H="226eda389f3982ff9991c65daf14c29ed82e95f890298bb28e5bc350da3b0792",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="okf-rag-okf-minimal">OKF 与普通 RAG 的设计哲学对比 — 基于 okf-minimal 项目的深度分析</h1>
+<blockquote>
+<p><strong>来源</strong>：GoogleCloudPlatform/open-knowledge-format 官方 SPEC v0.2 + okf-minimal 项目实测（<code>~/uclaw/project/okf-minimal</code>，demo 13 断言 + 34 pytest 全绿）+ 公众号 DeepNoMind 引发文章<br />
+<strong>原文链接</strong>：https://github.com/GoogleCloudPlatform/open-knowledge-format<br />
+<strong>记录日期</strong>：2026-11-18<br />
+<strong>注</strong>：提问中"KOF"为 OKF (Open Knowledge Format) 笔误，本文统一用 OKF</p>
+
+<p class="meta-date">生成日期 2026-11-18</p></blockquote>
+<p><strong>标签</strong>：#OKF #RAG #知识工程 #确定性导航 #Agent记忆 #知识格式标准</p>
+<hr />
+<h2 id="_1">〇、定锚：我的现状与目标</h2>
+<p>我手上有一个刚完成的 okf-minimal 项目：按官方 SPEC v0.2 从零实现了 OKF 的解析、导航、Attested Computation 执行与 attestation，并用 TF-IDF 基线做了同题 A/B 对照（确定性导航 20.0% 正确 vs 相似度检索 30.77% 错误）。我的痛点是：自家知识体系（Hermes 三级记忆 + 3400+ 笔记）已经出现"检索措辞敏感、过时知识平等竞争"的 RAG 式症状；我的目标是判断 OKF 范式里哪些设计值得吸收、哪些是营销噪音，两周内能落地什么。本篇是判断的依据，不是泛泛的科普。</p>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11-okf-spec-v02">1.1 OKF 是什么（SPEC v0.2 逐条，全部来自官方规范原文）</h3>
+<ul>
+<li>知识载体是一个目录的 Markdown 文件 + YAML frontmatter，"If you can cat a file, you can read OKF; if you can git clone a repo, you can ship it"〔方法，2026-06〕。没有 schema 注册中心、没有中心权威、没有必需工具链。</li>
+<li><strong>目录即身份</strong>：概念 ID = 文件路径去掉 .md（如 <code>metrics/churn_rate</code>）。概念 = 一个需要"唯一真实版本"的知识单元：指标定义、表结构、API 契约、runbook。一文件一概念〔方法，2026-06〕。</li>
+<li>frontmatter 唯一必需字段是 <code>type</code>（如 Metric / Table / Attested Computation）——"a concept carrying just <code>type</code> is fully conformant"，最小合规文件只要三行〔数据，2026-06〕。</li>
+<li><strong>信任家族</strong>：<code>verified[] {by, at}</code> + actor 约定（Agent=<code>producer/version</code>、人=<code>human:id</code>、进程=<code>process:id</code>）。信任分三级：unverified → machine-confirmed → human-reviewed，判定键是 <code>human:</code> 前缀〔方法，2026-06〕。</li>
+<li><strong>生命周期家族</strong>：<code>status: draft/stable/deprecated</code>（缺省 stable）+ <code>stale_after</code> 绝对时刻。deprecated 概念保留供历史查询复现，但消费者必须能识别它不是当前版本〔方法，2026-06〕。</li>
+<li><strong>溯源家族</strong>：<code>sources[]</code> 记录每条知识的来源（resource/author/usage_count/last_modified）——存客观信号、不存主观分数，"a score is subjective, unportable, and goes stale"〔方法，2026-06〕。</li>
+<li><strong>Attested Computation</strong>（v0.2 灵魂增量）： sanctioned 计算存 body 的 <code># Computation</code> 围栏，Agent 只能绑定声明的 parameters、不得改写计算本体；executor 返回 receipt（executed_sql/job_id/result），attester 做规范化等价比对——"a rewritten query, a swapped computation file, or a mutated dependency fails the check"〔方法，2026-06〕。</li>
+<li><strong>消费者宽容性</strong>：MUST NOT 因缺可选字段、未知 type、未知键、断链、缺 index 拒绝 bundle。断链被定义为"尚未写下的知识"，是特性不是缺陷〔方法，2026-06〕。</li>
+</ul>
+<h3 id="12-rag">1.2 普通 RAG 的设计基线（作为对照组的公理化描述）</h3>
+<ul>
+<li>知识被切成 chunk（通常 256-1024 token），嵌入为向量，检索按余弦相似度排序取 top-k，LLM 基于检索结果生成〔方法，业界标准〕。</li>
+<li>chunk 没有身份、没有生命周期、没有信任等级——2023 年的 PPT 和 2026 年的政策在向量空间里是平等公民。</li>
+<li>更新 = 重新嵌入 + 重建索引；同步一致性是公认的工程噩梦（原文："嵌入与数据的同步简直就是噩梦"〔观点，2026〕）。</li>
+</ul>
+<h3 id="13-ab">1.3 本项目实测数据（A/B 对照，全部真跑）</h3>
+<ul>
+<li>同一问题 "Q2 churn rate definition"，语料含策划 OKF bundle + 2023 董事会 PPT + Slack 争吵 + 过时 wiki〔案例，2026-11-18 实测〕：</li>
+<li>RAG 基线（TF-IDF 词面相似度）：3 个措辞变体 <strong>0/3</strong> 命中 sanctioned 文档，top-1 在 legacy 定义/董事会 PPT/过时 wiki 之间漂移；照 wiki 公式执行得 30.77%（混入 trial/internal 账户，<strong>错误</strong>）</li>
+<li>OKF 导航：恒定入口 <code>metrics/churn_rate</code> + 依赖闭包（computation + 2 表 + policy 共 6 概念），5 次运行 fingerprint <strong>byte-identical</strong>；attested 执行得 20.0%（与合成仓库 ground truth 一致）</li>
+<li>篡改检测：删掉排除 JOIN 的 tampered SQL 被 attester 拒绝（canonical-SQL mismatch）</li>
+<li>导航平局裁决实测：纯词面打分时 "q2" token 恰在 computation 的路径里导致平局——解法是回归 §8 本意走 index 条目路由 + OKF 原生信号裁决链（lifecycle → type 路由 → trust → 稳定 id），零随机零阈值〔案例，2026-11-18〕。</li>
+</ul>
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-okf-okf-limitations-criticism">2.1 OKF 的局限与反对意见（验证型：<code>OKF limitations criticism</code>）</h3>
+<ul>
+<li>官方 SPEC 自己的 "Considered and deferred" 清单承认：receipt/verdict 线格式、attester ABI 与沙箱、attestation 缓存、语义层模板（Looker/dbt）全部推迟到未来版本〔补充，2026-06〕——Attested Computation 目前只是接口约定，跨组织互验尚未闭环。</li>
+<li>LinkedIn 规范解读确认："The specification is deliberately permissive. Consumers should tolerate unknown concept types..."——宽容性是刻意设计，代价是不同生产者的 bundle 质量方差极大〔支持，2026-06〕。</li>
+<li>冷启动与维护成本是最大隐性反对：bundle 不会自己长出来，官方假设"后台 AI Agent 是维护引擎"（代码更新→自动改文档），但这本身就是一套需要建设的自动化，不是格式的免费赠品〔补充，2026-11 推断〕。</li>
+</ul>
+<h3 id="22-open-knowledge-format-2026-adoption">2.2 生态时效（时效型：<code>open knowledge format 2026 adoption</code>）</h3>
+<ul>
+<li>v0.1 发布于 2026-06-12（Apache 2.0），官方 repo 已 1.5k stars，SPEC 已迭代到 v0.2（supersede 了 timestamp→generated.at、body Citations→sources 两处 breaking change）〔数据，2026-11-18 实测 GitHub API〕。</li>
+<li>GitHub 上 "open-knowledge-format" 相关仓库已有 41 个，出现了 <code>open-ckf-compiled-knowledge-format</code>（编译型知识格式，schema-stable）等变体流派，以及官方 starter 模板〔数据，2026-11-18 实测搜索〕。</li>
+</ul>
+<h3 id="23-llmstxt-vs-okf-vs-sitemap">2.3 同类标准对照（对照型：<code>llms.txt vs OKF vs sitemap</code>）</h3>
+<ul>
+<li>Semrush 对比分析指出：XML sitemap 列站点页面、llms.txt 给爬虫指路，都是<strong>向外</strong>的；OKF 是<strong>向内</strong>的——直接把组织自己的知识打包成 Agent 可直读的文件〔补充，2026〕。三者不竞争，是不同层面。</li>
+<li>公众号原文的 5 处失真（wiki 链接语法、字段名、版本、org 名、"99% 猜错"修辞）我在项目里已逐条审计——概念方向对，实现细节必须以 SPEC 为准〔反驳原文，2026-11-18〕。</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：两种范式在十个设计维度上的分野</h3>
+<pre><code>维度             RAG（概率检索）              OKF（确定性导航）
+─────────────────────────────────────────────────────────────
+知识单元    chunk：无身份，切分破坏结构    concept：路径即身份，一文件一概念
+组织方式    向量空间（几何邻近）           目录树 + 链接图（拓扑结构）
+查询机制    embedding 相似度排序          index 渐进披露 + 链接 BFS 闭包
+元数据      检索层外挂，来源/时间易失     frontmatter 一等公民
+时间维度    无生命周期，新旧平等竞争      deprecated / stale_after 显式降级
+信任维度    无（语料不区分作者）          三级 trust tier，human: 前缀锚定
+可验证性    生成过程不可审计              Git 全历史 + attestation 收据比对
+更新成本    重嵌入同步噩梦                纯文本 diff / PR
+确定性      同题不同答（措辞敏感）         同题同答（byte-identical）
+失败模式    静默错误（错 SQL 也自信）      显式失败（attester 拒绝/断链报告）
+</code></pre>
+<p>本质差异一句话：<strong>RAG 把"知识在哪里"交给概率去猜，OKF 把它做成工程事实</strong>。RAG 回答"什么跟这相似"，OKF 回答"这就是那个东西、谁写的、还作数吗"。</p>
+<h3 id="32-okf">3.2 信任与生命周期：OKF 最被低估的设计</h3>
+<p>RAG 的 chunk 是无主之地，OKF 给每个知识点配了三样 RAG 世界里不存在的东西：</p>
+<ul>
+<li><strong>责任链</strong>：<code>generated.by</code>（谁写的）与 <code>verified[].by</code>（谁确认的）分离——写者不必是确认者，就像作者与审签人分离</li>
+<li><strong>时效边界</strong>：<code>stale_after</code> 是绝对时刻而非相对 TTL——"过没过期"是一次朴素比较，不需要知道"什么时候读的"</li>
+<li><strong>可机械验证的计算</strong>：Attested Computation 把"数字必须按指定方式产出"固化成接口。本项目实测：sanctioned SQL 与 tampered SQL 只差一个 JOIN，数字差 10.77 个百分点，attester 机械区分——这在 RAG 里没有任何对应物</li>
+</ul>
+<h3 id="33-okf-rag">3.3 三维护筛（对"OKF 替代 RAG"这一核心主张）</h3>
+<ul>
+<li><strong>优点</strong>：确定性、可审计、零基础设施（Git 即仓库）三条都实测成立；证据强度：本项目 13 断言 + 34 pytest 全绿，A/B 差距（0/3 vs byte-identical；30.77% vs 20.0%）是结构性而非调参可消除的</li>
+<li><strong>缺点</strong>：①探索性查询天然弱——问"我们公司有什么值得关注的趋势"这种未知未知，链接图无路可走，还是得检索；②冷启动贵——bundle 要人工策划，官方叙事里"Agent 自动维护"本身是需要建设的系统；③SPEC deferred 清单很长，跨组织 attestation 互验是空中楼阁；④宽容性是双刃剑——不拒绝任何东西的标准也无法保证任何东西</li>
+<li><strong>借鉴点</strong>：直接迁移的是 <strong>trust tier + lifecycle 元数据</strong>（可加到任何知识库，包括我自己的笔记体系）；需要改造的是导航——纯 index 条目路由在概念多的 bundle 会退化，实测已见平局需要裁决链，大规模场景需 hybrid（索引+轻量打分）</li>
+</ul>
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1">趋势1：分层混合架构成为主流（方向：上升）</h3>
+<p>依据：2026-06 OKF 发布到 11 月已 v0.2 + 41 个生态仓库；同时官方博客口径是"OKF 没有取消检索"。原文的三层架构（智能路由器 → OKF 精确层 / RAG 探索层）与 Anthropic/Google 的公开实践（结构化记忆 + 检索兜底）同向。对我的机会：先在"定义/契约/政策"类知识上落 OKF，检索层保留。</p>
+<h3 id="2">趋势2：知识格式标准进入战国（方向：分化）</h3>
+<p>依据：llms.txt（2025）→ OKF v0.1（2026-06）→ v0.2（2026 下半年）→ CKF 编译型变体（2026-11 已现身 GitHub），一年三代。风险：格式间的转换成本会落在用户头上；盯官方 repo 的 minor bump 即可，不必赌变体。</p>
+<h3 id="3attestation">趋势3：可验证性（attestation）是下一战场（方向：上升）</h3>
+<p>依据：v0.2 的最大增量全是信任机器（trust tier/lifecycle/attested computation），deferred 清单里 receipt 线格式、attester ABI 都指向"Agent 产出的数字要能机械验真"。这与 Agent 经济学的刚需合流。对我的机会：attester 思想（执行收据 + 规范化比对）可以先用在自己的 Agent 产数管线里，不等标准。</p>
+<h3 id="4-okf">趋势4：个人知识管理吸收 OKF 元数据（方向：缓慢上升）</h3>
+<p>依据：我的笔记体系 3400+ 篇已出现 RAG 式症状（过时笔记平等竞争），而 OKF 的 frontmatter 方案零成本可加。风险：维护纪律跟不上就是装饰性元数据。</p>
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-okf-minimal">5.1 与 okf-minimal 项目的关联</h3>
+<p>本笔记全部实测数据的来源项目（<code>~/uclaw/project/okf-minimal</code>）：7 概念合规 bundle、§3-§11 全覆盖实现、A/B demo。笔记的每个论断都能在项目里找到对应断言。</p>
+<h3 id="52-hermes">5.2 与 Hermes 三级记忆体系的关联（同构映射）</h3>
+<p>L1 MEMORY.md 每 session 全量注入 = 确定性导航（不需要检索，一定到达）；L2 短期/L3 Topic 索引按需检索 = 检索层。我的记忆架构早就隐性采用了 OKF 哲学：<strong>铁律必须是确定性的（注入），才敢让其余知识走概率检索</strong>。OKF 等于把这个直觉做成了带信任分级的显式标准。</p>
+<h3 id="53">5.3 与飞机构型管理的关联〔领域扩展，非原文内容〕</h3>
+<p>OKF 与适航构型管理（Configuration Management）深层同构：</p>
+<ul>
+<li>概念文件的"唯一真实版本" = 构型基线（Configuration Baseline）的单一数据源原则</li>
+<li><code>status: deprecated</code> = 被替代件（superseded part）：保留可追溯、禁止新设计使用——与 EBOM 中"用而不断"的替代件管理一字不差</li>
+<li><code>verified by human:xxx</code> = 检验签章/适航审查批准（authorised signature），<code>process:xxx</code> = 自动化检验工序</li>
+<li>Git log/blame = 构型记录（Configuration Records）/更改单追溯链</li>
+<li>Attested Computation = 工艺规程（工艺参数锁定）+ 检验收据（实测值与规程比对）</li>
+</ul>
+<p>这套映射说明 OKF 不是发明新思想，而是把高可靠行业 fifty 年的构型纪律移植到 Agent 知识层。反过来看：<strong>凡是"错误知识会出人命/亏大钱"的领域（航空/医疗/金融），构型化知识管理是必然而非选型</strong>。</p>
+<h3 id="54-bm25-cjk">5.4 与 bm25-cjk 多跳检索笔记的关联</h3>
+<p>同属"确定性检索"谱系：BM25 多跳用关键词索引+判别器逼近确定性，OKF 直接用人工策划的链接图一步到位。前者迁移成本低，后者确定性上限高。</p>
+<h2 id="_7">六、金句摘录</h2>
+<blockquote>
+<p>"If you can cat a file, you can read OKF; if you can git clone a repo, you can ship it." — SPEC §1，最小主义设计的教科书表述</p>
+<p>"从概率性的「瞎猜」转向确定性的「精确导航」。" — 原文核心命题</p>
+<p>"RAG 很强大，擅长处理『未知中的未知』。但对于已经知道的东西……需要的是确定性和精准性，不是概率式的猜测。" — 分层架构的哲学基础</p>
+<p>"a score is subjective, unportable, and goes stale." — SPEC §5.1，解释为何只存信号不存分数：这一句适用于一切评分系统设计</p>
+</blockquote>
+<h2 id="_8">七、行动启示与回访</h2>
+<p><strong>我的结论：保留"确定性导航 + 信任分级"的设计思想（已实测成立）；放弃"OKF 全面替代 RAG"的叙事（探索性查询结构性弱）；改造自己的知识体系——给高频引用的笔记加 trust/lifecycle frontmatter 试验。</strong></p>
+<ul>
+<li><strong>行动1</strong>：给 20 篇高频引用的技术笔记加 <code>status/stale_after/verified</code> 三字段，观察一个月内是否改变引用行为 | 时间：本周末 | 触发条件：无（直接做） | 验收标准：至少能识别出 3 篇"还在被引用但已过时"的笔记</li>
+<li><strong>行动2</strong>：okf-minimal 补多 bundle/跨 bundle 导航能力评估，验证概念规模上到 500+ 时 index 路由是否退化 | 时间：两周内 | 触发条件：出现真实多 bundle 需求 | 验收标准：500 概念 bundle 上导航仍 byte-identical 且平局率 &lt;10%</li>
+<li><strong>回访日期</strong>：2026-12-02（两周）</li>
+<li><strong>待验证假设/证伪条件</strong>：若一个月的行动1 显示加元数据后引用行为无变化（没人看 status），说明元数据是装饰——OKF 思想对我体系的适用性被高估，应停止扩散试验</li>
+</ul>
+<h2 id="_9">八、拓展应用推荐</h2>
+<ul>
+<li>企业语义层：指标字典/API 契约/表结构 → OKF bundle，Agent 查数走导航不走检索（场景→用法：churn_rate 案例的直接放大）</li>
+<li>Agent 记忆持久层：长期记忆按 OKF 组织，L1 铁律=根 index，跨会话 Agent 共享知识有了标准容器</li>
+<li>适航/构型文档基线〔领域〕：型号资料的"现行有效版本"管理，deprecated 语义与替代件管理天然对齐</li>
+<li>CI 知识门禁：validate.py 进 pipeline，文档 PR 不过合规校验不许合——"validate before you ship"</li>
+<li>LLM 输出验证管线：attester 的"执行收据+规范化比对"模式独立于 OKF 可复用（任何 Agent 产数场景）</li>
+</ul>
+<h2 id="_10">九、指南分析</h2>
+<ul>
+<li><strong>宽容性标准设计</strong>：SPEC 通篇 MUST/SHOULD/MAY 分级，且把"消费者 MUST NOT 拒绝"写成硬规则——推广期标准宁可放弃校验力也要保证互操作，这是 v0.x 标准的生存策略，值得任何自定协议借鉴</li>
+<li><strong>最小必需面</strong>：唯一必需字段 <code>type</code>、三行即合规——采用门槛压到地板；对照很多企业 schema 设计一上来 20 个必填字段的失败模式</li>
+<li><strong>写者与确认者分离</strong>（generated vs verified）、<strong>信号与分数分离</strong>（sources 信号 vs 主观评分）、<strong>定义与计算分离</strong>（Metric vs Attested Computation）——三个分离是整份 SPEC 最值得抄的建模手法</li>
+<li>本项目开发过程的可复用判据：<strong>导航系统先走策划索引再全库扫描</strong>（纯词面打分必平局）；<strong>平局裁决链要用领域原生信号</strong>而非调权重；<strong>A/B 对照的数字要真执行出来</strong>（20.0% vs 30.77%）而不是宣称</li>
+</ul>
+</body>
+</html>
