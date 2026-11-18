@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手搓Qwen3.8架构拆解-GDN混合注意力与工程魔改</title>
+
+<meta property="og:title" content="手搓Qwen3.8架构拆解-GDN混合注意力与工程魔改" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-18-%E6%89%8B%E6%90%93Qwen3.8%E6%9E%B6%E6%9E%84%E6%8B%86%E8%A7%A3-GDN%E6%B7%B7%E5%90%88%E6%B3%A8%E6%84%8F%E5%8A%9B%E4%B8%8E%E5%B7%A5%E7%A8%8B%E9%AD%94%E6%94%B9.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="1dee5b38377d1b80f95efbfc6771ad3f",H="226eda389f3982ff9991c65daf14c29ed82e95f890298bb28e5bc350da3b0792",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="qwen38-gated-deltanet">手搓 Qwen3.8 架构拆解 — Gated DeltaNet 混合注意力与逐零件工程魔改</h1>
+<blockquote>
+<p><strong>来源</strong>：微信公众号「何思远方」《从零手搓并训练千问3.8 (Qwen3.8): 拆解最新开源 LLM 的技术架构》（作者=项目作者本人一手发布，非转述）<br />
+<strong>原文链接</strong>：https://mp.weixin.qq.com/s/fvsqf9NWsr78-tiZMjjENQ<br />
+<strong>代码仓库</strong>：https://github.com/siyuan-harry/qwen38-from-scratch （上期 Qwen3.0 手搓：siyuan-harry/llm-from-scratch，followed Stanford CS336 Assignment1）<br />
+<strong>记录日期</strong>：2026-11-18<br />
+<strong>核验状态</strong>：作者自验 8/8 数值对齐 HuggingFace 官方实现（max_abs ≤ 5.44e-7，CPU fp32 seed 20261112）</p>
+
+<p class="meta-date">生成日期 2026-11-18</p></blockquote>
+<h1 id="qwen38-gateddeltanet-moe-mtp-llm-kernel">Qwen3.8 #GatedDeltaNet #线性注意力 #混合架构 #MoE #MTP #手搓复现 #LLM架构 #Kernel优化</h1>
+<hr />
+<h2 id="_1">定锚</h2>
+<ul>
+<li><strong>领域坐标</strong>：LLM 架构工程 × 从零复现（educational reimplementation）赛道。位于「注意力机制设计」与「训练 Infra」的交叉点，是 Qwen3.8 部署层知识（见关联笔记）之下的<strong>架构层</strong>视角。</li>
+<li><strong>收录理由</strong>：库内已有 10+ 篇 Qwen3.8 部署/量化笔记，但全部停留在"怎么跑起来"；本文是唯一的<strong>逐零件拆解为什么这么设计</strong>——GDN 递推链、Partial RoPE、Zero-centered RMSNorm 等改动的动机与演进史，补上了架构理解层。</li>
+<li><strong>场景锚点</strong>：①选型时判断"混合注意力模型推理为什么便宜/检索为什么弱" ②自己写 kernel/复现论文架构时的验证方法论 ③向他人解释现代 LLM 与 GPT-2 的真实差距。</li>
+</ul>
+<h2 id="qwen30-qwen38">内容整理：Qwen3.0 → Qwen3.8 十项架构演进</h2>
+<h3 id="1">1. 全景对比表（原文核心资产）</h3>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>Qwen3.0 dense</th>
+<th>Qwen3.8</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Token mixer</td>
+<td>每层 softmax 全注意力</td>
+<td><strong>3 层 Gated DeltaNet 线性注意力 + 1 层 Gated Attention 全注意力循环</strong></td>
+</tr>
+<tr>
+<td>注意力头</td>
+<td>MHA，head_dim = d_model/n_head</td>
+<td><strong>GQA</strong>，head_dim 与 d_model 解耦</td>
+</tr>
+<tr>
+<td>注意力输出</td>
+<td>直接进 o_proj</td>
+<td><strong>sigmoid gate → o_proj</strong></td>
+</tr>
+<tr>
+<td>Q/K</td>
+<td>无归一化</td>
+<td><strong>QK-Norm</strong></td>
+</tr>
+<tr>
+<td>位置编码</td>
+<td>RoPE 全维度、相邻配对、θ=1e4</td>
+<td><strong>Partial RoPE 只转 25% 维度</strong>、rotate_half 配对、θ=1e7</td>
+</tr>
+<tr>
+<td>Norm</td>
+<td>RMSNorm，gain 初始 1</td>
+<td><strong>Zero-centered RMSNorm</strong>，w 初始 0 + weight decay</td>
+</tr>
+<tr>
+<td>FFN</td>
+<td>dense SwiGLU</td>
+<td>dense SwiGLU 或 <strong>稀疏 MoE + 共享专家</strong></td>
+</tr>
+<tr>
+<td>训练目标</td>
+<td>next-token</td>
+<td>next-token + <strong>MTP</strong> + <strong>MoE 负载均衡损失</strong></td>
+</tr>
+<tr>
+<td>初始化</td>
+<td>Xavier 风格</td>
+<td>normal(0, 0.02)，embedding 与 lm_head 不共享</td>
+</tr>
+</tbody>
+</table>
+<p>要点：Qwen3→3.8 的画风从「换零件」变成「整机工程化魔改」——每个改动只带来边际收益（省显存/稳训练/快 decode），叠加成最新开源水位。架构谱系：Qwen3-Next (2025.09) → Qwen3.5/3.6 → 3.8 沿用，HF <code>model_type</code> 仍是 <code>qwen3_5</code>；最新 Qwen3.8-Flash-Next 是全新架构（作者持观望）。dense 与 MoE 两版本注意力完全相同，仅 FFN 不同。</p>
+<h3 id="2-gated-deltanet-s">2. Gated DeltaNet 演进史（一条状态矩阵 S 串起五步）</h3>
+<ol>
+<li><strong>线性注意力</strong>（2020, Katharopoulos, <em>Transformers are RNNs</em>）：去 softmax、KV 先外积 → Attention 在数学上= RNN，每 token 对固定状态 S 做写入。缺陷：只加不减，状态越写越乱（interference）。</li>
+<li><strong>加遗忘门</strong>（RetNet/Mamba2/GLA, 2023-24）：每步按 α 衰减旧记忆，但 α 一刀切，无法精确修改单条记忆。</li>
+<li><strong>Delta rule</strong>（2021, Schlag et al. <em>Fast Weight Programmers</em> 提出 DeltaNet；2024 Yang et al. 解决并行训练）：用 k 从 S 读旧值按误差纠正 = 对 S 做一步在线梯度下降，可精确覆盖某 key 的记忆。</li>
+<li><strong>Gated DeltaNet</strong>（ICLR 2025, Yang/Kautz/Hatamizadeh）：2+3 合体，遗忘 α_t 整体衰减 + β 精确改写，论文副题即 <em>Improving Mamba2 with Delta Rule</em>。</li>
+<li><strong>混合架构</strong>：纯线性注意力在精确检索（大海捞针）弱于 softmax，故保留少量全注意力兜底。比例：Qwen3-Next/3.5/3.8 与 Kimi Linear 均 <strong>3:1</strong>，MiniMax-01 为 7:1；3:1 是 Qwen 团队效率/效果折中。</li>
+</ol>
+<p>动机：softmax 注意力训练 O(T²) + 推理 KV cache 线性增长；Qwen3.8 支持 262K 上下文，GDN 层只维护固定状态 S，推理显存 <strong>O(1)</strong>。</p>
+<p>未竟方向（作者列）：①门控粒度——GDN 的 α 是每头一个标量，Kimi Linear 的 KDA（2025.10）细化到每通道一个衰减 ②3:1 比例与全注意力层位置值得搜索；MiniMax M2 大规模部署后回归全注意力 = 线性注意力在复杂推理/检索的短板未完全解决 ③理论优势依赖高度优化 kernel（FLA 库 Triton 实现）才能兑现。</p>
+<h3 id="3-wy-kernel">3. 训练并行化：WY 表示与作者的分块求逆 kernel（本文独家踩坑）</h3>
+<ul>
+<li>串行递推（T 长循环）训练不可用；Yang et al. 2024 等价变换后，rank-1 更新结构 = 广义 Householder transformation，可经 <strong>WY representation</strong> 压缩，支持 <strong>chunk-wise 分块并行</strong>（如 chunk=64：128 token 问题从 128 次矩阵向量乘 → 2 次矩阵乘 + 1 次状态传递，路径缩短 64 倍）。</li>
+<li><strong>踩坑</strong>：chunk 内需解单位下三角方程组，官方用 <code>torch.linalg.solve_triangular</code>，在 Apple M4 Pro MPS 上一次前向 130+ms——torch 2.9 该算子为 batch 内每个矩阵单独提交 GPU kernel（batch=32×head 8×chunk 数 4=1024 个小矩阵），每次提交 ~0.066ms 而计算本身仅几微秒，时间全耗调度。</li>
+<li><strong>自研解法</strong>：用分块求逆恒等式写 <code>invert_unit_lower_triangular()</code>——从 64 个 1×1 逆出发逐轮合并相邻对角块，每轮所有矩阵对彼此无关 → 一次 batched matmul，共 log₂ 轮（对数复杂度），batch 1→1024 时官方耗时翻 680 倍而自研近似对数增长，提速十几倍，fp32 最大误差 1e-6 级（精确代数、无近似）。</li>
+<li><strong>乌龙</strong>：准备提 PR 时发现 torch 2.15 已修复该算子（思路不同、效果更好）。</li>
+</ul>
+<h3 id="4-gated-attention14">4. Gated Attention（1/4 全注意力层的魔改）</h3>
+<ul>
+<li>改动：注意力输出先乘 sigmoid gate 再进 o_proj。动机：StreamingLLM (2023) 发现 attention sink（大量注意力分数倾倒首个 token）；后续工作发现 massive activation——softmax 必须归一化到 1，头"不想看任何东西"时只能找垃圾桶 token。</li>
+<li>Qwen 2025 论文 <em>Gated Attention for Large Language Models</em> 系统比较 gate 位置，SDPA 输出后逐元素依赖输入的 sigmoid gate 最优：引入非线性+稀疏性，头可直接关断输出，attention sink 与 massive activation 基本消失，训练更稳、长上下文外推更好。<strong>该论文获 NeurIPS 2025 best paper</strong>。</li>
+<li>提升空间：逐元素 gate 使 q_proj 输出维度翻倍（参数/计算多一倍），headwise gate 更便宜但效果略差。</li>
+<li>代码模式：<code>q_proj 输出 [query, gate] 拆分 → QK-Norm → PartialRoPE → GQA repeat_kv → SDPA → attn * sigmoid(gate) → o_proj</code>。</li>
+</ul>
+<h3 id="5-partial-rope-25">5. Partial RoPE（只转 25% 维度）</h3>
+<ul>
+<li>非新事物：GPT-J (2021)、GPT-NeoX-20B (2022) 就是 25%；DeepSeek MLA 也拆分带/不带 RoPE 的部分。</li>
+<li>思路：一部分维度专职位置，其余专职语义匹配不受旋转干扰；未旋转维度不会遇到没见过的角度，对长上下文外推友好。θ 从 1e4 → 1e7。</li>
+<li>官方配置是 mRoPE（时间/高/宽三段），纯文本下三段位置 id 相同退化为 1D，作者只实现 1D 版。<code>rotary_dim = head_dim*0.25</code>，其余直通 concat。</li>
+</ul>
+<h3 id="6-zero-centered-rmsnorm-weight-decay">6. Zero-centered RMSNorm + weight decay（最不起眼但最"工程"）</h3>
+<ul>
+<li>背景：Qwen3-Next 训练发现 QK-Norm 后部分 norm 权重异常增大影响稳定。</li>
+<li>悖论：普通 RMSNorm gain 初始 1，weight decay 把它拉向 0 = 错误先验（0 是关通道、1 才中性）→ 实践中 norm gain 不做 decay → 无约束增长。</li>
+<li>解法：<code>out = x/rms(x) · (1 + w)</code>，w 初始 0——decay 拉 w→0 等价 gain→1。<strong>Gemma 早有 (1+w) 写法，Qwen3-Next 首次与 weight decay 组合</strong>。</li>
+<li>细节（只有读官方代码才知道）：GDN 输出端 GatedRMSNorm 官方未做 zero-centered，须排除在 weight decay 外（<code>A_log</code>/<code>dt_bias</code> 同理）。</li>
+</ul>
+<h3 id="7-sparse-moe-mtp">7. Sparse MoE 与 MTP（略讲）</h3>
+<ul>
+<li>Qwen3.6-35B-A3B：256 小专家 top-8 + 1 共享专家；总参 35B 每 token 仅激活 3B，推理成本≈3B 模型，省 10 倍算力。</li>
+<li>aux loss（系数 0.001）应在<strong>全局 batch</strong> 统计而非 micro-batch（Qwen 2025 论文 <em>Demons in the Detail</em>），否则逼专家在局部数据也均匀反而损害专精。</li>
+<li>作者逐专家循环"能跑但超慢"——真 MoE 训练依赖专家并行 + grouped GEMM 专用 kernel。</li>
+<li>MTP：同时预测下下个 token，训练时提升样本效率（作者实现仅作训练信号，未做投机解码）。</li>
+</ul>
+<h3 id="8-88-pass">8. 验证方法论（怎么确认写对了）— 8/8 PASS</h3>
+<table>
+<thead>
+<tr>
+<th>检查层</th>
+<th>内容</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>计算本身</td>
+<td>自研分块求逆 vs torch 三角求解；分块 delta rule vs 逐 token 参考（T=1,63,64,65,129）</td>
+<td>max_abs ≤ 1.79e-7</td>
+</tr>
+<tr>
+<td>推理</td>
+<td>随机权重转 HF Qwen3Next 格式，dense/MoE 比对全部 logits</td>
+<td>4.06e-7 / 5.44e-7</td>
+</tr>
+<tr>
+<td>训练</td>
+<td>Dense/MoE + MTP 真实反向传播 + AdamW，保存恢复后续训</td>
+<td>0.000e+00 完全一致</td>
+</tr>
+</tbody>
+</table>
+<p>另在 Mac MPS 跑 5000 步训练，loss 曲线正常。规矩：不用 <code>nn.Linear</code>/<code>nn.LayerNorm</code>/<code>nn.Conv1d</code>/<code>nn.Transformer</code>，全从张量运算手写。</p>
+<h3 id="9">9. 未实现清单（诚实边界）</h3>
+<p>视觉编码器/mRoPE、推理缓存（KV cache + GDN 递推状态）、MTP 投机解码、融合 kernel（FLA Triton/causal-conv1d CUDA，MPS 跑不了）、高效 MoE（专家并行/grouped GEMM/全局负载均衡）、混合精度、262K 长上下文、后训练（SFT/RL/思考模式）。</p>
+<h2 id="_2">查询拓展</h2>
+<ul>
+<li><strong>GDN 与 Mamba2 什么关系？</strong> GDN 论文副题即"用 Delta Rule 改进 Mamba2"——Mamba2 是带遗忘门的 SSM（上述第 2 步），GDN 在其状态更新外再套 delta rule 精确改写。</li>
+<li><strong>为什么不是纯线性注意力？</strong> 精确检索任务（大海捞针）仍需 softmax 全注意力兜底；MiniMax M2 部署后回归全注意力是反向证据。</li>
+<li><strong>Qwen3.8 与 Qwen3-Next 的关系？</strong> 同一 text decoder 架构一路沿用（HF model_type=qwen3_5）；3.8-Flash-Next 才是新架构。</li>
+<li><strong>MoE 的 aux loss 为何要全局 batch 统计？</strong> micro-batch 统计逼专家在局部数据均匀，损害"专精"——负载均衡的粒度选择本身是设计点。</li>
+<li><strong>262K 上下文靠什么撑？</strong> 3:1 混合——75% 层 GDN 状态 O(1) + 25% 层全注意力，KV cache 总量降到 1/4；部署侧另配量化（见关联笔记实测）。</li>
+</ul>
+<h2 id="_3">归纳总结</h2>
+<ol>
+<li><strong>架构演进本质是工程边际收益的堆叠</strong>：GPT-2→Qwen3 是换零件（SwiGLU/RoPE/RMSNorm），Qwen3→3.8 是把推理成本、训练稳定性、长上下文拆成几十个小问题逐个工程化推动——没有单项革命，合起来是开源新水位。</li>
+<li><strong>"状态矩阵 S 的更新公式"是线性注意力家族的主线</strong>：加（线性注意力）→ 减/衰减（遗忘门）→ 精确改写（delta rule）→ 合体（GDN）→ 与 softmax 混编（3:1）。一条公式串起 2020-2025 五年演进。</li>
+<li><strong>数学等价变换是并行化的钥匙</strong>：串行递推不可训 → Householder/WY 表示 → chunk 分块并行（64 倍路径缩短）。理论优势兑现依赖 kernel 工程（FLA Triton、作者的分块求逆）。</li>
+<li><strong>训练稳定性的细节藏在初始化与正则化的配合里</strong>：(1+w) zero-centered RMSNorm 让 weight decay 的"拉向 0"变成"拉回中性 1"——用参数化换正确先验，Gemma 铺路、Qwen 组合。</li>
+<li><strong>复现验证的金标准是与官方实现对齐</strong>：随机权重转 HF 格式比 logits（&lt;1e-6）+ 训练保存恢复比对参数（=0）——比"loss 降了"强得多的正确性证据。</li>
+</ol>
+<h2 id="_4">趋势判断</h2>
+<ul>
+<li><strong>混合架构 3:1 成为 2026 开源主流配方</strong>（Qwen3-Next/3.5/3.8、Kimi Linear 同比例），但 MiniMax M2 回归全注意力说明线性注意力短板未解——方向未收敛，门控粒度（KDA 每通道衰减）与混合比例搜索是活跃前线。</li>
+<li><strong>Gated Attention 获 NeurIPS 2025 best paper</strong> 标志"attention sink/massive activation 治理"从现象发现走向标准组件，预计 gate 变体（headwise vs elementwise）继续演化。</li>
+<li><strong>MoE 从架构创新转入 Infra 竞赛</strong>：256 专家/激活 3B 的解耦已成商品，差异化在 grouped GEMM/专家并行/全局负载均衡等 kernel 层。</li>
+<li><strong>MTP 从推理加速（投机解码）延伸到训练样本效率</strong>，训推一体设计（一个模块两种用途）是明显信号。</li>
+<li>手搓复现赛道（CS336 → llm-from-scratch → qwen38-from-scratch）持续与官方架构保持 1-2 代距离，是跟踪架构水位的高性价比信源。</li>
+</ul>
+<h2 id="_5">关联分析</h2>
+<ul>
+<li>与《2026-08-10-主流LLM注意力机制全景科普》互补：该笔记给四维正交分解<strong>分类框架</strong>，本篇给 GDN 一支的<strong>实现级纵深</strong>（递推公式/chunk 并行/kernel），框架×实例双向印证。</li>
+<li>与《2026-08-25-QKV手算SelfAttention》同属"从零理解"路线：QKV 手算覆盖标准 softmax 注意力，本篇覆盖其 2026 替代物（GDN/Partial RoPE/Gated Attention），合看 = 注意力机制新旧全谱。</li>
+<li>与 Qwen3.8 部署系列（《2026-08-23-Qwen3.8-27B本地部署2万字》《2026-08-17-Qwen3.8-27B开源实测与本地部署》等）构成<strong>架构层 vs 部署层</strong>分工：本文解释部署笔记中"MTP/KVCache/激活 3B"参数为何如此，部署笔记提供本文架构的实际推理成本证据。</li>
+<li>对自有体系的启发：①Kernel 层"调度开销淹没计算"模式（1024 个小矩阵逐个提交 kernel）与 ONNX/边缘部署的算子碎片化问题同构，优化思路（合并为 batched matmul）可迁移 ②8/8 对齐验证方法论可吸收进 AI 生成代码的质量门禁（对拍官方实现而非只看自洽）③(1+w) 参数化换正确先验的思路对自训模型的正则配置直接可用。</li>
+</ul>
+<h2 id="_6">拓展应用推荐</h2>
+<ul>
+<li><strong>仓库</strong>：siyuan-harry/qwen38-from-scratch（本文代码，含 MPS 训练日志与验证脚本）；siyuan-harry/llm-from-scratch（上期 Qwen3.0）</li>
+<li><strong>论文链</strong>（按演进顺序）：Katharopoulos 2020 <em>Transformers are RNNs</em> → Schlag 2021 <em>Fast Weight Programmers</em> → Yang 2024 <em>Parallelizing Linear Transformers with the Delta Rule</em> → Yang 2025 <em>Gated Delta Networks</em> → Qiu 2025 <em>Gated Attention for LLMs</em>（NeurIPS 2025 best paper）→ Qiu 2025 <em>Demons in the Detail</em>（MoE 负载均衡）</li>
+<li><strong>官方实现</strong>：transformers <code>models/qwen3_5/</code>、<code>models/qwen3_5_moe/</code>；vLLM <code>qwen3_5_mtp.py</code>；HF 配置 <code>Qwen/Qwen3.8-27B</code>、<code>Qwen/Qwen3.8-35B-A3B</code></li>
+<li><strong>FLA 库</strong>（flash-linear-attention）：GDN 等 Triton kernel 的工业实现，理解"理论优势靠 kernel 兑现"的实例</li>
+<li>作者 B 站视频：LLM 从零系列（搜"何思远方"）</li>
+</ul>
+<h2 id="_7">指南分析</h2>
+<ul>
+<li><strong>方法论提炼（可直接抄）</strong>：①理解架构=手搓+跑通训练，只读论文/架构图各有省略 ②复现验证三层法：算子对拍（vs 官方算子）→ 前向对拍（随机权重转官方格式比 logits）→ 训练对拍（保存恢复比参数）③性能问题先 profiling 定位（kernel 提交 0.066ms vs 计算 μs 级 = 调度瓶颈）④准备提 PR 前先查最新版本是否已修（作者乌龙教训）。</li>
+<li><strong>写法特点</strong>：演进史叙事（每项改动先讲"为什么不合理"再讲解法）+ 诚实边界（未实现清单/乌龙自曝）——技术复盘文的范本。</li>
+<li><strong>反例警示</strong>：逐专家循环 MoE"能跑但超慢"——正确性验证 ≠ 性能达标，Infra 层优化不可跳过。</li>
+</ul>
+<h2 id="_8">行动与回访</h2>
+<ul>
+<li style="list-style:none"><input type="checkbox" disabled checked> 笔记落盘 + 架构对比表结构化（本文件）</li>
+<li style="list-style:none"><input type="checkbox" disabled> <strong>P1（低成本高价值）</strong>：把「8/8 对拍验证三层法」吸收进 ai-generated-quality/verification-gate skill——AI 生成代码的验收从"自洽测试"升级为"对拍官方实现"（待验证：下一轮代码复现任务实际套用）</li>
+<li style="list-style:none"><input type="checkbox" disabled> <strong>P2</strong>：GDN chunk 并行 + WY 表示写入个人 RL/训练知识底座——若后续 F04/DUCK 训练管线遇序列模型改造（如 world model 序列编码），GDN 是 O(1) 推理显存的候选结构（触发条件：出现序列长且需增量推理的模块）</li>
+<li style="list-style:none"><input type="checkbox" disabled> <strong>P3（观察项）</strong>：跟踪 Qwen3.8-Flash-Next 新架构与 Kimi KDA 门控粒度——若开源生态跟进每通道衰减，则 GDN 标量 α 成为历史中间态</li>
+<li><strong>证伪条件</strong>：本文架构描述基于作者个人复现（虽 8/8 对齐 HF），若后续对照 transformers <code>qwen3_5</code> 源码发现偏差（如 chunk 实现/初始化细节），以官方源码为准修订本笔记；3:1 最优论断若被新 scale 定律研究推翻，趋势判断段相应更新。</li>
+</ul>
+<p>→ 相关：2026-08-10-主流LLM注意力机制全景科普-四维正交分解与2026代表模型归类.md<br />
+→ 相关：2026-08-25-QKV手算SelfAttention-Transformer注意力机制数值示例.md<br />
+→ 相关：2026-08-23-Qwen3.8-27B本地部署2万字-三笔账方法论与四轮量化实测.md</p>
+</body>
+</html>
