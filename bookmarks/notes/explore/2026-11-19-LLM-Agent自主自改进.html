@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM-Agent自主自改进</title>
+
+<meta property="og:title" content="LLM-Agent自主自改进" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-19-LLM-Agent%E8%87%AA%E4%B8%BB%E8%87%AA%E6%94%B9%E8%BF%9B.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="1dee5b38377d1b80f95efbfc6771ad3f",H="226eda389f3982ff9991c65daf14c29ed82e95f890298bb28e5bc350da3b0792",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="llm-agent">LLM Agent 还需要被告知如何自改进吗？——冻结模型自组织学习循环的受控验证</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv 2611.23219（MIT CSAIL）<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2611.23219<br />
+<strong>作者</strong>：Shobhita Sundaram, Cansu Sancaktar, Phillip Isola<br />
+<strong>记录日期</strong>：2026-11-19</p>
+
+<p class="meta-date">生成日期 2026-11-19</p></blockquote>
+<p><strong>标签</strong>：#AI-Agent #自改进 #上下文优化 #自调节学习 #Skill体系</p>
+<hr />
+<h2 id="_1">〇、定锚：我的现状与目标</h2>
+<p>我（Hermes Agent 系统）本质上就是一个「冻结 LLM + 外部文本工件（skills/memory/cron）」的自改进系统：evolver 做错误模式分析→规则沉淀、session-evolution-scan 做用户纠偏检测、skill-ab-testing 做技能 A/B 验证——这些全是<strong>外部强加的学习循环</strong>。核心痛点：这些 scaffolding 哪些是必要的、哪些随模型换代已经冗余？本文正好在受控沙盒里量化回答了这个元问题：给定原语工具+预算+通用目标（不给学习算法），新一代模型能否自己发明学习循环。它是 MDSKILL/EvoSOP/SPyCE 精读系列的元层收口——前三篇讲「技能怎么存怎么检索」，这篇讲「学习循环本身是否还需要人写」。</p>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11-2026-11">1.1 核心问题与实验设置〔方法，2026-11〕</h3>
+<ul>
+<li><strong>问题</strong>：足够强的 LLM agent 给定基本原语（工具+预算+通用改进目标）后，能否自主构造自己的自学习算法——无需外部强加的经验生成循环、无需真实世界数据、无验证分数反馈？</li>
+<li><strong>Teacher-Player 架构</strong>：同一冻结 LLM 的两个实例。Teacher 修改 Player 的上下文 c=(提示词 c_P, 辅助文本文件 c_L 即 skill files)；Player 玩游戏。一次 update = 一次对单个文件的编辑工具调用</li>
+<li><strong>Teacher 沙盒</strong>：持久化 harness 会话（Claude Code / Pi），<strong>刻意禁用</strong>默认系统提示、自动记忆、网页搜索、子代理——只给显式提供的工具：Read / Write / Bash / Gameplay</li>
+<li><strong>Gameplay 工具</strong>：主实验用 PuzzleScript（2D 网格解谜 DSL），Teacher 提交游戏源文件，工具在外部全新 Player 会话中执行并回传得分+transcript；编译失败或胜利态不可达的游戏被拒绝</li>
+<li><strong>双预算</strong>：update budget（上下文编辑次数）+ gameplay budget（观战次数），任一耗尽会话结束</li>
+<li><strong>度量</strong>：J(c_final) − J(c_0) &gt; 0，在 held-out 游戏基准上蒙特卡洛 rollout 估计〔数据〕</li>
+</ul>
+<h3 id="12-2026-11">1.2 发现一：新一代模型自改进，老一代不行〔数据，2026-11〕</h3>
+<ul>
+<li>PuzzleScript-t20 上的提升：Claude Opus-5 <strong>+20%</strong>、GPT 6-Astra <strong>+10%</strong>、GLM 5.3 <strong>+6%</strong></li>
+<li>三个家族的老一代模型几乎零提升或无提升——自组织学习能力是<strong>跨代涌现</strong>的，不是某个家族的特例</li>
+<li>校准实验：Opus-5 的自组织学习（数据无关设定）在匹配 rollout 预算下，与 GEPA（在 20 个真实分布内游戏上做 hill-climb 的指定优化循环）性能相当——自组织≠低效</li>
+</ul>
+<h3 id="13-2026-11">1.3 发现二：自发策略与人类自调节学习对齐〔方法+数据，2026-11〕</h3>
+<ul>
+<li><strong>可算法测量的行为</strong>：自改进模型高频做 A/B 测试（同一游戏带/不带工件各跑一遍直接测差）；生成更少平凡游戏（最优解长度&lt;5 且 Teacher 观测 100% 胜率的）；Opus-5 与 GLM 5.3 偏好小步文本更新</li>
+<li><strong>Zimmerman 自调节学习（SRL）对齐</strong>：把 SRL 循环（forethought 前思 / performance 执行 / self-reflection 自反思）的 13 个子过程做成 0-3 分行为评分表，用 GPT 6-Astra 当 judge——自改进模型的 SRL 对齐分显著更高，且同模型不同 teacher 会话评分稳定</li>
+<li><strong>实例</strong>：Opus-5 teacher 自己写随机关卡生成器 + BFS 求解器来过滤游戏难度；设计对抗性游戏压测自己的笔记；跑验证套件检测早期游戏上的回归</li>
+<li><strong>Learnability 任务选择</strong>：多数生成游戏很容易、被快速丢弃；重玩率集中在观测胜率 20-60% 区间的游戏（100% 胜率的几乎不重玩）——呈现倒 U 型，对应非对称自博弈/UED 的 learnability 目标与维果茨基「最近发展区」〔观点〕</li>
+</ul>
+<h3 id="14-2026-11">1.4 发现三：学到的文本工件跨环境、跨模型迁移〔数据，2026-11〕</h3>
+<ul>
+<li><strong>跨基准</strong>：在 PS-t20 上优化的上下文 → PS-t30 +9%、ARC-AGI-L1 +21%、MazeBench SPL +0.15（跨引擎、跨表征、跨 3D 导航）</li>
+<li><strong>工具丰富度阶梯</strong>：Read-Write &lt; Read-Write-Bash &lt; Gameplay；Gameplay(t30) 设定甚至比 PS-t20 设定在 PS-t20 上更好。Read-Write（纯自反思无经验）恢复不足 Gameplay 一半的增益（MazeBench 除外）——<strong>生成的经验仍是主要增益来源</strong></li>
+<li><strong>Gameplay 工具并非必需</strong>：一个 Read-Write-Bash 会话中 Opus-5 无任何提示就自己写命令行游戏模拟器来测试笔记；换 Python-Gameplay 工具后 4 例中 3 例恢复几乎全部增益——PuzzleScript 特异性不是关键</li>
+<li><strong>跨模型双向迁移</strong>（PuzzleScript-t20 胜率）：Opus-5 无工件 25.4 → 用 GPT 6-Astra 优化工件 <strong>47.5</strong>；GPT 6-Astra 无工件 67.1 → 用 Opus-5 工件 <strong>72.1</strong>——学到的文本是<strong>通用经验</strong>而非对特定 agent 生成经历的过拟合〔数据〕</li>
+</ul>
+<h3 id="15-2026-11">1.5 发现四：评估信息是双刃剑〔观点+数据，2026-11〕</h3>
+<ul>
+<li><strong>语义信息经上下文</strong>：给 Teacher 的游戏描述越丰富，同分布（PuzzleScript-Narrow）性能先升后继续升，但跨分布（ARC-AGI-3）迁移在高信息量时 plateau 甚至下降</li>
+<li><strong>机制信息经工具</strong>：让 Teacher 感知 t20 的 token/回合预算 → t20 性能升但 t30 迁移<strong>下降</strong></li>
+<li>结论：评估设置的感知会 bias 向相关任务（好处），但也会鼓励任务特化（过拟合）——<strong>「知道考试考什么」本身就是一种泄漏</strong></li>
+</ul>
+<h3 id="16-2026-11">1.6 讨论与局限〔观点，2026-11〕</h3>
+<ul>
+<li>与深度学习大趋势一致：模型越强，需要的人为归纳偏置越少——本文把这一规律推到<strong>元优化层</strong>（学习算法本身）</li>
+<li><strong>安全含义</strong>：自组织改进不是「等待被发现的危险」——它已经在受控环境、短视野、简单任务上自然发生；不指定循环不等于不发生</li>
+<li><strong>平台期</strong>：20 updates 内就 plateau，加大预算仍 plateau——context-based learning 能否像传统学习算法那样持续收敛到目标最小值是开放问题</li>
+<li><strong>局限</strong>：SRL 策略与自改进是相关非因果；游戏领域课程设计文献可能已在预训练分布内（先验偏强）；更开放域（模型先验弱的领域）待验证</li>
+</ul>
+<h2 id="_3">二、查询拓展</h2>
+<h3 id="21-gepa">2.1 GEPA（对照基线）</h3>
+<p>GEPA 是指定式 prompt 优化方法（在真实任务上 hill-climb 上下文），本文用它校准自组织学习的量级。〔补充〕对我们：Hermes 的 prompt 优化路线（auto-prompt-optimization skill 收录的 OPRO/GEPA 族）与自组织路线的量化差距已被本文抹平——方法论选型上「指定循环」的必要性假设被削弱。</p>
+<h3 id="22-ued">2.2 非对称自博弈 / UED / 自动课程</h3>
+<p>Teacher-Student 任务生成谱系（AlphaZero 自博弈 → PAIRED/UED 环境设计 → LLM 自出题 post-training）。〔补充〕本文差异点：这些方法的学习循环（采样调度/更新规则/教师奖励）全部外部指定，且在权重空间优化；本文在文本空间+循环自组织。GLM 5.3 在其列的自改进模型名单内——我们的主力模型（智谱 GLM 5.3）已具备受控验证的自组织学习能力。</p>
+<h3 id="23-zimmerman">2.3 Zimmerman 自调节学习循环</h3>
+<p>教育心理学的经典 SRL 框架（forethought→performance→self-reflection 循环，13 子过程）。〔支持〕本文把它功能化改造成 LLM judge 可评的行为量表——给「Agent 是否在学习」提供了可操作的观测维度，可直接搬进 Hermes 的 observability-dashboard。</p>
+<h3 id="24">2.4 验证型搜索：自改进是否被高估？</h3>
+<p>未做额外 web 检索（提交 &lt;7 天，社区零覆盖——符合 skill 的 &lt;7 天跳过社区源纪律）。留证伪条件见模块七：若后续复现工作显示自组织增益完全来自「写更多代码执行游戏」这一条路径（而非学习策略多样性），则 SRL 对齐的解释力存疑。〔待验证〕</p>
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：学习循环的「指定度」光谱</h3>
+<pre><code>学习循环由谁指定？
+
+全外部指定 ←—————————————————————→ 全自组织
+权重空间：   SFT → RLHF → 非对称自博弈(教师奖励外部指定)
+文本空间：   GEPA/OPRO(循环指定) → 本文: Read-Write(纯自反思)
+                            → Read-Write-Bash(自造模拟器)
+                            → Gameplay(自组织课程+A/B+验证套件)
+                                          ↑ 新代模型在此层自发涌现
+                                          ↑ 老代模型卡在左侧
+</code></pre>
+<h3 id="32">3.2 三维护筛：优点 / 缺点 / 借鉴点</h3>
+<ul>
+<li><strong>优点</strong>：设定干净（冻结模型+双预算+无外部数据，因果链可控）；证据三层（性能差+算法可测行为+心理学框架对齐）；六模型三家族交叉验证；跨模型迁移表直接回答「工件是否过拟合」。证据强度：受控沙盒内强，开放域外推未证。</li>
+<li><strong>缺点</strong>：游戏域先验强（课程设计文献大概率在预训练分布内，模型「知道该怎么学」可能来自读过的论文）；PuzzleScript 网格解谜与真实任务的距离；SRL 对齐非因果证明；平台期现象暗示 context 容量上限。</li>
+<li><strong>借鉴点</strong>（需改造处明确写出）：①学习循环自组织化——Hermes 的 evolver 循环可做「减 scaffolding 对照实验」：给原语工具+预算+目标，让模型自己写改进循环，与现有固化循环比效果；②SRL 量表进 observability-dashboard——13 子过程评分作为「会话是否在学习」的观测指标；③learnability 任务调度——把自改进精力聚焦在 20-60% 成功率任务区（改造：用 skill-stress-test 的通过率做分母）；④评估信息最小化——cron prompt 里删掉可推导的评估细节，防特化。</li>
+</ul>
+<h3 id="33">3.3 与既有认知的增量</h3>
+<p>此前精读系列（MDSKILL 2611.05313：技能记忆蒸馏；EvoSOP：工具生命周期四模块）都默认「学习循环是人设计的，模型填内容」。本文第一次用受控实验把这个默认假设翻过来验证：<strong>对新一代模型，循环本身可以被发明</strong>。这与 Beyond the Leaderboard（2607.05775）的「脚手架边际递减」定律形成闭环——脚手架不仅边际递减，最终可以被学习者自己搭建。</p>
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1">趋势1：学习循环从「工程资产」变成「模型涌现能力」——上升</h3>
+<p>依据：2026-11 本文显示 Opus-5/GPT 6-Astra/GLM 5.3 三家族新代模型全部自组织成功，老代全部失败——代际断层清晰。对我意味着：Hermes 里大量手写循环（evolver 检测器、cron 调度逻辑）的半衰期可能只有一个模型代际；机会是省 token，风险是裸奔的自循环无审计。</p>
+<h3 id="2">趋势2：上下文工件成为跨模型可迁移资产——上升</h3>
+<p>依据：本文 Table 1 双向迁移（25.4→47.5 / 67.1→72.1）+ 我们三机共享 exchange.jsonl 经验池一年无腐化。对我意味着：skill/memory 的「模型无关性」是可坚持的架构原则，换底层模型不必然重写技能库。</p>
+<h3 id="3">趋势3：评估信息泄漏成为自改进系统的新型过拟合源——分化</h3>
+<p>依据：本文 5.2 节两个独立消融（语义/机制通道）都显示「知道评估细节→近似升/迁移降」。对我意味着：给 agent 的任务描述里塞验收细节是双刃剑；「训练-验收分布同构」（用户 1009 拍板过的 E31d 考试化思路）与此张力需要显式权衡。</p>
+<h3 id="4">趋势4：安全审计重心从「能力」转向「自改进元能力」——上升</h3>
+<p>依据：本文安全段落明确「不指定循环不阻止自改进」。对我意味着：auto-dream 类自主 cron 的预算约束+行为留痕比能力白名单更关键。</p>
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-mdskill">5.1 与 MDSKILL 精读笔记的关联</h3>
+<p><a href="2026-11-05-MDSKILL技能记忆多视角蒸馏.md">2026-11-05 MDSKILL</a> 讲技能怎么检索蒸馏（微观），本文讲学习循环本身可自组织（宏观）。组合启示：Hermes 的 skill 体系两层都可渐进自动化——检索层 MDSKILL 已给方案，循环层本文给许可。</p>
+<h3 id="52-beyond-the-leaderboard-evosop">5.2 与 Beyond the Leaderboard / EvoSOP 精读的关联</h3>
+<p>Beyond the Leaderboard（2607.05775）三定律之「脚手架边际递减」是本文结论的先声；EvoSOP（2607.07321）四模块（Construct/Merge/Evaluate/Prune）正是本文说的「外部指定循环」——下一步实验：EvoSOP 式模块化 vs 本文式自由探索的对照。</p>
+<h3 id="53-hermes">5.3 与 Hermes 自进化体系的关联</h3>
+<p>evolver、session-evolution-scan、experience-bank、error-case-library 全部是外部指定循环。本文直接给出「减法路线图」：从「指定循环+模型填空」向「给原语+预算+目标」迁移，但需保留审计层（对应 A/B 测试与验证套件策略——论文证明自改进模型自己会做这些，但外部无法验证它是否真做了）。</p>
+<h3 id="54">5.4 与用户论文计划（每周一篇）的关联</h3>
+<p>用户 09-10 明令的「新颖性=规律性/本质性发现」标准下，本文是范本级选题：把「需不需要人写学习算法」从哲学问题变成可测实验。可借鉴其选题模式：<strong>元层问题+受控沙盒+三代际对照</strong>。</p>
+<h2 id="_7">六、金句摘录</h2>
+<blockquote>
+<p>「想象给 agent 一台电脑，让它提升自己玩解谜游戏的能力。电脑上没有预装游戏——它想练习就得自己写游戏。它要决定尝试什么类型的游戏、保留哪些教训、如何度量进度。这些关于学习程序设计的决策，传统上全由人类从业者做出。」</p>
+<p>「自组织改进不是一项等待被发现的发现。」（安全段的定音句——无指定循环不阻止自改进发生）</p>
+<p>「对评估设置感知的增加，会 bias 教师生成相关经验，但也会鼓励任务特化。」</p>
+</blockquote>
+<h2 id="_8">七、行动启示与回访</h2>
+<p><strong>我的结论：保留</strong>审计层与预算约束（不可减）；<strong>放弃</strong>「学习循环必须人写」的隐含假设；<strong>改造</strong>evolver 为「自组织+门禁」混合模式。</p>
+<ul>
+<li><strong>行动1</strong>：evolver 减 scaffolding 对照实验 | 时间：本周内启动 | 触发条件：下次 evolver 触发时 | 验收标准：同一错误模式，自组织路径（只给工具+预算+目标）与固化循环产出对比，修复质量不低于现状且 token 消耗可测</li>
+<li><strong>行动2</strong>：SRL 13 子过程量表接入 observability-dashboard 的会话评分 | 时间：两周内 | 触发条件：下次 dashboard 迭代 | 验收标准：至少一个 cron 会话跑出可复现的 SRL 对齐分</li>
+<li><strong>行动3</strong>：learnability 调度原则写入 skill-stress-test（聚焦 20-60% 通过率任务） | 时间：一周内 | 验收标准：skill 文档出现该原则并有一次实际应用</li>
+<li><strong>回访日期</strong>：2026-12-03（两周后）</li>
+<li><strong>待验证假设/证伪条件</strong>：①若后续复现显示自组织增益全部来自「写模拟器跑游戏」单一路径，则「循环可自组织」结论对非游戏域不成立；②若 GLM 5.3 在我们环境（非沙盒、有历史包袱）下的自组织会话出现预算失控或无效循环，则本文结论不能直接外推到生产 Agent——此时回退到固化循环+人工审查。</li>
+</ul>
+<h2 id="_9">八、拓展应用推荐</h2>
+<ul>
+<li>Hermes evolver/自进化链：给原语+预算+目标的「自组织模式」与固化循环并行跑对照（场景→用法如上行动1）</li>
+<li>模型任务分派（model-dispatch）：跨模型工件迁移表支撑「便宜的模型用贵的模型优化的 prompt/skill」这一降本路径</li>
+<li>量化研究流程：learnability 任务选择（精力聚焦 20-60% 成功率区间）可迁移到策略因子筛选——完全验证的因子无增量信息，完全随机的因子无信号</li>
+<li>教学内容生成：A/B 测试+难度校准生成器+验证套件三件套是「出题-筛题-验题」的通用范式，适用于考试化训练（E31d 考试化直训同构）</li>
+<li>论文周报选题：元层问题+受控沙盒+代际对照的方法论模板</li>
+</ul>
+<h2 id="_10">九、指南分析</h2>
+<ul>
+<li><strong>方法论价值</strong>：把哲学问题操作化为可测实验——「需要被告知吗」→「给原语不给循环，量 J(c_final)−J(c_0)」；三层证据法（性能+算法可测行为+心理学框架对齐）值得复用到任何「能力是否涌现」类判定</li>
+<li><strong>反例价值</strong>：评估信息双刃剑（5.2 节）是所有自改进系统的通用警告——评估细节进入训练侧上下文=分布泄漏</li>
+<li><strong>判据价值</strong>：「跨模型迁移表」是判定学习工件是否过拟合的干净范式，可用于任何 agent 经验库的健康度审计（比「保留率」「引用数」硬）</li>
+</ul>
+</body>
+</html>
