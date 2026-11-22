@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Antigravity-Swarm黑板架构源码拆解</title>
+
+<meta property="og:title" content="Antigravity-Swarm黑板架构源码拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-23-Antigravity-Swarm%E9%BB%91%E6%9D%BF%E6%9E%B6%E6%9E%84%E6%BA%90%E7%A0%81%E6%8B%86%E8%A7%A3.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="antigravity-swarm-json-jsonl-agent">Antigravity Swarm 黑板架构源码拆解 — 两个 JSON 一个 JSONL 撑起 Agent 蜂群</h1>
+<p><code>#Antigravity</code> <code>/swarm</code> <code>#多Agent</code> <code>#黑板架构</code> <code>#Agent编排</code> <code>#源码拆解</code> <code>#零轮询</code> <code>#StopHook</code></p>
+<blockquote>
+<p><strong>来源</strong>：<a href="https://x.com/chasen_liao/status/2124424831211065438">X Article — 万字拆解 /swarm 功能（@chasen_liao）</a><br />
+<strong>信源类型</strong>：作者本人一手拆解 — 翻 Antigravity 内置插件 swarm_board 源码 + 4 份内置 Skill + 对照本机 6 场真实运行日志交叉验证；非官方文档，实现细节有源码背书可信度高，性能数字（时长/帖数）来自作者自述日志<br />
+<strong>作者</strong>：Chasen @chasen_liao（8233 粉丝，AI 原住民，专注 Agent 省 token，大四实习）｜首次收录该作者<br />
+<strong>发布</strong>：2026-11-22｜<strong>互动</strong>：41263 浏览 / 437 赞 / 629 收藏 / 46 转 — <strong>收藏 &gt; 赞，强收藏型参考价值信号</strong></p>
+
+<p class="meta-date">生成日期 2026-11-23</p></blockquote>
+<h2 id="_1">定锚</h2>
+<ul>
+<li><strong>领域坐标</strong>：Agent Harness / 多 Agent 编排 — Google Antigravity 内置 <code>/swarm</code> 功能的 Blackboard（共享黑板）架构实现细节，目前官方文档未覆盖的源码级情报</li>
+<li><strong>收录理由</strong>：源码级一手逆向 + 实机日志佐证（非转述链）；与我们 Hermes 三机体系多处同构（exchange-protocol JSONL 经验池、零 token 心跳定调、model-fallback-chain），吸收成本低、直接可用</li>
+<li><strong>场景锚点</strong>：用户日常使用 Antigravity（已有模型 failover skill）；Hermes 多机协作与看板体系可直接对标借鉴</li>
+</ul>
+<h2 id="_2">内容整理</h2>
+<h3 id="0-2-07">0. 导语：一场 2 小时 07 分的实战</h3>
+<p>作者修自己的 PDF 导出工具（<a href="https://github.com/Chasen-Liao/resume-skills">resume-skills</a>）遇到典型跨模块乱码：页面正常但复制/OCR 乱码、缺字、整段顺序颠倒。单个 Agent 读打印脚本+6 套模板+CSS 规范再真机测试，上下文很快塞满；传统 Subagent 则让主 Agent 沦为传话筒。开 <code>/swarm</code> 后：<strong>两波共 7 个成员、2h07m、黑板上 24 帖</strong>——中途有成员沉默 38 分钟被后台巡检员发帖救活，验收员实测抓出校验脚本误杀直接点名打回返工，全程零打扰主 Agent。</p>
+<h3 id="agent">一、四种多 Agent 模式怎么选</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>适用场景</th>
+<th>结果交给谁 / 怎么接</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>invoke_subagent</code> 普通子代理</td>
+<td>只确认单疑点（如字体映射）</td>
+<td>子代理查完发回主 Agent，主 Agent 再转交复测</td>
+</tr>
+<tr>
+<td><code>/boost</code></td>
+<td>一个难复现 bug 查深验透</td>
+<td>同题多轮：一轮根因+修法，后续轮专挑漏洞重测，编排器独立复核</td>
+</tr>
+<tr>
+<td><code>/teamwork</code></td>
+<td>整套重做（换渲染器→迁模板→补回归）</td>
+<td>先问清范围与验收标准，专用项目目录按里程碑推进+独立审核</td>
+</tr>
+<tr>
+<td><code>/swarm</code></td>
+<td>多线独立排查 + 第三方拿同一样本交叉验收</td>
+<td>排查者贴原始证据到共享黑板引用楼层号点名验收员，验收员回板打回返工</td>
+</tr>
+</tbody>
+</table>
+<p>核心差异：<strong>结果落在哪、下一步由谁接</strong>。</p>
+<h3 id="_3">二、黑板底座：三个纯文本文件</h3>
+<p>目录 <code>&lt;appData&gt;/brain/&lt;coordinatorConv&gt;/.system_generated/swarm/</code>：</p>
+<ol>
+<li><strong>board.jsonl</strong> — Append-Only 流水账，每行一帖：全局递增楼层 <code>seq</code>、发帖人 <code>agent</code>、正文 <code>text</code>、时间 <code>time</code></li>
+<li><strong>members.json</strong> — 花名册 + 阅读签到表：会话 ID、角色、模型、工作区模式 + 四个楼层游标（<code>last_read_seq</code> / <code>wait_since</code> / <code>last_nudged_seq</code> / <code>last_park_blocked_seq</code>）</li>
+<li><strong>swarm.json</strong> — 门牌锚点：版本号、后端类型（本地 <code>local</code>）、<code>swarm_id</code></li>
+</ol>
+<p>两个额外挖出的工程设计：</p>
+<ul>
+<li><strong>多频道零配置表，事件溯源重放</strong>：&gt;8 成员可拆 <code>#parser</code> <code>#ui</code> 频道，但频道的创建/订阅/退订/归档全部作为 control 消息写进同一条 board.jsonl；侧边栏算"某帖发出时某成员当时能否看见"靠重放 control 帧（<code>channelsAt()</code> / <code>activeAt()</code>），members.json 里的频道列表源码注明只是缓存</li>
+<li><strong>跨机分布式伏笔已埋好</strong>：main.mjs 内置 <code>remote_board</code> 逻辑 — swarm.json 指向远端时，面板拉 <code>&lt;cli&gt; swarm --json --watch</code> 订阅 NDJSON 增量流，跨机成员挂 <code>&lt;identity&gt;@&lt;host&gt;</code> 徽章（区分 HUMAN/AGENT）；增量楼层接不上本地最新楼层时杀旧 watcher 触发 resync 拉全量。<strong>本地三文件跑轻量、将来切多机云端上层协议零改动</strong></li>
+</ul>
+<h3 id="_4">三、零空转不漏消息的三个狠招</h3>
+<p>多 Agent 系统最容易烧爆账单的就是轮询。Swarm 砍掉轮询，三层配合实现"休眠 0 Token、一条不漏"：</p>
+<ol>
+<li><strong><code>swarm_wait{since:N}</code> 直接终结本轮回合</strong> — 工具结果返回 DONE 后，wait-check hook 结束该成员本轮模型回合，会话彻底挂起，无死循环无心跳推理。默认 <code>mentions_only</code>：只有 @自己 / @all / @#所在频道 才注入唤醒消息</li>
+<li><strong>Stop Hook 竞态锁（地铁闸机比喻）</strong> — 读完 #10 想睡、#11 恰好落地：Stop Hook 硬拦休眠，注入 <code>Stop hook blocked termination: [board] new messages arrived; read_board before waiting again</code>，<code>last_park_blocked_seq</code> 更新为 11。作者在自己另一场写稿 Swarm 的 transcript 第 65/67 步抓到现场生效证据；PDF 那场 fixer-templates 也实打实触发过 <code>last_park_blocked_seq: 16</code></li>
+<li><strong>判活不信登记簿，盯 transcript.jsonl</strong> — members.json 虽记 wake_mode，但 <code>statusOf()</code> 不盲信（成员可能被后台命令/用户手动叫醒而登记簿未更新）。侧边栏直接解析每个成员 transcript.jsonl 尾部：停在无工具调用的回复或含 swarm_wait-DONE 的工具批次才判 waiting，否则算 working——顺带抽出"正在读哪个文件/跑哪条命令"实时上面板</li>
+</ol>
+<p>四个楼层游标各管一段：<code>last_read_seq</code>=真正读到哪楼（swarm_wait 必须传自己看过的号而非最新号，否则忙活期间冒出的帖会被跳过）；<code>wait_since</code>=从哪楼开始等唤醒；<code>last_nudged_seq</code>=[board] 增量催读提醒推到哪楼；<code>last_park_blocked_seq</code>=最近一次想睡被拦的楼层。</p>
+<h3 id="24-7-agent">四、24 帖实战复盘：两波 7 Agent 接力</h3>
+<ul>
+<li><strong>模型混搭</strong>：Coordinator+巡检员（只拆任务/盯状态/发提醒）用轻量模型省额度；真正查链路/改 6 套模板/跑验收的干活成员全员旗舰推理模型</li>
+<li><strong>第 1 波只读排查（#1~#8，约 32min）</strong>：pdf-pipeline（查导出脚本/字体/字形映射）+ template-dom（查 6 套模板 DOM 文本流）+ verifier（实测复现交叉核验）+ monitor 防死锁。全只读 → 全员 inherit 共用主工作区。verifier 用 Playwright 在线/断网双环境渲染 6 套模板 + pypdf 复现乱码，#7 交完整证据；#8 发 [done] 后 <strong>Coordinator 把这波 4 人全部 kill 清场，不让旧上下文拖累后续修改</strong></li>
+<li><strong>第 2 波并行修复（#9~#24，约 1.5h）</strong>：新开 fixer-templates（只动模板）/ fixer-code（只动打印链路+校验脚本）/ verifier-fix（只查不改）/ monitor-2。<strong>被 kill 的成员名字永久锁死不能复用</strong>，巡检员只能顺延叫 monitor-2</li>
+<li><strong>三次救场插曲</strong>（决定任务没翻车的关键）：</li>
+<li>
+<h1 id="1314-fixer-code-coordinatorgit-14">13~#14 工作区目录被移走路径对不上 → fixer-code 发帖 @coordinator，git 恢复后 #14 一次性统一三人路径，防各改各的跑偏</h1>
+</li>
+<li>
+<h1 id="1519-monitor-2-stall-fixer-templates-38min-fixer-templates-stall-16-coordinator-stall">15~#19 monitor-2 两次 [stall] 催醒：fixer-templates 沉默 38min 被 <code>@fixer-templates [stall]</code> 精准催醒；全组停在 #16 三分钟 → <code>@coordinator [stall]</code> 甚至附带判断"旗舰模型可能额度耗尽"</h1>
+</li>
+<li>
+<h1 id="2123-verifier-fix-coordinator-21-fixer-code-9-22-23">21~#23 验收员点对点打回：校验脚本在中英混排字体切换处因伪空格误报失败，verifier-fix 不找 Coordinator 传话，直接 #21 点名 @fixer-code 贴报错行号 → 9 分钟后 #22 修完补单测 → #23 汇总交卷</h1>
+</li>
+<li><strong>Graph + Board 组合拳</strong>：Graph 拓扑图上下两半=两波三角，箭头=@方向、线粗=@次数；先 Graph 看谁跟谁交过手，再 Board 点进 #21/#22/#23 核对原始测试输出——"如果汇总只写'全部已验证'，根本不敢直接合并代码"</li>
+</ul>
+<h3 id="_5">五、五道护栏、两大兜底、一堵墙</h3>
+<p><strong>五道反上下文膨胀护栏</strong>：<br />
+1. 公开 Brief 唯一账本 — 每次建人的派活书以 <code>@name &lt;brief&gt;</code> 公开贴板，验收对照原始要求验货，Coordinator 经上下文压缩后翻板不丢分工<br />
+2. 新成员游标跳过开局噪音 — 新 Worker 启动只塞自己的 Brief，黑板游标直接设在开局所有 Brief 之后，不睁眼先吃别人几千字任务书<br />
+3. <code>#seq</code> 指针引用 + @ 只当门铃不当抄送 — 严禁 A 的报告复制转述给 B，全部 #5 #6 楼层引用（Board 自动渲染可点击胶囊）；每次 @ 触发对方一整轮推理；批量分片 <code>add</code> 传 tasks/n 拉 worker-1..N，@worker 呼全组 @worker-1 呼单人；@#parser 精准唤醒模块组（@#main 被拒，防变相 @all）<br />
+4. 读写分离 + Worktree 隔离 — 每 2~4 个作者配 1 个只查不改的 verifier；只读排查 inherit 省资源；并发改码给作者开 share（共享底层对象的独立工作副本，类 git worktree）或 branch（完整克隆）。<strong>kill 成员连带删其独立工作区——清理前必须先合并/cherry-pick 回来</strong><br />
+5. 热克隆 fork 与递归招帮手 — <code>fork: "&lt;member&gt;"</code> 直接克隆对话历史，免冷启动重读仓库；Worker 可自己 add 招帮手但只能 kill 自己招的人；Coordinator kill Worker 不连带清其帮手，收尾自己留意</p>
+<p><strong>两大保命兜底</strong>：<br />
+1. <strong>反死锁巡检员 monitor 也会休眠</strong> — 独立 Agent 挂 <code>IsDaemon: true</code> 的 <code>*/3 * * * *</code> 闹钟（IsDaemon 防定时器把主对话标成运行中）。每 3 分钟查 5 种卡死：结果没 @ 任何人 / Coordinator 留未读 / 被 @ 没发帖 / 成员环状互等 / 全员空等。<strong>判"被 @ 没动静"看 last_post_seq 而非 wait_since</strong>（失败的模型回合也会推 wait_since，看发帖号才能揪出静默挂死）；同一死锁最多提醒 3 次防刷屏；连续 5 轮（约 15min）无动静或收到 [done] 自停闹钟，切 <code>swarm_wait(mentions_only:false)</code> 零耗电休眠，板上冒新消息自动复活重建闹钟；服务重启后 <code>@monitor resume</code> 拉回<br />
+2. <strong>额度耗尽原地热切模型</strong> — members.json 刻意拆 <code>desired_model</code> / <code>applied_model</code>：耗尽后不 kill 重来，等成员回 waiting 态调 <code>swarm{action:"model"}</code> 换有额度的模型，保留全部对话记忆原地接着干；事前 <code>swarm{action:"models"}</code> 查每个模型实时剩余额度与重置时间</p>
+<p><strong>一堵真实边界</strong>：Swarm Worker 会话默认<strong>无 <code>&lt;subagents&gt;</code> 权限</strong> — 调不了 image-generator 也调不了浏览器子代理，只能 @coordinator 让主会话代调再交还。穿插生图/浏览器自动化的任务，这步留给 Coordinator 统筹。</p>
+<h3 id="narrator">六、最重要的转向：谷歌自己砍掉常驻 Narrator</h3>
+<p>初代设计有常驻解说员 narrator：<code>swarm_wait(mentions_only:false)</code> 盯全板，把聊天整理成 view.json，甚至允许 AI 自写 view.html 定制 Overview。谷歌为此焊了整套零信任沙箱（view 硬限 64KB 超限/写坏即弃退缓存；sanitizeView 逐条核对引用、楼层超 head 标 ⚠ unverified、跳转只放行本地真实文件+白名单域名；view.html 跑 <code>sandbox="allow-scripts"</code> + 全断网 CSP 的 srcdoc iframe，页面跳转须过"浏览器激活态+iframe 焦点+父页 5.5s 无输入+100ms 延迟复核"四道门禁 + 250ms 节流，堵死 AI 伪造点击）。</p>
+<p>结果最新 swarm_pane/SKILL.md 开头直接写：<strong>"Don't add a narrator; this Overview replaces it."</strong> 官方自己承认：<code>Always-on member adds token cost</code> — 每条消息唤醒大模型重写 JSON 摘要太烧，且更新永远慢半拍。新方案克制得多：Coordinator 只在开工/改分工时写<strong>几十行静态 plan.json</strong>，UI 侧 hive.js 用<strong>确定性前端代码</strong>把 board.jsonl + transcript 实时工具步骤 + [done] 拼成动态看板（蜂王/工蜂像素图、Screenshot 格式帖自动拼可拖拽前后对比 Progress Reel）。</p>
+<blockquote>
+<p>做 Agent Harness 越往深走越会撞上这条铁律：<strong>能靠静态协议加确定性代码算出来的视图，绝不多养一个常驻 LLM 去盯。</strong></p>
+</blockquote>
+<h3 id="swarm">七、开不开 Swarm：两问判据</h3>
+<ol>
+<li>任务能不能拆出<strong>至少两条互不打架的独立线</strong>？</li>
+<li>拆完的结果<strong>值不值得第三个人拿真实样本交叉复核</strong>？</li>
+</ol>
+<p>跨模块排障、多文件并行改造+回归、反复打回返工的工程任务 → 黑板把上下文隔离与过程溯源做得干净。单线小改动、或两人抢改同一核心函数 → 单 Agent 更快。成本红线：<strong>多一个成员=多一份完整会话推理</strong>；建人省略 model 默认全员沿用主会话模型，主会话开高配直接盲冲额度掉得飞快。</p>
+<h2 id="_6">查询拓展</h2>
+<ul>
+<li>swarm_board 源码获取路径：作者翻的是本地 Antigravity 安装目录内插件源码（main.mjs/channels.mjs/app.js/hive.js），可自行定位复核对读</li>
+<li><code>remote_board</code> 跨机协议的正式产品化节奏（NDJSON 增量流 + resync 语义何时开放给多机蜂群）</li>
+<li>横向对比：Claude Code SubAgents（消息回传式）、MCP、OpenAI Swarm/A2A 的黑板 vs 消息传递两种协调范式</li>
+<li>swarm_wait / Stop Hook 的事件机制与 Antigravity hooks 系统官方文档</li>
+<li>零信任沙箱四道门禁设计（userActivation/焦点/5.5s 无输入/延迟复核+节流）对自产 HTML 面板（h5-browser-verify 场景）的可移植性</li>
+</ul>
+<h2 id="_7">归纳总结</h2>
+<p>一句话：<strong>黑板 = Append-Only JSONL + 楼层游标协议；唤醒 = 事件驱动零轮询；判活 = 盯 transcript 不信登记簿；看板 = 确定性代码渲染不养常驻 LLM。</strong> 四个设计全部指向同一哲学——把"协调"做成确定性基础设施，Token 只花在干活上。大道至简：撑起蜂群的就两个 JSON 一个 JSONL。</p>
+<h2 id="_8">趋势判断</h2>
+<ul>
+<li><strong>确定性渲染替代常驻 LLM 观察者</strong>：Google 自己亲手砍掉 narrator，与 2026 H2 "Harness = Control Plane" 行业共识同向——观察/摘要类角色是下一个被确定性代码消灭的常驻 LLM 品类</li>
+<li><strong>文件即协议、去中间件化</strong>：三个纯文本文件撑起蜂群（无数据库、无消息队列），与 Hermes exchange-protocol 的 NFS JSONL 经验池同构——多 Agent 协调层的工程答案是"最 boring 的存储 + 最严的协议"</li>
+<li><strong>模型分层混搭成为标配</strong>：协调/巡检用轻量、干活用旗舰 + desired/applied 分离的 quota 感知热切换，多 Agent 成本管理从"事后心疼"进化为"运行时改配"</li>
+<li><strong>单机到多机的无缝升级路径</strong>：协议先行（remote_board 已埋），本地三文件只是后端特例——编排框架的护城河正从"功能"转向"协议兼容性"</li>
+</ul>
+<h2 id="_9">关联分析</h2>
+<ul>
+<li><strong>AgentSwarms 自部署平台</strong>（2026-07-31 笔记）：产品化 Swarm 编排画布（XYFlow 节点式）vs 本文源码级黑板协议——一个卖 UI 一个拆底座，组合看：黑板协议是比画布更本质的竞争层</li>
+<li><strong>企业 Agent 技术选型</strong>（2026-08-18 笔记）：该篇对 Blackboard 模式的推荐论点被本文源码证实——谷歌工程落地黑板时同样选了 JSONL 追加日志，且护栏设计（读写分离/指涉原帖不转述）与其结论互证</li>
+<li><strong>Harness 七要素全景</strong>（2026-08-18 笔记）：本文是②执行编排 + ⑥评估观测两要素的顶级实现样本；Stop Hook 竞态锁属"约束与恢复安全半区"的教科书案例</li>
+<li><strong>Hermes 本机体系</strong>：board.jsonl ≈ exchange-protocol 共享 JSONL 经验池；"确定性看板不养常驻 LLM" ≈ 1116 用户定调的零 token 心跳；desired/applied 模型分离 ≈ model-fallback-chain 的运行时版；monitor 的 last_post_seq 判活 ≈ 训练盯盘"进程数×load×最新日志三交叉"</li>
+<li><strong>用户 Antigravity 实战</strong>：理解 /swarm 成本结构后，可与 antigravity-model-failover skill 联动做蜂群额度管理（swarm models 预检 + 热切）</li>
+</ul>
+<h2 id="_10">拓展应用推荐</h2>
+<ol>
+<li><strong>Hermes 长等待任务吸收 Stop Hook 竞态锁</strong>：hwatch/回调等待链在"睡前"加最后一次增量检查语义，防唤醒-休眠间隙丢消息（与我们回调≥2min=hwatch 规矩互补）</li>
+<li><strong>observability-dashboard 按第六章铁律改造</strong>：面板一律确定性脚本拼 transcript/session 数据渲染，禁任何 LLM 轮询摘要环节</li>
+<li><strong>subtask-lifecycle 判活升级</strong>：不只信状态字段，学 statusOf() 读子任务日志尾部判 waiting/working</li>
+<li><strong>用户开 Swarm 前过两问判据 + 下方 checklist</strong>；额度管理联动 antigravity-model-failover</li>
+</ol>
+<h2 id="swarm-checklist">指南分析：开 Swarm 的执行 checklist</h2>
+<ul>
+<li style="list-style:none"><input type="checkbox" disabled> 两问判据全过（≥2 条互不打架的独立线 + 值得第三方真实样本交叉复核）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 模型显式分层：coordinator/monitor 用轻量模型，worker 用旗舰；开工前 <code>swarm{action:"models"}</code> 预检额度</li>
+<li style="list-style:none"><input type="checkbox" disabled> 只读波全员 inherit 共工作区；改码波给作者开 share/branch 工作副本</li>
+<li style="list-style:none"><input type="checkbox" disabled> 每 2~4 个作者配 1 个只查不改的 verifier</li>
+<li style="list-style:none"><input type="checkbox" disabled> 第一波结束就 kill 清场，防旧上下文拖累第二波；kill 前必须先合并 Worktree 改动（kill 连带删工作区）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 被kill 的名字永久锁死不复用，顺延命名</li>
+<li style="list-style:none"><input type="checkbox" disabled> 生图/浏览器子代理需求留给 Coordinator 代调（Worker 默认无 subagents 权限）</li>
+<li style="list-style:none"><input type="checkbox" disabled> 交接用 #seq 楼层引用点名，严禁复制转述他人报告；@ 只当门铃不当抄送</li>
+<li style="list-style:none"><input type="checkbox" disabled> 额度耗尽走 desired→applied 热切，不 kill 重来</li>
+</ul>
+<h2 id="_11">行动与回访</h2>
+<ul>
+<li><strong>行动 1（已执行 ✅）</strong>：笔记落盘 + 双向互链 + 上线</li>
+<li><strong>行动 2（待验证）</strong>：对照第六章铁律检查 observability-dashboard 生成链路——若存在 LLM 轮询摘要环节，改确定性脚本渲染；验收=面板产出零 LLM 调用</li>
+<li><strong>行动 3（待触发）</strong>：下次 Antigravity 多 Agent 任务按指南 checklist 执行，记录实际 token 成本与本篇 2h07m/24 帖对照</li>
+<li><strong>回访/证伪条件</strong>：Antigravity 后续版本若公布 swarm 官方文档且与本篇源码解读冲突，以官方文档为准修订本笔记；remote_board 多机协议正式发布时回查本文"伏笔"判断是否兑现</li>
+</ul>
+<p>→ 相关：<a href="2026-07-31-AgentSwarms自部署Agentic-AI与BI平台.md">2026-07-31-AgentSwarms自部署Agentic-AI与BI平台.md</a>｜<a href="2026-08-18-企业Agent技术选型-全自治vs确定性DAG的混合架构共识与落地设计.md">2026-08-18-企业Agent技术选型-全自治vs确定性DAG的混合架构共识与落地设计.md</a>｜<a href="2026-08-18-HarnessEngineering七要素全景-Agent工程的完整学科地图与逐层深挖.md">2026-08-18-HarnessEngineering七要素全景-Agent工程的完整学科地图与逐层深挖.md</a></p>
+</body>
+</html>
