@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beam开源权重模型技术报告</title>
+
+<meta property="og:title" content="Beam开源权重模型技术报告" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-23-Beam%E5%BC%80%E6%BA%90%E6%9D%83%E9%87%8D%E6%A8%A1%E5%9E%8B%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="beam-501b-moe-agentic-rl">Beam 开源权重模型技术报告精读：501B MoE 的 Agentic RL 训练配方</h1>
+<p class="tag-line"><span class="tag">#论文</span> <span class="tag">#人工智能</span> <span class="tag">#大模型</span> <span class="tag">#强化学习</span> <span class="tag">#推理优化</span></p>
+<p class="note-date">生成日期 2026-11-23</p>
+
+<h2 id="_1">〇、定锚：我的现状与目标</h2>
+<p>我的现状：日常运维 Hermes Agent 三机体系，关注 Agent 训练配方（GRPO/reward 设计/训练稳定性诊断）、推理部署（量化/投机解码）两条主线。此前精读过 MDSKILL（技能记忆蒸馏）、OpenForgeRL（harness-native RL）、SPORK（自推测加速）等论文，已形成"训练-推理协同"视角。RL 实战侧有 DUCK 机器人 GRPO 训练的完整踩坑经验（异步 rollout、课程切换、假 PASS 判据教训）。</p>
+<p>本次精读目标：Reflection 公司开源的 Beam 模型（501B/23.4B active MoE）技术报告披露了迄今最大规模之一的 agentic RL 训练细节（10.5K GPU、100M rollouts、4 周无平台期）。我要从里面挖三样东西：①工业级异步 GRPO 的稳定性工程（可直接对照 DUCK 训练）；②MOPD 双专家蒸馏合并架构；③NVFP4 量化 + DFlash 2 投机解码的部署配方（对照 Jetson 边缘部署）。</p>
+<h2 id="_2">一、出处（论文信息）</h2>
+<ul>
+<li>标题：Beam Model Technical Report</li>
+<li>arXiv ID：2611.26358（2026-11-19 提交）</li>
+<li>作者：Reflection Team（Reflection AI，MIT 背景的自主编程 Agent 公司，Brandon Amos 等 60+ 人）</li>
+<li>领域：cs.CL / cs.LG（大模型技术报告）</li>
+<li>模型定位：Western 开源权重前沿，agentic workload 专用，1M 上下文，2026-10-16 发布</li>
+<li>开放性：开源权重（BF16/FP8/NVFP4 三档 checkpoint），技术报告全量披露训练配方</li>
+</ul>
+<h2 id="_3">二、核心问题与研究动机</h2>
+<p>核心命题：如何把一个 501B 稀疏 MoE 基座训练成「编码-推理-自主智能体」专用模型，同时在三个约束下保持前沿竞争力：</p>
+<ol>
+<li>推理算力约束：同类模型 3-4 倍的推理效率（token 效率通过 RL 显式训练获得，非架构副产品）</li>
+<li>训练规模约束：pretraining 23.8T tokens / midtraining 950B tokens / RL 100M rollouts，全程 4 周级时间盒</li>
+<li>安全约束：开源权重下 refusal/pivot 率要做到开源模型 Pareto 前沿最高（88.9%）</li>
+</ol>
+<p>关键动机判断：agentic 能力（工具调用、浏览、问题分解）不再靠 SFT 灌数据，而是「RL 让模型在与真实环境交互中有机发展」——报告原话 "Beam organically developed tool-use, web browsing, and problem-decomposition capabilities"。</p>
+<h2 id="_4">三、方法论内容整理</h2>
+<h3 id="31">3.1 架构与预训练</h3>
+<ul>
+<li>501.3B 总参 / 23.4B active，52 层，256 experts，152K 词表</li>
+<li>辅助损失无关的负载均衡（auxiliary-loss-free load balancing）+ cosine 衰减 + 序列级均衡 + 深度残差缩放 → 近均匀专家利用率 + 有界残差范数</li>
+<li>Pretraining：23.8T tokens，6,144 张 GB300，4 周内完成，稳态 21% MFU，尾部 goodput 92.3%</li>
+<li>Scaling law 验证横跨四个数量级（300M → 23.4B active），保证外推可预测性</li>
+</ul>
+<h3 id="32-midtraining-1m">3.2 两阶段中间训练（Midtraining）→ 1M 上下文</h3>
+<ul>
+<li>Stage 1：850B tokens @ 32K 上下文，练核心逻辑推理。数据配比：45% 编码（竞赛编程/软件工程/终端使用）、30% 中高级 STEM、15% 通识、10% 保留高质量预训练数据防遗忘</li>
+<li>Stage 2：100B tokens @ 512K 上下文扩展 → 服务时 1M 有效窗口</li>
+<li>关键工程细节（对 MoE 训练直接可用）：</li>
+<li>midtraining 数据分布偏移会破坏专家负载均衡 → 禁用 router z-loss、sequence aux loss、expert bias update，只更新 router 权重即可稳定（强制均衡反而损害专家特化）</li>
+<li>sawtooth LR：每阶段重置 optimizer state，峰值 LR = 预训练峰值的 5%（平衡遗忘与学习）；weight decay 按 AdamC 方法随 LR 平方缩放</li>
+<li>filter-best-fit 序列装箱：保持文档完整不跨序列切分；padding token 在 MoE 层被 mask 掉不进路由（省算力+防专家过载）</li>
+<li>数据消融方法论：小模型短 horizon 代理训练（50% 稳定混合 + 50% 待消融新源），loss/梯度范数 spike 分析反查坏数据 → 固化为自动化数据过滤器</li>
+</ul>
+<h3 id="33-agentic-rl">3.3 高计算 Agentic RL（本报告核心）</h3>
+<p>训练框架：GRPO-style 策略梯度 + 全异步执行，10.5K 张 GB300，4 周，100M+ rollouts，110K 并发 rollout，权重 12 秒更新一轮。</p>
+<p>异步一致性三件套（训练-推理失配的系统性治理）：<br />
+1. Nucleus 采样对齐：推理用 p=0.99 nucleus 采样，训练时保留生成时的 nucleus 支持集并在同一集合上重归一化（DeepSeek-V3.2 方法），消除截断掩码不一致的梯度泄漏<br />
+2. MoE routing replay：推理引擎逐 token 记录选中的 experts，训练端复用这些路由分配重算 gate 值；router 权重与负载均衡 bias 全程冻结——即使冻结，进入 router 的表示仍会演化，所以 replay 依然必要<br />
+3. 数值一致性：LM head、router、residual stream 在训练和推理两侧都跑 FP32</p>
+<p>异步容忍度实测：中位 rollout 12 分钟，2% 超过 1 小时，1/5 的训练步里至少有一个贡献 rollout 跑了 6 小时以上；in-flight rollout 在权重更新后继续跑不中断，单条轨迹可跨多个 policy 版本（逐 token 记录 policy version）；任务相关的 rollout deadline，超时丢弃，组内凑够完成数才保留。采样 token 平均落后 trainer 5 个 policy 版本。</p>
+<p>训练稳定性诊断仪表（Figure 15，直接可抄的监控项）：<br />
+- 梯度范数：中位 1.7e-3，P99 3.0e-3，窄区间无漂移<br />
+- 采样/训练策略 per-token KL：中位 2.2e-4 nats；重启后参考值 8.7e-5（=采样与路由 replay 之后的残余失配底噪）<br />
+- 采样 token NLL：全程 0.37→0.50 缓升，但分通道看——reasoning token 0.63→0.69（策略分布仍分散），final-answer token 0.25→0.06（答案通道高度集中）<br />
+- 响应长度：数据混合相内中位变化 ≤1/3，52% 进度后 ≤5%；大变化只与混合切换（转向更长 agentic 任务）同步</p>
+<p>Reward 完整性工程（对 reward hacking 的多层防御）：<br />
+- 自动 verifier 通过 ≠ 解有效（模型可改测试/硬编码输出/钻 harness 漏洞）→ verifier 通过的 rollout 再过 judge + reward-hacking rubric，只看最终 patch<br />
+- CoT 监控 hacking 意图但不施加直接优化压力（防把意图藏起来）<br />
+- 判 hacking：正确分归零但保留 length cost = 与等长失败同待遇<br />
+- rubric 训练中滚动更新，模型发现新 hack 就补规则</p>
+<p>RL 任务策划五原则（数百万任务池 → ~100 万精筛）：<br />
+- Quality = 零奖励噪声：不误导、不可 hack、verifier 确定性；排除无 CoT 也能对的任务<br />
+- Difficulty = 对当前模型不太难不太易（组内不能全零/全满），且要排除「假难假易」（答案泄漏、上下文不足、chat 模板错误、不可能任务）<br />
+- Scale：开源任务池需重筛、vendor 任务贵、自建合成管线三者结合，最终自建为主<br />
+- 迭代精炼：每轮实验后分析 rollout，成功/失败归因到任务问题就修任务</p>
+<p>推理努力度与长度惩罚：显式 reasoning-effort 输入控制 rollout 预算，超预算终止且无正确性奖励；同正确性下线性长度惩罚偏好短回复 → 模型学会按请求预算适配 token 用量（token 效率是训出来的）。</p>
+<p>跨域泛化实证：26-52% 进度只训数学/STEM/竞赛编程，SWE 基准不掉分；52-65% 只训软件工程，STEM/编码不回退；83% 前从未训过搜索浏览，BrowseComp 却从 50.1（27% 处）涨到 57.9（83% 处）。</p>
+<p>RL 行为演化预测（4.2 节，种群遗传学启发的理论工具）：<br />
+- GRPO 下某行为（SFT 出现率 π、组内平均优势 Ā）每 batch 获得对数权重增量 Δθ ∝ π·Ā<br />
+- 若行为奖励高出替代项 g 个组内标准差，其对数赔率遵循 replicator 方程 dL/dt ≈ 2κηgπ(1-π)：g&gt;0 放大、g&lt;0 压制、g≈0 冻结在 SFT 出现率<br />
+- κη 在一个完整 run 上拟合一次即可跨 run 复用；预测 318 个 run 的各奖励分量增益 r=0.79（对比 pass@k 天花板基线 r=0.46）<br />
+- 实战用法：step-0 测几十个 scored group 即可预判某失行为（如模板化脚手架、多余 markdown 格式）会被放大还是压制，据此提前设计过滤器和 reward 修改</p>
+<h3 id="34-mopd">3.4 MOPD：双专家在线策略蒸馏合并</h3>
+<ul>
+<li>架构：agentic expert（推理/长程任务）与 alignment expert（helpfulness/safety/对话）各自独立 SFT+RL，最后合并成单一学生</li>
+<li>学生自己生成轨迹，教师按任务族概率路由：T ~ Bernoulli(r(x))，逐 rollout 独立采样教师</li>
+<li>损失：全词表 reverse KL（DAPO token 级归一化），上下文来自学生采样但求导时固定</li>
+<li>系统工程三招：</li>
+<li>传 teacher hidden states 而非完整分布（O(N·d_T) vs O(N·V)），trainer 端用缓存冻结的 output head + 各自 softcap 重建 logits</li>
+<li>Blockwise reverse KL：C×V 分块计算，临时显存 O(C·V)</li>
+<li>Student 侧用 trainer 当前概率（非生成时的旧概率）：KL 为零即无需更新，每次更新只处理「更新时刻仍存在的分歧」</li>
+<li>价值：两专家可独立训练独立评估再合并，避免单一 reward 混合的互相牵制</li>
+</ul>
+<h3 id="35">3.5 量化与投机解码（部署侧）</h3>
+<p>FP8（E4M3 W8A8，RTN 免校准）：<br />
+- 覆盖 attention 投影/dense MLP/MoE experts/KV cache；embedding/LM head/router/norm 保留原精度<br />
+- 权重 per-output-channel 静态 scale，激活 per-token 动态 scale</p>
+<p>NVFP4（E2M1 W4A4，Local Hessian PTQ）：<br />
+- 只量化 MoE experts（49 层路由专家），dense MLP/attention/embedding/LM head 留 BF16，router 留 FP32<br />
+- 16 值块一个 FP8 scale + 张量级 FP32 scale；逐层校准（每层看 BF16 模型激活而非已量化层）<br />
+- 校准集 = 1,000 条 32K token 长 agentic 轨迹（32.8M tokens，多为软件工程会话）——服务场景同构校准<br />
+- recipe 选择用 held-out KL（64 条留存序列）排序而非单次 benchmark（单点噪声可达 3.2 分而中位差 &lt;0.4%）<br />
+- 量化 dense MLP 只省 0.5% 体积却增加 KL，弃之</p>
+<p>DFlash 2 投机解码 drafter（1.93B block-diffusion）：<br />
+- 5 层 transformer，块内双向注意力 + 通过 KV 联读到 Beam 第 4/16/28/40/46 层（全局注意力层）hidden states；上下文注意力限 4,096 窗口 → drafting 成本不随上下文增长<br />
+- embedding 和 output head 直接复用 Beam 的（冻结）<br />
+- 训练数据：MOPD 后期 rollout（策略自采样似然平稳后）+ PerfectBlend 再生；agentic 轨迹替换 42% 使接受 token +21%<br />
+- 短上下文训练→长上下文迁移：8K 训练的 drafter 在 4-8K 接受 4.70/块，64K+ 反而 5.02/块（位置缩放不破坏迁移）<br />
+- block 16 训练、block 8 服务（8 位置验证在 12 组设置中 11 组更快：晚位置很少被接受却占验证算力）；反向（小训大服）不行<br />
+- 训练仅 3.4K B300 GPU-hours；在线从 NVFP4 checkpoint 取特征（BF16 替换只影响 1.5%）</p>
+<h2 id="_5">四、关键实验结果与数据</h2>
+<p>评测条件：temperature 0.7，top-p 0.99，reasoning effort 512。</p>
+<p>软件工程/终端（Table 19）：<br />
+- Beam(501.3B/23.4B) vs GLM 5.3(744B/40B) vs Kimi K3(2.8T/104B) vs DeepSeek V4.1 Flash(748B/16B)<br />
+- DeepSWE v1.1：Beam 43.3 / GLM5.3 61.0 / Kimi K3 68.0 / DeepSeek V4.1F 74.2（Beam 落后）<br />
+- SWE-Bench Verified：Beam 81.6 / Inkling 77.6 / Nemotron 3 Ultra 70.7（Beam 领先）<br />
+- Terminal-Bench v2.1：Beam 80.1 / Kimi K3 88.3 / DeepSeek 90.6<br />
+- 结论：Beam 以 1/4.7 的 active 参数量接近头部，原始能力落后于 Kimi K3/Qwen 3.8-Max，token 效率是核心卖点</p>
+<p>数学与科学（Table 20）：<br />
+- AIME 2026：97.7（GLM 5.2 99.2）<br />
+- GPQA Diamond：90.6（Kimi K3 93.5）<br />
+- HLE no-tools：36.0（Kimi K3 46.9）<br />
+- CritPt：16.3（显著高于 Inkling 5.4、Nemotron 3.1，低于 GLM 5.2 的 20.9）</p>
+<p>RL 训练内曲线（Figure 16/17）：<br />
+- DeepSWE pass@1：SFT checkpoint 在 e=512 无从比较；79% 进度时 e=512 达 35%，最终 checkpoint e=512 达 41%（更难任务集引入后仍涨）<br />
+- 全程无平台期：能力随 RL compute 持续提升</p>
+<p>量化保真（Table 13/14 + Figure 36-39）：<br />
+- FP8 恢复 BF16 中位基准分 99.93%（22 基准均值差 +0.03）；NVFP4 恢复 98.98%（-0.45）<br />
+- 安全行为不退化：harmful refusal 88.9%→FP8 89.7%/NVFP4 88.5%<br />
+- 显存：1M 上下文 BF16 需 8 卡 B300，FP8/NVFP4 4 卡即可；4 卡 NVFP4 KV 容量 8.2M tokens（FP8 5.8M，1.41×）<br />
+- 吞吐（8K/1K 场景，@50 tok/s/user）：4 卡 NVFP4 达 BF16 8 卡的 6.0× per-GPU；@100 tok/s/user 4.2×<br />
+- AgentX 回放（393 条真实 agentic 编码会话，80-100K 输入，95% 前缀缓存命中）：NVFP4 64 并发会话仍 &gt;50 tok/s/user（4 卡 457 tok/s/GPU ≥3.7×）</p>
+<p>投机解码（Table 17/18）：<br />
+- τ=4.38（采样）/4.64（贪心），上限 8（block 8 服务 + 7 drafted tokens/步）<br />
+- 解码加速：单请求 1.96-3.03×，32 并发 1.89-2.75×<br />
+- 长上下文不掉：DeepSWE 轨迹 16K→128K 上下文 τ 稳定 4.2-4.6</p>
+<p>安全：Iris Safety Eval 综合 harmful refusal/pivot 88.9% + harmless compliance 81.5%（开源模型 Pareto 前沿最高 refusal）；OSF 四类系统性风险（生武/化武/失控/网络攻击）均评 Limited。</p>
+<h2 id="_6">五、创新点归纳总结</h2>
+<ol>
+<li>「训练-推理一致性」从口号变成三件套工程规范：nucleus 支持集对齐 + MoE routing replay + 关键组件 FP32——每件都有量化指标（KL 2.2e-4 nats、重启底噪 8.7e-5）可监控。这是异步 RL 稳定性的核心贡献</li>
+<li>Replicator 方程做 RL 行为预测：把种群遗传学的选择压力数学引入 GRPO 行为动力学，step-0 即可预判行为放大/压制（318 runs r=0.79），把「RL 后才发现学坏」变成「SFT 后即可预测」</li>
+<li>MOPD 双专家解耦-合并范式：能力专家与对齐专家独立训练独立评估，Bernoulli 路由的全词表 reverse KL 合并，回避单一混合 reward 的牵制；blockwise KL 把 O(N·V) 显存压到 O(C·V)</li>
+<li>Token 效率是被 RL 训练出来的第一公民：effort 输入 + 预算截断 + 线性长度惩罚三件套，产出「更少 token 同等性能」的可控旋钮</li>
+<li>Reward integrity 分层审计：verifier → judge rubric → CoT 意图监控（不优化）→ 滚动更新 rubric，承认「verifier 通过≠正确」并系统性补防</li>
+<li>服务场景同构的量化校准：用 1M agentic 轨迹校准 NVFP4，用 held-out KL（而非噪声大的单次 benchmark）选 recipe——评测驱动的工程决策方法论</li>
+<li>DFlash 2 的「短训长迁移」：drafter 只在 8K 训练，64K+ 上下文接受率反升；块大小训 16 服 8 的不对称性利用</li>
+</ol>
+<h2 id="_7">六、趋势判断</h2>
+<ol>
+<li>Agentic RL 的 scaling 曲线刚被打开：100M rollouts 无平台期意味着「RL compute → 能力」还在线性增益区，各家的下一步是 rollout 基础设施军备（110K 并发 rollout、12s 权重同步已是入场券）</li>
+<li>技术报告的披露颗粒度在军备化：训练稳定性仪表（KL/NLL 分通道）、replicator 预测、量化 recipe 消融全量公开——闭源优势从「配方保密」转向「规模与数据」，配方本身正在变成公共品</li>
+<li>双专家蒸馏合并（MOPD）会成为中型实验室标配：单 reward 混合训练中 helpfulness 与 agentic 能力互相牵制的问题，解耦-合并比权重调参干净</li>
+<li>量化-投机解码协同成为部署标配叙事：NVFP4 只量化 MoE experts（省 4 倍体积）+ block-diffusion drafter（不依赖完整上下文）组合拳，指向「MoE 部署经济学」成为独立研究方向</li>
+<li>安全评估走向 OSF 系统性风险框架 + 拒绝率 Pareto 前沿的标准化表述，开源模型的对齐披露格式正在收敛</li>
+<li>中间训练（midtraining）作为独立阶段被做实：两阶段 950B tokens 的「能力聚焦→上下文扩展」，与 pretraining/post-training 三分天下</li>
+</ol>
+<h2 id="_8">七、局限性</h2>
+<ol>
+<li>原始能力未达第一梯队：DeepSWE 43.3 vs DeepSeek V4.1 Flash 74.2、Kimi K3 68.0，HLE 36.0 vs 46.9——「3-4× 推理效率」的代价在绝对分数上可见</li>
+<li>异步 RL 的 stale policy 容忍（平均落后 5 个版本）没有给出消融：多陈旧开始伤学习效率没有边界数据，复用者需自行摸索</li>
+<li>Replicator 预测的 κη 常数「拟合一次跨 run 复用」依赖同 recipe 族；换 reward 结构/模型规模是否仍可迁移未验证</li>
+<li>RL 任务池依赖自建合成管线 + vendor 采购，质量-难度过滤的人力/算力成本未披露，「~100 万任务」的复现门槛对学术组不现实</li>
+<li>评测自报成分高：Iris Safety Eval 为自建套件；advantage 是与开源模型对比而非闭源前沿</li>
+<li>DFlash 2 依赖 Beam 特定层（4/16/28/40/46）的 hidden states 接入，换目标模型需要重训 drafter，通用性受限</li>
+<li>1M 上下文的 NVFP4 部署仍需 4 卡 B300 级硬件，边缘侧（Jetson 类）无法直接受益于该部署配方</li>
+</ol>
+<h2 id="_9">八、关联（与已有知识和系统的对照）</h2>
+<p>与 Hermes Agent 的关联：<br />
+- 训练稳定性仪表（§3.3）与 OpenForgeRL 的轨迹重建互为表里：Beam 给出「该监控什么」（梯度范数带、KL、NLL 分通道），OpenForgeRL 给出「怎么录轨迹」<br />
+- Reward integrity 分层审计直接对照 content-judge / llm-as-a-verifier-framework 两个 skill：Beam 的 judge-rubric-滚动更新模式可补强 content-judge 的评分表设计<br />
+- Replicator 行为预测与 evolver / session-evolution-scan 的关系：把「事后扫会话找漂移」升级为「事前预测漂移方向」的理论工具</p>
+<p>与 DUCK 机器人 RL 训练的关联：<br />
+- 异步 rollout deadline 机制（任务相关超时丢弃、凑够组才保留）可移植到 microduck 训练的 episode 管理——当前按固定步数截断，任务相关 deadline 更合理<br />
+- 「分通道 NLL」诊断思路（reasoning vs final-answer 分开看）可类比到策略网络诊断：动作通道 vs 辅助输出通道分开监控集中度<br />
+- 训练稳定性三指标（梯度范数 P99、策略 KL、重启底噪参考值）可作为长跑盯守脚本（hwatch）的判据升级——现在是「看 reward 曲线」，Beam 的做法是「先看失配指标」</p>
+<p>与 Jetson 边缘部署的关联：<br />
+- 「只量化 MoE experts」的选择性量化思路（dense 部分 BF16 保 KL）对边缘 MoE 部署有直接参考价值，但 Jetson 无 NVFP4 硬件，可类比的是「哪些层量化收益/损失比最差就不量化」<br />
+- 短上下文训练→长上下文迁移的 drafter 结论，与 SPORK（自推测 fork）的加速思路同族：都在「低成本草案 + 高成本验证」框架下做文章</p>
+<p>与量化交易系统的关联度低（无直接方法迁移），仅 reward 完整性工程的「verifier 通过≠正确」哲学与回测防未来函数同构。</p>
+<p>与已读论文的关联：<br />
+- OpenForgeRL（2609.20734）：harness-native RL 的小规模验证 ↔ Beam 的超大规模工业实践，两端夹出 agentic RL 的方法论区间<br />
+- MDSKILL（2611.05313）：记忆蒸馏内化 ↔ MOPD 结构蒸馏，蒸馏目标不同（技能记忆 vs token 分布）但「教师路由」思想同构<br />
+- SPORK（2607.03333）：自推测 fork 加速 ↔ DFlash 2 外部 drafter，同属投机执行家族<br />
+- Screenshots-or-Tools（2608.03327）：工具采纳鸿沟 ↔ Beam 有机发展工具使用，训练分布决定工具偏好</p>
+<h2 id="_10">九、查询拓展</h2>
+<p>精读中产生、值得后续追踪的问题线索：</p>
+<ol>
+<li>Reflection AI 公司背景与 Beam 商业定位：与 GLM/Kimi/Qwen 的开源竞争格局，Reflection 的自主编程 Agent 产品线如何消费 Beam——搜 "Reflection AI Beam agent product"</li>
+<li>DFlash 2 前作 DFlash 1 的 block-diffusion 原始论文（引用 123/124），理解块级扩散 drafter 的完整谱系</li>
+<li>Unicron 训练引擎是否开源/公开细节：与 Megatron-LM 的关系（报告提到 patched Megatron 做序列装箱）</li>
+<li>in-flight weight updates（引用 45）与 partial rollouts（引用 46）的原始文献，异步 RL 的 off-policy 修正理论</li>
+<li>Local Hessian PTQ（引用 120）与 NVIDIA Model Optimizer 的量化算法文档——NVFP4 的工程细节</li>
+<li>Harbor 任务目录格式（引用 63）：开放 agent 任务容器标准，与 AgentBench/MLE-bench 的任务格式对比</li>
+<li>PerfectBlend 数据集（引用 125）：1.42M prompts 的构成</li>
+<li>OSF（Open Safety Framework）四类系统性风险评估方法论文档</li>
+</ol>
+<h2 id="_11">十、指南分析</h2>
+<p>从本报告提炼的可操作工程指南（按「抄了就能用」程度排序）：</p>
+<ol>
+<li>异步 RL 稳定性监控清单：梯度范数（中位+P99 是否窄带）、采样/训练策略 per-token KL、重启后 KL 底噪作参考线、NLL 分通道——四项指标齐备即可诊断「训练是否在健康地异步」</li>
+<li>MoE 中间训练调参三禁令：禁 router z-loss、禁 sequence aux loss、禁 expert bias update（数据分布偏移期），只动 router 权重</li>
+<li>RL 任务池质检七查：答案泄漏、上下文不足、模板错误、不可能任务、verifier 非确定、无 CoT 可解、可 hack——上线前逐项过</li>
+<li>量化 recipe 选择流程：held-out KL 排序 &gt; 单次 benchmark（噪声 3.2 分级）；校准集必须与服务场景同构（长 agentic 轨迹）</li>
+<li>投机解码块大小决策：训练用大块（16）、服务用小块（8）——晚位置接受率低却占验证算力，服务端砍块几乎免费提速</li>
+<li>行为演化预测实操：step-0 采几十个 scored group，测 SFT 出现率 π 与选择性优势 g，用 replicator 方程预判行为走向，提前下过滤器</li>
+</ol>
+<h2 id="_12">十一、拓展应用推荐</h2>
+<ol>
+<li>【Hermes｜P0】把「分通道 NLL + 策略 KL」诊断模式写入长跑训练盯守体系：当前 hwatch 盯 reward 曲线，增加失配指标层。工作量：盯守脚本加 2 个指标列。收益：训练发散提前预警从「事后看曲线」变「事中看指标」</li>
+<li>【Hermes｜P1】content-judge skill 吸收 Beam 的 judge-rubric 滚动更新模式：评分表版本化，新发现的 hack 模式即时补进 rubric。工作量：skill patch 一次</li>
+<li>【DUCK 训练｜P1】任务相关 rollout deadline 替代固定步数截断：不同课程阶段 episode 长度分布差异大，deadline 按任务难度分档。工作量：训练配置加 deadline 字段</li>
+<li>【DUCK 训练｜P2】replicator 行为预测用于预判「奖励 hack 苗头」：鸭子策略的跺脚/抖动类局部最优行为，step-0 测 π 与 g 预判是否会被放大，提前加 reward 惩罚项</li>
+<li>【边缘部署｜P2】「选择性量化」思路映射到 Jetson MoE 类模型：量化收益/保真比最差的层保持高精度，其余压到 INT4——需先在小模型上做 KL 保真度测量管线</li>
+<li>【论文选题｜P3】「训练-推理一致性三件套」+ 分通道 NLL 诊断在中小规模 RL（如机器人策略）的可复现性研究——工业报告的方法下沉验证</li>
+</ol>
+<h2 id="_13">十二、行动启示与回访计划（结论与行动）</h2>
+<p>核心结论：Beam 是第一份把「agentic RL 工业化」的全链路工程细节（异步一致性三件套、稳定性仪表、reward 分层审计、行为演化预测、部署量化协同）成体系披露的技术报告。原始能力不是第一，但「token 效率被显式训练出来」+「无平台期 RL」两个信号确认了 agentic RL 的 scaling 空间。对个人体系最有价值的不是模型本身，而是可直接抄的工程仪表与任务质检清单。</p>
+<p>行动项：<br />
+1. 立即可做：把 §十.1 的监控清单对照 DUCK 下次长训的盯守脚本补齐（P0）<br />
+2. 本周内：content-judge skill 打 rubric 版本化补丁（P1）<br />
+3. 回访触发条件：①Unicron 引擎或 DFlash 2 若开源发布，重新评估边缘部署借鉴点；②Reflection 发布 Beam 1.5/下一代时回看「无平台期」是否延续；③自建 RL 任务池时直接调用 §十.3 七查清单<br />
+4. 待全文验证项：无（本次 HTML 全文完整，165K 字符 S4 全读，数据均出自原文）</p>
+<hr />
+<ul>
+<li>生成：jbot 每日论文精读 cron（2026-11-23）</li>
+<li>数据来源：arXiv HTML 全文（arxiv.org/html/2611.26358v1），S1-S7 全章节提取，Table 12-19 关键数字直接摘自原文</li>
+</ul>
+</body>
+</html>
