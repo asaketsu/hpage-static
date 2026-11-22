@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SolidCraft-AI原生CAD的Engine驱动架构</title>
+
+<meta property="og:title" content="SolidCraft-AI原生CAD的Engine驱动架构" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/2026-11-22-SolidCraft-AI%E5%8E%9F%E7%94%9FCAD%E7%9A%84Engine%E9%A9%B1%E5%8A%A8%E6%9E%B6%E6%9E%84.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="solidcraftai-cad-engine">SolidCraft：AI 原生 CAD 的 Engine 驱动架构</h1>
+<p><code>#SolidCraft</code> <code>#AI-CAD</code> <code>#参数化设计</code> <code>#MCP</code> <code>#工程软件架构</code> <code>#Rust</code> <code>#几何内核</code></p>
+<blockquote>
+<p>来源：微信公众号文章《CAD 会逐渐演变成一个能够被人、程序和 AI 共同调用的工程设计系统》（作者、准确发布日期未在抓取正文中识别）</p>
+<p>原文：https://mp.weixin.qq.com/s/yHzoOEtN2kAeag9mUjao_Q</p>
+<p>一手核验：SolidCraft GitHub README、官方站点（访问于 2026-11-22）</p>
+<p>信源分级：公众号为二手解读；产品能力、版本、MCP/插件安全机制以项目官方材料为准。</p>
+
+<p class="meta-date">生成日期 2026-11-22</p></blockquote>
+<h2 id="_1">定锚</h2>
+<p>SolidCraft 的价值不在于已经可替代 CATIA、NX 或 Creo，而在于它把 <strong>CAD 能力抽象为同一套可验证命令</strong>：GUI、CLI、浏览器和 AI Agent 都调用同一执行路径。对飞机设计企业而言，这是一种值得吸收的架构方向，而非可以直接替换工业 CAD 的产品结论。</p>
+<ul>
+<li><strong>收录理由</strong>：补足既有《FreeCAD AI MCP 生态比较研究》偏“外接 MCP”路线的盲区——SolidCraft 代表“核心命令系统原生面向 Agent”的路线。</li>
+<li><strong>适用场景</strong>：企业 CAD 二次开发、知识工程、参数化构型生成、可追溯的 Agent 执行链。</li>
+<li><strong>边界</strong>：官方定位仍为“早期但可用于简单零件”；复杂曲面、工程图、CAM/CAE 与工业级内核稳健性不能据此视为已解决。</li>
+</ul>
+<h2 id="gui">内容整理：从 GUI 流程到统一命令引擎</h2>
+<h3 id="1">1. 原文的核心判断</h3>
+<p>传统 CAD 常以“用户操作界面 → 工具逻辑 → 建模计算”组织能力，自动化往往绕过 UI、重复实现或脆弱地模拟鼠标行为。文章以 SolidCraft 为样本提出另一条链路：</p>
+<pre><code class="language-text">GUI / Browser / CLI / MCP Agent
+            ↓
+      统一 JSON 命令接口
+            ↓
+   文档、特征、参数与 Undo 事务
+            ↓
+       几何内核与 B-Rep 运算
+</code></pre>
+<p>其要点不是“AI 替工程师画模型”，而是把特征操作转化为带明确输入、错误返回、状态变更与可复核输出的工程命令。</p>
+<h3 id="2-solidcraft">2. 一手核验：SolidCraft 当前已公开的能力</h3>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>官方材料证据</th>
+<th>解释</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>多入口</td>
+<td>桌面、浏览器、headless CLI、MCP 使用同一命令</td>
+<td>降低“UI 自动化、脚本、Agent 三套逻辑”分叉风险</td>
+</tr>
+<tr>
+<td>参数化</td>
+<td>受约束草图、参数/单位表达式、可编辑特征时间线</td>
+<td>使“改壁厚/孔距”成为参数与特征修改，而非重生成网格</td>
+</tr>
+<tr>
+<td>Agent 闭环</td>
+<td>MCP 可执行建模、测量、改参数、导出；官方表述为 Build → Inspect → Revise → Export</td>
+<td>生成后测量与检查是 Agent 工作流的一等能力</td>
+</tr>
+<tr>
+<td>几何内核</td>
+<td>当前使用 Truck；SolidCore 是面向后续的 NVIDIA SMLib Rust 移植，仍在开发</td>
+<td>不能把 SolidCore 写成已全面生产化的内核</td>
+</tr>
+<tr>
+<td>版本成熟度</td>
+<td>官方站点展示 v0.12.0；README 称简单零件“早期但可用”，75/76 公开参考件通过其几何 oracle</td>
+<td>测试覆盖是积极信号，但不等同于航空级复杂模型的长期稳健性</td>
+</tr>
+</tbody>
+</table>
+<h3 id="3-everything-is-a-command">3. “Everything is a command”的实际意义</h3>
+<p>统一命令层应至少具备以下性质：</p>
+<table>
+<thead>
+<tr>
+<th>能力</th>
+<th>对人工用户</th>
+<th>对程序/Agent</th>
+<th>企业工程价值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>参数 schema</td>
+<td>减少表单歧义</td>
+<td>可校验 JSON 输入</td>
+<td>降低误调用</td>
+</tr>
+<tr>
+<td>事务与 Undo</td>
+<td>可安全回退</td>
+<td>失败不污染设计状态</td>
+<td>支持可审计试错</td>
+</tr>
+<tr>
+<td>检查/测量命令</td>
+<td>直观验模型</td>
+<td>可形成验收断言</td>
+<td>让“已生成”变为“已验证”</td>
+</tr>
+<tr>
+<td>同源命令</td>
+<td>GUI 行为一致</td>
+<td>无需 UI 自动化</td>
+<td>避免双实现漂移</td>
+</tr>
+<tr>
+<td>导出与版本记录</td>
+<td>正常交付</td>
+<td>可自动生成工件</td>
+<td>可进入构型管理链</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4">4. 数据语义比几何交换更关键</h3>
+<p>STEP 能交换实体几何，却通常难以无损携带原 CAD 的特征历史、参数关系与约束语义；STL/OBJ 则主要是网格。因而 AI 能可靠修改的前提不是“看见一个形状”，而是存在可寻址的参数、特征依赖与稳定的对象引用。</p>
+<p>文章提到拓扑命名问题：上游特征更新后，边/面的内部编号可能变化，下游倒圆角等引用可能失效。这是参数化 CAD 的长期难题；命令接口本身不能消除它，只能通过持久化命名、来源追踪、重建后检查和失败显式化来控制风险。</p>
+<h2 id="_2">查询拓展</h2>
+<ul>
+<li>项目主页：<a href="https://solidcraft.io">https://solidcraft.io</a></li>
+<li>源代码与能力说明：<a href="https://github.com/tangency-labs/solidcraft">https://github.com/tangency-labs/solidcraft</a></li>
+<li>既有对照：[[2026-06-30-FreeCAD-AI-MCP生态比较研究.md]]——比较“外挂 MCP 服务”与“原生命令引擎”。</li>
+<li>底层背景：[[2026-08-12-全球十大CAD几何建模内核-NX-CATIA-SolidWorks.md]]——几何内核是 CAD 最难迁移、最需长期验证的一层。</li>
+</ul>
+<h2 id="_3">归纳总结</h2>
+<p><strong>结论：SolidCraft 展示的不是“自然语言 CAD 已成熟”，而是 AI-CAD 应有的正确底座：命令同源、状态可回退、结果可检查、设计语义可保存。</strong></p>
+<p>原文的三层趋势可以压缩为：</p>
+<ol>
+<li><strong>架构层</strong>：从 GUI 驱动改为 Engine/Command 驱动；</li>
+<li><strong>产品层</strong>：从单桌面客户端变为桌面、Web、CLI、MCP 可组合的工程能力；</li>
+<li><strong>交互层</strong>：图形、参数、脚本、自然语言长期共存，各自承担精确操作、意图表达、批处理和任务编排。</li>
+</ol>
+<p>其中最应警惕的误读是：有 MCP ≠ 有工程闭环。真正的闭环必须包含“意图/约束 → 命令执行 → 几何与规则验证 → 失败回滚/修订 → 可追溯交付”。</p>
+<h2 id="_4">趋势判断</h2>
+<table>
+<thead>
+<tr>
+<th>趋势</th>
+<th>判断</th>
+<th>依据与限制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CAD 能力 API 化</td>
+<td>高确定性</td>
+<td>GUI、CLI、自动化共用核心命令可显著降低逻辑分叉；已被 SolidCraft 原型验证</td>
+</tr>
+<tr>
+<td>Agent 直接操纵特征树</td>
+<td>中期可行</td>
+<td>依赖参数 schema、拓扑稳定性、约束检查与权限边界，远非仅靠聊天模型</td>
+</tr>
+<tr>
+<td>跨 CAD 保留完整特征历史</td>
+<td>长期困难</td>
+<td>各系统的特征、求解器、内核和依赖语义不同，STEP 不能自然解决</td>
+</tr>
+<tr>
+<td>开源 Rust CAD 取代成熟工业 CAD</td>
+<td>近期不成立</td>
+<td>内核迁移、曲面、工程图、CAM/CAE、长期回归库均是高门槛</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_5">关联分析</h2>
+<h3 id="_6">与企业级飞机设计智能化的映射</h3>
+<table>
+<thead>
+<tr>
+<th>SolidCraft 思想</th>
+<th>飞机设计企业可迁移对象</th>
+<th>不应直接照搬的部分</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>统一命令注册表</td>
+<td>将 CATIA/自研工具封装为“受控设计动作”</td>
+<td>不把 GUI 宏录制当命令 API</td>
+</tr>
+<tr>
+<td>参数化时间线</td>
+<td>构型参数、骨架、部件规则、设计版本</td>
+<td>不假设跨系统拓扑引用天然稳定</td>
+</tr>
+<tr>
+<td>Inspect/Measure</td>
+<td>几何完整性、间隙、质量属性、规则校核</td>
+<td>不以截图或模型存在替代适航/工艺验证</td>
+</tr>
+<tr>
+<td>MCP 接口</td>
+<td>Agent 发现可用工具、受限调用与回执</td>
+<td>不向 Agent 直开放生产 PLM/CAD 写权限</td>
+</tr>
+<tr>
+<td>CLI/headless</td>
+<td>批量变型、夜间规则校验、回归测试</td>
+<td>不绕过配置状态、审批与签署链</td>
+</tr>
+</tbody>
+</table>
+<h3 id="catds">对 CATDS / 企业工具链的启发</h3>
+<p>最小可行路线不是重造 CAD 内核，而是在既有 CATIA/CAA 或自研计算服务外建立“设计动作协议”：</p>
+<pre><code class="language-text">自然语言任务
+  → 受控任务规划（禁止直接写生产模型）
+  → 参数化命令 + 输入 schema
+  → 沙箱/副本模型执行
+  → 规则、质量属性、几何证据校验
+  → 人工复核后再进入受控发布
+</code></pre>
+<p>该路线优先投资“命令定义、验证器、证据与回滚”，而不是先投资一个万能 CAD 聊天入口。</p>
+<h2 id="_7">指南分析</h2>
+<h3 id="_8">可落地的四级接入门</h3>
+<table>
+<thead>
+<tr>
+<th>等级</th>
+<th>动作</th>
+<th>最低验收门</th>
+<th>风险控制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L0 只读诊断</td>
+<td>读取参数、质量属性、模型树</td>
+<td>输出可复现且不改模型</td>
+<td>默认权限</td>
+</tr>
+<tr>
+<td>L1 草案生成</td>
+<td>生成参数变更/建模命令草案</td>
+<td>schema 校验 + 人工确认</td>
+<td>不触达正式模型</td>
+</tr>
+<tr>
+<td>L2 沙箱执行</td>
+<td>在副本执行命令并导出结果</td>
+<td>几何检查、规则检查、Undo/重放通过</td>
+<td>隔离工作区</td>
+</tr>
+<tr>
+<td>L3 受控合入</td>
+<td>人工批准后合入受控构型</td>
+<td>变更单、审签、版本/基线记录齐全</td>
+<td>最小写权限</td>
+</tr>
+</tbody>
+</table>
+<p><strong>禁止跨档规则</strong>：未建立 L2 的可重复验证与回滚证据，禁止把 Agent 接入 L3 正式构型写入。</p>
+<h2 id="_9">拓展应用推荐</h2>
+<ol>
+<li><strong>建立 CAD Action Contract 原型</strong>：挑选 10 个高频、低风险动作（读参数、量孔距、质量属性、导出 STEP、创建草案特征等），为每个动作定义 JSON schema、前置条件、输出证据、失败码与回滚策略。</li>
+<li><strong>建设“模型断言”库</strong>：把“孔距=xx、最小壁厚≥xx、质量≤xx、无干涉”等要求编码为可机器验证的断言；Agent 的完成条件应是断言通过，而不是成功点击了命令。</li>
+<li><strong>拓扑敏感操作分级</strong>：倒圆角、壳、拔模、布尔和面引用等高失败特征需独立标为高风险操作，强制执行后测量、引用完整性检查和人工复核。</li>
+<li><strong>保留人机双入口</strong>：复杂草图、曲面与装配判断仍由工程师直接操作；Agent 先承担参数批改、重复检查、变型生成与证据汇总。</li>
+</ol>
+<h2 id="_10">行动与回访</h2>
+<ul>
+<li><strong>已执行</strong>：完成 SolidCraft 官方 README 与官网交叉核验；纠正原文中可能被误读的边界——SolidCore/SMLib 路线仍在开发，不能按成熟生产内核引用。</li>
+<li><strong>建议的下一步</strong>：在 CATDS 或相关内部工具中只选 1 个只读 CAD 检查动作，先写 Action Contract 与验收断言，再评估是否进入 L1 草案生成。</li>
+<li><strong>验收/证伪条件</strong>：若同一参数化任务在副本模型上无法稳定重放，或无法输出几何与规则证据，则“Agent 闭环”假设不成立，必须停留在只读/草案阶段，不得扩大写权限。</li>
+</ul>
+<p>→ 相关：2026-06-30-FreeCAD-AI-MCP生态比较研究.md<br />
+→ 相关：2026-08-12-全球十大CAD几何建模内核-NX-CATIA-SolidWorks.md</p>
+</body>
+</html>
