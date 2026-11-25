@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
   pages: write
   id-token: write
 concurrency:
@@ -24,6 +25,25 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: '.'
+      - name: Wait for artifact visibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Workaround: artifact list API eventual-consistency race — deploy-pages@v4
+          # queries right after upload finalization and can see 0 artifacts.
+          # Poll until the github-pages artifact is visible, then deploy.
+          for i in $(seq 1 30); do
+            n=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
+                  --jq '[.artifacts[]? | select(.name == "github-pages")] | length' 2>/dev/null || true)
+            if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
+              echo "github-pages artifact visible (attempt ${i}, count=${n})."
+              exit 0
+            fi
+            echo "attempt ${i}: artifact not visible yet, sleeping 2s..."
+            sleep 2
+          done
+          echo "::warning::github-pages artifact not visible after 60s — proceeding anyway."
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
