@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nTop与JetZero-NemoClaw驱动的BWB智能设计闭环</title>
+
+<meta property="og:title" content="nTop与JetZero-NemoClaw驱动的BWB智能设计闭环" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="ntop-jetzeronemoclaw-bwb">nTop 与 JetZero：NemoClaw 驱动的 BWB 智能设计闭环</h1>
+<p class="tag-line"><span class="tag">#nTop</span> <span class="tag">#JetZero</span> <span class="tag">#BWB</span> <span class="tag">#融合翼身</span> <span class="tag">#NemoClaw</span> <span class="tag">#agenticAI</span> <span class="tag">#工程智能体</span> <span class="tag">#适航取证</span> <span class="tag">#FAA</span> <span class="tag">#CCAR25</span> <span class="tag">#参数化几何</span> <span class="tag">#数字工程</span> <span class="tag">#航空设计</span> <span class="tag">#AI工程栈</span></p>
+
+<blockquote>
+<p>来源：<a href="https://mp.weixin.qq.com/s?__biz=MzkzMjIxNjk1Mg==&amp;mid=2247484032&amp;idx=1&amp;sn=5bc39234f80acd41751c27d6be761bf7">微信公众号（nTop 中国代理推广文）</a> ｜ 一手核验：<a href="https://www.ntop.com/resources/blog/ntop-and-jetzero-are-building-the-next-generation-of-aircraft-design-with-nvidia-nemoclaw">nTop 官方博客原文</a> + <a href="https://blogs.nvidia.com/blog/industrial-software-leaders-secure-autonomous-ai-engineers-nemoclaw">NVIDIA 官方博客（NemoClaw 发布）</a> ｜ 领域增量：<a href="https://jdasolutions.aero/blog/bwb-and-ai-the-moving-faa-certification-maze">JDASolutions 适航分析（含 Aviation Week Graham Warwick 原文 Debrief）</a><br />
+信源分权：公众号=厂商代理转述（推广口径）；nTop 官方博客=一手发布（本文已逐段核验，中文文为忠实转述，无捏造）；NVIDIA 博客=平台方一手；JDASolutions=适航咨询方解读（Graham Warwick 段为 Aviation Week 原文转载，高权重）。<strong>已对原文核验 9 项全吻合</strong>（见核验表）。</p>
+
+<p class="meta-date">生成日期 2026-11-26</p></blockquote>
+<h2 id="_1">定锚</h2>
+<ul>
+<li><strong>领域坐标</strong>：航空总体设计 × agentic AI 工程栈 × 适航取证三域交汇——BWB（Blended Wing Body 融合翼身）是当前民航几何复杂度最高的构型之一，本文是该构型上「智能体全自动设计闭环」的首个公开整机级落地案例。</li>
+<li><strong>收录理由</strong>：用户领域（飞机设计企业/适航 CCAR/构型管理）核心案例——一手是 nTop 官方案例叙述，独家增量是 FAA 适航视角（中文文完全没有）与用户自有「飞机结构智能体框架」研究的直接对照素材。</li>
+<li><strong>场景锚点</strong>：给「AI 输出的设计数据在 TC 取证中算什么」这一现实问题提供 FAA 口径的答案雏形；同时是 agentic 工程栈（OpenClaw/NemoClaw 系）从通用软件向航空主机厂渗透的标志性节点。</li>
+</ul>
+<h2 id="_2">内容整理：三方合作全景 + 核验 + 官方与适航双层增量</h2>
+<h3 id="1-ntop">1. 中文文核心叙述（已对 nTop 官方原文核验）</h3>
+<p>JetZero（美国初创，2021 年成立，专注 BWB 客机/军用加油机，团队源自波音 BWB 计划）在研发周期约束下，需要两套能力协同落地：<strong>可适配自动化流程的几何建模</strong> + <strong>无需人工分步值守的工程智能底座</strong>。落地组合：</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>承载者</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>几何引擎</td>
+<td>nTop</td>
+<td>全参数化、规则驱动的 Notebook，整机全要素整合为一套联动工作流（机身外轮廓/翼盒结构/翼型剖面/吊舱/翼梢小翼/起落架/内部腔体），改参自动合规重建，输出直接可用于仿真</td>
+</tr>
+<tr>
+<td>智能编排</td>
+<td>NVIDIA NemoClaw</td>
+<td>开源（Apache 2.0）agentic 工程参考栈，封装 OpenClaw 类 harness，跑在云端/数据中心/DGX Spark；agent 自动解析 nTop 工程模板结构、填充设计参数、向 GCP 虚拟机下发几何任务、按 DOE 规模弹性扩容、分发至仿真软件</td>
+</tr>
+<tr>
+<td>分析链</td>
+<td>AVL（气动面分析）+ Flexcompute Flow360（高精度 CFD）</td>
+<td>参数化模型已与 AVL 硬对接</td>
+</tr>
+<tr>
+<td>算力</td>
+<td>GCP 分布式计算 + NVIDIA CAE 加速</td>
+<td>试验设计样本量提升时弹性扩容</td>
+</tr>
+</tbody>
+</table>
+<p><strong>落地效果（官方口径）</strong>：一名工程师批量配置数十款 BWB 构型的试验设计，整套系统夜间全自动运算；几何模型完整无损生成、仿真软件收到合规输入、结果结构化返回。工程师从模型配置/格式转换/跨软件对接中解放，聚焦工程判断型决策。</p>
+<p><strong>项目进展（nTop 官方原文）</strong>：JZ-BWB-Claw 仓库从基础翼型验证推进至整机总体布局（general arrangement）开发；nTop 已作为 <strong>native skill</strong> 集成进 NemoClaw；nTop+NemoClaw 集成端到端运行中。</p>
+<h3 id="2-vs">2. 关键事实核验表（中文文 vs 一手源）</h3>
+<table>
+<thead>
+<tr>
+<th>中文文声称</th>
+<th>核验结果</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>nTop×JetZero×NemoClaw 三方合作</td>
+<td>✅ 吻合</td>
+<td>nTop 官方博客原文存在，标题一致</td>
+</tr>
+<tr>
+<td>BWB 是民航几何复杂度顶尖构型之一</td>
+<td>✅ 逐字吻合</td>
+<td>nTop 原文 "one of the most geometrically complex configurations"</td>
+</tr>
+<tr>
+<td>全参数化规则驱动模板覆盖整机全要素</td>
+<td>✅ 吻合（原文列举同款七要素）</td>
+<td>nTop 原文</td>
+</tr>
+<tr>
+<td>nTop 原生集成 NemoClaw（native skill）</td>
+<td>✅ 吻合</td>
+<td>nTop 原文 "running as a native skill inside NVIDIA NemoClaw"</td>
+</tr>
+<tr>
+<td>NemoClaw=开源参考栈、对接 OpenClaw、云端/数据中心/DGX Spark</td>
+<td>✅ 吻合</td>
+<td>nTop 原文 + NVIDIA 官方博客（NemoClaw 亦可接 Hermes 类 harness）</td>
+</tr>
+<tr>
+<td>agent 自动填参/下发 GCP/弹性扩容/分发仿真</td>
+<td>✅ 吻合</td>
+<td>nTop 原文</td>
+</tr>
+<tr>
+<td>一名工程师配置数十款构型、夜间全自动</td>
+<td>✅ 逐字吻合</td>
+<td>nTop 原文 "a single engineer... dozens of BWB configurations... run overnight"</td>
+</tr>
+<tr>
+<td>AVL 已与参数化模型硬对接、Flow360 做高保真 CFD</td>
+<td>✅ 吻合</td>
+<td>nTop 原文</td>
+</tr>
+<tr>
+<td>JZ-BWB-Claw 开源项目从翼型验证推进到总体布局</td>
+<td>✅ 吻合</td>
+<td>nTop 原文 "baseline airfoil test to a full general arrangement"</td>
+</tr>
+<tr>
+<td>三条高管引语（Rothenberg/Costa/O'Leary）</td>
+<td>✅ 吻合（Timothy Costa 头衔：NVIDIA 计算工程事业部 VP 兼 GM）</td>
+<td>nTop 原文</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>中文文为忠实转述 + 推广口吻（尾注导流 ntop-cn.com），无事实捏造；但<strong>省略了原文的关键限定</strong>（见下）。</p>
+</blockquote>
+<h3 id="3-ntop-aviation-week-debrief">3. nTop 官方原文 + Aviation Week Debrief 的被省略增量（中文文没有）</h3>
+<p>JDASolutions 转载的 Graham Warwick（Aviation Week）Debrief 补出硬数字与边界：</p>
+<ul>
+<li><strong>吞吐量级</strong>：JetZero CEO O'Leary——「正在跑<strong>上百万个概念设计</strong>，把获取性能数据的周期从<strong>数月压缩到数天</strong>，横跨大量迭代」。</li>
+<li><strong>设计深度边界（关键限定）</strong>：nTop 平台用到 <strong>PDR（初步设计评审）保真度</strong>，此后细节设计<strong>仍回到传统工具</strong>——它提升的是概念/初步设计阶段能回答的问题层级，不是替代细节设计链。</li>
+<li><strong>人机闭环的具体形态</strong>：agent 由 <strong>Norm Princen 的 BWB 设计原则编程</strong>——前波音 BWB 项目总师、现 JetZero 高级稳定性与控制专家。Rothenberg：「本计划最成功之处是 Norm 坐镇、他的规则集被编码进 AI 算法与参数化逻辑」；O'Leary：「<strong>我们的人在环就是 Norm Princen</strong>」。</li>
+<li><strong>组织动因</strong>：JetZero 奉行 Musk 五步算法（挑战每条需求/删零件删流程/简化优化/压缩周期/自动化）；O'Leary 强调自动化指<strong>前端设计权衡</strong>（「通常自动化在制造端，我们要把它带到设计前端」）。</li>
+<li><strong>保真度-速度权衡的破解</strong>：传统上快=低保真工具（带假设），慢=高保真工具（高确定性）；nTop 以「快速轻量参数化的方式表示高保真几何」，让 agent 能即时回答原本要到细节设计才能回答的问题。</li>
+<li><strong>应用现状</strong>：BWB 演示机构型已冻结；商用客机与军用加油机版本<strong>仍在跑权衡研究</strong>（即该栈当前服务于 trade study，非最终构型发图）。</li>
+<li>Rothenberg 定位金句：nTop 是「<strong>设计吞吐量机器</strong>（design throughput machine）」——构型探索数量级提升并绑定高保真仿真。</li>
+</ul>
+<h3 id="4-faa-jdasolutions">4. FAA 适航视角（JDASolutions 独家增量，领域核心）</h3>
+<p>中文文只讲效率不讲取证，JDASolutions 补出监管侧现实：</p>
+<ul>
+<li><strong>规则空白</strong>：无现行 FAA 规则或 AC 直接覆盖「AI-based aircraft design」的 Part 25 审定；FAA 对 AI 生成设计产物的口径是——<strong>当作必须满足 14 CFR §25.1309、系统安全与验证要求的最终设计数据对待，不作为工程判断的替代品</strong>。</li>
+<li><strong>2026 NPRM 信号</strong>：FAA《运输类飞机与推进系统审定现代化》NPRM（2026-06-26 发布，评论期至 08-25）承认新材料/软件驱动系统/新构型日益溢出传统规则，需 special conditions 与 ELOS（等效安全水平）裁定，拟将这些路径并入 Part 25；AI 辅助设计落入其「novel design methods」措辞射程，需结构化论证。</li>
+<li><strong>申请人须证明的五件事</strong>：<strong>可追溯</strong>（AI 如何产出设计数据）/ <strong>验证</strong>（独立确认数据正确）/ <strong>确认</strong>（模型适用于预期用途）/ <strong>独立性</strong>（AI 不得是安全关键结论的唯一来源）/ <strong>可重复</strong>（过程一致可审计）——FAA 不接受黑箱设计论证。</li>
+<li><strong>可用 vs 不可用清单</strong>（FAA 口径推演）：</li>
+<li>✅ 可用（经验证）：结构优化（拓扑）/气动外形优化/系统架构权衡/载荷预测与包线探索/AI 辅助 FMEA/人因建模</li>
+<li>❌ 不可单独作为证据：AI 生成的符合性结论、安全评估、验证结果、无工程论证的试验削减</li>
+<li><strong>DOE 海量方案不必进 TC 包</strong>，但建议向 FAA 简报「考虑过哪些选项、为何选定当前图纸」；OAAT（先进航空技术办公室）正研究无运营记录可外推时的适航证明新路径。</li>
+<li>AC 25.1309-1B（2024）基准不变：<strong>工程判断仍是一切符合性证明的前提</strong>。</li>
+</ul>
+<h2 id="_3">查询拓展</h2>
+<ul>
+<li>nTop 官方博客另两篇关联文：《Scale Design Throughput with nTop Engines and Distributed Compute》《Closing the Loop Between Implicit Geometry and Flight Physics》——几何引擎分布式吞吐与隐式几何×飞行物理闭环，是本案例的技术底座续篇。</li>
+<li>NemoClaw 官方页：nvidia.com/en-us/ai/nemoclaw（GTC 2026 发布，Apache 2.0，含 Landlock/seccomp/网络命名空间沙箱 + 声明式 YAML 策略）。</li>
+<li>JetZero 官方：jetzero.aero（2023 年公布 200+ 座级 BWB 方案，半埋发动机、无尾构型，军民两用）。</li>
+<li>适航线：Way to BWB Type Certification 系列（jdasolutions.aero）+ FAA 2026 Certification Modernization NPRM 原文。</li>
+<li>NemoClaw 批判视角：cobusgreyling substack《NVIDIA NemoClaw》——「平台捕获动作而非技术突破」：GTC 发布即带已签约 ISV、alpha 质量软件配企业级营销；引用其判断时按厂商立场打折。</li>
+</ul>
+<h2 id="_4">归纳总结</h2>
+<ol>
+<li><strong>案例本质是「知识载体 × 编排 × 人在环」三件套</strong>，而非泛泛的「AI 设计飞机」：nTop Notebook 把整机设计知识压成<strong>可计算、可再生的参数化载体</strong>；NemoClaw/agent 层只负责吞吐与流转；真正的设计智能来自 <strong>Norm Princen 数十年 BWB 经验被显式编码为规则集</strong>。三者缺一即退化为普通 CAD 自动化。</li>
+<li><strong>agentic 栈的工程价值定位是「吞吐量」而非「判断力」</strong>——上百万概念设计/天级周期的前提是几何引擎能以参数化方式承载高保真表示；agent 没有创造新设计知识，只是放大了专家知识的搜索覆盖面。</li>
+<li><strong>适航侧的镜像结论</strong>：FAA 把 AI 输出当「待验证的最终设计数据」而非「证据」，五项证明（追溯/验证/确认/独立/可重复）恰好一一对应工程智能体系统应内置的属性——<strong>可审计性与独立性不是合规外挂，是架构要求</strong>。</li>
+<li><strong>边界诚实</strong>：本案例止步于 PDR 保真度 + trade study 场景，细节设计与最终发图仍走传统链；「数十年来首个新构型民航客机」是愿景叙述，演示机构型冻结≠商用构型定型。</li>
+</ol>
+<h2 id="_5">趋势判断</h2>
+<ul>
+<li><strong>工程软件的价值重心从「工具」迁移到「可被 agent 调度的能力」</strong>：nTop 以 native skill 形态入驻 NemoClaw 是信号——下一代工程软件的集成单元不再是 GUI/API，而是 agent 可内省（introspect schema）、可填充参数、可编排的 skill 形态。与 OpenClaw/Hermes 类 harness 生态的融合已在发生。</li>
+<li><strong>NVIDIA 平台策略</strong>：NemoClaw 是「OpenClaw 很强但企业不敢用」的市场空档回应（沙箱+策略+模型路由+GPU 优化），Cadence/Synopsys/SimScale 等 ISV 同期官宣采用——计算工程事业部正在把 agent 运行时变成新的平台税基（第三方「平台捕获」批判成立，须打折采信其营销口径）。</li>
+<li><strong>适航监管的追赶节奏</strong>：FAA 以 NPRM+special conditions+ELOS 组合拳处理「novel design methods」，OAAT 专攻无运营记录外推的新证明路径——<strong>监管没有放松工程严谨度，只是把 AI 从「不可谈」移到「可谈但须证明」</strong>。CCAR 体系大概率跟随同类框架（对应 CCAR-25.1309 及未来修订）。</li>
+<li>BWB 时间线：JetZero 演示机构型冻结、商用/军用版本权衡研究中，配合 X-66 等 NASA 线，BWB 民用化窗口在 2030s——agentic 栈是新构型压缩研发周期的共性选择。</li>
+</ul>
+<h2 id="_6">关联分析</h2>
+<ul>
+<li><strong>对用户「飞机结构智能体框架主体研究」的直接对照</strong>（四层框架的落地实例）：</li>
+<li>JetZero 案例的 <strong>Norm Princen 规则集编码</strong> = 该研究「知识层（活台账）」的整机级实例——专家知识显式化进参数化逻辑与 AI 算法；</li>
+<li><strong>NemoClaw 编排 + nTop skill 化</strong> = 「编排层（框架主体）+ 对象 Agent 层（插件式可嵌套）」的工业界镜像——nTop 即一个注册进编排层的「几何对象 agent」；</li>
+<li><strong>FAA 五项证明（追溯/验证/确认/独立/可重复）</strong> 与该研究「独立验证层（覆盖度证书）」天然同构——独立验证不只是质量要求，是取证架构要求。该研究框架若吸收本案例，可在 P0 层直接对齐 TC 取证口径。</li>
+<li><strong>与 [[2026-05-12-nTop-Automate-CLI-完整测试文档]] 互链</strong>：本案例的 agent 下发几何任务到 GCP，执行底座正是 ntopcl 无 GUI 批量运行能力——CLI 测试文档是这套闭环的最底层零件，两者拼成「工具→自动化→智能体编排」完整链。</li>
+<li><strong>与 [[2026-08-19-飞机结构智能体框架主体研究-可扩展知识与可嵌套Agent体系的设计方向内容与流程]] 互链</strong>：JetZero 案例 = 该研究命题的国外一手工程落地参照（知识可扩展/agent 可嵌套/独立验证三要求的真实样本）。</li>
+<li><strong>与 [[2026-08-14-国外下一代航空器研发环境与建设布局]] 互链</strong>：该文宏观格局中的「下一代民机（X-66/BWB）」分支，本篇是其研发方法层的具体案例下沉。</li>
+<li><strong>与 [[2026-08-02-航空结构设计AI2026前沿-多模态知识图谱与生成式设计]] 互链</strong>：同为航空设计 AI 前沿，该篇偏研究综述，本篇偏产业落地案例+取证视角。</li>
+<li>结构性对照（领域扩展，原文没有）：FAA 口径映射到 CAAC 体系——25.1309≈CCAR-25.1309，special conditions≈专用条件，ELOS≈等效安全水平，NPRM≈规章修订征求意见；国内适航审查对 AI 设计产物的口径尚无对应公开政策文件（待验证），本案例五项证明清单可直接作为构型管理/型号资料完整性自查的预检表。</li>
+</ul>
+<h2 id="_7">拓展应用推荐</h2>
+<ul>
+<li><strong>nTop（ntop.com，商用 license）</strong>：隐式建模+参数化 Notebook，本案例几何引擎；已有 Automate CLI 支持无 GUI 批量执行，适合做企业内 DOE/MDO 自动化起点。</li>
+<li><strong>NVIDIA NemoClaw（开源 Apache 2.0，github）</strong>：agentic 工程参考栈，Landlock/seccomp 沙箱+声明式策略+模型路由；适合作为自建工程 agent 的安全运行时参考实现（注意 alpha 质量 + NVIDIA 硬件优化绑定）。</li>
+<li><strong>Flexcompute Flow360</strong>：云端高保真 CFD，nTop 案例的分析端；国内场景可用近邻替代（如商业 CFD 云平台）对照评估。</li>
+<li><strong>AVL（Mark Drela，MIT，开源）</strong>：气动面快速分析，参数化几何的低保真快环，门槛最低可复现。</li>
+</ul>
+<h2 id="_8">指南分析</h2>
+<p>企业引入 agentic 设计栈的可操作路径（从本案例反推）：</p>
+<ol>
+<li><strong>先固化知识载体，再上 agent</strong>：把设计规则（规范条款/经验规则集）参数化为可再生 Notebook/模板——没有可内省的几何与规则载体，agent 无从编排。</li>
+<li><strong>吞吐问题优先</strong>：首批场景选 trade study / DOE 批量探索（本案例即此），不碰安全关键决策；agent 输出一律走独立验证后才进设计基线。</li>
+<li><strong>取证预检从第一天建</strong>：按 FAA 五项证明建台账——每次 AI 产出记录可追溯链（哪个模板/哪个版本/哪些参数→哪个结果）、独立复算记录、模型版本与验证状态；这些记录在 TC 阶段直接转化为审定资料。</li>
+<li><strong>人在环具名化</strong>：JetZero 的做法是把「人在环」具体到一位被编码的专家（Norm Princen），而不是泛泛的「工程师审核」——规则编码者与审核责任人实名对齐。</li>
+<li><strong>能力边界明示</strong>：参数化栈用到 PDR 保真度，细节设计回传统链——在流程文件里写明切换点，防止保真度错配。</li>
+</ol>
+<h2 id="_9">行动与回访</h2>
+<ul>
+<li><strong>行动项</strong>：</li>
+<li>✅ 本轮已完成：官方源核验（nTop/NVIDIA/Aviation Week 三源）+ 适航视角增量整合。</li>
+<li>把「FAA 五项证明清单」映射为 CCAR 表述，并入「飞机结构智能体框架」研究的独立验证层设计输入（追溯/独立/可重复三属性直接对齐覆盖度证书字段）——待用户研究命题下次迭代时执行。</li>
+<li>关注 JZ-BWB-Claw 仓库「baseline airfoil → full general arrangement」推进与 nTop Engines 分布式吞吐续篇——下次遇 BWB/agentic 工程栈主题时回访对比进度。</li>
+<li><strong>证伪/待验证条件</strong>：NemoClaw 的「native skill 集成」目前仅见 nTop 官方案例叙述，未在 NemoClaw 官方仓库独立复核 skill 注册实现细节——若后续仓库核查发现集成形态与描述不符（非 skill 而是 API 调用），本文「工程软件 skill 化」趋势判断需降级为「厂商口径」。CCAR 侧对 AI 设计产物的监管口径为空白推断，遇 CAAC 正式文件发布时以文件为准推翻本笔记的映射表。</li>
+</ul>
+<p>→ 相关：2026-05-12-nTop-Automate-CLI-完整测试文档.md<br />
+→ 相关：2026-08-19-飞机结构智能体框架主体研究-可扩展知识与可嵌套Agent体系的设计方向内容与流程.md<br />
+→ 相关：2026-08-14-国外下一代航空器研发环境与建设布局.md<br />
+→ 相关：2026-08-02-航空结构设计AI2026前沿-多模态知识图谱与生成式设计.md</p>
+</body>
+</html>
