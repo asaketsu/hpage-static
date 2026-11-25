@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoT-Proxy跨格式策略蒸馏精读</title>
+
+<meta property="og:title" content="CoT-Proxy跨格式策略蒸馏精读" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="cot-proxyagent">CoT-Proxy跨格式策略蒸馏精读：不看教师推理也能教出长程Agent</h1>
+<blockquote>
+<p><strong>来源</strong>：arXiv (cs.CL)<br />
+<strong>原文链接</strong>：https://arxiv.org/abs/2611.33148<br />
+<strong>作者</strong>：Dawid J. Kopiczko, Tijmen Blankevoort, Yuki M. Asano（Qualcomm AI Research / 阿姆斯特丹大学）<br />
+<strong>记录日期</strong>：2026-11-26</p>
+
+<p class="meta-date">生成日期 2026-11-26</p></blockquote>
+<p><strong>标签</strong>：#论文精读 #策略蒸馏 #Agent #CoT #小模型部署</p>
+<hr />
+<h2 id="_1">〇、定锚：我的现状与目标</h2>
+<p>我的体系里有多条"从强模型向可部署小模型转移能力"的现实需求：Jetson 本地跑 4B 级模型、dsh/Colab 车道做训练、日常主力是 GPT-5.6 Luna/Sol 等<strong>闭源强模型</strong>（其推理恰恰被 API 加密隐藏）。痛点：闭源教师的 chain-of-thought 拿不到，传统"轨迹+CoT 全量监督蒸馏"路线对我物理性不可行。时间尺度上，近期有 domain-llm-training-pipeline 与 dp5 训练管线可承接新配方。本篇的判读标尺：<strong>它是否把"闭源教师→小模型 Agent"这条路从不可行变成可行，且配方能在我的 LoRA 流水线里复现</strong>。</p>
+<h2 id="_2">一、内容整理</h2>
+<h3 id="11">1.1 核心问题：闭源教师的推理墙</h3>
+<ul>
+<li>OpenAI 等厂商对闭源模型返回<strong>加密的 reasoning items</strong>，至多给一段摘要，加密的目的正是阻止蒸馏〔背景，2026〕</li>
+<li>标准蒸馏配方监督"CoT + 可见文本 + 动作"全部内容；对闭源教师，CoT 这一最大信息块缺失〔方法，2026〕</li>
+<li>学生是<strong>已后训练的推理模型</strong>（Qwen3-4B-Thinking），学新策略不能丢已有单步推理能力——这是持续学习问题，不是白板 SFT〔观点，2026〕</li>
+</ul>
+<h3 id="12">1.2 三种训练目标（方法核心）</h3>
+<ul>
+<li><strong>full-CoT</strong>：think 块内放教师推理，全监督（传统基线，仅开源教师可用）</li>
+<li><strong>action-only</strong>：<strong>预填充空 think 块</strong>（<code>&lt;think&gt;&lt;/think&gt;</code>），只监督其后的动作 token；空块本身不计 loss——它只做条件化，不教学生"输出空块"</li>
+<li><strong>CoT-proxy</strong>：空 think 块<strong>之后</strong>、动作之前，放一段教师推理的短摘要（AppWorld 平均 26 token vs 教师完整推理 124 token；SWE-bench 20 vs 81）</li>
+<li>关键细节：同一表示应用于轨迹的<strong>每一轮</strong>（包括作为后续轮上下文的早期轮），保证 action-only 样本从不经历史泄漏教师推理</li>
+<li>推理时<strong>所有</strong>学生都开 thinking：只预填 opening token，学生用自己的风格填 think 块。训练时学到的策略（空块下学的）能迁移到"开思考"的推理格式——作者称之为 <strong>cross-format transfer</strong>〔方法，2026〕</li>
+</ul>
+<h3 id="13-kl-replay">1.3 防漂移：KL replay 正则</h3>
+<ul>
+<li>损失函数：<code>L(θ) = -1/Nt·Σ log p_θ(y|h) + 1/Nr·Σ KL(p_init(·|h) ‖ p_θ(·|h))</code>——教师轨迹上做监督，replay 样本上对初始模型做全词表 KL</li>
+<li>LoRA 场景下 p_init = <strong>同一底模关掉 adapter</strong>，多一次前向、无需第二份权重；只需学生自己的 logits，从不需教师——这正是它适配闭源教师的原因〔方法，2026〕</li>
+<li>训练配置：LoRA，8 epochs，每个 update 混 17 条轨迹 + 3 个 replay 样本（15% replay），replay 池 = 初始学生在 <strong>OpenR1-Math</strong>（域外）上的 1000 条生成；AdamW lr 3e-5，梯度裁剪 1.0</li>
+</ul>
+<h3 id="14-appworld-tgc-swe-bench-verified">1.4 主结果（AppWorld TGC / SWE-bench Verified）</h3>
+<p>开源教师 Qwen3.6-27B（教师 60.7 / 69.3）：<br />
+- Qwen3-4B：初始 7.3 / 2.7 → full-CoT 29.2 / 3.9，action-only 17.9 / 5.5，<strong>CoT-proxy 34.5 / 15.1</strong>〔数据，2026〕<br />
+- Qwen3-32B：初始 11.5 / 5.8 → full-CoT 27.8 / 21.1，action-only 25.4 / 14.3，CoT-proxy 29.8 / 21.7</p>
+<p>闭源教师 GPT-5.6 Luna（reasoning effort xhigh，教师 89.3 / 88.2）：<br />
+- Qwen3-4B：7.3 → action-only <strong>35.1</strong>、CoT-proxy <strong>48.2</strong>（AppWorld）；2.7 → 18.0 / <strong>27.8</strong>（SWE）<br />
+- Qwen3-32B：11.5 → 44.4 / <strong>59.1</strong>（AppWorld）；5.8 → 27.8 / <strong>35.2</strong>（SWE）〔数据，2026〕<br />
+- 闭源教师比开源教师强得多，蒸馏出的学生也强得多——<strong>教师质量直接决定学生上限</strong></p>
+<h3 id="15-full-cot">1.5 full-CoT 的病理特征</h3>
+<ul>
+<li>full-CoT 学生<strong>轮数最多</strong>却没有任何一个设置里最好；AppWorld 上最常耗尽 token 预算（4B 20%、32B 35%，其他学生 ≤10%）——模仿教师推理让学生"话多事少"，难以收尾〔数据，2026〕</li>
+</ul>
+<h3 id="16">1.6 消融四连（对配方可复现性最关键）</h3>
+<ul>
+<li><strong>replay 必要性</strong>：无 replay 时 AIME 74.7→68.9、KL 散度 0.003→0.042 nats/token；replay 每对比较都占优</li>
+<li><strong>replay 必须域外</strong>：换成 AppWorld 域内 replay，action-only 直接跌回 7.3%（= 初始模型）——<strong>在目标域上正则等于把要改的策略钉死</strong></li>
+<li><strong>摘要位置</strong>：放 think 块外（CoT-proxy 34.5/48.2）显著优于放块内当 CoT 监督（23.4/33.9）——块内监督会把"摘要腔"教成学生的推理风格</li>
+<li><strong>摘要来源</strong>：教师自注 7.5 H100 GPU 时（34.5）≈ <strong>Qwen3-4B-Instruct 学生级标注器 0.08 GPU 时（36.9，1% 成本）</strong>；1.7B 太弱（27.6）；完全看不到教师推理的"事后解释"（从任务+末观测+动作反推）拿回约 2/3 增益（29.0）</li>
+<li><strong>教师可见文本必须剥离</strong>：保留教师可见全文时 action-only 跌到 4.6%（低于初始），CoT-proxy 34.5→24.6——教师的散文不是摘要的替身，空 think 块配方依赖"只见动作"的干净目标〔数据，2026〕</li>
+</ul>
+<h3 id="17">1.7 分析：学生没学会写摘要，但学会了像教师一样行动</h3>
+<ul>
+<li>CoT-proxy 学生在推理时<strong>从不输出摘要</strong>（summary 标签零出现）——增益来自训练时摘要教会的"策略与自身推理的对应关系"，不是测试时的显式摘要输出。机制解释：训练中摘要永远条件于空 think 块，而推理时 think 块已被自己的推理填满，该上下文不再出现〔分析，2026〕</li>
+<li>措辞守恒：初始学生 98% think 块含"Wait"，action-only/CoT-proxy 学生保持自身措辞（"Okay"开头 100%/86%），<strong>只有模仿教师 CoT 才会改变学生的推理措辞</strong>——策略与推理风格是可分离的两个通道〔分析，2026〕</li>
+</ul>
+<h3 id="18">1.8 实验环境与诚信声明</h3>
+<ul>
+<li>AppWorld test-normal（168 任务/56 场景，TGC/SGC 双指标）；SWE-bench Verified 500 任务，harness 改自 mini-swe-agent；教师与学生<strong>同 harness 同 prompt 同预算同评分器</strong></li>
+<li>伦理声明：只用任何用户都能从 API 拿到的可见输出与推理摘要；提醒各厂商 ToS 可能限制用输出训练其他模型，蒸馏闭源模型前应自查条款〔观点，2026〕</li>
+<li>⚠️ 未发现代码/权重发布（论文无 GitHub 链接），复现需自建管线</li>
+</ul>
+<h2 id="_3">二、查询拓展</h2>
+<p>社区解读源覆盖情况：论文提交仅 2 天（2026-11-24），alphaXiv/博客类源按既往规律（&lt;7 天近零覆盖）未检索到讨论，以下以论文内相关工作与领域背景替代，待社区发酵后回访。</p>
+<h3 id="21">2.1 隐藏推理破坏蒸馏的对照结论</h3>
+<p>Penaloza et al. 2026 结论：隐藏推理破坏标准蒸馏，提出特权信息联合训练与 on-policy 自蒸馏两条替代路〔反驳/对照〕——本文用纯 SFT 达到同一数据条件，是对该结论"必须放弃 SFT"部分的直接反驳。</p>
+<h3 id="22-rl-vs">2.2 RL 路线 vs 蒸馏路线</h3>
+<p>Kimi Team 2026（大规模合成+联合 RL）、DeepSWE（Luo et al. 2025，纯 RL）、LOOP（Chen et al. 2025，AppWorld 上 leave-one-out PPO）代表 RL 主路线〔补充〕——本文定位为"有更强教师时的廉价替代"，两者不互斥：蒸馏可作 RL 前的初始化。</p>
+<h3 id="23">2.3 轨迹语料生态</h3>
+<p>SWE-Gym（Pan et al. 2025）、Qwen3-Coder-480B 两阶段 SFT（Ludwig et al. 2026）、终端轨迹语料开源（Pi et al. 2026）〔补充〕——动作级轨迹语料已成为开源生态资产，action-only 配方恰好定义了采集这类语料的最小充分格式。</p>
+<h3 id="24">2.4 交叉验证待查项</h3>
+<ul>
+<li>〔待验证〕GPT-5.6 Luna 的 reasoning summary 在 Responses API 的具体字段格式与长度上限（复现闭源教师管线的前置）</li>
+<li>〔待验证〕Qwen3.6-27B 是否已开放权重（决定开源教师路线可用性）</li>
+</ul>
+<h2 id="_4">三、归纳总结</h2>
+<h3 id="31">3.1 核心框架：策略与推理双通道分离蒸馏</h3>
+<pre><code>教师轨迹 ──┬── think块：推理（闭源时拿不到/加密）
+           └── 可见部分：动作（+可选推理摘要proxy）
+                        │
+   ┌────────────────────┴────────────────────┐
+   │ 训练目标三选一（think块处理方式）：        │
+   │  full-CoT    : 教师推理进块+全监督(基线)  │
+   │  action-only : 预填空块，只监督动作       │
+   │  CoT-proxy   : 空块后放26token摘要再动作  │
+   └────────────────────┬────────────────────┘
+                        │  + KL replay锚定初始模型(15%,域外)
+                        ▼
+   推理时：学生开thinking，自己风格推理 + 教师级行动
+   = cross-format transfer（空块学策略→满块用策略）
+</code></pre>
+<h3 id="32">3.2 三维护筛</h3>
+<ul>
+<li><strong>优点</strong>：证据强度高——两个环境、两个学生规模、开闭两类教师、三种子均值、成对统计检验；消融完整覆盖配方每个自由度（replay有无/域内外/摘要位置/来源/文本剥离）；把"闭源教师蒸馏"从数据不可行变为可行，且 4B-Instruct 标注器把摘要成本打到 1%</li>
+<li><strong>缺点</strong>：上限仍受教师绝对水平约束（Qwen3.6-27B 教出的 4B 只有 34.5，Luna 教出 48.2）；AppWorld/SWE-bench 均为 API/shell 型环境，动作空间规整，对自由度更大的 GUI/物理环境泛化未验证；无代码发布，第三方复现有成本；SWE-bench 闭源教师侧为单次运行（无多种子）</li>
+<li><strong>借鉴点</strong>：可直接迁移的是配方三件套（空 think 块 action-only 目标、块外 26token 摘要、15% 域外 KL replay）——在我的 LoRA 管线里三者都是数据构造层面的改造，不涉及新训练框架</li>
+</ul>
+<h3 id="33">3.3 反直觉点提炼</h3>
+<ol>
+<li>教师推理不是必需品——动作序列本身承载了几乎全部策略信息</li>
+<li>摘要放进 think 块反而有害——监督什么，学生就模仿什么的"腔"</li>
+<li>replay 必须域外——正则的目的是保能力不是保策略</li>
+<li>蒸馏闭源教师反而更强——数据可及性 ≠ 数据质量，Luna 的动作质量碾压开源 27B</li>
+<li>full-CoT 学生话最多、事最少——模仿推理风格引入的是冗余而非能力</li>
+</ol>
+<h2 id="_5">四、趋势判断</h2>
+<h3 id="1">趋势1：闭源教师→开源学生的"行为蒸馏"将成为标准路（上升）</h3>
+<p>依据：2025-2026 年 Penaloza 判"标准蒸馏已死"到本文 2026-11 用纯 SFT 复活它，一年内范式翻转；API 摘要（CoT-proxies 的来源）是厂商已在提供的接口。对我=机会：日常用 GPT-5.6 的动作轨迹本身就在产生可蒸馏语料。</p>
+<h3 id="2">趋势2：推理模型微调将标配"锚定正则"（上升）</h3>
+<p>依据：本文 KL replay + 2025 Thinking Machines on-policy 蒸馏同向；AIME 掉 5.8 分的失败模式是所有 reasoning 微调共享的坑。对我=风险规避：本地训练管线不配锚正则=白训。</p>
+<h3 id="34b-agent">趋势3：4B 级 Agent 的能力天花板被教师质量而非参数量锁定（分化）</h3>
+<p>依据：同为 4B，27B 教师给 34.5、Luna 给 48.2；教师-学生差距始终 ~40 点未收敛。对我=机会：Jetson 本地 Agent 的升级路径=换更强教师重蒸，而非换更大模型。</p>
+<h3 id="4api-tos">趋势4：API 输出的 ToS 约束将收紧（风险，观察）</h3>
+<p>依据：论文自己挂出伦理声明与 ToS 提醒；厂商加密推理的动机即反蒸馏。对我=风险：语料采集要趁早，合规自检不能省。</p>
+<h2 id="_6">五、关联分析</h2>
+<h3 id="51-2026-11-05-mdskill">5.1 与「技能记忆多视角蒸馏内化」(2026-11-05 MDSKILL 精读) 的关联</h3>
+<p>同属"蒸馏但重新定义监督对象"：MDSKILL 蒸馏的是技能的多功能视角（不蒸馏原始 CoT），CoT-Proxy 蒸馏的是动作策略（不蒸馏教师 CoT）。两者共同指向：<strong>监督信号的选择比蒸馏架构更重要</strong>。CoT-proxy 的 26token 摘要 ≈ MDSKILL 的功能视角池——都是"教师推理的紧凑替身"。</p>
+<h3 id="52-agent2026-10-21">5.2 与「能力区域配对优势-Agent长程课程」(2026-10-21) 的关联</h3>
+<p>该篇讲学生长程课程设计，本篇讲教师侧数据构造——正好是同一问题的两端。配对优势需要"教师演示落在学生能力区边缘"，action-only 天然满足（动作可执行性由学生 harness 保证）。</p>
+<h3 id="53-domain-llm-training-pipeline-dp5">5.3 与 domain-llm-training-pipeline / dp5 训练项目的关联</h3>
+<p>我的领域文档训练管线可直接吸收三件套：15% 域外 replay 池（OpenR1-Math 式通用语料）+ KL 锚定 + LoRA adapter-disabled 取 p_init 的省显存技巧——无需第二份权重，Jetson 上都算得动前向。</p>
+<h3 id="54-hermes-agent">5.4 与 Hermes Agent 自身的关联</h3>
+<p>我日常经手 GPT-5.6 Luna/Sol 的大量真实工具调用轨迹（含 API 返回的 reasoning summary）——这些会话日志就是论文定义的"闭源教师蒸馏语料"，目前作为日志沉睡，未入训练资产池。</p>
+<h2 id="_7">六、金句摘录</h2>
+<blockquote>
+<p>"The strongest teachers are closed models whose chain-of-thought is hidden... they encrypt the reasoning precisely to prevent this kind of distillation." — 墙的存在本身定义了研究方向</p>
+<p>"The student reasons in its own style while acting like the teacher." — 跨格式迁移一句话本质</p>
+<p>"Regularizing toward the initial model on the target domain holds the student's policy on that domain in place, which is exactly what training is meant to change." — 域内 replay 失败的根因陈述，一句话讲透正则与优化的对立</p>
+</blockquote>
+<h2 id="_8">七、行动启示与回访</h2>
+<p><strong>我的结论：保留</strong>"动作级轨迹是最小充分蒸馏语料"的判断与三件套配方；<strong>放弃</strong>"必须等开源强教师才能做 Agent 蒸馏"的旧假设；<strong>改造</strong>本地训练管线的正则配置。</p>
+<ul>
+<li><strong>行动1（P0）</strong>：闭源教师动作轨迹资产化——在 Hermes 会话侧确认 GPT-5.6 reasoning summary 字段落盘格式，评估把工具调用轨迹导出为 action-only 训练样本的管道 | 时间：一周内 | 触发条件：下次需要小模型 Agent 蒸馏任务立项时 | 验收标准：能从历史会话日志批量导出（任务, 上下文, 动作）三元组且不含教师散文</li>
+<li><strong>行动2（P1）</strong>：给 dp5/domain 训练管线补 KL replay 配置项（15% 域外 replay + adapter-disabled 取 p_init），写入训练 docs 备查 | 时间：两周内 | 触发条件：下一次发起 LoRA 微调时 | 验收标准：管线配置含 replay_pool 与 kl_weight 两个可调参数并有默认值</li>
+<li><strong>回访日期</strong>：2026-12-10（两周后）</li>
+<li><strong>待验证假设/证伪条件</strong>：若后续复现/第三方实验显示 action-only 在非 API/shell 环境（如 GUI、具身）中增益消失或转负，则"动作承载全部策略信息"的判断需降级为环境特例；若 OpenAI 收紧 reasoning summary 的 API 输出，CoT-proxy 的闭源路线成本需重估</li>
+</ul>
+<h2 id="_9">八、拓展应用推荐</h2>
+<ul>
+<li><strong>场景A｜量化交易</strong>：蒸馏 GPT-6 的交易决策行为而非其叙述——记录"盘面→动作"对（含 API reasoning summary 作 proxy），训练 4B 本地决策头，叙事与决策分离</li>
+<li><strong>场景B｜Hermes 技能沉淀</strong>：把强模型会话中的工具调用序列（不含其解释散文）作为"行为语料"喂给 skill 提炼管线，对齐 MDSKILL 的功能视角蒸馏</li>
+<li><strong>场景C｜Jetson 边缘 Agent</strong>：48.2% AppWorld 的 4B 学生证明 4B 足以承载像样策略——本地部署 Agent 的路线从"等 7B+ 模型"改为"蒸 4B 教师=云端 Luna"</li>
+<li><strong>场景D｜教育/辅导系统</strong>：教师（人类专家）只输出操作+一句话理由，学生模型自己组织推理——专家标注成本降一个量级（0.08 vs 7.5 GPU 时的 100 倍差）</li>
+</ul>
+<h2 id="_10">九、指南分析</h2>
+<ul>
+<li><strong>方法论价值</strong>：本文是"消融即论文"的范本——四个配方自由度（replay/位置/来源/文本）逐个单变量拆解，每个消融都回答一个复现者必问的问题；写自己的实验报告时应对照这种"每个设计决策都有对照实验"的密度</li>
+<li><strong>可复用判据</strong>：①"域内 replay 把策略钉死"给出了正则数据选择的普适判据（正则目标≠优化目标所在域）；②"块内 vs 块外"监督位置差 11-14 分，提示<strong>监督位置与监督内容同等重要</strong>——适用于一切 prompt 格式化训练数据构造</li>
+<li><strong>反例警示</strong>：full-CoT 学生轮数最多、预算耗尽率最高、成功率不是最高——"模仿更强者的全部输出"不是安全的默认选项，这在蒸馏任务设计里是常被忽略的默认陷阱</li>
+</ul>
+</body>
+</html>
