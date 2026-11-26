@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XgoDuck情绪智能S0-LLM动作编排与FlashSAC全栈拆解</title>
+
+<meta property="og:title" content="XgoDuck情绪智能S0-LLM动作编排与FlashSAC全栈拆解" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | engineering" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/engineering.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #1c2d3f;
+  background: #f2f6fa;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #0c4a6e;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f0f5fa;
+  color: #0369a1;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #0369a130;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #1c2d3f88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #d4e4f4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'IBM Plex Sans', 'Noto Sans SC', sans-serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #0c4a6ecc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #0c4a6eaa;
+}
+
+a {
+  color: #0369a1;
+  text-decoration: none;
+  border-bottom: 1px solid #0369a130;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #0369a1;
+}
+
+code {
+  background: #f0f5fa;
+  color: #0369a1;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #0c2340;
+  color: #bae6fd;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #0369a1;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #1c2d3fcc;
+  background: #e8f4fd;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #1c2d3f88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #0369a1;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #1c2d3f88;
+  text-decoration-color: #0369a1aa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #0369a1;
+  background: #0369a118;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #d4e4f4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #d4e4f4;
+  display: table-cell;
+}
+th {
+  background: #e8f4fd;
+  font-weight: 600;
+  color: #0369a1;
+  border-bottom: 2px solid #0369a1;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #e8f4fd80; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #d4e4f4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #0c4a6e; }
+
+
+        h1::before { content: '⚙ '; opacity: 0.6; }
+        h2 { border-left: 3px solid #0369a1; padding-left: 10px; border-bottom: none; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="xgoduck-s0llm-21-flashsac-run">XgoDuck 情绪智能 S0：LLM 动作编排 21 情绪与 FlashSAC 单 Run 全栈拆解</h1>
+<p class="tag-line"><span class="tag">#强化学习</span> <span class="tag">#Sim2Real</span> <span class="tag">#双足机器人</span> <span class="tag">#XgoDuck</span> <span class="tag">#Microduck</span> <span class="tag">#FlashSAC</span> <span class="tag">#离策RL</span> <span class="tag">#DeepMimic</span> <span class="tag">#LLM编排</span> <span class="tag">#情绪表达</span> <span class="tag">#DUCK项目参考</span> <span class="tag">#分层架构</span></p>
+
+<h2 id="_1">出处</h2>
+<blockquote>
+<p><strong>来源</strong>：X 推文（一手发布——作者=项目作者本人）+ 项目博客精读 + 四个一手源交叉核验<br />
+- 推文：<a href="https://x.com/aahoussaini/status/2125701228483199117">x.com/aahoussaini/status/2125701228483199117</a>（2026-11-25，1519 views / 42 likes / 28 bookmarks / 2 replies）<br />
+- 博客：<a href="https://anashoussaini.com/blog/duck-s0/">A smart S0 for the duck</a>（2026-11，Achraf Anas El Houssaini，全文 3327 字符已核验无截断）<br />
+- 在线仿真：<a href="https://anashoussaini.com/sims/xgoduck/">anashoussaini.com/sims/xgoduck/</a>（MuJoCo 编译到 WebAssembly，可在浏览器玩真网络）<br />
+- FlashSAC 论文：arXiv:2604.04539（RSS 2026，Kim Donghu / Lee Youngdo / Lee Hojoon 等 13 人，含 KTH Peters/Kragic）<br />
+- 硬件基座：<a href="https://github.com/LuwuDynamics/xgoduck_hardware">LuwuDynamics/xgoduck_hardware</a>（136★ Apache-2.0）+ xgoduck_runtime_arduino（163★）+ xgoduck_rl<br />
+- <strong>信源等级</strong>：作者一手发布档（McGill/MILA 机器人硕士、Amazon FAR Applied Scientist Intern、DriftQL 一作、Dexsuite 作者）；数字核验 6 项全吻合（见定锚）；<strong>情绪训练代码未开源</strong>（作者 GitHub 18 仓库无此项目，2026-11-26 API 实查）——博客只给管线不给超参/奖励权重，复现需自行重建<br />
+- 收录：2026-11-26 | bookmarks ≥ likes（28 vs 42 接近），清单/方法型参考价值信号</p>
+
+<p class="meta-date">生成日期 2026-11-26</p></blockquote>
+<h2 id="_2">定锚</h2>
+<p><strong>领域坐标</strong>：小型双足机器人 Sim2Real 的「表达层」首篇系统实现——把 LLM 创造力（情绪编舞）约束进物理可执行域（IK + RL 跟踪），是 microduck 赛道从"能走"迈向"有性格"的第一份公开方法论文档。</p>
+<p><strong>收录理由</strong>：用户 DUCK-Pi_5 恰好卡在同一个位置——行走/站立已验收、头颈解锁（E24）已拍板、且用户明确审美要求"头和脖子不能锁死，很不真实，也不好看"。本篇是这条需求的外部工程实证：<strong>情绪表达 ≠ 额外控制器，而是把情绪作为观测条件（one-hot）+ 板载参考播放器 + 跟踪式奖励，全部塞进同一个行走网络</strong>。</p>
+<p><strong>场景锚点</strong>：读者场景 = 已有一个能走的 RL 鸭子，想让它"活起来"——回答三个问题：情绪怎么进网络（122 维观测契约）、动作从哪来（LLM 编排→IK→DeepMimic 式跟踪）、值不值得抄（单 run 多情绪 vs 多策略硬切换的分岔）。</p>
+<h2 id="s0s1">内容整理：S0/S1 分层架构与训练管线</h2>
+<h3 id="31">3.1 一句话总纲</h3>
+<p><strong>一个 122 维输入 / 15 维输出的单网络 S0（低层跟踪控制器），在 mjlab+MuJoCo Warp 上用单次 FlashSAC run（4096 并行鸭子）同时学会行走、转身、21 种情绪、头部和喙；上层 S1（LLM）只做两件事——选速度、选情绪——情绪切换对 S0 是一次调用。</strong></p>
+<h3 id="32-s0s1">3.2 核心架构：S0/S1 分层（本篇最大的方法论增量）</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>是什么</th>
+<th>职责边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>S1（心智）</strong></td>
+<td>LLM（作者写"Astra、Opus，随便什么跑鸭子心智的"）</td>
+<td>只选 velocity + emotion 两个高层指令，不碰伺服</td>
+</tr>
+<tr>
+<td><strong>S0（低层控制器）</strong></td>
+<td>单网络，纯 RL，sim-to-real</td>
+<td>把指令翻译成 15 个伺服目标位置，行走与情绪同网络输出</td>
+</tr>
+<tr>
+<td><strong>参考播放器（板载）</strong></td>
+<td>网络旁边的小模块</td>
+<td>存 21 情绪编舞库，播选定情绪——给网络喂"现在+0.2s 后"的目标姿态</td>
+</tr>
+</tbody>
+</table>
+<p>作者原话定位："S0 is not the emotional intelligence. That sits on top of it."——情绪智能在 S1，S0 只是让情绪<strong>物理上成立</strong>的执行层。这与库内《解耦机器人学》《走路用RL干活用Transformer》《System1预筛与System2协同》三篇的分层思想完全同向，但第一次给出<strong>鸭子体量的落地实例</strong>。</p>
+<h3 id="33-12215">3.3 观测/动作契约（122→15）</h3>
+<p>网络输入 122 维（博客原述构成）：<br />
+- <strong>本体感知</strong>：陀螺仪 + 重力投影 + 14 关节角 + 14 关节速度 + 上一步动作<br />
+- <strong>速度指令</strong>：S1 下发的 velocity command<br />
+- <strong>情绪条件</strong>：21 类 one-hot<br />
+- <strong>参考段</strong>：播放器给的目标姿态（现在 + 0.2 s 超前），覆盖头/躯干/腿/喙</p>
+<p>输出：15 个目标位置 = 14 关节 + 喙。<strong>注意一个真实增量</strong>：官方 xgoduck_runtime 的策略只输出 14 关节（嘴舵机单独控制，见 hardware 仓库表述），而本文 S0 把喙纳入网络输出——头颈+喙联动是情绪表达的关键通道，官方栈没做，作者做了。</p>
+<p>诚实边界：博客未给 122 维的精确逐段分解（按原述组件粗算约 73 维，参考段约占 49 维），<strong>精确分解不可从原文核实，复现时需自行设计</strong>。</p>
+<h3 id="34">3.4 训练管线（五段式，全部可映射到现有工具链）</h3>
+<ol>
+<li><strong>编舞（Choreography）</strong>：每个情绪 = 姿态（posture）+ 风格（style）+ 几个手势（gestures），由 Opus 生成——<strong>LLM 当编舞师，不当控制器</strong></li>
+<li><strong>全身 IK</strong>：把编舞落到鸭子关节上，约束脚平贴地面（物理合理性第一道闸）</li>
+<li><strong>DeepMimic 式跟踪奖励</strong>：作者明说"这些动作没有物理根据，所以训练必须有"——策略在仿真里学<strong>跟踪</strong>这些动作，学出来的=鸭子物理上做得到的版本（物理合理性第二道闸，也是核心）</li>
+<li><strong>单次 FlashSAC run</strong>：mjlab + MuJoCo Warp，4096 并行鸭子；BAM 伺服模型（力矩曲线 + 15 ms 延迟 + 齿隙 gear play）+ 随机推扰。行走/转身/21 情绪/头/喙全部出自这一次 run</li>
+<li><strong>上真机前双闸</strong>：先在<strong>独立 CPU MuJoCo</strong>（自带另一套伺服模型）里跑；再带<strong>鸭子 runtime 代码入环</strong>跑——两道检查过了才碰硬件</li>
+</ol>
+<h3 id="35">3.5 真机部署与诚实现状</h3>
+<ul>
+<li>S0 以 ONNX 跑在鸭子 runtime 里；切情绪 = 上层一次调用</li>
+<li><strong>平静类情绪稳；弹跳类情绪和行走仍会偶发摔倒</strong>——兜底方案是<strong>原厂 get-up 控制器</strong>把它扶起来（不掩盖问题，明写现状——比多数项目发布诚实）</li>
+<li>浏览器可玩同一网络：MuJoCo 编译成 WebAssembly，W/S 行走、A/D 转向、Space 推它、Inputs 面板可视化网络实际看到的观测</li>
+</ul>
+<h3 id="36-vs">3.6 关键事实核验表（推文/博客 vs 一手源）</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>声称</th>
+<th>核验结果</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>XgoDuck：0.79 kg、14 关节+喙、Feetech HLS1910</td>
+<td>✅ 吻合</td>
+<td>hardware 仓库：15× Feetech 1910（10 腿+4 头颈+1 嘴），UNO Q 主控</td>
+</tr>
+<tr>
+<td>2</td>
+<td>头部占 32% 质量</td>
+<td>⚠️ 博客自述，仓库无质量分布数据</td>
+<td>只能采信作者实测口径</td>
+</tr>
+<tr>
+<td>3</td>
+<td>FlashSAC：mjlab on MuJoCo Warp、4096 并行</td>
+<td>✅ 两源吻合</td>
+<td>xgoduck_rl README 同栈同 envs 数（但官方用 PPO）</td>
+</tr>
+<tr>
+<td>4</td>
+<td>FlashSAC 论文实力</td>
+<td>✅ arXiv:2604.04539 / RSS 2026：60+ 任务 10 仿真器胜 PPO 与离策基线；人形 sim2real 从小时级缩到分钟级</td>
+<td>论文摘要+项目页</td>
+</tr>
+<tr>
+<td>5</td>
+<td>BAM 伺服模型</td>
+<td>✅ xgoduck_rl 用 BAM（Rhoban）1910_m6.json</td>
+<td>仓库 README</td>
+</tr>
+<tr>
+<td>6</td>
+<td>官方栈算法</td>
+<td>⚠️ <strong>差异点</strong>：Luwu 官方 xgoduck_rl 用 <strong>PPO/rsl-rl</strong>（12 个任务：velocity/standup/roller/ground_pick/sitstand/ballkick/roulade/swizzle），FlashSAC 是作者个人选型</td>
+<td>仓库 README 实证</td>
+</tr>
+<tr>
+<td>7</td>
+<td>情绪训练代码</td>
+<td>❌ 未开源（作者 GitHub 18 仓库无此项目）</td>
+<td>2026-11-26 GitHub API 实查</td>
+</tr>
+</tbody>
+</table>
+<p><strong>被省略的增量（原文没写但复现必需）</strong>：奖励权重、one-hot 条件化的 obs 归一化处理、参考段的精确维度、编舞的具体格式、21 情绪清单本体（只在视频/仿真里可见）——全部需要自行设计。</p>
+<h2 id="_3">查询拓展</h2>
+<ul>
+<li><strong>FlashSAC 全文精读</strong>（arXiv:2604.04539）：三大机制——少更新+大模型+高吞吐（scaling laws 路线）/ 权重-特征-梯度三重范数约束（稳定离策 bootstrap）/ 统一熵目标+噪声重复（探索）；架构=堆叠倒残差块+pre-activation BN+post-RMS 归一化。与库内 FastSAC（Amazon FAR，arXiv:2512.01996）是<strong>不同团队的两条离策线</strong>：FastSAC 主打"单卡 15 分钟"，FlashSAC 主打"60 任务系统验证+大模型少更新"</li>
+<li><strong>DeepMimic</strong>（Peng et al. 2018）原论文：跟踪式奖励的本源</li>
+<li><strong>DriftQL</strong>（作者一作）：Drift Q-Learning，理解作者为什么天然选离策路线</li>
+<li><strong>BAM</strong>（Rhoban Better Actuator Models）：力矩曲线/延迟/齿隙的执行器建模标准件</li>
+<li><strong>awesome-xgo-duck</strong>（社区合集）+ Luwu 三仓库：可复现基座全景</li>
+<li><strong>MuJoCo→WebAssembly</strong>：浏览器自托管仿真的技术路线（用户 h5-browser-verify 场景直接相关）</li>
+</ul>
+<h2 id="_4">归纳总结</h2>
+<ol>
+<li><strong>分层胜过全能</strong>：S1（LLM 选目标）+ S0（RL 执行）+ 参考播放器（板载编舞）三件套，职责切得极干净——LLM 的创造力和 RL 的物理可靠性各就各位，中间用 IK 和跟踪奖励两道闸把前者约束进后者</li>
+<li><strong>情绪是观测条件，不是行为库</strong>：one-hot 进网络 + 参考段进观测，让"情绪"成为策略的条件变量而非硬切换的技能——这是与"7 技能硬切换"路线的本质分岔</li>
+<li><strong>单 run 多任务</strong>：行走+转身+21 情绪+头+喙一次训练全出——条件化策略的规模效应示范</li>
+<li><strong>物理诚实三连</strong>：IK 贴地约束（设计期）→ DeepMimic 跟踪（训练期）→ CPU 仿真+runtime 入环双闸（部署期）——每一层都在过滤"物理上做不到的姿态"</li>
+<li><strong>诚实的现状报告</strong>：弹跳情绪+行走仍摔、靠原厂起身兜底——表达层不是免费午餐，成熟度=平静情绪&gt;弹跳情绪≈行走</li>
+<li><strong>平台增量</strong>：喙纳入网络输出（官方栈嘴是独立控制）——头颈+喙联动是表达力的关键通道</li>
+</ol>
+<h2 id="_5">趋势判断</h2>
+<ul>
+<li><strong>"表达层"成为小型双足的下一个竞争维度</strong>：Microduck 生态（Pollen 官方→Luwu 商业复刻→社区）已把"能走"变成 commodity；情绪/性格是差异化下一站——Luwu 硬件已带音视频模块+ToF，表达层硬件就位，缺的就是这类策略</li>
+<li><strong>LLM→编舞→IK→RL 跟踪</strong>有望成为表达层的标准管线：它把"生成动作"这个 LLM 不可靠环节外包给物理过滤，规避了 LLM 直接出控制信号的幻觉风险</li>
+<li><strong>离策 RL 第二波成型</strong>：FastSAC（2512.01996）→ FlashSAC（RSS 2026）→ 本文真机应用，离策从论文走向"爱好者可用"——但官方生态默认仍是 PPO/rsl-rl，<strong>换栈窗口还没到临界</strong></li>
+<li><strong>浏览器 Wasm 仿真=新的"可玩性发布"形态</strong>：把部署网络直接放进网页让人玩，是低成本传播+众测验收的组合拳</li>
+</ul>
+<h2 id="_6">关联分析</h2>
+<h3 id="duck-pi_5">与 DUCK-Pi_5 的逐项映射</h3>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>本文做法</th>
+<th>DUCK-Pi_5 现状</th>
+<th>判定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>S0/S1 分层（LLM 选情绪+速度）</td>
+<td>现纯 RL 策略栈；OH2P 语音链已就绪可当 S1 候选</td>
+<td><strong>增强阶段候选</strong>：E 系列收官后再议，勿现在动</td>
+</tr>
+<tr>
+<td>2</td>
+<td>one-hot 情绪条件化单网络</td>
+<td>用户已拍板<strong>三模型架构=三个专一模型真机切换</strong>（0926）</td>
+<td><strong>真分歧点</strong>：条件化 vs 硬切换。用户拍板在先，本篇只作对照路线存档——单 run 省切换逻辑但观测契约全变（61→~100+ 维），全家重训</td>
+</tr>
+<tr>
+<td>3</td>
+<td>板载参考播放器（now+0.2s 超前）</td>
+<td>无此组件</td>
+<td><strong>明确未来项</strong>：Pi5 上是 python dict 级工作量，成本极低</td>
+</tr>
+<tr>
+<td>4</td>
+<td>DeepMimic 式跟踪奖励</td>
+<td>BeyondMimic 判定 #8 已判"锚点跟踪不适用 velocity/posture 任务"</td>
+<td><strong>不矛盾，恰是补全</strong>：跟踪范式在 velocity 任务无用、在<strong>表达任务是本体</strong>——两个判定域不同，合并后框架完整</td>
+</tr>
+<tr>
+<td>5</td>
+<td>BAM 伺服模型（力矩曲线+15ms 延迟+齿隙）</td>
+<td>已用 BAM 域反射+firmware 位置环（kp_fw=32）</td>
+<td><strong>已满足</strong>，同源工具</td>
+</tr>
+<tr>
+<td>6</td>
+<td>头部 32% 质量占比警示</td>
+<td>用户鸭子同样头重（头颈力矩问题多次实战）</td>
+<td><strong>外部印证</strong>：头重是鸭形机器人共性，情绪重训须防"甩头失稳"</td>
+</tr>
+<tr>
+<td>7</td>
+<td>CPU MuJoCo+runtime 入环双闸</td>
+<td>已有等价验证链</td>
+<td><strong>已满足</strong></td>
+</tr>
+<tr>
+<td>8</td>
+<td>原厂 get-up 兜底</td>
+<td>已有起身 SOP（duck-five-stage-standup）</td>
+<td><strong>已满足</strong></td>
+</tr>
+<tr>
+<td>9</td>
+<td>喙纳入网络输出</td>
+<td>microduck 官方同款"嘴独立控制"</td>
+<td><strong>明确未来项</strong>：情绪表达价值高，改动小</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_7">与库内笔记网的关系</h3>
+<ul>
+<li>离策线：[[2026-09-02-FastSAC单卡4090十五分钟人形Sim2Real-离策RL配方全解.md]]（FastSAC）——本文是离策线在鸭子上的真机续篇，FlashSAC 是另一团队的平行演进</li>
+<li>跟踪判定：[[2026-09-10-BeyondMimic八项做法×DUCK-Pi5逐项判定-落地分析与增强阶段方案.md]]——#8"跟踪不适用"的域补全（表达任务=跟踪本体）</li>
+<li>硬件/生态：[[2026-10-31-Microduck硬件拆解-RK3566十五舵机与双模型部署链.md]]（Pollen 官方 XL330/RK3566 vs 本文 Luwu HLS1910/UNO Q 两条硬件线）、[[2026-10-29-Microduck国内复刻生态与成本真相.md]]（Luwu 是国内复刻生态主要玩家）、[[2026-10-22-Microduck真机软件栈与仿真鸭跑通指南.md]]（官方 runtime 栈）、[[2026-08-31-microduck_rl分析学习-Sim2Real实战规则.md]]</li>
+<li>分层思想：[[2026-10-13-解耦机器人学-对全栈机器人公司的反驳.md]]、[[2026-10-13-走路用RL干活用Transformer-机器人算法的知识缺口决定论.md]]、[[2026-10-30-System1预筛与System2协同设计-清华AGI缩放新范式.md]]</li>
+</ul>
+<h2 id="duck-pi_6">指南分析：情绪层落到 DUCK-Pi_5 的分阶段方案</h2>
+<blockquote>
+<p>前提：<strong>零破坏原则</strong>——本节是立项级指导材料，未经用户拍板不动任何项目代码（与吸收分析纪律一致）。</p>
+</blockquote>
+<h3 id="0">阶段 0（当日可做，零成本）</h3>
+<ul>
+<li><strong>玩在线仿真</strong>：打开 anashoussaini.com/sims/xgoduck/，W/S 行走、A/D 转向、Space 推扰、切情绪看观感——这一步回答"这玩意到底值不值得追"（用户目测=唯一真值，与真机测试纪律同款）</li>
+<li>对照观察：平静情绪 vs 弹跳情绪的步态差异、切情绪瞬间有没有踉跄、被推后的恢复表现</li>
+</ul>
+<h3 id="1-mvp3-5">阶段 1（若立项：情绪 MVP，3-5 情绪起）</h3>
+<ol>
+<li><strong>情绪集</strong>：不抄 21 个，从 calm / happy / alert / sad 起步——平静类是已验证稳定区</li>
+<li><strong>编舞</strong>：LLM 生成每情绪的"姿态+风格+手势"关键帧序列 → 全身 IK 落关节（贴地约束）——用户运动学/CAD 背景直接对口</li>
+<li><strong>观测契约扩展</strong>：现 61 维 + 情绪 one-hot(4) + 参考段（建议先只做头颈+喙的 now+0.2s，约 10-20 维）——<strong>只加不改</strong>，保留 hot-swap 可能性评估后再定</li>
+<li><strong>奖励</strong>：velocity 族保持 + 新增 DeepMimic 式 pose 跟踪项（头颈/喙为主）；<strong>甩头惩罚</strong>单独设防（头部质量占比警示）</li>
+<li><strong>参考播放器</strong>：Pi5 板载 python 播放器，情绪切换=一次调用</li>
+<li><strong>验收门</strong>：沿用 12ep 采样+用户目测真值纪律；每情绪单独判，12/12 才算对齐</li>
+</ol>
+<h3 id="2">阶段 2（远期，带触发条件）</h3>
+<ul>
+<li>全身情绪参考（腿+躯干+头颈+喙）并入——触发条件：阶段 1 单情绪 12/12 且弹跳类不摔</li>
+<li>S1 接入（OH2P/asa 语音链选情绪）——触发条件：情绪集≥5 且切换延迟可接受</li>
+<li>FlashSAC 离策栈评估——触发条件：FlashSAC 代码开源且与 mjlab 兼容性实测通过；当前 F04 栈已统一 rsl-rl，<strong>无实证收益不换栈</strong></li>
+</ul>
+<h3 id="_8">风险与不做项</h3>
+<ul>
+<li>❌ <strong>不做</strong>：现在就动 obs 契约（61 维契约是全家共享，动=全家重训，E 系列未收官）</li>
+<li>❌ <strong>不做</strong>：直接对标本文数字（0.79kg/HLS1910/15ms 延迟均与用户硬件不同——吸收原则不吸收数字，跨平台数字禁直接对标）</li>
+<li>⚠️ <strong>风险</strong>：单策略条件化与用户三模型拍板冲突——存档为对照路线，启动前须用户重新拍板</li>
+<li>⚠️ <strong>成熟度提示</strong>：弹跳情绪+行走仍摔（作者自述）——表达层的"弹跳类"在源头项目就没过关，MVP 只做平静类是规避而非妥协</li>
+</ul>
+<h2 id="_9">拓展应用推荐</h2>
+<ul>
+<li><strong>OH2P 语音助手 → duck S1 心智</strong>：用户的语音链+LLM 就是现成 S1，鸭子当第三个语音终端——"说句话，鸭子用情绪回应"是表达层与语音链的自然合流</li>
+<li><strong>浏览器 Wasm 仿真自托管</strong>：把 DUCK-Pi_5 的策略放进网页让用户手机直接玩——既是演示（用户"不要无头"的可视化要求同源）也是零成本众测</li>
+<li><strong>LLM 编舞工作流泛化</strong>：编舞→IK→跟踪的管线不只做情绪——任何"程序生成动作再物理过滤"的场景（打招呼、跳舞、反应动作）同构可复用</li>
+<li><strong>发布形态借鉴</strong>：博客+在线可玩仿真+真机视频三件套，是个人机器人项目低成本获得传播的模板</li>
+</ul>
+<h2 id="_10">行动与回访</h2>
+<ul>
+<li><strong>P0（当日）</strong>：浏览器实测在线仿真，记录三观察（情绪切换观感/行走质量/推扰恢复）——验收人=用户目测</li>
+<li><strong>P1（待拍板）</strong>：本笔记判定若获用户"落实"指令，按指南分析阶段 1 在 DUCK 项目 docs 立项（三件套：docs 落盘+git 提交+决策记录），主线零改动</li>
+<li><strong>回访条件</strong>：① E 系列真机收官后重读本篇"关联分析"分岔点；② FlashSAC 代码开源事件触发离策栈复评；③ Luwu xgoduck_rl 若官方发布情绪任务（现 12 任务无情绪），重跑本篇可复现性判定</li>
+<li><strong>证伪条件</strong>：若 6 个月后公开渠道（作者博客/awesome-xgo-duck）仍无弹跳情绪+行走稳定的改进证据，"单 run 多情绪"路线判成熟度不足，情绪层按多策略切换路线另立项；本文 122 维精确分解若在开源代码中与本笔记推算不符，以代码为准修正</li>
+</ul>
+</body>
+</html>
