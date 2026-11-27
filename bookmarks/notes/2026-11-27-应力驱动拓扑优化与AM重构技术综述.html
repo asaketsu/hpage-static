@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>应力驱动拓扑优化与AM重构技术综述</title>
+
+<meta property="og:title" content="应力驱动拓扑优化与AM重构技术综述" />
+<meta property="og:type" content="article" />
+<meta property="og:description" content="笔记 | academic" />
+<meta property="og:image" content="https://hpage.top/homepage/covers/academic.png" />
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400..800&family=Noto+Sans+SC:wght@400..700&family=Noto+Serif+SC:wght@400..700&family=Space+Grotesk:wght@400..700&family=JetBrains+Mono:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Lora:ital,wght@0,400..700;1,400..700&family=DM+Sans:wght@400..700&family=Outfit:wght@400..700&family=Nunito:wght@400..700&family=Merriweather:wght@400..700&family=Playfair+Display:wght@400..700&family=Source+Sans+3:wght@400..700&family=Source+Serif+4:ital,wght@0,400..700;1,400..700&family=Fira+Code:wght@400..600&display=swap');
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif;
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  line-height: 1.85;
+  font-weight: 450;
+  color: #2c2c2c;
+  background: #faf8f5;
+  overflow-wrap: anywhere;
+}
+
+h1 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.75em;
+  font-weight: 700;
+  color: #8b1a1a;
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0.6em;
+}
+
+/* ═══ 标题正式化（2026-08-19）：衬线字体+紧凑字距+适度收紧行高 ═══ */
+h1 {
+  font-family: 'Noto Serif SC', 'Source Serif 4', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  font-size: 1.6em;
+}
+
+/* ═══ tag 行（2026-08-19）：原首行 #tag 被误解析为 h1，现降级为小号 chips ═══ */
+.tag-line {
+  font-size: 0.78em;
+  line-height: 2.1;
+  margin: 0 0 0.8em 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tag {
+  display: inline-block;
+  padding: 1px 10px;
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #a0522d;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  font-size: 0.92em;
+  line-height: 1.7;
+  border: 1px solid #a0522d30;
+}
+
+/* ═══ 生成日期徽标（2026-08-19）：tag 行下方 ═══ */
+.note-date {
+  font-size: 0.75em;
+  color: #2c2c2c88;
+  margin: -0.4em 0 1.2em 0;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.35em;
+  font-weight: 600;
+  color: #8b1a1a;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  border-bottom: 1px solid #e8e0d4;
+  padding-bottom: 6px;
+}
+
+h3 {
+  font-family: 'Noto Serif SC', 'Playfair Display', Georgia, serif;
+  font-size: 1.12em;
+  font-weight: 600;
+  color: #8b1a1acc;
+  margin-top: 1.4em;
+}
+
+h4 {
+  font-size: 1em;
+  font-weight: 600;
+  color: #8b1a1aaa;
+}
+
+a {
+  color: #8b4513;
+  text-decoration: none;
+  border-bottom: 1px solid #8b451330;
+  transition: border-color 0.2s;
+}
+
+a:hover {
+  border-bottom-color: #8b4513;
+}
+
+code {
+  background: #f7f5f0;
+  color: #9a5b13;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.88em;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+}
+
+pre {
+  background: #3c3226;
+  color: #f5f0e8;
+  border: none;
+  padding: 20px 24px;
+  border-radius: 8px;
+  overflow-x: auto;
+  line-height: 1.6;
+  font-size: 0.88em;
+  margin: 1.2em 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+blockquote {
+  border-left: 4px solid #a0522d;
+  margin: 1.2em 0;
+  padding: 12px 20px;
+  color: #2c2c2ccc;
+  background: #f5f0e8;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ═══ 首块引用=元信息块：字号0.75em对齐日期徽标，日期并入末行（2026-08-20）═══ */
+body > blockquote:first-of-type {
+  font-size: 0.75em;
+  font-style: normal;
+  line-height: 1.7;
+  padding: 8px 16px;
+  margin: 0.6em 0 1.2em 0;
+  opacity: 0.92;
+}
+body > blockquote:first-of-type p { margin: 0.15em 0; }
+body > blockquote:first-of-type .meta-date {
+  font-size: 1em;
+  color: #2c2c2c88;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  letter-spacing: 0.02em;
+  margin: 0.5em 0 0 0;
+}
+
+/* ═══ 有序列表：点缀色序号（Punk微排风）— 数字徽章替代默认数字 ═══ */
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: 2em;
+  margin-bottom: 0.4em;
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: 0.78em;
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+}
+
+/* ═══ checkbox 任务清单：方框可视化（配合 md2html_batch 的 [ ]→checkbox 转换） ═══ */
+input[type="checkbox"] {
+  accent-color: #a0522d;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.12em;
+  margin-right: 0.45em;
+  flex-shrink: 0;
+}
+li:has(> input[type="checkbox"]) {
+  display: flex;
+  align-items: flex-start;
+  padding-left: 0;
+  margin-left: 0;
+}
+li:has(> input[type="checkbox"]) input {
+  margin-top: 0.42em;
+}
+
+/* ═══ 图片叙事：图片属于文章叙事的一部分，配呼吸空间 ═══ */
+img {
+  display: block;
+  margin: 1.5em auto;
+  max-width: 100%;
+  border-radius: 8px;
+}
+figure {
+  margin: 1.6em 0;
+}
+
+/* ═══ 代码块 macOS 窗口（Punk微排风）：主题色底 + 红黄绿三点 ═══ */
+pre {
+  position: relative;
+  padding-top: 30px;
+  border-radius: 10px;
+}
+pre::before {
+  content: '';
+  position: absolute;
+  top: 11px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff5f57;
+  box-shadow: 20px 0 0 #febc2e, 40px 0 0 #28c840;
+}
+
+/* ═══ 删除线：失效内容标记（Punk微排） ═══ */
+del {
+  color: #2c2c2c88;
+  text-decoration-color: #a0522daa;
+}
+
+/* ═══ 列表悬挂缩进（修复长文本换行顶格）：适配移动端 + Punk微排序号风 ═══ */
+ul, ol {
+  padding-left: max(1em, min(1.5em, calc((100vw - 320px) * 0.05)));
+}
+li {
+  padding-right: 0.5em;
+  line-height: 1.65;
+}
+li > ul, li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
+}
+ol {
+  list-style: none;
+  counter-reset: punk-counter;
+  padding-left: 0 !important;
+}
+ol > li {
+  counter-increment: punk-counter;
+  position: relative;
+  padding-left: max(1.6em, calc((100vw - 320px) * 0.1));
+}
+ol > li::before {
+  content: counter(punk-counter);
+  position: absolute;
+  left: 0;
+  top: 0.28em;
+  min-width: 1.4em;
+  height: 1.4em;
+  line-height: 1.4em;
+  text-align: center;
+  font-size: clamp(0.7em, 2.5vw, 0.78em);
+  font-weight: 600;
+  color: #a0522d;
+  background: #a0522d18;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+/* ═══ table：样式化（2026-08-14 修复——曾误设 display:none 导致所有笔记表格隐形） ═══ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.92em;
+  line-height: 1.55;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid #e8e0d4;
+  border-radius: 6px;
+  font-feature-settings: 'tnum' 1, 'liga' 0;
+}
+th, td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e8e0d4;
+  display: table-cell;
+}
+th {
+  background: #f5f0e8;
+  font-weight: 600;
+  color: #a0522d;
+  border-bottom: 2px solid #a0522d;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f5f0e880; }
+
+img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+hr {
+  border: none;
+  height: 1px;
+  background: #e8e0d4;
+  margin: 2.5em 0;
+}
+
+ul, ol {
+  padding-left: 1.6em;
+}
+
+li { margin-bottom: 4px; }
+
+strong { color: #8b1a1a; }
+
+
+        h1 { font-style: italic; }
+        h1::before { content: '§ '; color: #a0522d40; font-size: 0.7em; vertical-align: middle; }
+        
+
+/* 响应式 */
+@media (max-width: 640px) {
+  body { padding: 20px 16px; }
+  h1 { font-size: 1.45em; }
+  h2 { font-size: 1.2em; }
+  pre { padding: 14px 16px; font-size: 0.82em; }
+}
+
+/* 打印优化 */
+@media print {
+  body { background: white; color: black; max-width: 100%; }
+  pre { border: 1px solid #ddd; box-shadow: none; }
+  a { color: #333; border-bottom: none; }
+}
+</style>
+</head>
+<body><!--HPGATE--><script>(function(){
+"use strict";
+if(location.hostname!=="hpage.top"&&location.hostname!=="www.hpage.top")return;
+var S="25b2c244d2406b3ba7a2d9a885b29392",H="63ff3da78c281ed6a51bd4e525de71a2e46012464e9874ca013b3189cbf63730",I=600000,K="hpgate_v2",TTL=600000,bc=null;
+try{bc=new BroadcastChannel("hpgate_bc")}catch(e){}
+try{localStorage.removeItem(K)}catch(e){}
+function load(){try{var v=JSON.parse(sessionStorage.getItem(K)||"null");if(v&&v.h===H&&typeof v.t==="number"&&Date.now()-v.t<TTL)return v}catch(e){}return null}
+function save(t){try{sessionStorage.setItem(K,JSON.stringify({h:H,t:t}))}catch(e){}}
+function drop(){try{sessionStorage.removeItem(K)}catch(e){}}
+function relock(){drop();location.replace(location.pathname+"?_g="+Date.now())}
+function unlockedState(){
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if(d.q===1){var v=load();if(v){try{bc.postMessage({a:1,h:H,t:v.t})}catch(e){}}}};
+function chk(){
+var v=load();
+if(!v){relock();return}
+fetch(location.pathname+"?_g="+Date.now(),{cache:"no-store"})
+.then(function(r){return r.text()})
+.then(function(t){
+var m=t.match(/H="([0-9a-f]{64})"/);
+if(!m||m[1]!==H)relock();
+}).catch(function(){});
+}
+setInterval(chk,60000);
+window.__hpgateCheck=chk;
+}
+var ok=!!load();
+if(ok){unlockedState();return}
+var st=document.createElement("style");
+st.id="hpgate-style";
+st.textContent="body>*:not(#hpgate){display:none!important}body{overflow:hidden!important;background:#0d1020!important}";
+document.head.appendChild(st);
+var o=null,pw=null,err=null,go=null,pending=null;
+function showGate(){
+pending=null;
+o=document.createElement("div");
+o.id="hpgate";
+o.style.cssText="position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:radial-gradient(1200px 600px at 50% 40%,#1b2140 0%,#0d1020 60%,#090b16 100%);font-family:system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;";
+o.innerHTML='<div style="width:min(360px,86vw);padding:40px 36px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.5);text-align:center;">'
++'<div style="font-size:34px;margin-bottom:10px;">🔐</div>'
++'<div style="color:#e8eaf6;font-size:17px;font-weight:600;letter-spacing:.5px;margin-bottom:22px;">私有知识库 · 访问验证</div>'
++'<input id="hpgate-pw" type="password" autocomplete="off" placeholder="请输入访问密码" style="width:100%;box-sizing:border-box;padding:12px 14px;font-size:16px;color:#e8eaf6;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:10px;outline:none;" />'
++'<div id="hpgate-err" style="color:#ff8a8a;font-size:13px;height:18px;margin:8px 0 2px;"></div>'
++'<button id="hpgate-go" style="width:100%;padding:12px;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#5b6ee8,#7c4de8);border:none;border-radius:10px;cursor:pointer;">进入</button>'
++'</div>';
+(document.body||document.documentElement).appendChild(o);
+pw=o.querySelector("#hpgate-pw");err=o.querySelector("#hpgate-err");go=o.querySelector("#hpgate-go");
+go.addEventListener("click",unlock);
+pw.addEventListener("keydown",function(e){if(e.key==="Enter")unlock()});
+setTimeout(function(){try{pw.focus()}catch(e){}},50);
+}
+function pass(broadcast,adoptT){
+var t=adoptT||Date.now();
+save(t);
+if(broadcast&&bc){try{bc.postMessage({u:1,h:H,t:t})}catch(e){}}
+if(pending){try{clearTimeout(pending)}catch(e){}pending=null}
+if(st){st.remove()}
+if(o){o.remove()}
+unlockedState();
+}
+function unlock(){
+var v=pw.value;
+if(!v)return;
+err.textContent="";
+if(!(window.crypto&&crypto.subtle&&window.TextEncoder)){err.textContent="当前环境不支持安全验证，请用 HTTPS 访问";return}
+crypto.subtle.importKey("raw",new TextEncoder().encode(v),{name:"PBKDF2"},false,["deriveBits"]).then(function(k){
+return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:new TextEncoder().encode(S),iterations:I},k,256);
+}).then(function(d){
+var h=Array.prototype.map.call(new Uint8Array(d),function(b){return("0"+b.toString(16)).slice(-2)}).join("");
+if(h===H)pass(true);
+else{err.textContent="密码不正确，请重试";pw.value="";pw.focus()}
+}).catch(function(){err.textContent="验证失败，请重试"});
+}
+if(bc)bc.onmessage=function(ev){var d=ev.data||{};
+if((d.a===1||d.u===1)&&d.h===H&&typeof d.t==="number"&&Date.now()-d.t<TTL)pass(false,d.t)};
+if(bc){try{bc.postMessage({q:1})}catch(e){}}
+if(bc){pending=setTimeout(showGate,300)}else{showGate()}
+})();
+</script><!--/HPGATE-->
+<h1 id="cae">基于 CAE 分析的增材制造拓扑优化技术研究</h1>
+<h2 id="3d">——应力驱动重构与「3D 应力云图 → 真实模型」映射方法综述</h2>
+<blockquote>
+<p>归档日期：2026-11-27 ｜ 检索窗口：1997–2026（重点 2023–2026）｜ 文献基数：63 篇（4 个子方向并行检索+交叉验证）<br />
+定位：领域研究笔记。为后续立项（应力驱动 AM 结构 AI 重构管线）提供方法学地基。</p>
+
+<p class="meta-date">生成日期 2026-11-27</p></blockquote>
+<hr />
+<h2 id="_1">一、研究定位与问题分解</h2>
+<p><strong>用户核心问题可分解为两条技术链路：</strong></p>
+<table>
+<thead>
+<tr>
+<th>链路</th>
+<th>内涵</th>
+<th>技术本质</th>
+<th>代表方法域</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L1 应力驱动重构</td>
+<td>根据应力水平重新生成/修正结构布局</td>
+<td>应力约束/应力最小化拓扑优化（stress-constrained TO）</td>
+<td>SIMP/水平集/BESO + q-p 松弛 + P-norm 凝聚；DL 代理</td>
+</tr>
+<tr>
+<td>L2 应力云图→真实模型</td>
+<td>把 CAE 应力场映射回几何：提取高应力区并转化为可制造模型</td>
+<td>场→几何的逆向映射（field-to-geometry）</td>
+<td>阈值分割/等值面提取/主应力方向场 → 骨架/B样条/点阵 → CAD/STL</td>
+</tr>
+</tbody>
+</table>
+<p><strong>三个关键认知（决定技术路线成败）：</strong></p>
+<ol>
+<li><strong>高应力区提取 ≠ 拓扑优化</strong>。阈值提取只是识别现有模型的风险区域；直接"保留高应力区+删除低应力区"大概率切断载荷传递路径——应力场随几何变化重新分布，首轮场驱动仅是初始设计或启发式，必须闭环迭代。</li>
+<li><strong>应力云图是有限元网格上的数值场，不是 CAD 面的属性</strong>。只有彩色截图或单侧表面颜色时，内部三维应力场无法唯一还原。可反演的输入 = 节点坐标 + 单元连接 + 应力张量分量 + 工况元数据。</li>
+<li><strong>强度最大化 ≠ 刚度最大化</strong>。刚度（柔度）目标关注整体变形能，应力目标关注局部失效风险；体积分数相同时拓扑也不相同。L 型梁算例：应力最小化使凹角逐渐变圆、最大 von Mises 应力 110→77.3 MPa（-29.7%），代价是牺牲刚度（Engineering, 2018 形状优化算例）。</li>
+</ol>
+<p><strong>已有知识关联（Step 0 联合检索）</strong>：本地知识库对本方向零命中——全新知识域，本文全部为新增。</p>
+<hr />
+<h2 id="l1">二、应力约束拓扑优化：方法学演进（链路 L1 基石）</h2>
+<h3 id="21">2.1 两大经典数值难题及解法谱系</h3>
+<table>
+<thead>
+<tr>
+<th>难题</th>
+<th>根因</th>
+<th>解法</th>
+<th>代表文献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>应力奇异性</strong></td>
+<td>密度→0 时应力约束消失，可行域退化不连续，优化器无法到达含"零密度最优拓扑"的区域</td>
+<td>ε-松弛（1997）/ σ-松弛（1998）/ q-p 插值（刚度指数 p≠应力指数 q）</td>
+<td>Cheng &amp; Guo, <em>Structural Optimization</em> 13:258–266, 1997, DOI 10.1007/BF01197454；Duysinx &amp; Sigmund, AIAA 1998-4906；Duysinx &amp; Bendsøe, <em>IJNME</em> 43:1453–1478, 1998</td>
+</tr>
+<tr>
+<td><strong>应力局部性</strong></td>
+<td>逐单元约束数 = 单元数（万级），伴随求解代价爆炸</td>
+<td>全局凝聚：P-norm / q-p-norm / K-S 函数 / 分区度量 / 凝聚误差修正</td>
+<td>Verbart et al., <em>SMOP</em> 55:663–679, 2017, DOI 10.1007/s00158-016-1524-0；Lee et al., <em>SMOP</em> 46:647–661, 2012</td>
+</tr>
+</tbody>
+</table>
+<p><strong>q-p 插值实例</strong>（王超等 2021, 力学学报 53(4):1070–1080）：刚度 Eₑ≈E_min+ρₑ^p(E₀−E_min)，应力 σ̃ₑ=ρₑ^q·D₀Bₑuₑ，取 <strong>p=3、q=0.5</strong>（低密度单元保留"虚假"松弛应力防止约束失效，高密度时收敛到真实应力）。</p>
+<p><strong>P-norm 凝聚数学性质</strong>：对归一化应力 rₑ，凝聚值 A=(Σrₑ^P)^(1/P) 满足 max r ≤ A ≤ N^(1/P)·max r——P 越大越接近真实峰值但越病态。实测参考：L 型梁测试 P=4/8/10，P=8 综合刚度和强度最佳（不支持"P 越大越好"）。K-S 函数上界形式 A=m+ln(Σexp[κ(rₑ−m)])/κ 满足 max r ≤ A ≤ max r+ln N/κ。<br />
+<strong>误差修正</strong>：用"真实离散峰值/凝聚值"比值 c 作乘子逐迭代更新，减轻峰值低估（Yang et al., <em>Computers &amp; Structures</em> 198:23–39, 2018, DOI 10.1016/j.compstruc.2018.01.008）。<br />
+<strong>对照方案</strong>：da Silva + Aage + Sigmund 2021 对比了局部约束 vs 全局约束策略（<em>IJNME</em> 122:6003–6036, DOI 10.1002/nme.6781）——直接局部约束（主动集/增广拉格朗日）精度更高、代价更大，并非只有全局凝聚一条路。</p>
+<h3 id="22-20182021">2.2 演化类与中文独立路线（2018–2021）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>文献</th>
+<th>要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BESO 应力最小化</td>
+<td>Xia, Zhang, Xia, Shi, <em>CMAME</em> 333:356–370, 2018</td>
+<td>P-norm 近似最大应力 + 伴随灵敏度指导双向增删材料；2D/3D 基准算例</td>
+</tr>
+<tr>
+<td>BESO 应力约束柔度最小化</td>
+<td>Fan, Xia, Lai, Xia, Shi, <em>SMOP</em> 59:647–658, 2019, DOI 10.1007/s00158-018-2090-4</td>
+<td>体积+应力双约束（与上篇目标函数不同）</td>
+</tr>
+<tr>
+<td>KS+BESO 中文路线</td>
+<td>王选等, 力学学报 50(2):385–394, 2018, DOI 10.6052/0459-1879-17-286</td>
+<td>KS 凝聚+拉格朗日乘子二分法；刚度指数 3、应力指数 0.5</td>
+</tr>
+<tr>
+<td>ICM 独立连续映射</td>
+<td>龙凯等, 力学学报 51(2):620–629, 2019</td>
+<td>归一化 P-norm 降约束数量+密度倒变量映射</td>
+</tr>
+<tr>
+<td>AM 应力最小化连通性</td>
+<td>王超等, 力学学报 53(4):1070–1080, 2021, DOI 10.6052/0459-1879-20-389</td>
+<td>体积+连通性标量场约束防封闭孔洞（清粉）；L 梁体积分数 0.4，迭代上限 200；P-norm+稳定转换误差修正</td>
+</tr>
+</tbody>
+</table>
+<p><strong>结论要点</strong>：仅考虑连通性约束的刚度最大化设计不一定能避免局部高应力集中；应力凝聚参数并非越大越好。</p>
+<h3 id="23-20242026">2.3 新近方向（2024–2026）</h3>
+<ul>
+<li>设计相关载荷（气动/表面压力）下的应力最小化与体积最小化：活塞算例表明柔度设计与应力设计拓扑不同（<em>Mechanics Based Design of Structures and Machines</em>, 2024, DOI 10.1080/15376494.2024.2350680）。</li>
+<li>多材料界面应力约束 + 等几何分析（IGA）：光滑 CAD 兼容边界上直接控制界面 von Mises/剪应力（Kosta, Shakur, Amir, <em>SMOP</em> 69:106, 2026, DOI 10.1007/s00158-026-04307-9）——研究方向正从"均匀实体最大应力"扩展到"材料界面与可重建边界"。</li>
+</ul>
+<hr />
+<h2 id="ai-20202026">三、AI / 深度学习介入拓扑优化全景（2020–2026）</h2>
+<h3 id="31-ai">3.1 AI 介入的四个位置（分类框架）</h3>
+<p>① <strong>跨工况一次性代理</strong>（工况→密度图，推理秒级）；② <strong>多候选生成</strong>（GAN/扩散生成设计空间）；③ <strong>迭代内替代 CAE 状态解/灵敏度</strong>（FNO/PINN 替代 PDE 求解）；④ <strong>增删材料策略学习</strong>（RL）。另有神经参数化（TOuNN）= 网络直接参数化单个问题，不属于监督预测器。</p>
+<h3 id="32">3.2 监督代理与生成模型</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>文献</th>
+<th>输入→输出</th>
+<th>报告性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>TopologyGAN</strong></td>
+<td>Nie, Lin, Jiang, Kara, <em>J. Mechanical Design</em> 143(3):031715, 2021（arXiv:2003.04685）</td>
+<td>初始满域 FEA 物理场（von Mises 应力+应变能密度+位移多通道）→ 密度场；生成器 U-SE-ResNet</td>
+<td>未见工况上 vs 无物理场基线 cGAN：MSE ↓约3倍、MAE ↓约2.5倍（注意：是 vs 基线，不是 vs SIMP 速度）；2D</td>
+</tr>
+<tr>
+<td><strong>应力最小化 cGAN</strong></td>
+<td>Huang et al., <em>Int. J. Mechanics and Materials in Design</em>, 2025, DOI 10.1007/s10999-025-09811-2</td>
+<td>边界条件 → 应力最小化拓扑；系统对比 CNN-cGAN/U-Net-cGAN/ResUNet-GAN/ResUNet-cGAN</td>
+<td>ResUNet-cGAN 生成拓扑与 SIMP 高度相似、计算时间显著降低（悬臂/MBB 验证）；加速比未核实</td>
+</tr>
+<tr>
+<td><strong>TopoDiff</strong></td>
+<td>Mazé &amp; Ahmed, AAAI 2023（decode.mit.edu/projects/topodiff）</td>
+<td>条件扩散去噪生成 + 柔度预测器与悬浮材料分类器引导采样</td>
+<td>扩散优于对比 GAN；悬浮分类器≠完整 AM 悬垂验证；2D</td>
+</tr>
+<tr>
+<td><strong>VAE 潜空间扩散</strong></td>
+<td>Lutheran, Das, Tabarraei, arXiv:2508.05624, 2025（预印本）</td>
+<td>von Mises+应变能+体积分数+载荷 → 潜空间条件扩散；浮料/载荷不平衡/体积分数损失辅助</td>
+<td>vs 既有扩散法柔度误差与连通性改善（有样本筛选口径）；VAE 平滑可能抹除细杆</td>
+</tr>
+<tr>
+<td><strong>Abueidda ResUNet</strong></td>
+<td>Abueidda et al. 2020（JCDE 综述收录）</td>
+<td>载荷/边界/体积分数 → 优化形状；覆盖含"线弹性+应力约束"三种材料本构</td>
+<td>2D 直接端到端预测</td>
+</tr>
+</tbody>
+</table>
+<h3 id="33-3d">3.3 算子学习与物理约束网络（可扩展到 3D 的主力方向）</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>文献</th>
+<th>要点</th>
+<th>报告性能</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>等变神经算子</strong></td>
+<td>Erzmann &amp; Dittmer, <em>JCDE</em> 11(3):91–100, 2024</td>
+<td>U-Net 结构 + FNO 替代 SIMP 迭代内 PDE 求解；梯度一致性损失+群等变性</td>
+<td><strong>3D</strong> TO；优于对比 U-Net/FNO；梯度损失对灵敏度可靠性关键</td>
+</tr>
+<tr>
+<td><strong>KATOsuper (SC-FNO)</strong></td>
+<td>Yan &amp; Jelovica, arXiv:2609.27216, 2026（预印本）</td>
+<td>灵敏度一致 FNO：敏感度沿预测目标同一路径自动微分；柔度/应力目标+分辨率迁移</td>
+<td>部署阶段 vs MATLAB OC/MMA 基线 <strong>15–110× 加速</strong>（3D 案例 ~15×）；不含训练摊销成本</td>
+</tr>
+<tr>
+<td><strong>PINNTO/CPINNTO</strong></td>
+<td>Jeong et al., <em>Engineering Structures</em> 278:115484, 2023；<em>CMAME</em> 2023, DOI 10.1016/j.cma.2023.116401</td>
+<td>位移网络+平衡方程/势能损失求物理解；应力由本构计算；CPINNTO 双 PINN 无标签无 FEA</td>
+<td>与密度法柔度可比、支持 3D、多约束；PINN 是软约束近似，不自动满足局部应力</td>
+</tr>
+<tr>
+<td><strong>SNTO（超分辨率+同步优化）</strong></td>
+<td>Sun, Hosseinmardi, Bostanabad, arXiv:2610.28703, 2026（41页期刊体量预印本）</td>
+<td>状态/伴随/设计变量全部由连续神经场表示，连续伴随+自动微分单循环联合优化；损失=目标+聚合局部应力约束+势能；多 GPU 空间分区</td>
+<td>2D 应力约束基准边界更清晰灰度更少；<strong>3D 最大 800 万配置点 / 8 GPU</strong>；v1→v2 标题去掉"Super-resolution"说明作者自身口径在收敛</td>
+</tr>
+</tbody>
+</table>
+<h3 id="34-llm-agent">3.4 强化学习与 LLM Agent</h3>
+<ul>
+<li><strong>PPO + FEA 双物理约束</strong>（N K et al., <em>MethodsX</em> 15:103539, 2025, 全文 PMC12355488）：CNN actor–critic，状态=材料网格+FEA 位移场+应力场三通道；奖励函数违反约束罚 −100。算例：60×40 悬臂 2D、1000 N、约束 von Mises ≤300 MPa / 位移 ≤0.5 mm；100 episode 后 Vf=0.32、位移 0.49 mm、峰值应力 298 MPa（贴约束边界）；论文称最高减重 40%（基准口径须谨慎）。STL 后处理含 SDF 平滑。</li>
+<li><strong>LLM 多智能体</strong>（Park &amp; Chung, arXiv:2605.23273, 2026 预印本）：六个 LLM agent 分工问题建模/校验/代码生成/结果审查+自修正，调用 FEA；在低文献覆盖基准上自修正优于单次 LLM。<strong>LLM 定位=编排与建模自动化，不替代物理验证</strong>。同类：NeurIPS 2025 "Benchmarking the Engineering Design Capabilities of LLMs" 含 TO 问题；EngiAI 2026 多智能体工程设计基准（arXiv:2605.19743）。</li>
+</ul>
+<h3 id="35-am">3.5 方法选型速查（面向"应力云图→AM 结构"场景）</h3>
+<pre><code>数据层：同族几何采样多工况 → CAE 全场(位移/vonMises/应变能)+收敛密度 → 按几何族×载荷族划分数据集（防泄漏）
+模型层：U-Net/TopologyGAN 做初筛（秒级）→ TopoDiff 生成多候选 → FNO 做循环内代理 → SIMP+MMA 梯度修复
+校核层：重建几何重新网格化 → 独立 FEA 复核峰值应力/违约率/网格收敛（不看像素 MAE，看物理违约）
+工艺层：构建方向/最小壁厚/悬垂/清粉/热变形 → 打印试样验证
+口径：报告 训练生成+训练+推理+修复+后处理 全链时间，并标注硬件/网格/摊销工况数
+</code></pre>
+<hr />
+<h2 id="l2">四、应力云图 → 真实模型重构技术链（链路 L2，核心）</h2>
+<h3 id="41-7">4.1 完整闭环流程（7 步）</h3>
+<pre><code>①多工况 CAE 场 → ②数值导出与坐标/单位校验 → ③高应力区三维阈值提取+主应力方向分析
+→ ④保留接口与载荷路径 → ⑤密度/杆径/壁厚映射生成实体或点阵 → ⑥重网格化多工况验证+制造约束检查
+→ ⑦切片打印 → 试验反馈（应力场随新几何重解，回到①迭代）
+</code></pre>
+<h3 id="42">4.2 高应力区提取算法链</h3>
+<p><strong>输入数据语义清单</strong>（缺一不可）：节点坐标、单元连接、应力张量六分量、工况/时间步、坐标系、单位、应力位置（积分点/单元中心/节点）、外推与平均策略。按实际失效准则求 von Mises（延性屈服）或主拉应力（脆性/疲劳）——<strong>不能把色条 RGB 当应力</strong>。</p>
+<p><strong>提取算子</strong>：<br />
+- 阈值集合定义：H_k = {x∈Ω: σ_eq,k(x) ≥ T_k}；T 来自许用强度×安全系数、规范条款或分位数，须做敏感性扫描；多工况取并集或统一物理准则的逐点包络。<br />
+- 体素/等值面：对标量场提取 σ=T 等值面（Marching Cubes, Lorensen &amp; Cline, SIGGRAPH 1987, DOI 10.1145/37402.37422；注意原算法二义性需修正实现）。<strong>等值面遇原构件外边界必须与原几何裁剪封口</strong>，否则不封闭。<br />
+- 连通域聚类：面邻接聚类输出每团三维位置/体积/峰值/工况；孤岛清理保留"原始+清理"两版，防丢真实热点。<br />
+- 主应力方向场：应力张量逐点特征分解 → σ1/σ2/σ3 与方向；沿主方向追踪应力线（stress lines）作为筋条走向或各向异性点阵取向依据；方向是无符号轴需符号一致化；近重特征值/低应力区方向不稳定。<br />
+- <strong>奇异性甄别</strong>：点载荷、完全固支边缘、尖角、接触边缘的数学奇异峰值必须与工程意义上的应力集中区分——用有限加载面积、真实圆角、网格收敛验证后再进提取。"红区一律加料"可能转移热点。</p>
+<h3 id="43-cad-stl">4.3 密度场 → 参数化 CAD / STL 几何重构（基准流程）</h3>
+<p><strong>基准文献</strong>：Liu, Li, Liu, Chen, Zhang, <em>"A Realization Method for Transforming a Topology Optimization Design into Additive Manufacturing Structures"</em>, <strong>Engineering</strong>, 2018, DOI 10.1016/j.eng.2017.09.002（中文全文 engineering.org.cn）。流程：密度阈值二值化 → 局部网格细分 → <strong>骨架提取+内切圆半径识别小特征+滤波保护</strong> → 体积守恒迭代重定阈值 → STL；支路B：边界点 → 均匀/自适应三次 B 样条拟合 → IGES 参数化模型 → CAD 内形状优化。</p>
+<table>
+<thead>
+<tr>
+<th>量化指标（该文 2D 算例）</th>
+<th>数值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>悬臂梁控制点数（均匀→自适应）</td>
+<td>97 → 43（<strong>-55.7%</strong>）</td>
+</tr>
+<tr>
+<td>热传导树形结构控制点</td>
+<td>439 → 201（<strong>-54.2%</strong>），ρcutoff=0.2, nc=8</td>
+</tr>
+<tr>
+<td>L 型梁控制点</td>
+<td>113 → 57（<strong>-49.6%</strong>），ρcutoff=0.5, nc=8</td>
+</tr>
+<tr>
+<td>L 梁（100N）形状优化后峰值应力</td>
+<td>110 → <strong>77.3 MPa（-29.7%）</strong></td>
+</tr>
+</tbody>
+</table>
+<p>开源基线：<strong>Top3d</strong>（Liu &amp; Tovar, <em>SMOP</em> 50:1175–1196, 2014, DOI 10.1007/s00158-014-1107-x, top3d.app）——88 行 MATLAB 3D SIMP，top3dSTL 直接导出；不含应力约束，需二次开发。</p>
+<h3 id="44">4.4 应力场 → 梯度点阵/多尺度结构映射</h3>
+<p>工程启发式映射：归一化风险场 r(x) → 杆径/壁厚场 t(x)=t_min+(t_max−t_min)·clip((r−r₀)/(r₁−r₀),0,1)^p + 邻域梯度限制 + 打印下限。<strong>公式只是设计建议不是优化结果</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>文献</th>
+<th>机制</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>壳-点阵应力约束优化</td>
+<td>Yu, Huang, Zou, Shao, Liu, <em>Virtual and Physical Prototyping</em> 15(1):35–48, 2020, DOI 10.1080/17452759.2019.1647488</td>
+<td>实体壳用 von Mises、点阵区用 Tsai–Hill 失效准则分别约束的 2D 壳-晶格复合优化</td>
+</tr>
+<tr>
+<td>功能梯度点阵+应力约束</td>
+<td>Cheng, Bai, To, <em>CMAME</em> 344:334–359, 2019</td>
+<td>微结构均匀化（等效弹性随相对密度）+ 宏观各向异性屈服准则 + 密度优化 + 去均匀化 + 细观验证</td>
+</tr>
+<tr>
+<td>应力场拓扑分析指导填充</td>
+<td>Wang, Wu, Westermann, <em>SMOP</em> 65, 2022, DOI 10.1007/s00158-022-03186-0</td>
+<td>应力场拓扑（临界点/分离线）分析指导多孔填充布局</td>
+</tr>
+<tr>
+<td>类骨多孔填充</td>
+<td>Wu, Aage, Westermann, Sigmund, <em>IEEE TVCG</em> 24(2):1127–1140, 2018, DOI 10.1109/TVCG.2017.2655523</td>
+<td>各向异性填充优化逼近骨结构</td>
+</tr>
+</tbody>
+</table>
+<p><strong>去均匀化（de-homogenization）陷阱</strong>：材料映射不能逐体素独立拼单胞——单胞旋转/尺寸变化造成不连通；需方向场一致的连接处理。局部微结构真实应力峰值 ≠ 均匀化宏观应力（Cheng 2019 明确区分两套应力体系）。</p>
+<h3 id="45">4.5 商用与开源工具链现状（场→几何能力对照）</h3>
+<table>
+<thead>
+<tr>
+<th>工具</th>
+<th>场驱动重构能力</th>
+<th>官方实证数字</th>
+<th>边界注意</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>nTop (nTopology)</strong></td>
+<td>FEA 标量/向量场导入 → 隐式设计域 → 场驱动杆径/壁厚/点阵取向 → 布尔结合壳体</td>
+<td>Cobra Aero 案例气冷缸<strong>减重 50%</strong>（多物理场+点阵，非纯应力映射、非对照试验）</td>
+<td>快速均匀化不解析边缘效应/局部应力集中；梁壳法需足够细分</td>
+</tr>
+<tr>
+<td><strong>ANSYS + SpaceClaim</strong></td>
+<td>优化结果平滑转移 → SpaceClaim 修复造型 → 重网格验证</td>
+<td>—</td>
+<td>不保证自动生成参数化实体</td>
+</tr>
+<tr>
+<td><strong>Altair OptiStruct + OSSmooth</strong></td>
+<td>等密度面提取 → Laplacian 平滑 → IGES/STL/Nastran</td>
+<td>—</td>
+<td>官方警告：平滑可偏离密度分布，须检查最大/平均平滑误差</td>
+</tr>
+<tr>
+<td><strong>SOLIDWORKS Simulation</strong></td>
+<td>拓扑研究 → Export Smoothed Mesh → BREP 实体</td>
+<td>—</td>
+<td>BREP 为三角面，水密 ≠ 特征树</td>
+</tr>
+<tr>
+<td><strong>MATLAB Top3d</strong></td>
+<td>密度场 → STL（top3dSTL）</td>
+<td>88 行代码基线</td>
+<td>教学原型级；应力约束/场导出需自研</td>
+</tr>
+</tbody>
+</table>
+<h3 id="46-ai">4.6 AI 辅助重构：预测与重建的区分</h3>
+<ul>
+<li><strong>TopologyGAN 类</strong>（应力场输入→密度图输出）：是基于训练分布的<strong>设计预测</strong>，不是从应力图无损反演真实模型；输出必须过 FE 复验（体积分数/连通性/应力约束不保证）。</li>
+<li><strong>3D 结构映射网络 SMapNN</strong>：Li, Ye, Gao, <em>J. Mechanical Design</em> 145(8):081703, 2023——粗尺度迭代结果 → SMapNN 生成细尺度结构，减少高分辨率计算量。</li>
+<li><strong>3D U-Net 体素应力场→高应力掩膜/密度场</strong>：可行架构设计（多工况体素张量通道：几何掩膜+载荷约束+六应力分量+体积分数 → 3D U-Net → 等值面+实体修复；评价指标 Dice/IoU、热点召回率、最大应力误差、FE 违例率）。<strong>诚实标注：截至本次检索，未找到经严格核验的"3D U-Net 以体素应力场直接重建可制造 CAD"已发表工作——这是潜在研究空白点（机会）</strong>。</li>
+</ul>
+<hr />
+<h2 id="_2">五、增材制造约束嵌入与多尺度结构</h2>
+<h3 id="51-am">5.1 AM 工艺约束进入优化模型的四种通道</h3>
+<table>
+<thead>
+<tr>
+<th>约束</th>
+<th>进入方式</th>
+<th>工程含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>悬垂/自支撑</td>
+<td>逐层打印滤波、局部坡度投影约束、惩罚不可支撑体积；或联合优化构建方向</td>
+<td><strong>45° 是经验示例不是认证阈值</strong>——材料/层厚/扫描策略均影响可打印角；罚函数允许局部违规须打印验证</td>
+</tr>
+<tr>
+<td>最小特征尺寸</td>
+<td>密度滤波+投影+腐蚀/膨胀鲁棒设计（分别控制最小实体/孔隙/间距）</td>
+<td>滤波半径 ≠ 实际壁厚；薄杆尺寸效应、表面粗糙与疲劳缺口须验证</td>
+</tr>
+<tr>
+<td>封闭空腔/清粉</td>
+<td>连通性约束、扩散虚拟物理场、预设进出口优化通道（Monash 大学 passageway for powder removal 方法）</td>
+<td>拓扑连通必要不充分：孔径/弯曲/粉末黏附/检查入口都要验证</td>
+</tr>
+<tr>
+<td>热变形/残余应力</td>
+<td>逐层热-力计算或固有应变法+伴随灵敏度耦合（Langelaar, TU Delft distortion-constrained TO）；分别约束铺粉碰撞与全局变形</td>
+<td>高保真计算昂贵；代理须在设备/材料/扫描策略范围内校准</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-to">5.2 多尺度/包覆/点阵结构 TO</h3>
+<ul>
+<li><strong>Wadbro &amp; Niu</strong>, <em>CMAME</em> 357:112605, 2019, DOI 10.1016/j.cma.2019.112605：宏观布局 + 实心包覆涂层 + 周期填充单胞（外表面完整性+内部轻量化）。</li>
+<li><strong>Groen, Wu, Sigmund</strong>, <em>CMAME</em> 349:722–742, 2019, DOI 10.1016/j.cma.2019.02.031：2D 正交各向异性填充的均匀化刚度优化+投影。</li>
+<li>航空实践判断：外壳改善外表面但可能把点阵变成无法清粉/检查的封闭腔；点阵并不天然优于实心筋板；重量对比必须含封皮/支撑/后加工材料。</li>
+</ul>
+<hr />
+<h2 id="_3">六、航空航天应用案例（按证据层级区分）</h2>
+<table>
+<thead>
+<tr>
+<th>案例</th>
+<th>可核实数字</th>
+<th>证据层级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>GE LEAP 燃油喷嘴</strong>（GE Aerospace 官方）</td>
+<td>原 ~20 个焊接/钎焊零件合为 1 件，质量约 <strong>-25%</strong>；2015 年投产，累计 <strong>30,000 件</strong>里程碑</td>
+<td>量产级 AM 零件整合标杆；官方口径未声称收益来自特定 TO 算法</td>
+</tr>
+<tr>
+<td><strong>Airbus/Autodesk A320 仿生隔板</strong>（2016 官方新闻）</td>
+<td>较现有方案轻 <strong>45%（30 kg）</strong>，生成式设计+3D 打印</td>
+<td>项目/开发成果；未证实大规模装机与完整适航</td>
+</tr>
+<tr>
+<td><strong>Bucher A320 仿生隔板</strong>（装机）</td>
+<td>CFRP 蜂窝夹芯，<strong>&gt;30%</strong> 减重；通过资格审查装机；承受飞行方向 <strong>&gt;16g</strong> 动态加速度</td>
+<td>真实装机轻量化对照；<strong>是 CFRP 蜂窝不是金属 AM</strong>（常见误传纠正）</td>
+</tr>
+<tr>
+<td><strong>南航原帅超等：SLM 无人机承载接头</strong>（北科大 cje.ustb.edu.cn）</td>
+<td>变密度法+ANSYS 多工况：重构方案 II 质量 <strong>0.327 kg、-13.3%</strong>；极限工况峰值应力 <strong>259.12 MPa</strong>、位移 <strong>0.57 mm</strong>；重构孔型"胖矮"化使 4 工况应力集中 -21.6%~-27.8%</td>
+<td>数值重构研究；未见打印与疲劳验证记录；出版年份需原刊复核</td>
+</tr>
+</tbody>
+</table>
+<p><strong>事实纠偏（本次检索修正两个流传错误）</strong>：<br />
+1. "nTop 被 PTC 2021 年收购"无依据——PTC 2018 年收购的是 <strong>Frustum（约 $70M）</strong>；nTopology 2021 年是 <strong>$65M D 轮融资</strong>（PTC 官方新闻稿 + nTop 官方博客）。<br />
+2. "空客 A320 隔板减重 30% by nTop"混淆了两个项目——45%/30kg 是 Airbus/Autodesk 金属增材项目；&gt;30% 是 Bucher CFRP 蜂窝夹芯板（bucher-group.com）。</p>
+<hr />
+<h2 id="20242026">七、商用软件格局（2024–2026 快照）</h2>
+<table>
+<thead>
+<tr>
+<th>工具链</th>
+<th>定位</th>
+<th>核查要点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>nTop</td>
+<td>隐式几何+场驱动变厚度/点阵/TO，多尺度建模强</td>
+<td>求解器/热模拟/CAD 往返按版本核实</td>
+</tr>
+<tr>
+<td>Ansys Mechanical TO + Additive Suite</td>
+<td>结构 TO+打印准备+工艺仿真+材料探索一体</td>
+<td>TO 与 Additive 可能分许可；同迭代耦合工艺约束需实测</td>
+</tr>
+<tr>
+<td>Autodesk Fusion Generative Design</td>
+<td>云端多方案生成，AM+减材约束</td>
+<td>生成候选 ≠ 可审定设计；Additive 2.0 兼顾最小厚度与支撑</td>
+</tr>
+<tr>
+<td>Altair OptiStruct / Inspire</td>
+<td>结构优化+悬垂角约束（严格/宽松两模式）</td>
+<td>角度约束定义与收敛行为</td>
+</tr>
+<tr>
+<td>Siemens NX + Simcenter</td>
+<td>NX 设计/AM + 多物理场优化</td>
+<td>官方 CFD 案例流量 +22%（非结构减重口径）</td>
+</tr>
+<tr>
+<td>CATIA + SIMULIA Tosca + 3DEXPERIENCE</td>
+<td>CATIA 建模+Tosca TO+Abaqus 验证；打印方向/悬垂角纳入 TO</td>
+<td>功能跨角色模块非 CATIA 标配</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="20232026">八、2023–2026 趋势与研究机会</h2>
+<h3 id="81-4">8.1 代表性综述（4 篇）</h3>
+<ol>
+<li>El Khadiri et al., <em>Topology optimization methods for additive manufacturing: a review</em>, IJSMDO 14:12, 2023, DOI 10.1051/smdo/2023015（长度尺度/悬垂/连接/点阵）</li>
+<li>Ibhadode et al., <em>Topology optimization for metal additive manufacturing</em>, 2023, DOI 10.1080/17452759.2023.2181192（金属 AM 工艺/支撑/孔隙/AI/软件）</li>
+<li>Hurtado-Pérez et al., <em>On Topology Optimisation Methods and Additive Manufacture for Satellite Structures</em>, Aerospace, 2023（卫星结构+资格鉴定壁垒；后续综述称其覆盖 ~540 篇参考文献，二次来源口径）</li>
+<li>Peng et al., <em>Topology optimization methods and its applications in aerospace: a review</em>, SMOP, 2025, DOI 10.1007/s00158-025-04030-x</li>
+</ol>
+<h3 id="82">8.2 四大趋势</h3>
+<ol>
+<li><strong>从形状约束到工艺物理协同</strong>：多轴 AM 将形状/沉积方向/制造顺序/各向异性/残余应力联合优化——space-time TO（Wu 博士论文 TU Delft 2025, 149 页, DOI 10.4233/uuid:3be97b56-...）。</li>
+<li><strong>AI 代理 + 工艺-结构一体化</strong>：高保真模拟/试验训练代理预测热变形与缺陷，主动学习+贝叶斯优化缩减探索（Karkaria et al., <em>J. Manufacturing Systems</em> 75:322–332, 2024——AM 数字孪生框架）。</li>
+<li><strong>数字孪生走向数据闭环</strong>：设备设定→逐层传感→缺陷表征→材料性能→结构模型的测量-更新-决策闭环；没有在线更新只能叫工艺仿真。</li>
+<li><strong>LLM 作为工程助手而非认证求解器</strong>：解析需求/生成可复现建模脚本/检查文档证据链；载荷/材料/单位/边界由工程师确认，求解由可验证 CAE 执行。</li>
+</ol>
+<h3 id="83">8.3 研究机会点（面向立项）</h3>
+<table>
+<thead>
+<tr>
+<th>机会</th>
+<th>依据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>3D 体素应力场 → 可制造结构的端到端网络</strong>（含热点召回率物理指标）</td>
+<td>§4.6 检索确认为已发表工作空白；SNTO 只到"连续神经场优化"未做"场→CAD 重建"</td>
+</tr>
+<tr>
+<td>应力场拓扑分析（临界点/应力线）驱动的筋条/点阵取向自动生成</td>
+<td>Wang 2022 SMOP 方向尚无 AM 工艺约束+AI 结合的后续</td>
+</tr>
+<tr>
+<td>应力凝聚+DL 联合：代理模型直接输出满足局部应力约束的密度场（物理违约率为硬指标）</td>
+<td>现有 GAN/扩散文献均以像素 MAE 为主指标，物理约束违约率报告缺失</td>
+</tr>
+<tr>
+<td>面向适航的"应力云图→重构→验证"数字化证据链</td>
+<td>结合用户飞机设计企业背景：CAE 场版本/提取参数/重构偏差/复验结果全链留痕可审计</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_4">九、参考文献（按主题分组）</h2>
+<p><strong>应力约束 TO 经典与中文路线（15 篇核心）</strong><br />
+1. Cheng G D, Guo X. ε-relaxed approach in structural topology optimization. Structural Optimization, 1997, 13:258–266. DOI 10.1007/BF01197454<br />
+2. Duysinx P, Sigmund O. New developments in handling stress constraints in optimal material distribution. AIAA 1998-4906. DOI 10.2514/6.1998-4906<br />
+3. Duysinx P, Bendsøe M P. Topology optimization of continuum structures with local stress constraints. IJNME, 1998, 43:1453–1478. DOI 10.1002/(SICI)1097-0207(19981230)43:8&lt;1453::AID-NME480&gt;3.0.CO;2-2<br />
+4. Verbart A, Langelaar M, van Keulen F. A unified aggregation and relaxation approach for stress-constrained topology optimization. SMOP, 2017, 55:663–679. DOI 10.1007/s00158-016-1524-0<br />
+5. Lee E, James K A, Martins J R R A. Stress-constrained topology optimization with design-dependent loading. SMOP, 2012, 46:647–661. DOI 10.1007/s00158-012-0780-x<br />
+6. da Silva G A, Aage N, Beck A T, Sigmund O. Local versus global stress constraint strategies in topology optimization: A comparative study. IJNME, 2021, 122:6003–6036. DOI 10.1002/nme.6781<br />
+7. Yang D, Liu H, Zhang W, Li S C. Stress-constrained topology optimization based on maximum stress measures. Computers &amp; Structures, 2018, 198:23–39. DOI 10.1016/j.compstruc.2018.01.008<br />
+8. 王选, 刘宏亮, 龙凯, 杨迪雄, 胡平. 基于改进的双向渐进结构优化法的应力约束拓扑优化. 力学学报, 2018, 50(2):385–394. DOI 10.6052/0459-1879-17-286<br />
+9. 王超, 徐斌, 段尊义, 荣见华. 面向增材制造的应力最小化连通性拓扑优化. 力学学报, 2021, 53(4):1070–1080. DOI 10.6052/0459-1879-20-389<br />
+10. Xia L, Zhang L, Xia Q, Shi T. Stress-based topology optimization using bi-directional evolutionary structural optimization method. CMAME, 2018, 333:356–370.<br />
+11. Fan Z, Xia L, Lai W, Xia Q, Shi T. Evolutionary topology optimization of continuum structures with stress constraints. SMOP, 2019, 59:647–658. DOI 10.1007/s00158-018-2090-4<br />
+12. 龙凯, 王选, 吉亮. 面向应力约束的独立连续映射方法. 力学学报, 2019, 51(2):620–629. DOI 10.6052/0459-1879-18-169<br />
+13. Liu J et al. Stress-constrained topology optimization for material extrusion polymer additive manufacturing. JCDE, 2021, 8(3):979.<br />
+14. Stress-constrained volume minimization of structures undergoing design-dependent surface limit loads. MBDSM, 2024. DOI 10.1080/15376494.2024.2350680<br />
+15. Kosta M, Shakur E, Amir O. Multi-material topology optimization with interfacial stress constraints using body-fitted IGA. SMOP, 2026, 69:106. DOI 10.1007/s00158-026-04307-9</p>
+<p><strong>AI/深度学习方法（12 篇核心）</strong><br />
+16. Chandrasekhar A, Suresh K. TOuNN: Topology optimization using neural networks. SMOP, 2021, 63:1135–1149. DOI 10.1007/s00158-020-02748-4<br />
+17. Nie Z, Lin T, Jiang H, Kara L B. TopologyGAN: Topology optimization using GANs based on physical fields over the initial domain. JMD, 2021, 143(3):031715. arXiv:2003.04685<br />
+18. Huang X, Li S, Miao C, Hou L, Chen Y. Generative adversarial network for stress-minimizing topology optimization. IJMMD, 2025. DOI 10.1007/s10999-025-09811-2<br />
+19. Mazé F, Ahmed F. Diffusion models beat GANs on topology optimization. AAAI, 2023. decode.mit.edu/projects/topodiff<br />
+20. Lutheran A, Das S, Tabarraei A. Latent space diffusion for topology optimization. arXiv:2508.05624, 2025.<br />
+21. Erzmann D, Dittmer S. Equivariant neural operators for gradient-consistent topology optimization. JCDE, 2024, 11(3):91–100.<br />
+22. Yan S, Jelovica J. KATOsuper: Surrogate-accelerated neural topology optimization with sensitivity-consistent FNO. arXiv:2609.27216, 2026.<br />
+23. Jeong H, Bai J, Batuwatta-Gamage C P, et al. PINNTO: A physics-informed neural network-based topology optimization framework. Engineering Structures, 2023, 278:115484.<br />
+24. Jeong H, et al. A complete PINN-based framework for structural topology optimization. CMAME, 2023. DOI 10.1016/j.cma.2023.116401<br />
+25. Sun X, Hosseinmardi S, Bostanabad R. Scalable stress-constrained topology optimization: a simultaneous approach based on machine learning. arXiv:2610.28703, 2026.<br />
+26. N K K, C M M, B K P K, Bali M. Reinforcement learning-based topology optimization for generative designed lightweight structures. MethodsX, 2025, 15:103539. DOI 10.1016/j.mex.2025.103539<br />
+27. Park H, Chung H. Self-refining topology optimization via an LLM-based multi-agent framework. arXiv:2605.23273, 2026.</p>
+<p><strong>重构与场→几何链路（11 篇核心）</strong><br />
+28. Liu S, Li Q, Liu J, Chen W, Zhang Y. A realization method for transforming a topology optimization design into additive manufacturing structures. Engineering, 2018. DOI 10.1016/j.eng.2017.09.002<br />
+29. Lorensen W E, Cline H E. Marching cubes: a high resolution 3D surface construction algorithm. SIGGRAPH, 1987, 21(4):163–169. DOI 10.1145/37402.37422<br />
+30. Liu K, Tovar A. An efficient 3D topology optimization code written in Matlab. SMOP, 2014, 50:1175–1196. DOI 10.1007/s00158-014-1107-x<br />
+31. Eck M, Hoppe H. Automatic reconstruction of B-spline surfaces of arbitrary topological type. SIGGRAPH, 1996.<br />
+32. Wang J, Wu J, Westermann R. Stress topology analysis for porous infill optimization. SMOP, 2022, 65. DOI 10.1007/s00158-022-03186-0<br />
+33. Yu H, Huang J, Zou B, Shao W, Liu J. Stress-constrained shell-lattice infill structural optimisation for additive manufacturing. VPP, 2020, 15(1):35–48. DOI 10.1080/17452759.2019.1647488<br />
+34. Cheng L, Bai J, To A C. Functionally graded lattice structure topology optimization for the design of additive manufactured components with stress constraints. CMAME, 2019, 344:334–359.<br />
+35. Wu J, Aage N, Westermann R, Sigmund O. Infill optimization for additive manufacturing—approaching bone-like porous structures. IEEE TVCG, 2018, 24(2):1127–1140. DOI 10.1109/TVCG.2017.2655523<br />
+36. Design and optimization of functionally-graded triangular lattices for multiple loading conditions. arXiv:2402.15458, 2024.<br />
+37. Li K, Ye W, Gao Y. A 3D structure mapping-based efficient topology optimization framework. JMD, 2023, 145(8):081703.<br />
+38. Shin S, Shin D, Kang N. Topology optimization via machine learning and deep learning: a review. JCDE, 2023, 10(4):1736–1766. DOI 10.1093/jcde/qwad072</p>
+<p><strong>AM 约束/多尺度/综述/案例（25 篇核心选摘）</strong><br />
+39. Wadbro E, Niu B. Multiscale design for additive manufactured structures with solid coating and periodic infill pattern. CMAME, 2019, 357:112605. DOI 10.1016/j.cma.2019.112605<br />
+40. Groen J P, Wu J, Sigmund O. Homogenization-based stiffness optimization and projection of 2D coated structures with orthotropic infill. CMAME, 2019, 349:722–742. DOI 10.1016/j.cma.2019.02.031<br />
+41. Langelaar M, et al. Topology optimization for additive manufacturing with distortion constraints. TU Delft research portal.<br />
+42. El Khadiri A, et al. Topology optimization methods for additive manufacturing: a review. IJSMDO, 2023, 14:12. DOI 10.1051/smdo/2023015<br />
+43. Ibhadode O, et al. Topology optimization for metal additive manufacturing: current trends, challenges, and future outlook. 2023. DOI 10.1080/17452759.2023.2181192<br />
+44. Hurtado-Pérez M, et al. On topology optimisation methods and additive manufacture for satellite structures: a review. Aerospace, 2023.<br />
+45. Peng et al. Topology optimization methods and its applications in aerospace: a review. SMOP, 2025. DOI 10.1007/s00158-025-04030-x<br />
+46. Karkaria et al. AM digital twin framework combining machine learning and Bayesian optimization. J. Manufacturing Systems, 2024, 75:322–332.<br />
+47. 原帅超, 王建峰, 段宇航, 郝璐静, 占小红. 基于变密度法的SLM增材制造无人机承载接头结构拓扑优化设计. 工程科学学报（cje.ustb.edu.cn）.<br />
+48. GE Aerospace. Manufacturing milestone: 30,000 additive fuel nozzles. geaerospace.com<br />
+49. Airbus. Pioneering bionic 3D printing. airbus.com, 2016.<br />
+50. Bucher. Bionic partition successfully installed on Airbus A320. bucher-group.com<br />
+51. PTC Acquires Frustum. ptc.com, 2018；nTop Secures $65M in Series D Funding. ntop.com, 2021.<br />
+52. Wu. Space-time topology optimization for multi-axis additive manufacturing. TU Delft PhD thesis, 2025. DOI 10.4233/uuid:3be97b56-f03e-4d07-b182-b1427f249db5<br />
+53. Benchmarking the engineering design capabilities of LLMs. NeurIPS 2025 Datasets &amp; Benchmarks.<br />
+54. EngiAI: A multi-agent framework and benchmark suite for LLM-driven engineering design. arXiv:2605.19743, 2026.</p>
+<hr />
+<h2 id="_5">十、检索方法与证据边界（诚实声明）</h2>
+<ul>
+<li><strong>检索执行</strong>：4 个子方向并行（web_search 中英文 + web_extract 出版商页 + arXiv API）；Semantic Scholar Graph API 全程 HTTP 429 限流，改用出版商/官方来源交叉验证；共引用 63 篇（去重后约 54 组）。</li>
+<li><strong>性能数字口径</strong>：全部为<strong>原论文作者报告值</strong>，非本环境复现实测；不同网格/硬件/训练摊销不可横向比。</li>
+<li><strong>明确未核实项</strong>（诚实标注，不编造）：TopologyGAN 作者全名单；IJMMD 2025 cGAN 的确切生成器架构与加速比；Yu 2020 案例减重数字；原帅超论文正式出版年份与打印实测；Chacón B 样条文献题录；DeepONet 直接用于应力约束 TO 的定量代表作。</li>
+<li><strong>预印本标注</strong>：arXiv:2610.28703 / 2609.27216 / 2605.23273 / 2508.05624 / 2402.15458 / 2605.19743 均为预印本，未同行评审。</li>
+</ul>
+<hr />
+<h2 id="analysis-learning-loop">附：借鉴点三档分类（analysis-learning-loop 审计）</h2>
+<table>
+<thead>
+<tr>
+<th>档次</th>
+<th>项</th>
+<th>动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>①有利进化</td>
+<td>无（领域知识笔记，非方法论/工具流程，不改变系统行为）</td>
+<td>不落实——理由：纯知识域，无可执行改进</td>
+</tr>
+<tr>
+<td>②有价值</td>
+<td>新研究方向路由：增材制造拓扑优化 → 本项目</td>
+<td>路由登记 ✅</td>
+</tr>
+<tr>
+<td>③知识库</td>
+<td>全部正文内容</td>
+<td>本笔记（MD+HTML）✅ 已落盘</td>
+</tr>
+</tbody>
+</table>
+<p><strong>后续迭代入口</strong>：若立项"应力云图→AM 结构 AI 重构管线"，从 §4.2 提取算法链 + §3.5 方法选型速查起步，首个可交付验证 = 2D MBB 梁应力场 → 高应力掩膜 → 骨架重构 → FE 复验的最小闭环。</p>
+</body>
+</html>
