@@ -3,6 +3,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      retry:
+        description: 'Internal: 1 = auto-retry run (do not set manually)'
+        required: false
+        default: '0'
 permissions:
   contents: read
   actions: read
@@ -30,20 +35,46 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           # Workaround: artifact list API eventual-consistency race — deploy-pages@v4
-          # queries right after upload finalization and can see 0 artifacts.
-          # Poll until the github-pages artifact is visible, then deploy.
-          for i in $(seq 1 30); do
+          # queries a DIFFERENT internal view than the Actions artifacts API and can
+          # still see 0 artifacts even after this API reports the artifact visible
+          # (2026-11-28 #6349: visible per API at +2.8s, deploy-pages failed at +3.6s).
+          # 1) Poll until visible (actions API view)
+          # 2) Then hold 45s so the deploy-pages internal view converges too.
+          for i in $(seq 1 24); do
             n=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
                   --jq '[.artifacts[]? | select(.name == "github-pages")] | length' 2>/dev/null || true)
             if [ "${n:-0}" -gt 0 ] 2>/dev/null; then
-              echo "github-pages artifact visible (attempt ${i}, count=${n})."
+              echo "github-pages artifact visible (attempt ${i}, count=${n}); holding 45s for deploy-pages view convergence..."
+              sleep 45
               exit 0
             fi
-            echo "attempt ${i}: artifact not visible yet, sleeping 2s..."
-            sleep 2
+            echo "attempt ${i}: artifact not visible yet, sleeping 5s..."
+            sleep 5
           done
-          echo "::warning::github-pages artifact not visible after 60s — proceeding anyway."
+          echo "::warning::github-pages artifact not visible after 120s — proceeding anyway."
+          sleep 45
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Auto-retry once on deploy failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Upstream race (artifact metadata fetch) is transient and time-clustered:
+          # one full re-run after a cool-down escapes the bad window in most cases.
+          # Loop guard: only a push-triggered failure may spawn a retry run; a
+          # retry run (input retry=1) that fails again stops here.
+          if [ "${{ github.event_name }}" != "push" ]; then
+            echo "Event=${{ github.event_name }} — no further auto-retry."
+            exit 0
+          fi
+          if [ "${{ github.event.inputs.retry }}" = "1" ]; then
+            echo "This run is already a retry — stopping to avoid loops."
+            exit 0
+          fi
+          echo "Deploy failed on a push run — dispatching one auto-retry after 60s cool-down..."
+          sleep 60
+          gh workflow run deploy.yml --ref main -f retry=1
